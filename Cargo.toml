@@ -1,0 +1,12 @@
+[package]
+name = "fselect"
+version = "0.0.1"
+authors = ["jhspetersson <jhspetersson@gmail.com>"]
+description = "Find files with SQL-like queries"
+keywords = ["find", "files", "sql", "cli", "tool", "utility", "filesystem"]
+categories = ["filesystem", "command-line-utilities", "command-line-interface"]
+license = "MIT/Apache-2.0"
+
+[dependencies]
+regex = "0.2"
+term = "*"

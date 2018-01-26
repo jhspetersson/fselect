@@ -104,6 +104,9 @@ fn check_file(entry: &DirEntry, query: &Query, need_metadata: bool) {
             "name" => {
                 println!("{}", entry.file_name().to_string_lossy())
             },
+            "path" => {
+                println!("{}", entry.path().to_string_lossy())
+            },
             "size" => {
                 if let Some(ref attrs) = attrs {
                     println!("{}", attrs.len())
@@ -176,6 +179,28 @@ fn conforms(entry: &DirEntry, expr: &Box<Expr>, entry_meta: Option<Box<fs::Metad
                             match expr.regex {
                                 Some(ref regex) => !regex.is_match(file_name),
                                 None => val.ne(file_name)
+                            }
+                        },
+                        _ => false
+                    };
+                },
+                None => { }
+            }
+        } else if field.to_ascii_lowercase() == "path" {
+            match expr.val {
+                Some(ref val) => {
+                    let file_path = &String::from(entry.path().to_str().unwrap());
+                    result = match expr.op {
+                        Some(Op::Eq) => {
+                            match expr.regex {
+                                Some(ref regex) => regex.is_match(file_path),
+                                None => val.eq(file_path)
+                            }
+                        },
+                        Some(Op::Ne) => {
+                            match expr.regex {
+                                Some(ref regex) => !regex.is_match(file_path),
+                                None => val.ne(file_path)
                             }
                         },
                         _ => false

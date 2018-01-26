@@ -209,7 +209,7 @@ impl Parser {
 }
 
 fn is_glob(s: &str) -> bool {
-    s.contains(".*") || s.contains("*.") || s.contains('?')
+    s.contains("*") || s.contains('?')
 }
 
 fn convert_glob_to_pattern(s: &str) -> String {

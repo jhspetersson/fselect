@@ -1,5 +1,6 @@
 extern crate regex;
 
+use regex::Captures;
 use regex::Regex;
 
 use lexer::Lexem;
@@ -214,15 +215,20 @@ fn is_glob(s: &str) -> bool {
 
 fn convert_glob_to_pattern(s: &str) -> String {
     let string = s.to_string();
-
-    string
-        .replace(".", "\\.")
-        .replace("*", ".*")
-        .replace("?", ".")
-        .replace("[", "\\[")
-        .replace("]", "\\]")
-        .replace("^", "\\^")
-        .replace("$", "\\$");
+    let regex = Regex::new("(\\.|\\*|\\?|\\[|\\]|\\^|\\$)").unwrap();
+    let string = regex.replace_all(&string, |c: &Captures| {
+        use std::ops::Index;
+        match c.index(0) {
+            "." => "\\.",
+            "*" => ".*",
+            "?" => ".",
+            "[" => "\\[",
+            "]" => "\\]",
+            "^" => "\\^",
+            "$" => "\\$",
+            _ => panic!("Error parsing glob")
+        }.to_string()
+    });
 
     format!("^{}$", string)
 }

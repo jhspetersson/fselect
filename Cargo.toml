@@ -5,6 +5,9 @@ authors = ["jhspetersson <jhspetersson@gmail.com>"]
 description = "Find files with SQL-like queries"
 keywords = ["find", "files", "sql", "cli", "tool", "utility", "filesystem"]
 categories = ["filesystem", "command-line-utilities", "command-line-interface"]
+documentation = "https://github.com/jhspetersson/fselect"
+homepage = "https://github.com/jhspetersson/fselect"
+repository = "https://github.com/jhspetersson/fselect"
 license = "MIT/Apache-2.0"
 
 [dependencies]

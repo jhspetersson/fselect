@@ -163,17 +163,25 @@ impl Parser {
                             let mut ss3 = String::new();
                             ss3.push_str(s3);
 
-                            let expr = match is_glob(s3) {
-                                true => {
-                                    let pattern = convert_glob_to_pattern(s3);
-                                    let regex = Regex::new(&pattern).unwrap();
+                            let op = Op::from(ss2);
+                            if let Some(Op::Rx) = op {
+                                let regex = Regex::new(&s3).unwrap();
+                                let expr = Expr::leaf_regex(ss, op, ss3, regex);
 
-                                    Expr::leaf_regex(ss, Op::from(ss2), ss3, regex)
-                                },
-                                false => Expr::leaf(ss, Op::from(ss2), ss3)
-                            };
+                                Some(Box::new(expr))
+                            } else {
+                                let expr = match is_glob(s3) {
+                                    true => {
+                                        let pattern = convert_glob_to_pattern(s3);
+                                        let regex = Regex::new(&pattern).unwrap();
 
-                            Some(Box::new(expr))
+                                        Expr::leaf_regex(ss, op, ss3, regex)
+                                    },
+                                    false => Expr::leaf(ss, op, ss3)
+                                };
+
+                                Some(Box::new(expr))
+                            }
                         },
                         _ => None
                     }
@@ -301,6 +309,7 @@ pub enum Op {
     Gte,
     Lt,
     Lte,
+    Rx,
 }
 
 impl Op {
@@ -333,6 +342,12 @@ impl Op {
             return  Some(Op::Lte);
         } else if text.eq_ignore_ascii_case("lte") {
             return  Some(Op::Lte);
+        } else if text.eq_ignore_ascii_case("~=") {
+            return  Some(Op::Rx);
+        } else if text.eq_ignore_ascii_case("regexp") {
+            return  Some(Op::Rx);
+        } else if text.eq_ignore_ascii_case("rx") {
+            return  Some(Op::Rx);
         }
 
         None

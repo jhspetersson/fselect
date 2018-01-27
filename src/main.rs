@@ -181,6 +181,12 @@ fn conforms(entry: &DirEntry, expr: &Box<Expr>, entry_meta: Option<Box<fs::Metad
                                 None => val.ne(file_name)
                             }
                         },
+                        Some(Op::Rx) => {
+                            match expr.regex {
+                                Some(ref regex) => regex.is_match(file_name),
+                                None => false
+                            }
+                        },
                         _ => false
                     };
                 },
@@ -201,6 +207,12 @@ fn conforms(entry: &DirEntry, expr: &Box<Expr>, entry_meta: Option<Box<fs::Metad
                             match expr.regex {
                                 Some(ref regex) => !regex.is_match(file_path),
                                 None => val.ne(file_path)
+                            }
+                        },
+                        Some(Op::Rx) => {
+                            match expr.regex {
+                                Some(ref regex) => regex.is_match(file_path),
+                                None => false
                             }
                         },
                         _ => false

@@ -115,6 +115,10 @@ pub fn next_lexem(input: &String, skip_chars: usize) -> Result<(Lexem, usize), &
                 Ok((Lexem::Operator(s), next_start))
             } else if s.eq_ignore_ascii_case("lte")  {
                 Ok((Lexem::Operator(s), next_start))
+            } else if s.eq_ignore_ascii_case("regexp")  {
+                Ok((Lexem::Operator(s), next_start))
+            } else if s.eq_ignore_ascii_case("rx")  {
+                Ok((Lexem::Operator(s), next_start))
             } else {
                 Ok((Lexem::Field(s), next_start))
             }
@@ -143,6 +147,7 @@ fn is_op_char(c: char) -> bool {
         '!' => true,
         '<' => true,
         '>' => true,
+        '~' => true,
         _ 	=> false
     }
 }

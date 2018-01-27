@@ -39,8 +39,8 @@ fn main() {
 }
 
 fn usage_info() {
-    println!("FSelect utility v0.0.1");
-    println!("Usage: fselect COLUMN[, COLUMN] from ROOT [where EXPR]");
+    println!("FSelect utility v0.0.2");
+    println!("Usage: fselect COLUMN[, COLUMN...] from ROOT [where EXPR]");
 }
 
 fn list_search_results(query: Query, t: &mut Box<StdoutTerminal>) -> io::Result<()> {

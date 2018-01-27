@@ -44,8 +44,6 @@ fn usage_info() {
 }
 
 fn list_search_results(query: Query, t: &mut Box<StdoutTerminal>) -> io::Result<()> {
-    t.attr(term::Attr::Bold).unwrap();
-
     let need_metadata = query.fields.iter()
         .filter(|s| s.as_str().ne("name")).count() > 0;
 

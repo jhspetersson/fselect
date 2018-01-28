@@ -1,3 +1,4 @@
+extern crate chrono;
 extern crate regex;
 extern crate term;
 
@@ -7,6 +8,8 @@ use std::fs::DirEntry;
 use std::path::Path;
 use std::io;
 
+use chrono::DateTime;
+use chrono::Local;
 use term::StdoutTerminal;
 
 mod lexer;
@@ -109,7 +112,43 @@ fn check_file(entry: &DirEntry, query: &Query, need_metadata: bool) {
                 if let Some(ref attrs) = attrs {
                     println!("{}", attrs.len())
                 }
-            }
+            },
+            "created" => {
+                if let Some(ref attrs) = attrs {
+                    match attrs.created() {
+                        Ok(sdt) => {
+                            let dt: DateTime<Local> = DateTime::from(sdt);
+                            let format = dt.format("%Y-%m-%d %H:%M:%S");
+                            println!("{}", format);
+                        },
+                        _ => { }
+                    }
+                }
+            },
+            "accessed" => {
+                if let Some(ref attrs) = attrs {
+                    match attrs.accessed() {
+                        Ok(sdt) => {
+                            let dt: DateTime<Local> = DateTime::from(sdt);
+                            let format = dt.format("%Y-%m-%d %H:%M:%S");
+                            println!("{}", format);
+                        },
+                        _ => { }
+                    }
+                }
+            },
+            "modified" => {
+                if let Some(ref attrs) = attrs {
+                    match attrs.modified() {
+                        Ok(sdt) => {
+                            let dt: DateTime<Local> = DateTime::from(sdt);
+                            let format = dt.format("%Y-%m-%d %H:%M:%S");
+                            println!("{}", format);
+                        },
+                        _ => { }
+                    }
+                }
+            },
             _ => {
 
             }

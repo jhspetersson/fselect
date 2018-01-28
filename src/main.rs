@@ -43,7 +43,9 @@ fn main() {
 }
 
 fn usage_info() {
-    println!("FSelect utility v0.0.2");
+    println!("FSelect utility v0.0.3");
+    println!("Find files with SQL-like queries.");
+    println!("https://github.com/jhspetersson/fselect");
     println!("Usage: fselect COLUMN[, COLUMN...] from ROOT [where EXPR]");
 }
 

@@ -30,12 +30,32 @@ Regular expressions supported:
 And even simple glob will suffice:
 
     fselect name from /home/user where path = *Rust*
+    
+Find files by creation date:
+
+    fselect path from /home/user where created = 2017-05-01
+    
+Be more specific to match all files created at 3PM:
+
+    fselect path from /home/user where created = '2017-05-01 15'
+    
+And even more specific:
+
+    fselect path from /home/user where created = '2017-05-01 15:10'
+    fselect path from /home/user where created = '2017-05-01 15:10:30'
+    
+Date and time intervals possible (find everything updated since May 1st):
+
+    fselect path from /home/user where modified gte 2017-05-01    
 
 ### Columns and expression fields
 
 * `path`
 * `name`
 * `size`
+* `created`
+* `accessed`
+* `modified`
 
 ### Operators
 

@@ -53,27 +53,32 @@ fn list_search_results(query: Query, t: &mut Box<StdoutTerminal>) -> io::Result<
     let need_metadata = query.fields.iter()
         .filter(|s| s.as_str().ne("name")).count() > 0;
 
-    let root = Path::new(&query.root);
-
-    visit_dirs(root, &check_file, &query, need_metadata);
+    for root in &query.roots {
+        let root_dir = Path::new(&root.path);
+        let max_depth = root.depth;
+        visit_dirs(root_dir, &check_file, &query, need_metadata, max_depth, 1);
+    }
 
 	t.reset().unwrap();	
 	
 	Ok(())
 }
 
-fn visit_dirs(dir: &Path, cb: &Fn(&DirEntry, &Query, bool), query: &Query, need_metadata: bool) -> io::Result<()> {
-    if dir.is_dir() {
-        for entry in fs::read_dir(dir)? {
-            let entry = entry?;
-            let path = entry.path();
-            if path.is_dir() {
-                visit_dirs(&path, cb, query, need_metadata)?;
-            } else {
-                cb(&entry, query, need_metadata);
+fn visit_dirs(dir: &Path, cb: &Fn(&DirEntry, &Query, bool), query: &Query, need_metadata: bool, max_depth: u32, depth: u32) -> io::Result<()> {
+    if max_depth == 0 || (max_depth > 0 && depth <= max_depth) {
+        if dir.is_dir() {
+            for entry in fs::read_dir(dir)? {
+                let entry = entry?;
+                let path = entry.path();
+                if path.is_dir() {
+                    visit_dirs(&path, cb, query, need_metadata, max_depth, depth + 1)?;
+                } else {
+                    cb(&entry, query, need_metadata);
+                }
             }
         }
     }
+
     Ok(())
 }
 

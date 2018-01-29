@@ -32,12 +32,12 @@ impl Parser {
         }
 
         let fields = self.parse_fields();
-        let root = self.parse_root();
+        let roots = self.parse_roots();
         let expr = self.parse_where();
 
         Ok(Query {
             fields,
-            root,
+            roots,
             expr,
         })
     }
@@ -68,33 +68,102 @@ impl Parser {
         fields
     }
 
-    fn parse_root(&mut self) -> String {
-        let root;
-        let first = self.lexems.get(0 + self.index).unwrap();
+    fn parse_roots(&mut self) -> Vec<Root> {
+        enum RootParsingMode {
+            Unknown, From, Root, Depth, DepthValue, Comma
+        }
 
-        match first {
-            &Lexem::From => {
-                let second = self.lexems.get(1 + self.index).unwrap();
+        let mut roots: Vec<Root> = Vec::new();
+        let mut mode = RootParsingMode::Unknown;
 
-                match second {
-                    &Lexem::String(ref s) | &Lexem::Field(ref s) => {
-                        let mut ss = String::new();
-                        ss.push_str(s);
-                        root = ss;
+        let lexem = self.next_lexem();
+        match lexem {
+            Some(ref lexem) => {
+                match lexem {
+                    &Lexem::From => {
+                        mode = RootParsingMode::From;
                     },
                     _ => {
-                        panic!("Error parsing directory to search in");
+                        self.rollback_lexem();
+                        roots.push(Root::default());
                     }
                 }
             },
-            _ => {
-                panic!("Error parsing directory to search in");
+            None => {
+                roots.push(Root::default());
             }
-        };
+        }
 
-        self.index += 2;
+        if let RootParsingMode::From = mode {
+            let mut path: String = String::from("");
+            let mut depth: u32 = 0;
 
-        root
+            loop {
+                let lexem = self.next_lexem();
+                match lexem {
+                    Some(ref lexem) => {
+                        match lexem {
+                            &Lexem::String(ref s) | &Lexem::Field(ref s) => {
+                                match mode {
+                                    RootParsingMode::From | RootParsingMode::Comma => {
+                                        path = s.to_string();
+                                        mode = RootParsingMode::Root;
+                                    },
+                                    RootParsingMode::Root => {
+                                        if s.to_ascii_lowercase() == "depth" {
+                                            mode = RootParsingMode::Depth;
+                                        } else {
+                                            self.rollback_lexem();
+                                            break;
+                                        }
+                                    },
+                                    RootParsingMode::Depth => {
+                                        let d: Result<u32, _> = s.parse();
+                                        match d {
+                                            Ok(d) => {
+                                                depth = d;
+                                                mode = RootParsingMode::DepthValue;
+                                            },
+                                            _ => {
+                                                self.rollback_lexem();
+                                                break;
+                                            }
+                                        }
+                                    },
+                                    _ => { }
+                                }
+                            },
+                            &Lexem::Comma => {
+                                if path.len() > 0 {
+                                    roots.push(Root::new(path, depth));
+
+                                    path = String::from("");
+                                    depth = 0;
+
+                                    mode = RootParsingMode::Comma;
+                                } else {
+                                    self.rollback_lexem();
+                                    break;
+                                }
+                            },
+                            _ => {
+                                if path.len() > 0 {
+                                    roots.push(Root::new(path, depth));
+                                }
+
+                                self.rollback_lexem();
+                                break
+                            }
+                        }
+                    },
+                    None => {
+                        break;
+                    }
+                }
+            }
+        }
+
+        roots
     }
 
     fn parse_where(&mut self) -> Option<Box<Expr>> {
@@ -244,8 +313,24 @@ fn convert_glob_to_pattern(s: &str) -> String {
 #[derive(Debug)]
 pub struct Query {
     pub fields: Vec<String>,
-    pub root: String,
+    pub roots: Vec<Root>,
     pub expr: Option<Box<Expr>>
+}
+
+#[derive(Debug)]
+pub struct Root {
+    pub path: String,
+    pub depth: u32,
+}
+
+impl Root {
+    fn new(path: String, depth: u32) -> Root {
+        Root { path, depth }
+    }
+
+    fn default() -> Root {
+        Root { path: String::from("."), depth: 0 }
+    }
 }
 
 #[derive(Debug)]

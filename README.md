@@ -3,7 +3,7 @@ Find files with SQL-like queries
 
 ### Installation
 
-* Install [Rust with Cargo](https://www.rust-lang.org/en-US/install.html) and its dependencies to build a binary.
+* Install [Rust with Cargo](https://www.rust-lang.org/en-US/install.html) and its dependencies to build a binary
 * Run `cargo install fselect`
 * ...or download a statically precompiled binary from Github if you are on a modern Windows 64bit
 

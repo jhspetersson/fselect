@@ -307,7 +307,7 @@ fn convert_glob_to_pattern(s: &str) -> String {
         }.to_string()
     });
 
-    format!("^{}$", string)
+    format!("^(?i){}$", string)
 }
 
 #[derive(Debug)]

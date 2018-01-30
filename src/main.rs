@@ -60,7 +60,12 @@ fn list_search_results(query: Query, t: &mut Box<StdoutTerminal>) -> io::Result<
     for root in &query.roots {
         let root_dir = Path::new(&root.path);
         let max_depth = root.depth;
-        visit_dirs(root_dir, &check_file, &query, need_metadata, max_depth, 1);
+        let result = visit_dirs(root_dir, &check_file, &query, need_metadata, max_depth, 1);
+        if result.is_err() {
+            t.fg(term::color::RED).unwrap();
+            println!("Error searching {}", &root.path);
+            t.reset().unwrap();
+        }
     }
 
 	t.reset().unwrap();	

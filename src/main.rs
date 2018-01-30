@@ -286,9 +286,9 @@ fn conforms(entry: &DirEntry, expr: &Box<Expr>, entry_meta: Option<Box<fs::Metad
                         Some(ref metadata) => {
                             let file_size = metadata.len();
 
-                            let size: Result<u64, _> = val.parse();
+                            let size = parse_filesize(val);
                             match size {
-                                Ok(size) => {
+                                Some(size) => {
                                     result = match expr.op {
                                         Some(Op::Eq) => file_size == size,
                                         Some(Op::Ne) => file_size != size,
@@ -481,5 +481,56 @@ fn parse_datetime(s: &str) -> Result<(DateTime<Local>, DateTime<Local>), &str> {
         None => {
             Err("Error parsing date/time")
         }
+    }
+}
+
+fn parse_filesize(s: &str) -> Option<u64> {
+    let string = s.to_string().to_ascii_lowercase();
+
+    if string.ends_with("k") {
+        match &string[..(s.len() - 1)].parse::<u64>() {
+            &Ok(size) => return Some(size * 1024),
+            _ => return None
+        }
+    }
+
+    if string.ends_with("kb") {
+        match &string[..(s.len() - 2)].parse::<u64>() {
+            &Ok(size) => return Some(size * 1024),
+            _ => return None
+        }
+    }
+
+    if string.ends_with("m") {
+        match &string[..(s.len() - 1)].parse::<u64>() {
+            &Ok(size) => return Some(size * 1024 * 1024),
+            _ => return None
+        }
+    }
+
+    if string.ends_with("mb") {
+        match &string[..(s.len() - 2)].parse::<u64>() {
+            &Ok(size) => return Some(size * 1024 * 1024),
+            _ => return None
+        }
+    }
+
+    if string.ends_with("g") {
+        match &string[..(s.len() - 1)].parse::<u64>() {
+            &Ok(size) => return Some(size * 1024 * 1024 * 1024),
+            _ => return None
+        }
+    }
+
+    if string.ends_with("gb") {
+        match &string[..(s.len() - 2)].parse::<u64>() {
+            &Ok(size) => return Some(size * 1024 * 1024 * 1024),
+            _ => return None
+        }
+    }
+
+    match string.parse::<u64>() {
+        Ok(size) => return Some(size),
+        _ => return None
     }
 }

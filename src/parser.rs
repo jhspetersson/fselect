@@ -3,8 +3,8 @@ extern crate regex;
 use regex::Captures;
 use regex::Regex;
 
+use lexer::Lexer;
 use lexer::Lexem;
-use lexer::next_lexem;
 
 pub struct Parser {
     lexems: Vec<Lexem>,
@@ -20,15 +20,9 @@ impl Parser {
     }
 
     pub fn parse<'a>(&mut self, query: &String) -> Result<Query, &'a str> {
-        let mut i = 0;
-        loop {
-            match next_lexem(&query, i) {
-                Ok((lexem, skip)) => {
-                    i = skip;
-                    self.lexems.push(lexem);
-                },
-                Err(_) => break
-            }
+        let mut lexer = Lexer::new(query);
+        while let Some(lexem) = lexer.next_lexem() {
+            self.lexems.push(lexem);
         }
 
         let fields = self.parse_fields();

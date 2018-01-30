@@ -52,12 +52,10 @@ impl Parser {
                 &Lexem::Field(ref s) => {
                     if s.to_ascii_lowercase() != "select" {
                         if s == "*" {
-                            fields.push("name");
-                            fields.push("size");
+                            fields.push("name".to_string());
+                            fields.push("size".to_string());
                         } else {
-                            let mut ss = String::new();
-                            ss.push_str(s);
-                            fields.push(ss);
+                            fields.push(s.to_string());
                         }
                     }
 
@@ -83,7 +81,7 @@ impl Parser {
         let mut roots: Vec<Root> = Vec::new();
         let mut mode = RootParsingMode::Unknown;
 
-        let lexem = self.next_lexem();
+        let lexem = self.get_lexem();
         match lexem {
             Some(ref lexem) => {
                 match lexem {
@@ -91,7 +89,7 @@ impl Parser {
                         mode = RootParsingMode::From;
                     },
                     _ => {
-                        self.rollback_lexem();
+                        self.drop_lexem();
                         roots.push(Root::default());
                     }
                 }
@@ -106,7 +104,7 @@ impl Parser {
             let mut depth: u32 = 0;
 
             loop {
-                let lexem = self.next_lexem();
+                let lexem = self.get_lexem();
                 match lexem {
                     Some(ref lexem) => {
                         match lexem {
@@ -120,7 +118,7 @@ impl Parser {
                                         if s.to_ascii_lowercase() == "depth" {
                                             mode = RootParsingMode::Depth;
                                         } else {
-                                            self.rollback_lexem();
+                                            self.drop_lexem();
                                             break;
                                         }
                                     },
@@ -132,7 +130,7 @@ impl Parser {
                                                 mode = RootParsingMode::DepthValue;
                                             },
                                             _ => {
-                                                self.rollback_lexem();
+                                                self.drop_lexem();
                                                 break;
                                             }
                                         }
@@ -149,7 +147,7 @@ impl Parser {
 
                                     mode = RootParsingMode::Comma;
                                 } else {
-                                    self.rollback_lexem();
+                                    self.drop_lexem();
                                     break;
                                 }
                             },
@@ -158,7 +156,7 @@ impl Parser {
                                     roots.push(Root::new(path, depth));
                                 }
 
-                                self.rollback_lexem();
+                                self.drop_lexem();
                                 break
                             }
                         }
@@ -174,7 +172,7 @@ impl Parser {
     }
 
     fn parse_where(&mut self) -> Option<Box<Expr>> {
-        let lexem = self.next_lexem();
+        let lexem = self.get_lexem();
 
         match lexem {
             Some(Lexem::Where) => {
@@ -188,11 +186,11 @@ impl Parser {
         let mut node = self.parse_and();
 
         loop {
-            let lexem = self.next_lexem();
+            let lexem = self.get_lexem();
             if let Some(Lexem::Or) = lexem {
                 node = Some(Box::new(Expr::node(node, Some(LogicalOp::Or), self.parse_and())));
             } else {
-                self.rollback_lexem();
+                self.drop_lexem();
                 break;
             }
         }
@@ -204,11 +202,11 @@ impl Parser {
         let mut node = self.parse_cond();
 
         loop {
-            let lexem = self.next_lexem();
+            let lexem = self.get_lexem();
             if let Some(Lexem::And) = lexem {
                 node = Some(Box::new(Expr::node(node, Some(LogicalOp::And), self.parse_cond())));
             } else {
-                self.rollback_lexem();
+                self.drop_lexem();
                 break;
             }
         }
@@ -217,32 +215,23 @@ impl Parser {
     }
 
     fn parse_cond(&mut self) -> Option<Box<Expr>> {
-        let lexem = self.next_lexem();
+        let lexem = self.get_lexem();
 
         match lexem {
             Some(Lexem::Field(ref s)) => {
 
-                let lexem2 = self.next_lexem();
+                let lexem2 = self.get_lexem();
 
                 if let Some(Lexem::Operator(ref s2)) = lexem2 {
 
-                    let lexem3 = self.next_lexem();
+                    let lexem3 = self.get_lexem();
 
                     match lexem3 {
                         Some(Lexem::String(ref s3)) | Some(Lexem::Field(ref s3)) => {
-                            let mut ss = String::new();
-                            ss.push_str(s);
-
-                            let mut ss2 = String::new();
-                            ss2.push_str(s2);
-
-                            let mut ss3 = String::new();
-                            ss3.push_str(s3);
-
-                            let op = Op::from(ss2);
+                            let op = Op::from(s2.to_string());
                             if let Some(Op::Rx) = op {
                                 let regex = Regex::new(&s3).unwrap();
-                                let expr = Expr::leaf_regex(ss, op, ss3, regex);
+                                let expr = Expr::leaf_regex(s.to_string(), op, s3.to_string(), regex);
 
                                 Some(Box::new(expr))
                             } else {
@@ -251,9 +240,9 @@ impl Parser {
                                         let pattern = convert_glob_to_pattern(s3);
                                         let regex = Regex::new(&pattern).unwrap();
 
-                                        Expr::leaf_regex(ss, op, ss3, regex)
+                                        Expr::leaf_regex(s.to_string(), op, s3.to_string(), regex)
                                     },
-                                    false => Expr::leaf(ss, op, ss3)
+                                    false => Expr::leaf(s.to_string(), op, s3.to_string())
                                 };
 
                                 Some(Box::new(expr))
@@ -267,7 +256,7 @@ impl Parser {
             },
             Some(Lexem::Open) => {
                 let expr = self.parse_or();
-                let lexem4 = self.next_lexem();
+                let lexem4 = self.get_lexem();
 
                 match lexem4 {
                     Some(Lexem::Close) => expr,
@@ -278,7 +267,7 @@ impl Parser {
         }
     }
 
-    fn next_lexem(&mut self) -> Option<Lexem> {
+    fn get_lexem(&mut self) -> Option<Lexem> {
         let lexem = self.lexems.get(self.index );
         self.index += 1;
 
@@ -288,7 +277,7 @@ impl Parser {
         }
     }
 
-    fn rollback_lexem(&mut self) {
+    fn drop_lexem(&mut self) {
         self.index -= 1;
     }
 }

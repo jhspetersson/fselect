@@ -22,16 +22,16 @@ use parser::LogicalOp;
 use parser::Op;
 
 fn main() {
+    let mut t = term::stdout().unwrap();
+
     if env::args().len() == 1 {
-        usage_info();
+        usage_info(&mut t);
         return;
     }
 
 	let mut args: Vec<String> = env::args().collect();
 	args.remove(0);
 	let query = args.join(" ");
-
-    let mut t = term::stdout().unwrap();
 
     let mut p = parser::Parser::new();
 	let q = p.parse(&query);
@@ -42,10 +42,14 @@ fn main() {
     }
 }
 
-fn usage_info() {
+fn usage_info(t: &mut Box<StdoutTerminal>) {
     println!("FSelect utility v0.0.4");
     println!("Find files with SQL-like queries.");
+
+    t.fg(term::color::BRIGHT_CYAN).unwrap();
     println!("https://github.com/jhspetersson/fselect");
+    t.reset().unwrap();
+
     println!("Usage: fselect COLUMN[, COLUMN...] from ROOT [where EXPR]");
 }
 

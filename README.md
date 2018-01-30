@@ -22,6 +22,12 @@ or put arguments into the quotes:
 
     fselect "name from /home/user/tmp where size > 0"
     
+Specify file size:
+
+    fselect path from /home/user where size gt 2g
+    fselect path from /home/user where size = 5m
+    fselect path from /home/user where size lt 8k
+    
 More complex query:
 
     fselect name from /tmp where (name = *.tmp and size = 0) or (name = *.cfg and size gt 1000000)
@@ -86,6 +92,12 @@ With maximum depth specified:
 * `<` or `lt`
 * `<=` or `lte`
 * `~=` or `regexp` or `rx`
+
+### File size specifiers
+
+* `g` or `gb` for gibibytes
+* `m` or `mb` for mibibytes
+* `k` or `kb` for kibibytes
 
 ### License
 

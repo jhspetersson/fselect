@@ -162,6 +162,9 @@ impl Parser {
                         }
                     },
                     None => {
+                        if path.len() > 0 {
+                            roots.push(Root::new(path, depth));
+                        }
                         break;
                     }
                 }

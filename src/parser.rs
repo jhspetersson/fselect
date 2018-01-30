@@ -51,9 +51,14 @@ impl Parser {
             match lexem {
                 &Lexem::Field(ref s) => {
                     if s.to_ascii_lowercase() != "select" {
-                        let mut ss = String::new();
-                        ss.push_str(s);
-                        fields.push(ss);
+                        if s == "*" {
+                            fields.push("name");
+                            fields.push("size");
+                        } else {
+                            let mut ss = String::new();
+                            ss.push_str(s);
+                            fields.push(ss);
+                        }
                     }
 
                     skip += 1;

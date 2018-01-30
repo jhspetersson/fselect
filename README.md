@@ -53,7 +53,20 @@ And even more specific:
     
 Date and time intervals possible (find everything updated since May 1st):
 
-    fselect path from /home/user where modified gte 2017-05-01    
+    fselect path from /home/user where modified gte 2017-05-01
+    
+Default is current directory:
+
+    fselect path, size where name = *.jpg
+    
+Search within multiple locations:
+
+    fselect path from /home/user/oldstuff, /home/user/newstuff where name = *.jpg
+    
+With maximum depth specified:
+
+    fselect path from /home/user/oldstuff depth 5 where name = *.jpg
+    fselect path from /home/user/oldstuff depth 5, /home/user/newstuff depth 10 where name = *.jpg
 
 ### Columns and expression fields
 

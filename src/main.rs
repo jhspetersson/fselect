@@ -2,6 +2,7 @@ extern crate chrono;
 extern crate regex;
 extern crate term;
 
+use std::error::Error;
 use std::env;
 use std::fs;
 use std::fs::DirEntry;
@@ -57,6 +58,14 @@ fn usage_info(t: &mut Box<StdoutTerminal>) {
     println!("Usage: fselect COLUMN[, COLUMN...] from ROOT [where EXPR]");
 }
 
+fn error_message(p: &Path, e: io::Error, t: &mut Box<StdoutTerminal>) {
+    t.fg(term::color::YELLOW).unwrap();
+    eprint!("{}: ", p.to_string_lossy());
+    t.fg(term::color::RED).unwrap();
+    eprintln!("{}", e.description());
+    t.reset().unwrap();
+}
+
 fn list_search_results(query: Query, t: &mut Box<StdoutTerminal>) -> io::Result<()> {
     let need_metadata = query.fields.iter()
         .filter(|s| s.as_str().ne("name")).count() > 0;
@@ -64,30 +73,47 @@ fn list_search_results(query: Query, t: &mut Box<StdoutTerminal>) -> io::Result<
     for root in &query.roots {
         let root_dir = Path::new(&root.path);
         let max_depth = root.depth;
-        let result = visit_dirs(root_dir, &check_file, &query, need_metadata, max_depth, 1);
-        if result.is_err() {
-            t.fg(term::color::RED).unwrap();
-            println!("Error searching {}", &root.path);
-            t.reset().unwrap();
-        }
+        let _result = visit_dirs(root_dir, &check_file, &query, need_metadata, max_depth, 1, t);
     }
 
-	t.reset().unwrap();	
-	
 	Ok(())
 }
 
-fn visit_dirs(dir: &Path, cb: &Fn(&DirEntry, &Query, bool), query: &Query, need_metadata: bool, max_depth: u32, depth: u32) -> io::Result<()> {
+fn visit_dirs(dir: &Path, cb: &Fn(&DirEntry, &Query, bool), query: &Query, need_metadata: bool, max_depth: u32, depth: u32, t: &mut Box<StdoutTerminal>) -> io::Result<()> {
     if max_depth == 0 || (max_depth > 0 && depth <= max_depth) {
-        if dir.is_dir() {
-            for entry in fs::read_dir(dir)? {
-                let entry = entry?;
-                let path = entry.path();
-                if path.is_dir() {
-                    visit_dirs(&path, cb, query, need_metadata, max_depth, depth + 1)?;
-                } else {
-                    cb(&entry, query, need_metadata);
+        let metadata = dir.metadata();
+        match metadata {
+            Ok(metadata) => {
+                if metadata.is_dir() {
+                    match fs::read_dir(dir) {
+                        Ok(entry_list) => {
+                            for entry in entry_list {
+                                match entry {
+                                    Ok(entry) => {
+                                        let path = entry.path();
+                                        if path.is_dir() {
+                                            let result = visit_dirs(&path, cb, query, need_metadata, max_depth, depth + 1, t);
+                                            if result.is_err() {
+                                                error_message(&path, result.err().unwrap(), t);
+                                            }
+                                        } else {
+                                            cb(&entry, query, need_metadata);
+                                        }
+                                    },
+                                    Err(err) => {
+                                        error_message(dir, err, t);
+                                    }
+                                }
+                            }
+                        },
+                        Err(err) => {
+                            error_message(dir, err, t);
+                        }
+                    }
                 }
+            },
+            Err(err) => {
+                error_message(dir, err, t);
             }
         }
     }

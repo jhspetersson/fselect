@@ -1,6 +1,16 @@
 # fselect
 Find files with SQL-like queries
 
+### Why use fselect?
+
+While it doesn't tend to fully replace traditional `find` and `ls`, **fselect** has these nice features:
+
+* complex queries
+* SQL-like (not real SQL, but highly relaxed!) grammar easily understandable by humans
+* shortcuts to common file types
+
+More is under way!
+
 ### Installation
 
 * Install [Rust with Cargo](https://www.rust-lang.org/en-US/install.html) and its dependencies to build a binary

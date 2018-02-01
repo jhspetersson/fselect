@@ -73,6 +73,13 @@ With maximum depth specified:
 
     fselect path from /home/user/oldstuff depth 5 where name = *.jpg
     fselect path from /home/user/oldstuff depth 5, /home/user/newstuff depth 10 where name = *.jpg
+    
+Shortcuts to popular file extensions:
+
+    fselect path from /home/user where is_archive = true
+    fselect path from /home/user where is_audio = 1
+    fselect path from /home/user where is_image = false
+    fselect path from /home/user where is_video != true
 
 ### Columns and expression fields
 
@@ -98,6 +105,13 @@ With maximum depth specified:
 * `g` or `gb` for gibibytes
 * `m` or `mb` for mibibytes
 * `k` or `kb` for kibibytes
+
+### File extensions
+
+* is_archive: `.7zip`, `.bzip2`, `.gz`, `.gzip`, `.rar`, `.xz`, `.zip`
+* is_audio: `.aac`, `.aiff`, `.amr`, `.flac`, `.gsm`, `.m4a`, `.m4b`, `.m4p`, `.mp3`, `.ogg`, `.wav`, `.wma`
+* is_image: `.bmp`, `.gif`, `.jpeg`, `.jpg`, `.png`, `.tiff`
+* is_video: `.3gp`, `.avi`, `.flv`, `.m4p`, `.m4v`, `.mkv`, `.mov`, `.mp4`, `.mpeg`, `.mpg`, `.webm`, `.wmv`
 
 ### License
 

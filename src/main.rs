@@ -196,6 +196,22 @@ fn check_file(entry: &DirEntry, query: &Query, need_metadata: bool) {
                     }
                 }
             },
+            "is_archive" => {
+                let is_archive = is_archive(&entry.file_name().to_string_lossy());
+                println!("{}", is_archive);
+            },
+            "is_audio" => {
+                let is_audio = is_audio(&entry.file_name().to_string_lossy());
+                println!("{}", is_audio);
+            },
+            "is_image" => {
+                let is_image = is_image(&entry.file_name().to_string_lossy());
+                println!("{}", is_image);
+            },
+            "is_video" => {
+                let is_video = is_video(&entry.file_name().to_string_lossy());
+                println!("{}", is_video);
+            },
             _ => {
 
             }
@@ -447,6 +463,114 @@ fn conforms(entry: &DirEntry, expr: &Box<Expr>, entry_meta: Option<Box<fs::Metad
                 },
                 None => { }
             }
+        } else if field.to_ascii_lowercase() == "is_archive" {
+            match expr.val {
+                Some(ref val) => {
+                    let file_name = &entry.file_name().into_string().unwrap();
+                    let str_val = val.to_ascii_lowercase();
+                    let bool_val = str_val.eq("true") || str_val.eq("1");
+
+                    result = match expr.op {
+                        Some(Op::Eq) => {
+                            if bool_val {
+                                is_archive(file_name)
+                            } else {
+                                !is_archive(file_name)
+                            }
+                        },
+                        Some(Op::Ne) => {
+                            if bool_val {
+                                !is_archive(file_name)
+                            } else {
+                                is_archive(file_name)
+                            }
+                        },
+                        _ => false
+                    };
+                },
+                None => { }
+            }
+        } else if field.to_ascii_lowercase() == "is_audio" {
+            match expr.val {
+                Some(ref val) => {
+                    let file_name = &entry.file_name().into_string().unwrap();
+                    let str_val = val.to_ascii_lowercase();
+                    let bool_val = str_val.eq("true") || str_val.eq("1");
+
+                    result = match expr.op {
+                        Some(Op::Eq) => {
+                            if bool_val {
+                                is_audio(file_name)
+                            } else {
+                                !is_audio(file_name)
+                            }
+                        },
+                        Some(Op::Ne) => {
+                            if bool_val {
+                                !is_audio(file_name)
+                            } else {
+                                is_audio(file_name)
+                            }
+                        },
+                        _ => false
+                    };
+                },
+                None => { }
+            }
+        } else if field.to_ascii_lowercase() == "is_image" {
+            match expr.val {
+                Some(ref val) => {
+                    let file_name = &entry.file_name().into_string().unwrap();
+                    let str_val = val.to_ascii_lowercase();
+                    let bool_val = str_val.eq("true") || str_val.eq("1");
+
+                    result = match expr.op {
+                        Some(Op::Eq) => {
+                            if bool_val {
+                                is_image(file_name)
+                            } else {
+                                !is_image(file_name)
+                            }
+                        },
+                        Some(Op::Ne) => {
+                            if bool_val {
+                                !is_image(file_name)
+                            } else {
+                                is_image(file_name)
+                            }
+                        },
+                        _ => false
+                    };
+                },
+                None => { }
+            }
+        } else if field.to_ascii_lowercase() == "is_video" {
+            match expr.val {
+                Some(ref val) => {
+                    let file_name = &entry.file_name().into_string().unwrap();
+                    let str_val = val.to_ascii_lowercase();
+                    let bool_val = str_val.eq("true") || str_val.eq("1");
+
+                    result = match expr.op {
+                        Some(Op::Eq) => {
+                            if bool_val {
+                                is_video(file_name)
+                            } else {
+                                !is_video(file_name)
+                            }
+                        },
+                        Some(Op::Ne) => {
+                            if bool_val {
+                                !is_video(file_name)
+                            } else {
+                                is_video(file_name)
+                            }
+                        },
+                        _ => false
+                    };
+                },
+                None => { }
+            }
         }
     }
 
@@ -563,4 +687,40 @@ fn parse_filesize(s: &str) -> Option<u64> {
         Ok(size) => return Some(size),
         _ => return None
     }
+}
+
+const ARCHIVE: &'static [&'static str] = &[".7zip", ".bzip2", ".gz", ".gzip", ".rar", ".xz", ".zip"];
+
+fn is_archive(file_name: &str) -> bool {
+    has_extension(file_name, &ARCHIVE)
+}
+
+const AUDIO: &'static [&'static str] = &[".aac", ".aiff", ".amr", ".flac", ".gsm", ".m4a", ".m4b", ".m4p", ".mp3", ".ogg", ".wav", ".wma"];
+
+fn is_audio(file_name: &str) -> bool {
+    has_extension(file_name, &AUDIO)
+}
+
+const IMAGE: &'static [&'static str] = &[".bmp", ".gif", ".jpeg", ".jpg", ".png", ".tiff"];
+
+fn is_image(file_name: &str) -> bool {
+    has_extension(file_name, &IMAGE)
+}
+
+const VIDEO: &'static [&'static str] = &[".3gp", ".avi", ".flv", ".m4p", ".m4v", ".mkv", ".mov", ".mp4", ".mpeg", ".mpg", ".webm", ".wmv"];
+
+fn is_video(file_name: &str) -> bool {
+    has_extension(file_name, &VIDEO)
+}
+
+fn has_extension(file_name: &str, extensions: &[&str]) -> bool {
+    let s = file_name.to_ascii_lowercase();
+
+    for ext in extensions {
+        if s.ends_with(ext) {
+            return true
+        }
+    }
+
+    false
 }

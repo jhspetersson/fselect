@@ -89,6 +89,8 @@ Shortcuts to popular file extensions:
 * `created`
 * `accessed`
 * `modified`
+* `is_dir`
+* `is_file`
 
 ### Operators
 

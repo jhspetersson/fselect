@@ -91,13 +91,12 @@ fn visit_dirs(dir: &Path, cb: &Fn(&DirEntry, &Query, bool), query: &Query, need_
                                 match entry {
                                     Ok(entry) => {
                                         let path = entry.path();
+                                        cb(&entry, query, need_metadata);
                                         if path.is_dir() {
                                             let result = visit_dirs(&path, cb, query, need_metadata, max_depth, depth + 1, t);
                                             if result.is_err() {
                                                 error_message(&path, result.err().unwrap(), t);
                                             }
-                                        } else {
-                                            cb(&entry, query, need_metadata);
                                         }
                                     },
                                     Err(err) => {
@@ -154,6 +153,16 @@ fn check_file(entry: &DirEntry, query: &Query, need_metadata: bool) {
             },
             "path" => {
                 println!("{}", entry.path().to_string_lossy())
+            },
+            "is_dir" => {
+                if let Some(ref attrs) = attrs {
+                    println!("{}", attrs.is_dir());
+                }
+            },
+            "is_file" => {
+                if let Some(ref attrs) = attrs {
+                    println!("{}", attrs.is_file());
+                }
             },
             "size" => {
                 if let Some(ref attrs) = attrs {
@@ -347,6 +356,82 @@ fn conforms(entry: &DirEntry, expr: &Box<Expr>, entry_meta: Option<Box<fs::Metad
                                 },
                                 _ => { }
                             }
+                        },
+                        None => {
+
+                        }
+                    }
+                },
+                None => { }
+            }
+        } else if field.to_ascii_lowercase() == "is_dir" {
+            match expr.val {
+                Some(ref val) => {
+                    if !meta.is_some() {
+                        let metadata = entry.metadata().unwrap();
+                        meta = Some(Box::new(metadata));
+                    }
+
+                    match meta {
+                        Some(ref metadata) => {
+                            let str_val = val.to_ascii_lowercase();
+                            let bool_val = str_val.eq("true") || str_val.eq("1");
+
+                            result = match expr.op {
+                                Some(Op::Eq) => {
+                                    if bool_val {
+                                        metadata.is_dir()
+                                    } else {
+                                        !metadata.is_dir()
+                                    }
+                                },
+                                Some(Op::Ne) => {
+                                    if bool_val {
+                                        !metadata.is_dir()
+                                    } else {
+                                        metadata.is_dir()
+                                    }
+                                },
+                                _ => false
+                            };
+                        },
+                        None => {
+
+                        }
+                    }
+                },
+                None => { }
+            }
+        } else if field.to_ascii_lowercase() == "is_file" {
+            match expr.val {
+                Some(ref val) => {
+                    if !meta.is_some() {
+                        let metadata = entry.metadata().unwrap();
+                        meta = Some(Box::new(metadata));
+                    }
+
+                    match meta {
+                        Some(ref metadata) => {
+                            let str_val = val.to_ascii_lowercase();
+                            let bool_val = str_val.eq("true") || str_val.eq("1");
+
+                            result = match expr.op {
+                                Some(Op::Eq) => {
+                                    if bool_val {
+                                        metadata.is_file()
+                                    } else {
+                                        !metadata.is_file()
+                                    }
+                                },
+                                Some(Op::Ne) => {
+                                    if bool_val {
+                                        !metadata.is_file()
+                                    } else {
+                                        metadata.is_file()
+                                    }
+                                },
+                                _ => false
+                            };
                         },
                         None => {
 

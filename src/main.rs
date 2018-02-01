@@ -46,7 +46,7 @@ fn main() {
 fn usage_info(t: &mut Box<StdoutTerminal>) {
     print!("FSelect utility v");
     t.fg(term::color::BRIGHT_YELLOW).unwrap();
-    println!("0.0.5");
+    println!("0.0.6");
     t.reset().unwrap();
 
     println!("Find files with SQL-like queries.");

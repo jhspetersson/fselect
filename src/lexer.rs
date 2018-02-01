@@ -38,9 +38,10 @@ impl<'a> Lexer<'a> {
         let mut mode = LexingMode::Undefined;
 
         for c in self.input.chars().skip(self.index) {
-            self.index += 1;
             let stop = match mode {
                 LexingMode::Undefined => {
+                    self.index += 1;
+
                     if c == ' ' {
                         // skip spaces
                     } else if c == '\'' {
@@ -62,6 +63,8 @@ impl<'a> Lexer<'a> {
                     false
                 },
                 LexingMode::String => {
+                    self.index += 1;
+
                     if c == '\'' {
                         true
                     } else {
@@ -72,6 +75,8 @@ impl<'a> Lexer<'a> {
                     }
                 },
                 LexingMode::Operator => {
+                    self.index += 1;
+
                     if is_op_char(c) {
                         mode = LexingMode::Operator;
                         s.push(c);
@@ -82,6 +87,8 @@ impl<'a> Lexer<'a> {
                     }
                 },
                 LexingMode::Field => {
+                    self.index += 1;
+
                     if c == ' ' {
                         true
                     } else if c == ',' {

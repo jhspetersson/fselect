@@ -22,7 +22,7 @@ More is under way!
 
 Find images (full path and size):
 
-    fselect path, size from /home/user where name = *.jpg or name = *.png
+    fselect path, size from /home/user where name = *.cfg or name = *.tmp
 
 Find files (just names) with any content (size > 0):
 
@@ -84,7 +84,7 @@ With maximum depth specified:
     fselect path from /home/user/oldstuff depth 5 where name = *.jpg
     fselect path from /home/user/oldstuff depth 5, /home/user/newstuff depth 10 where name = *.jpg
     
-Shortcuts to popular file extensions:
+Shortcuts to common file extensions:
 
     fselect path from /home/user where is_archive = true
     fselect path from /home/user where is_audio = 1
@@ -101,6 +101,10 @@ Shortcuts to popular file extensions:
 * `modified`
 * `is_dir`
 * `is_file`
+* `is_archive`
+* `is_audio`
+* `is_image`
+* `is_video`
 
 ### Operators
 

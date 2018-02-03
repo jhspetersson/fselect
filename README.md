@@ -20,7 +20,7 @@ More is under way!
 
 ### Examples
 
-Find images (full path and size):
+Find temporary or config files (full path and size):
 
     fselect path, size from /home/user where name = *.cfg or name = *.tmp
 

@@ -6,6 +6,7 @@ use std::error::Error;
 use std::env;
 use std::fs;
 use std::fs::DirEntry;
+use std::fs::Metadata;
 use std::path::Path;
 use std::io;
 
@@ -15,6 +16,7 @@ use regex::Regex;
 use term::StdoutTerminal;
 
 mod lexer;
+mod mode;
 mod parser;
 
 use parser::Query;
@@ -162,6 +164,11 @@ fn check_file(entry: &DirEntry, query: &Query, need_metadata: bool) {
             "is_file" => {
                 if let Some(ref attrs) = attrs {
                     println!("{}", attrs.is_file());
+                }
+            },
+            "mode" => {
+                if let Some(ref attrs) = attrs {
+                    mode::print_mode(attrs);
                 }
             },
             "size" => {

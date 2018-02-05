@@ -145,6 +145,7 @@ Simple glob-like expressions or even regular expressions on file mode are possib
 
 * is_archive: `.7zip`, `.bzip2`, `.gz`, `.gzip`, `.rar`, `.tar`, `.xz`, `.zip`
 * is_audio: `.aac`, `.aiff`, `.amr`, `.flac`, `.gsm`, `.m4a`, `.m4b`, `.m4p`, `.mp3`, `.ogg`, `.wav`, `.wma`
+* is_doc: `.accdb`, `.doc`, `.docx`, `.dot`, `.dotx`, `.mdb`, `.ods`, `.odt`, `.pdf`, `.ppt`, `.pptx`, `.rtf`, `.xls`, `.xlt`, `.xlsx`, `.xps`
 * is_image: `.bmp`, `.gif`, `.jpeg`, `.jpg`, `.png`, `.tiff`
 * is_video: `.3gp`, `.avi`, `.flv`, `.m4p`, `.m4v`, `.mkv`, `.mov`, `.mp4`, `.mpeg`, `.mpg`, `.webm`, `.wmv`
 

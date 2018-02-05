@@ -268,6 +268,10 @@ fn check_file(entry: &DirEntry, query: &Query, need_metadata: bool) {
                 let is_audio = is_audio(&entry.file_name().to_string_lossy());
                 println!("{}", is_audio);
             },
+            "is_doc" => {
+                let is_doc = is_doc(&entry.file_name().to_string_lossy());
+                println!("{}", is_doc);
+            },
             "is_image" => {
                 let is_image = is_image(&entry.file_name().to_string_lossy());
                 println!("{}", is_image);
@@ -1020,6 +1024,33 @@ fn conforms(entry: &DirEntry, expr: &Box<Expr>, entry_meta: Option<Box<fs::Metad
                 },
                 None => { }
             }
+        } else if field.to_ascii_lowercase() == "is_doc" {
+            match expr.val {
+                Some(ref val) => {
+                    let file_name = &entry.file_name().into_string().unwrap();
+                    let str_val = val.to_ascii_lowercase();
+                    let bool_val = str_val.eq("true") || str_val.eq("1");
+
+                    result = match expr.op {
+                        Some(Op::Eq) => {
+                            if bool_val {
+                                is_doc(file_name)
+                            } else {
+                                !is_doc(file_name)
+                            }
+                        },
+                        Some(Op::Ne) => {
+                            if bool_val {
+                                !is_doc(file_name)
+                            } else {
+                                is_doc(file_name)
+                            }
+                        },
+                        _ => false
+                    };
+                },
+                None => { }
+            }
         } else if field.to_ascii_lowercase() == "is_image" {
             match expr.val {
                 Some(ref val) => {
@@ -1202,6 +1233,12 @@ const AUDIO: &'static [&'static str] = &[".aac", ".aiff", ".amr", ".flac", ".gsm
 
 fn is_audio(file_name: &str) -> bool {
     has_extension(file_name, &AUDIO)
+}
+
+const DOC: &'static [&'static str] = &[".accdb", ".doc", ".docx", ".dot", ".dotx", ".mdb", ".ods", ".odt", ".pdf", ".ppt", ".pptx", ".rtf", ".xls", ".xlt", ".xlsx", ".xps"];
+
+fn is_doc(file_name: &str) -> bool {
+    has_extension(file_name, &DOC)
 }
 
 const IMAGE: &'static [&'static str] = &[".bmp", ".gif", ".jpeg", ".jpg", ".png", ".tiff"];

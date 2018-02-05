@@ -88,6 +88,7 @@ Shortcuts to common file extensions:
 
     fselect path from /home/user where is_archive = true
     fselect path from /home/user where is_audio = 1
+    fselect path from /home/user where is_doc != 1
     fselect path from /home/user where is_image = false
     fselect path from /home/user where is_video != true
     
@@ -122,6 +123,7 @@ Simple glob-like expressions or even regular expressions on file mode are possib
 * `other_exec`
 * `is_archive`
 * `is_audio`
+* `is_doc`
 * `is_image`
 * `is_video`
 

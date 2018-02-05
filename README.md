@@ -90,6 +90,15 @@ Shortcuts to common file extensions:
     fselect path from /home/user where is_audio = 1
     fselect path from /home/user where is_image = false
     fselect path from /home/user where is_video != true
+    
+Find files with dangerous permissions:
+    
+    fselect path, mode from /home/user where other_write = true or other_exec = true
+    
+Simple glob-like expressions or even regular expressions on file mode are possible:
+    
+    fselect path, mode from /home/user where mode = *rwx
+    fselect path, mode from /home/user where mode ~= .*rwx$
 
 ### Columns and expression fields
 
@@ -101,6 +110,16 @@ Shortcuts to common file extensions:
 * `modified`
 * `is_dir`
 * `is_file`
+* `mode`
+* `user_read`
+* `user_write`
+* `user_exec`
+* `group_read`
+* `group_write`
+* `group_exec`
+* `other_read`
+* `other_write`
+* `other_exec`
 * `is_archive`
 * `is_audio`
 * `is_image`

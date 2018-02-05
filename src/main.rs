@@ -170,6 +170,51 @@ fn check_file(entry: &DirEntry, query: &Query, need_metadata: bool) {
                     println!("{}", mode::get_mode(attrs));
                 }
             },
+            "user_read" => {
+                if let Some(ref attrs) = attrs {
+                    println!("{}", mode::user_read(attrs));
+                }
+            },
+            "user_write" => {
+                if let Some(ref attrs) = attrs {
+                    println!("{}", mode::user_write(attrs));
+                }
+            },
+            "user_exec" => {
+                if let Some(ref attrs) = attrs {
+                    println!("{}", mode::user_exec(attrs));
+                }
+            },
+            "group_read" => {
+                if let Some(ref attrs) = attrs {
+                    println!("{}", mode::group_read(attrs));
+                }
+            },
+            "group_write" => {
+                if let Some(ref attrs) = attrs {
+                    println!("{}", mode::group_write(attrs));
+                }
+            },
+            "group_exec" => {
+                if let Some(ref attrs) = attrs {
+                    println!("{}", mode::group_exec(attrs));
+                }
+            },
+            "other_read" => {
+                if let Some(ref attrs) = attrs {
+                    println!("{}", mode::other_read(attrs));
+                }
+            },
+            "other_write" => {
+                if let Some(ref attrs) = attrs {
+                    println!("{}", mode::other_write(attrs));
+                }
+            },
+            "other_exec" => {
+                if let Some(ref attrs) = attrs {
+                    println!("{}", mode::other_exec(attrs));
+                }
+            },
             "size" => {
                 if let Some(ref attrs) = attrs {
                     println!("{}", attrs.len())
@@ -442,6 +487,369 @@ fn conforms(entry: &DirEntry, expr: &Box<Expr>, entry_meta: Option<Box<fs::Metad
                         None => {
 
                         }
+                    }
+                },
+                None => { }
+            }
+        } else if field.to_ascii_lowercase() == "mode" {
+            match expr.val {
+                Some(ref val) => {
+                    if !meta.is_some() {
+                        let metadata = entry.metadata().unwrap();
+                        meta = Some(Box::new(metadata));
+                    }
+
+                    match meta {
+                        Some(ref metadata) => {
+                            let mode = mode::get_mode(metadata);
+
+                            result = match expr.op {
+                                Some(Op::Eq) => {
+                                    match expr.regex {
+                                        Some(ref regex) => regex.is_match(&mode),
+                                        None => val.eq(&mode)
+                                    }
+                                },
+                                Some(Op::Ne) => {
+                                    match expr.regex {
+                                        Some(ref regex) => !regex.is_match(&mode),
+                                        None => val.ne(&mode)
+                                    }
+                                },
+                                Some(Op::Rx) => {
+                                    match expr.regex {
+                                        Some(ref regex) => regex.is_match(&mode),
+                                        None => false
+                                    }
+                                },
+                                _ => false
+                            };
+                        },
+                        None => {}
+                    }
+                },
+                None => { }
+            }
+        } else if field.to_ascii_lowercase() == "user_read" {
+            match expr.val {
+                Some(ref val) => {
+                    if !meta.is_some() {
+                        let metadata = entry.metadata().unwrap();
+                        meta = Some(Box::new(metadata));
+                    }
+
+                    match meta {
+                        Some(ref metadata) => {
+                            let str_val = val.to_ascii_lowercase();
+                            let bool_val = str_val.eq("true") || str_val.eq("1");
+
+                            result = match expr.op {
+                                Some(Op::Eq) => {
+                                    if bool_val {
+                                        mode::user_read(metadata)
+                                    } else {
+                                        !mode::user_read(metadata)
+                                    }
+                                },
+                                Some(Op::Ne) => {
+                                    if bool_val {
+                                        !mode::user_read(metadata)
+                                    } else {
+                                        mode::user_read(metadata)
+                                    }
+                                },
+                                _ => false
+                            };
+                        },
+                        None => { }
+                    }
+                },
+                None => { }
+            }
+        } else if field.to_ascii_lowercase() == "user_write" {
+            match expr.val {
+                Some(ref val) => {
+                    if !meta.is_some() {
+                        let metadata = entry.metadata().unwrap();
+                        meta = Some(Box::new(metadata));
+                    }
+
+                    match meta {
+                        Some(ref metadata) => {
+                            let str_val = val.to_ascii_lowercase();
+                            let bool_val = str_val.eq("true") || str_val.eq("1");
+
+                            result = match expr.op {
+                                Some(Op::Eq) => {
+                                    if bool_val {
+                                        mode::user_write(metadata)
+                                    } else {
+                                        !mode::user_write(metadata)
+                                    }
+                                },
+                                Some(Op::Ne) => {
+                                    if bool_val {
+                                        !mode::user_write(metadata)
+                                    } else {
+                                        mode::user_write(metadata)
+                                    }
+                                },
+                                _ => false
+                            };
+                        },
+                        None => { }
+                    }
+                },
+                None => { }
+            }
+        } else if field.to_ascii_lowercase() == "user_exec" {
+            match expr.val {
+                Some(ref val) => {
+                    if !meta.is_some() {
+                        let metadata = entry.metadata().unwrap();
+                        meta = Some(Box::new(metadata));
+                    }
+
+                    match meta {
+                        Some(ref metadata) => {
+                            let str_val = val.to_ascii_lowercase();
+                            let bool_val = str_val.eq("true") || str_val.eq("1");
+
+                            result = match expr.op {
+                                Some(Op::Eq) => {
+                                    if bool_val {
+                                        mode::user_exec(metadata)
+                                    } else {
+                                        !mode::user_exec(metadata)
+                                    }
+                                },
+                                Some(Op::Ne) => {
+                                    if bool_val {
+                                        !mode::user_read(metadata)
+                                    } else {
+                                        mode::user_read(metadata)
+                                    }
+                                },
+                                _ => false
+                            };
+                        },
+                        None => { }
+                    }
+                },
+                None => { }
+            }
+        } else if field.to_ascii_lowercase() == "group_read" {
+            match expr.val {
+                Some(ref val) => {
+                    if !meta.is_some() {
+                        let metadata = entry.metadata().unwrap();
+                        meta = Some(Box::new(metadata));
+                    }
+
+                    match meta {
+                        Some(ref metadata) => {
+                            let str_val = val.to_ascii_lowercase();
+                            let bool_val = str_val.eq("true") || str_val.eq("1");
+
+                            result = match expr.op {
+                                Some(Op::Eq) => {
+                                    if bool_val {
+                                        mode::group_read(metadata)
+                                    } else {
+                                        !mode::group_read(metadata)
+                                    }
+                                },
+                                Some(Op::Ne) => {
+                                    if bool_val {
+                                        !mode::group_read(metadata)
+                                    } else {
+                                        mode::group_read(metadata)
+                                    }
+                                },
+                                _ => false
+                            };
+                        },
+                        None => { }
+                    }
+                },
+                None => { }
+            }
+        } else if field.to_ascii_lowercase() == "group_write" {
+            match expr.val {
+                Some(ref val) => {
+                    if !meta.is_some() {
+                        let metadata = entry.metadata().unwrap();
+                        meta = Some(Box::new(metadata));
+                    }
+
+                    match meta {
+                        Some(ref metadata) => {
+                            let str_val = val.to_ascii_lowercase();
+                            let bool_val = str_val.eq("true") || str_val.eq("1");
+
+                            result = match expr.op {
+                                Some(Op::Eq) => {
+                                    if bool_val {
+                                        mode::group_write(metadata)
+                                    } else {
+                                        !mode::group_write(metadata)
+                                    }
+                                },
+                                Some(Op::Ne) => {
+                                    if bool_val {
+                                        !mode::group_write(metadata)
+                                    } else {
+                                        mode::group_write(metadata)
+                                    }
+                                },
+                                _ => false
+                            };
+                        },
+                        None => { }
+                    }
+                },
+                None => { }
+            }
+        } else if field.to_ascii_lowercase() == "group_exec" {
+            match expr.val {
+                Some(ref val) => {
+                    if !meta.is_some() {
+                        let metadata = entry.metadata().unwrap();
+                        meta = Some(Box::new(metadata));
+                    }
+
+                    match meta {
+                        Some(ref metadata) => {
+                            let str_val = val.to_ascii_lowercase();
+                            let bool_val = str_val.eq("true") || str_val.eq("1");
+
+                            result = match expr.op {
+                                Some(Op::Eq) => {
+                                    if bool_val {
+                                        mode::group_exec(metadata)
+                                    } else {
+                                        !mode::group_exec(metadata)
+                                    }
+                                },
+                                Some(Op::Ne) => {
+                                    if bool_val {
+                                        !mode::group_exec(metadata)
+                                    } else {
+                                        mode::group_exec(metadata)
+                                    }
+                                },
+                                _ => false
+                            };
+                        },
+                        None => { }
+                    }
+                },
+                None => { }
+            }
+        } else if field.to_ascii_lowercase() == "other_read" {
+            match expr.val {
+                Some(ref val) => {
+                    if !meta.is_some() {
+                        let metadata = entry.metadata().unwrap();
+                        meta = Some(Box::new(metadata));
+                    }
+
+                    match meta {
+                        Some(ref metadata) => {
+                            let str_val = val.to_ascii_lowercase();
+                            let bool_val = str_val.eq("true") || str_val.eq("1");
+
+                            result = match expr.op {
+                                Some(Op::Eq) => {
+                                    if bool_val {
+                                        mode::other_read(metadata)
+                                    } else {
+                                        !mode::other_read(metadata)
+                                    }
+                                },
+                                Some(Op::Ne) => {
+                                    if bool_val {
+                                        !mode::other_read(metadata)
+                                    } else {
+                                        mode::other_read(metadata)
+                                    }
+                                },
+                                _ => false
+                            };
+                        },
+                        None => { }
+                    }
+                },
+                None => { }
+            }
+        } else if field.to_ascii_lowercase() == "other_write" {
+            match expr.val {
+                Some(ref val) => {
+                    if !meta.is_some() {
+                        let metadata = entry.metadata().unwrap();
+                        meta = Some(Box::new(metadata));
+                    }
+
+                    match meta {
+                        Some(ref metadata) => {
+                            let str_val = val.to_ascii_lowercase();
+                            let bool_val = str_val.eq("true") || str_val.eq("1");
+
+                            result = match expr.op {
+                                Some(Op::Eq) => {
+                                    if bool_val {
+                                        mode::other_write(metadata)
+                                    } else {
+                                        !mode::other_write(metadata)
+                                    }
+                                },
+                                Some(Op::Ne) => {
+                                    if bool_val {
+                                        !mode::other_write(metadata)
+                                    } else {
+                                        mode::other_write(metadata)
+                                    }
+                                },
+                                _ => false
+                            };
+                        },
+                        None => { }
+                    }
+                },
+                None => { }
+            }
+        } else if field.to_ascii_lowercase() == "other_exec" {
+            match expr.val {
+                Some(ref val) => {
+                    if !meta.is_some() {
+                        let metadata = entry.metadata().unwrap();
+                        meta = Some(Box::new(metadata));
+                    }
+
+                    match meta {
+                        Some(ref metadata) => {
+                            let str_val = val.to_ascii_lowercase();
+                            let bool_val = str_val.eq("true") || str_val.eq("1");
+
+                            result = match expr.op {
+                                Some(Op::Eq) => {
+                                    if bool_val {
+                                        mode::other_exec(metadata)
+                                    } else {
+                                        !mode::other_exec(metadata)
+                                    }
+                                },
+                                Some(Op::Ne) => {
+                                    if bool_val {
+                                        !mode::other_exec(metadata)
+                                    } else {
+                                        mode::other_exec(metadata)
+                                    }
+                                },
+                                _ => false
+                            };
+                        },
+                        None => { }
                     }
                 },
                 None => { }

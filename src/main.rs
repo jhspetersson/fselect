@@ -61,7 +61,11 @@ fn usage_info(t: &mut Box<StdoutTerminal>) {
 
 fn error_message(p: &Path, e: io::Error, t: &mut Box<StdoutTerminal>) {
     t.fg(term::color::YELLOW).unwrap();
-    eprint!("{}: ", p.to_string_lossy());
+    eprint!("{}", p.to_string_lossy());
+    t.reset().unwrap();
+
+    eprint!(": ");
+
     t.fg(term::color::RED).unwrap();
     eprintln!("{}", e.description());
     t.reset().unwrap();

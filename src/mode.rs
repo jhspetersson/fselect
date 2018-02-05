@@ -1,24 +1,27 @@
 use std::fs::Metadata;
 
-pub fn print_mode(meta: &Box<Metadata>) {
+pub fn get_mode(meta: &Box<Metadata>) -> String {
     let mode: u32;
+    let mut mode_str = String::new();
 
     #[cfg(unix)]
     {
         use std::os::unix::fs::MetadataExt;
         mode = meta.mode();
-        print_mode_unix(mode);
+        mode_str.push_str(&get_mode_unix(mode));
     }
 
     #[cfg(windows)]
     {
         use std::os::windows::fs::MetadataExt;
         mode = meta.file_attributes();
-        print_mode_windows(mode);
+        mode_str.push_str(&get_mode_windows(mode));
     }
+
+    mode_str
 }
 
-fn print_mode_unix(mode: u32) {
+fn get_mode_unix(mode: u32) -> String {
     let mut s = String::new();
 
     // user
@@ -81,7 +84,7 @@ fn print_mode_unix(mode: u32) {
         s.push('-');
     }
 
-    println!("{}", s);
+    s
 }
 
 const S_IRUSR: u32 = 0o400;
@@ -100,7 +103,7 @@ const S_ISUID: u32 = 0o4000;
 const S_ISGID: u32 = 0o2000;
 const S_ISVTX: u32 = 0o1000;
 
-fn print_mode_windows(mode: u32) {
+fn get_mode_windows(mode: u32) -> String {
     let mut v = vec![];
 
     if mode & FILE_ATTRIBUTE_ARCHIVE == mode {
@@ -179,7 +182,7 @@ fn print_mode_windows(mode: u32) {
         v.push("Virtual");
     }
 
-    println!("{}", v.join(", "));
+    v.join(", ")
 }
 
 const FILE_ATTRIBUTE_ARCHIVE: u32 = 0x20;

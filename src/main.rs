@@ -6,7 +6,6 @@ use std::error::Error;
 use std::env;
 use std::fs;
 use std::fs::DirEntry;
-use std::fs::Metadata;
 use std::path::Path;
 use std::io;
 
@@ -168,7 +167,7 @@ fn check_file(entry: &DirEntry, query: &Query, need_metadata: bool) {
             },
             "mode" => {
                 if let Some(ref attrs) = attrs {
-                    mode::print_mode(attrs);
+                    println!("{}", mode::get_mode(attrs));
                 }
             },
             "size" => {

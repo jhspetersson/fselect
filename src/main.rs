@@ -1188,7 +1188,7 @@ fn parse_filesize(s: &str) -> Option<u64> {
     }
 }
 
-const ARCHIVE: &'static [&'static str] = &[".7zip", ".bzip2", ".gz", ".gzip", ".rar", ".xz", ".zip"];
+const ARCHIVE: &'static [&'static str] = &[".7zip", ".bzip2", ".gz", ".gzip", ".rar", ".tar", ".xz", ".zip"];
 
 fn is_archive(file_name: &str) -> bool {
     has_extension(file_name, &ARCHIVE)

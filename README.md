@@ -144,9 +144,9 @@ Or by owner's or group's name:
 * `=` or `eq`
 * `!=` or `ne`
 * `>` or `gt`
-* `>=` or `gte`
+* `>=` or `gte` or `ge`
 * `<` or `lt`
-* `<=` or `lte`
+* `<=` or `lte` or `le`
 * `~=` or `regexp` or `rx`
 
 ### File size specifiers

@@ -412,6 +412,8 @@ impl Op {
             return  Some(Op::Gte);
         } else if text.eq_ignore_ascii_case("gte") {
             return  Some(Op::Gte);
+        } else if text.eq_ignore_ascii_case("ge") {
+            return  Some(Op::Gte);
         } else if text.eq_ignore_ascii_case("<") {
             return  Some(Op::Lt);
         } else if text.eq_ignore_ascii_case("lt") {
@@ -419,6 +421,8 @@ impl Op {
         } else if text.eq_ignore_ascii_case("<=") {
             return  Some(Op::Lte);
         } else if text.eq_ignore_ascii_case("lte") {
+            return  Some(Op::Lte);
+        } else if text.eq_ignore_ascii_case("le") {
             return  Some(Op::Lte);
         } else if text.eq_ignore_ascii_case("~=") {
             return  Some(Op::Rx);

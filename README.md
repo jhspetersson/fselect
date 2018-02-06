@@ -100,12 +100,18 @@ Simple glob-like expressions or even regular expressions on file mode are possib
     
     fselect path, mode from /home/user where mode = *rwx
     fselect path, mode from /home/user where mode ~= .*rwx$
+    
+Find files by owner's uid or gid:
+
+    fselect path, uid, gid from /home/user where uid != 1000 or gid != 1000 
 
 ### Columns and expression fields
 
 * `path`
 * `name`
 * `size`
+* `uid`
+* `gid`
 * `created`
 * `accessed`
 * `modified`

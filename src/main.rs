@@ -159,6 +159,11 @@ fn check_file(entry: &DirEntry, query: &Query, need_metadata: bool) {
             "path" => {
                 println!("{}", entry.path().to_string_lossy())
             },
+            "size" => {
+                if let Some(ref attrs) = attrs {
+                    println!("{}", attrs.len());
+                }
+            },
             "is_dir" => {
                 if let Some(ref attrs) = attrs {
                     println!("{}", attrs.is_dir());
@@ -219,9 +224,20 @@ fn check_file(entry: &DirEntry, query: &Query, need_metadata: bool) {
                     println!("{}", mode::other_exec(attrs));
                 }
             },
-            "size" => {
+            "uid" => {
                 if let Some(ref attrs) = attrs {
-                    println!("{}", attrs.len())
+                    match mode::get_uid(attrs) {
+                        Some(uid) => println!("{}", uid),
+                        None => { }
+                    }
+                }
+            },
+            "gid" => {
+                if let Some(ref attrs) = attrs {
+                    match mode::get_gid(attrs) {
+                        Some(gid) => println!("{}", gid),
+                        None => { }
+                    }
                 }
             },
             "created" => {
@@ -419,6 +435,80 @@ fn conforms(entry: &DirEntry, expr: &Box<Expr>, entry_meta: Option<Box<fs::Metad
                         None => {
 
                         }
+                    }
+                },
+                None => { }
+            }
+        } else if field.to_ascii_lowercase() == "uid" {
+            match expr.val {
+                Some(ref val) => {
+                    if !meta.is_some() {
+                        let metadata = entry.metadata().unwrap();
+                        meta = Some(Box::new(metadata));
+                    }
+
+                    match meta {
+                        Some(ref metadata) => {
+                            let uid = val.parse::<u32>();
+                            match uid {
+                                Ok(uid) => {
+                                    let file_uid = mode::get_uid(metadata);
+                                    match file_uid {
+                                        Some(file_uid) => {
+                                            result = match expr.op {
+                                                Some(Op::Eq) => file_uid == uid,
+                                                Some(Op::Ne) => file_uid != uid,
+                                                Some(Op::Gt) => file_uid > uid,
+                                                Some(Op::Gte) => file_uid >= uid,
+                                                Some(Op::Lt) => file_uid < uid,
+                                                Some(Op::Lte) => file_uid <= uid,
+                                                _ => false
+                                            };
+                                        },
+                                        None => { }
+                                    }
+                                },
+                                _ => { }
+                            }
+                        },
+                        None => { }
+                    }
+                },
+                None => { }
+            }
+        } else if field.to_ascii_lowercase() == "gid" {
+            match expr.val {
+                Some(ref val) => {
+                    if !meta.is_some() {
+                        let metadata = entry.metadata().unwrap();
+                        meta = Some(Box::new(metadata));
+                    }
+
+                    match meta {
+                        Some(ref metadata) => {
+                            let gid = val.parse::<u32>();
+                            match gid {
+                                Ok(gid) => {
+                                    let file_gid = mode::get_gid(metadata);
+                                    match file_gid {
+                                        Some(file_gid) => {
+                                            result = match expr.op {
+                                                Some(Op::Eq) => file_gid == gid,
+                                                Some(Op::Ne) => file_gid != gid,
+                                                Some(Op::Gt) => file_gid > gid,
+                                                Some(Op::Gte) => file_gid >= gid,
+                                                Some(Op::Lt) => file_gid < gid,
+                                                Some(Op::Lte) => file_gid <= gid,
+                                                _ => false
+                                            };
+                                        },
+                                        None => { }
+                                    }
+                                },
+                                _ => { }
+                            }
+                        },
+                        None => { }
                     }
                 },
                 None => { }

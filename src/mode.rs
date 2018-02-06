@@ -280,3 +280,27 @@ const FILE_ATTRIBUTE_SPARSE_FILE: u32 = 0x200;
 const FILE_ATTRIBUTE_SYSTEM: u32 = 0x4;
 const FILE_ATTRIBUTE_TEMPORARY: u32 = 0x100;
 const FILE_ATTRIBUTE_VIRTUAL: u32 = 0x10000;
+
+pub fn get_uid(meta: &Box<Metadata>) -> Option<u32> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        let uid = meta.uid();
+
+        return Some(uid);
+    }
+
+    None
+}
+
+pub fn get_gid(meta: &Box<Metadata>) -> Option<u32> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        let uid = meta.gid();
+
+        return Some(uid);
+    }
+
+    None
+}

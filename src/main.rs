@@ -1,6 +1,7 @@
 extern crate chrono;
 extern crate regex;
 extern crate term;
+#[cfg(unix)]
 extern crate users;
 
 use std::error::Error;
@@ -14,6 +15,7 @@ use chrono::DateTime;
 use chrono::Local;
 use regex::Regex;
 use term::StdoutTerminal;
+#[cfg(unix)]
 use users::{Groups, Users, UsersCache};
 
 mod lexer;
@@ -49,7 +51,7 @@ fn main() {
 fn usage_info(t: &mut Box<StdoutTerminal>) {
     print!("FSelect utility v");
     t.fg(term::color::BRIGHT_YELLOW).unwrap();
-    println!("0.0.8");
+    println!("0.0.9");
     t.reset().unwrap();
 
     println!("Find files with SQL-like queries.");
@@ -1494,4 +1496,42 @@ fn has_extension(file_name: &str, extensions: &[&str]) -> bool {
     }
 
     false
+}
+
+#[cfg(windows)]
+struct UsersCache;
+
+#[cfg(windows)]
+impl UsersCache {
+    fn new() -> Self {
+        UsersCache { }
+    }
+
+    fn get_user_by_uid(&self, _: u32) -> Option<std::sync::Arc<User>> {
+        None
+    }
+
+    fn get_group_by_gid(&self, _: u32) -> Option<std::sync::Arc<Group>> {
+        None
+    }
+}
+
+#[cfg(windows)]
+struct User;
+
+#[cfg(windows)]
+impl User {
+    fn name(&self) -> &str {
+        ""
+    }
+}
+
+#[cfg(windows)]
+struct Group;
+
+#[cfg(windows)]
+impl Group {
+    fn name(&self) -> &str {
+        ""
+    }
 }

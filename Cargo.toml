@@ -1,6 +1,6 @@
 [package]
 name = "fselect"
-version = "0.0.8"
+version = "0.0.9"
 authors = ["jhspetersson <jhspetersson@gmail.com>"]
 description = "Find files with SQL-like queries"
 keywords = ["find", "files", "sql", "query", "tool"]
@@ -15,4 +15,6 @@ license = "MIT/Apache-2.0"
 chrono = "0.4"
 regex = "0.2"
 term = "0.4"
+
+[target.'cfg(unix)'.dependencies]
 users = "0.6.0"

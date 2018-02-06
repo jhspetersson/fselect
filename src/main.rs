@@ -1,6 +1,7 @@
 extern crate chrono;
 extern crate regex;
 extern crate term;
+extern crate users;
 
 use std::error::Error;
 use std::env;
@@ -13,6 +14,7 @@ use chrono::DateTime;
 use chrono::Local;
 use regex::Regex;
 use term::StdoutTerminal;
+use users::{Groups, Users, UsersCache};
 
 mod lexer;
 mod mode;
@@ -31,12 +33,12 @@ fn main() {
         return;
     }
 
-	let mut args: Vec<String> = env::args().collect();
-	args.remove(0);
-	let query = args.join(" ");
+    let mut args: Vec<String> = env::args().collect();
+    args.remove(0);
+    let query = args.join(" ");
 
     let mut p = parser::Parser::new();
-	let q = p.parse(&query);
+    let q = p.parse(&query);
 
     match q {
         Ok(q) => list_search_results(q, &mut t).unwrap(),
@@ -74,17 +76,25 @@ fn error_message(p: &Path, e: io::Error, t: &mut Box<StdoutTerminal>) {
 fn list_search_results(query: Query, t: &mut Box<StdoutTerminal>) -> io::Result<()> {
     let need_metadata = query.fields.iter()
         .filter(|s| s.as_str().ne("name")).count() > 0;
+    let mut user_cache = UsersCache::new();
 
     for root in &query.roots {
         let root_dir = Path::new(&root.path);
         let max_depth = root.depth;
-        let _result = visit_dirs(root_dir, &check_file, &query, need_metadata, max_depth, 1, t);
+        let _result = visit_dirs(root_dir, &check_file, &query, need_metadata, max_depth, 1, &mut user_cache, t);
     }
 
-	Ok(())
+    Ok(())
 }
 
-fn visit_dirs(dir: &Path, cb: &Fn(&DirEntry, &Query, bool), query: &Query, need_metadata: bool, max_depth: u32, depth: u32, t: &mut Box<StdoutTerminal>) -> io::Result<()> {
+fn visit_dirs(dir: &Path,
+              cb: &Fn(&DirEntry, &Query, bool, &mut UsersCache),
+              query: &Query,
+              need_metadata: bool,
+              max_depth: u32,
+              depth: u32,
+              user_cache: &mut UsersCache,
+              t: &mut Box<StdoutTerminal>) -> io::Result<()> {
     if max_depth == 0 || (max_depth > 0 && depth <= max_depth) {
         let metadata = dir.metadata();
         match metadata {
@@ -96,9 +106,9 @@ fn visit_dirs(dir: &Path, cb: &Fn(&DirEntry, &Query, bool), query: &Query, need_
                                 match entry {
                                     Ok(entry) => {
                                         let path = entry.path();
-                                        cb(&entry, query, need_metadata);
+                                        cb(&entry, query, need_metadata, user_cache);
                                         if path.is_dir() {
-                                            let result = visit_dirs(&path, cb, query, need_metadata, max_depth, depth + 1, t);
+                                            let result = visit_dirs(&path, cb, query, need_metadata, max_depth, depth + 1, user_cache, t);
                                             if result.is_err() {
                                                 error_message(&path, result.err().unwrap(), t);
                                             }
@@ -125,10 +135,10 @@ fn visit_dirs(dir: &Path, cb: &Fn(&DirEntry, &Query, bool), query: &Query, need_
     Ok(())
 }
 
-fn check_file(entry: &DirEntry, query: &Query, need_metadata: bool) {
+fn check_file(entry: &DirEntry, query: &Query, need_metadata: bool, user_cache: &mut UsersCache) {
     let mut meta = None;
     if let Some(ref expr) = query.expr {
-        let (result, entry_meta) = conforms(entry, expr, None);
+        let (result, entry_meta) = conforms(entry, expr, None, user_cache);
         if !result {
             return
         }
@@ -240,6 +250,36 @@ fn check_file(entry: &DirEntry, query: &Query, need_metadata: bool) {
                     }
                 }
             },
+            "user" => {
+                if let Some(ref attrs) = attrs {
+                    match mode::get_uid(attrs) {
+                        Some(uid) => {
+                            match user_cache.get_user_by_uid(uid) {
+                                Some(user) => {
+                                    println!("{}", user.name());
+                                },
+                                None => { }
+                            }
+                        },
+                        None => { }
+                    }
+                }
+            },
+            "group" => {
+                if let Some(ref attrs) = attrs {
+                    match mode::get_gid(attrs) {
+                        Some(gid) => {
+                            match user_cache.get_group_by_gid(gid) {
+                                Some(group) => {
+                                    println!("{}", group.name());
+                                },
+                                None => { }
+                            }
+                        },
+                        None => { }
+                    }
+                }
+            },
             "created" => {
                 if let Some(ref attrs) = attrs {
                     match attrs.created() {
@@ -303,7 +343,10 @@ fn check_file(entry: &DirEntry, query: &Query, need_metadata: bool) {
     }
 }
 
-fn conforms(entry: &DirEntry, expr: &Box<Expr>, entry_meta: Option<Box<fs::Metadata>>) -> (bool, Option<Box<fs::Metadata>>) {
+fn conforms(entry: &DirEntry,
+            expr: &Box<Expr>,
+            entry_meta: Option<Box<fs::Metadata>>,
+            user_cache: &mut UsersCache) -> (bool, Option<Box<fs::Metadata>>) {
     let mut result = false;
     let mut meta = entry_meta;
 
@@ -312,7 +355,7 @@ fn conforms(entry: &DirEntry, expr: &Box<Expr>, entry_meta: Option<Box<fs::Metad
         let mut right_result = false;
 
         if let Some(ref left) = expr.left {
-            let (left_res, left_meta) = conforms(entry, &left, meta);
+            let (left_res, left_meta) = conforms(entry, &left, meta, user_cache);
             left_result = left_res;
             meta = left_meta;
         }
@@ -323,7 +366,7 @@ fn conforms(entry: &DirEntry, expr: &Box<Expr>, entry_meta: Option<Box<fs::Metad
                     result = false;
                 } else {
                     if let Some(ref right) = expr.right {
-                        let (right_res, right_meta) = conforms(entry, &right, meta);
+                        let (right_res, right_meta) = conforms(entry, &right, meta, user_cache);
                         right_result = right_res;
                         meta = right_meta;
                     }
@@ -336,7 +379,7 @@ fn conforms(entry: &DirEntry, expr: &Box<Expr>, entry_meta: Option<Box<fs::Metad
                     result = true;
                 } else {
                     if let Some(ref right) = expr.right {
-                        let (right_res, right_meta) = conforms(entry, &right, meta);
+                        let (right_res, right_meta) = conforms(entry, &right, meta, user_cache);
                         right_result = right_res;
                         meta = right_meta;
                     }
@@ -476,6 +519,55 @@ fn conforms(entry: &DirEntry, expr: &Box<Expr>, entry_meta: Option<Box<fs::Metad
                 },
                 None => { }
             }
+        } else if field.to_ascii_lowercase() == "user" {
+            match expr.val {
+                Some(ref val) => {
+                    if !meta.is_some() {
+                        let metadata = entry.metadata().unwrap();
+                        meta = Some(Box::new(metadata));
+                    }
+
+                    match meta {
+                        Some(ref metadata) => {
+                            let file_uid = mode::get_uid(metadata);
+                            match file_uid {
+                                Some(file_uid) => {
+                                    match user_cache.get_user_by_uid(file_uid) {
+                                        Some(user) => {
+                                            let user_name = user.name();
+                                            result = match expr.op {
+                                                Some(Op::Eq) => {
+                                                    match expr.regex {
+                                                        Some(ref regex) => regex.is_match(user_name),
+                                                        None => val.eq(user_name)
+                                                    }
+                                                },
+                                                Some(Op::Ne) => {
+                                                    match expr.regex {
+                                                        Some(ref regex) => !regex.is_match(user_name),
+                                                        None => val.ne(user_name)
+                                                    }
+                                                },
+                                                Some(Op::Rx) => {
+                                                    match expr.regex {
+                                                        Some(ref regex) => regex.is_match(user_name),
+                                                        None => false
+                                                    }
+                                                },
+                                                _ => false
+                                            };
+                                        },
+                                        None => { }
+                                    }
+                                },
+                                None => { }
+                            }
+                        },
+                        None => { }
+                    }
+                },
+                None => { }
+            }
         } else if field.to_ascii_lowercase() == "gid" {
             match expr.val {
                 Some(ref val) => {
@@ -506,6 +598,55 @@ fn conforms(entry: &DirEntry, expr: &Box<Expr>, entry_meta: Option<Box<fs::Metad
                                     }
                                 },
                                 _ => { }
+                            }
+                        },
+                        None => { }
+                    }
+                },
+                None => { }
+            }
+        } else if field.to_ascii_lowercase() == "group" {
+            match expr.val {
+                Some(ref val) => {
+                    if !meta.is_some() {
+                        let metadata = entry.metadata().unwrap();
+                        meta = Some(Box::new(metadata));
+                    }
+
+                    match meta {
+                        Some(ref metadata) => {
+                            let file_gid = mode::get_gid(metadata);
+                            match file_gid {
+                                Some(file_gid) => {
+                                    match user_cache.get_group_by_gid(file_gid) {
+                                        Some(group) => {
+                                            let group_name = group.name();
+                                            result = match expr.op {
+                                                Some(Op::Eq) => {
+                                                    match expr.regex {
+                                                        Some(ref regex) => regex.is_match(group_name),
+                                                        None => val.eq(group_name)
+                                                    }
+                                                },
+                                                Some(Op::Ne) => {
+                                                    match expr.regex {
+                                                        Some(ref regex) => !regex.is_match(group_name),
+                                                        None => val.ne(group_name)
+                                                    }
+                                                },
+                                                Some(Op::Rx) => {
+                                                    match expr.regex {
+                                                        Some(ref regex) => regex.is_match(group_name),
+                                                        None => false
+                                                    }
+                                                },
+                                                _ => false
+                                            };
+                                        },
+                                        None => { }
+                                    }
+                                },
+                                None => { }
                             }
                         },
                         None => { }

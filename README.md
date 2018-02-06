@@ -103,7 +103,11 @@ Simple glob-like expressions or even regular expressions on file mode are possib
     
 Find files by owner's uid or gid:
 
-    fselect path, uid, gid from /home/user where uid != 1000 or gid != 1000 
+    fselect path, uid, gid from /home/user where uid != 1000 or gid != 1000
+    
+Or by owner's or group's name:
+
+    fselect path, user, group from /home/user where user = mike or group = mike 
 
 ### Columns and expression fields
 
@@ -112,6 +116,8 @@ Find files by owner's uid or gid:
 * `size`
 * `uid`
 * `gid`
+* `user`
+* `group`
 * `created`
 * `accessed`
 * `modified`

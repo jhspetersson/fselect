@@ -28,11 +28,13 @@ impl Parser {
         let fields = self.parse_fields();
         let roots = self.parse_roots();
         let expr = self.parse_where();
+        let limit = self.parse_limit();
 
         Ok(Query {
             fields,
             roots,
             expr,
+            limit,
         })
     }
 
@@ -175,7 +177,10 @@ impl Parser {
             Some(Lexem::Where) => {
                 self.parse_or()
             },
-            _ => None
+            _ => {
+                self.drop_lexem();
+                None
+            }
         }
     }
 
@@ -264,6 +269,26 @@ impl Parser {
         }
     }
 
+    fn parse_limit(&mut self) -> u32 {
+        let lexem = self.get_lexem();
+        match lexem {
+            Some(Lexem::Limit) => {
+                let lexem = self.get_lexem();
+                match lexem {
+                    Some(Lexem::Field(s)) | Some(Lexem::String(s)) => {
+                        if let Ok(limit) = s.parse() {
+                            return limit;
+                        }
+                    },
+                    _ => { }
+                }
+            },
+            _ => { }
+        }
+
+        0
+    }
+
     fn get_lexem(&mut self) -> Option<Lexem> {
         let lexem = self.lexems.get(self.index );
         self.index += 1;
@@ -307,7 +332,8 @@ fn convert_glob_to_pattern(s: &str) -> String {
 pub struct Query {
     pub fields: Vec<String>,
     pub roots: Vec<Root>,
-    pub expr: Option<Box<Expr>>
+    pub expr: Option<Box<Expr>>,
+    pub limit: u32
 }
 
 #[derive(Debug, Clone)]

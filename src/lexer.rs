@@ -10,6 +10,7 @@ pub enum Lexem {
     Close,
     And,
     Or,
+    Limit,
 }
 
 #[derive(Debug)]
@@ -140,10 +141,16 @@ impl<'a> Lexer<'a> {
                     Some(Lexem::Operator(s))
                 } else if s.eq_ignore_ascii_case("lte")  {
                     Some(Lexem::Operator(s))
+                } else if s.eq_ignore_ascii_case("ge")  {
+                    Some(Lexem::Operator(s))
+                } else if s.eq_ignore_ascii_case("le")  {
+                    Some(Lexem::Operator(s))
                 } else if s.eq_ignore_ascii_case("regexp")  {
                     Some(Lexem::Operator(s))
                 } else if s.eq_ignore_ascii_case("rx")  {
                     Some(Lexem::Operator(s))
+                } else if s.eq_ignore_ascii_case("limit")  {
+                    Some(Lexem::Limit)
                 } else {
                     Some(Lexem::Field(s))
                 }

@@ -21,6 +21,7 @@ use parser::Op;
 pub struct Searcher {
     query: Query,
     user_cache: UsersCache,
+    found: u32,
 }
 
 impl Searcher {
@@ -28,6 +29,7 @@ impl Searcher {
         Searcher {
             query,
             user_cache: UsersCache::new(),
+            found: 0
         }
     }
 
@@ -58,6 +60,10 @@ impl Searcher {
                         match fs::read_dir(dir) {
                             Ok(entry_list) => {
                                 for entry in entry_list {
+                                    if self.query.limit > 0 && self.query.limit <= self.found {
+                                        break;
+                                    }
+
                                     match entry {
                                         Ok(entry) => {
                                             let path = entry.path();
@@ -100,6 +106,8 @@ impl Searcher {
 
             meta = entry_meta;
         }
+
+        self.found += 1;
 
         let attrs = match need_metadata {
             true =>  {

@@ -303,14 +303,14 @@ fn convert_glob_to_pattern(s: &str) -> String {
     format!("^(?i){}$", string)
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Query {
     pub fields: Vec<String>,
     pub roots: Vec<Root>,
     pub expr: Option<Box<Expr>>
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Root {
     pub path: String,
     pub depth: u32,
@@ -326,7 +326,7 @@ impl Root {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Expr {
     pub left: Option<Box<Expr>>,
     pub logical_op: Option<LogicalOp>,
@@ -379,7 +379,7 @@ impl Expr {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Op {
     Eq,
     Ne,
@@ -436,7 +436,7 @@ impl Op {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum LogicalOp {
     And,
     Or,

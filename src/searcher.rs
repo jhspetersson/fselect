@@ -19,24 +19,26 @@ use parser::LogicalOp;
 use parser::Op;
 
 pub struct Searcher {
+    query: Query,
     user_cache: UsersCache,
 }
 
 impl Searcher {
-    pub fn new() -> Self {
+    pub fn new(query: Query) -> Self {
         Searcher {
+            query,
             user_cache: UsersCache::new(),
         }
     }
 
-    pub fn list_search_results(&mut self, query: Query, t: &mut Box<StdoutTerminal>) -> io::Result<()> {
-        let need_metadata = query.fields.iter()
+    pub fn list_search_results(&mut self, t: &mut Box<StdoutTerminal>) -> io::Result<()> {
+        let need_metadata = self.query.fields.iter()
             .filter(|s| s.as_str().ne("name")).count() > 0;
 
-        for root in &query.roots {
+        for root in &self.query.clone().roots {
             let root_dir = Path::new(&root.path);
             let max_depth = root.depth;
-            let _result = self.visit_dirs(root_dir, &query, need_metadata, max_depth, 1, t);
+            let _result = self.visit_dirs(root_dir, need_metadata, max_depth, 1, t);
         }
 
         Ok(())
@@ -44,7 +46,6 @@ impl Searcher {
 
     fn visit_dirs(&mut self,
                   dir: &Path,
-                  query: &Query,
                   need_metadata: bool,
                   max_depth: u32,
                   depth: u32,
@@ -60,9 +61,9 @@ impl Searcher {
                                     match entry {
                                         Ok(entry) => {
                                             let path = entry.path();
-                                            self.check_file(&entry, query, need_metadata);
+                                            self.check_file(&entry, need_metadata);
                                             if path.is_dir() {
-                                                let result = self.visit_dirs(&path, query, need_metadata, max_depth, depth + 1, t);
+                                                let result = self.visit_dirs(&path, need_metadata, max_depth, depth + 1, t);
                                                 if result.is_err() {
                                                     error_message(&path, result.err().unwrap(), t);
                                                 }
@@ -89,9 +90,9 @@ impl Searcher {
         Ok(())
     }
 
-    fn check_file(&mut self, entry: &DirEntry, query: &Query, need_metadata: bool) {
+    fn check_file(&mut self, entry: &DirEntry, need_metadata: bool) {
         let mut meta = None;
-        if let Some(ref expr) = query.expr {
+        if let Some(ref expr) = self.query.expr.clone() {
             let (result, entry_meta) = self.conforms(entry, expr, None);
             if !result {
                 return
@@ -115,7 +116,7 @@ impl Searcher {
             false => None
         };
 
-        for field in query.fields.iter() {
+        for field in self.query.fields.iter() {
             match field.as_str() {
                 "name" => {
                     println!("{}", entry.file_name().to_string_lossy())

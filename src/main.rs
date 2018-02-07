@@ -29,12 +29,12 @@ fn main() {
     let query = args.join(" ");
 
     let mut p = Parser::new();
-    let q = p.parse(&query);
+    let query = p.parse(&query);
 
-    match q {
-        Ok(q) => {
-            let mut searcher = Searcher::new();
-            searcher.list_search_results(q, &mut t).unwrap()
+    match query {
+        Ok(query) => {
+            let mut searcher = Searcher::new(query);
+            searcher.list_search_results(&mut t).unwrap()
         },
         Err(s) => panic!(s)
     }

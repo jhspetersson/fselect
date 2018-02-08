@@ -107,7 +107,11 @@ Find files by owner's uid or gid:
     
 Or by owner's or group's name:
 
-    fselect path, user, group from /home/user where user = mike or group = mike 
+    fselect path, user, group from /home/user where user = mike or group = mike
+    
+Finally limit the results:
+
+    fselect name from /home/user/samples limit 5 
 
 ### Columns and expression fields
 

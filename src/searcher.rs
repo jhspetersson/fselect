@@ -1473,6 +1473,9 @@ fn error_message(p: &Path, e: io::Error, t: &mut Box<StdoutTerminal>) {
 }
 
 #[cfg(windows)]
+use std;
+
+#[cfg(windows)]
 struct UsersCache;
 
 #[cfg(windows)]
@@ -1481,11 +1484,11 @@ impl UsersCache {
         UsersCache { }
     }
 
-    fn get_user_by_uid(&self, _: u32) -> Option<std::sync::Arc<User>> {
+    fn get_user_by_uid(&self, _: u32) -> Option< std::sync::Arc<User>> {
         None
     }
 
-    fn get_group_by_gid(&self, _: u32) -> Option<std::sync::Arc<Group>> {
+    fn get_group_by_gid(&self, _: u32) -> Option< std::sync::Arc<Group>> {
         None
     }
 }

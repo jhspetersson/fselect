@@ -43,7 +43,7 @@ fn main() {
 fn usage_info(t: &mut Box<StdoutTerminal>) {
     print!("FSelect utility v");
     t.fg(term::color::BRIGHT_YELLOW).unwrap();
-    println!("0.0.9");
+    println!("0.0.10");
     t.reset().unwrap();
 
     println!("Find files with SQL-like queries.");
@@ -52,5 +52,5 @@ fn usage_info(t: &mut Box<StdoutTerminal>) {
     println!("https://github.com/jhspetersson/fselect");
     t.reset().unwrap();
 
-    println!("Usage: fselect COLUMN[, COLUMN...] from ROOT [where EXPR]");
+    println!("Usage: fselect COLUMN[, COLUMN...] from ROOT[, ROOT...] [where EXPR] [limit N]");
 }

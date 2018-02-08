@@ -18,6 +18,10 @@ More is under way!
 
 ...or download a statically precompiled binary from Github if you are on a modern Windows 64bit
 
+### Usage
+
+    fselect COLUMN[, COLUMN...] from ROOT[, ROOT...] [where EXPR] [limit N]
+
 ### Examples
 
 Find temporary or config files (full path and size):

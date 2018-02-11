@@ -36,11 +36,11 @@ or put arguments into the quotes:
 
     fselect "name from /home/user/tmp where size > 0"
     
-Specify file size:
+Specify file size and add it to the results:
 
-    fselect path from /home/user where size gt 2g
-    fselect path from /home/user where size = 5m
-    fselect path from /home/user where size lt 8k
+    fselect path, size from /home/user/tmp where size gt 2g
+    fselect path, fsize from /home/user/tmp where size = 5m
+    fselect path, hsize from /home/user/tmp where size lt 8k
     
 More complex query:
 
@@ -122,6 +122,7 @@ Finally limit the results:
 * `path`
 * `name`
 * `size`
+* `hsize` or `fsize`
 * `uid`
 * `gid`
 * `user`

@@ -6,6 +6,7 @@ use std::io;
 
 use chrono::DateTime;
 use chrono::Local;
+use humansize::{FileSize, file_size_opts};
 use regex::Regex;
 use term;
 use term::StdoutTerminal;
@@ -135,6 +136,11 @@ impl Searcher {
                 "size" => {
                     if let Some(ref attrs) = attrs {
                         println!("{}", attrs.len());
+                    }
+                },
+                "hsize" | "fsize" => {
+                    if let Some(ref attrs) = attrs {
+                        println!("{}", attrs.len().file_size(file_size_opts::BINARY).unwrap());
                     }
                 },
                 "is_dir" => {
@@ -410,7 +416,9 @@ impl Searcher {
                     },
                     None => { }
                 }
-            } else if field.to_ascii_lowercase() == "size" {
+            } else if field.to_ascii_lowercase() == "size" ||
+                field.to_ascii_lowercase() == "hsize" ||
+                field.to_ascii_lowercase() == "fsize" {
                 match expr.val {
                     Some(ref val) => {
                         if !meta.is_some() {
@@ -1384,6 +1392,13 @@ fn parse_filesize(s: &str) -> Option<u64> {
         }
     }
 
+    if string.ends_with("kib") {
+        match &string[..(s.len() - 3)].parse::<u64>() {
+            &Ok(size) => return Some(size * 1024),
+            _ => return None
+        }
+    }
+
     if string.ends_with("m") {
         match &string[..(s.len() - 1)].parse::<u64>() {
             &Ok(size) => return Some(size * 1024 * 1024),
@@ -1398,6 +1413,13 @@ fn parse_filesize(s: &str) -> Option<u64> {
         }
     }
 
+    if string.ends_with("mib") {
+        match &string[..(s.len() - 3)].parse::<u64>() {
+            &Ok(size) => return Some(size * 1024 * 1024),
+            _ => return None
+        }
+    }
+
     if string.ends_with("g") {
         match &string[..(s.len() - 1)].parse::<u64>() {
             &Ok(size) => return Some(size * 1024 * 1024 * 1024),
@@ -1407,6 +1429,13 @@ fn parse_filesize(s: &str) -> Option<u64> {
 
     if string.ends_with("gb") {
         match &string[..(s.len() - 2)].parse::<u64>() {
+            &Ok(size) => return Some(size * 1024 * 1024 * 1024),
+            _ => return None
+        }
+    }
+
+    if string.ends_with("gib") {
+        match &string[..(s.len() - 3)].parse::<u64>() {
             &Ok(size) => return Some(size * 1024 * 1024 * 1024),
             _ => return None
         }

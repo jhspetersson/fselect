@@ -1,5 +1,7 @@
 extern crate regex;
 
+use chrono::DateTime;
+use chrono::Local;
 use regex::Captures;
 use regex::Regex;
 
@@ -231,13 +233,12 @@ impl Parser {
                     match lexem3 {
                         Some(Lexem::String(ref s3)) | Some(Lexem::Field(ref s3)) => {
                             let op = Op::from(s2.to_string());
+                            let mut expr: Expr;
                             if let Some(Op::Rx) = op {
                                 let regex = Regex::new(&s3).unwrap();
-                                let expr = Expr::leaf_regex(s.to_string(), op, s3.to_string(), regex);
-
-                                Some(Box::new(expr))
+                                expr = Expr::leaf_regex(s.to_string(), op, s3.to_string(), regex);
                             } else {
-                                let expr = match is_glob(s3) {
+                                expr = match is_glob(s3) {
                                     true => {
                                         let pattern = convert_glob_to_pattern(s3);
                                         let regex = Regex::new(&pattern).unwrap();
@@ -246,9 +247,16 @@ impl Parser {
                                     },
                                     false => Expr::leaf(s.to_string(), op, s3.to_string())
                                 };
+                            };
 
-                                Some(Box::new(expr))
+                            if is_datetime_field(s) {
+                                if let Ok((dt_from, dt_to)) = parse_datetime(s3) {
+                                    expr.dt_from = Some(dt_from);
+                                    expr.dt_to = Some(dt_to);
+                                }
                             }
+
+                            Some(Box::new(expr))
                         },
                         _ => None
                     }
@@ -328,6 +336,73 @@ fn convert_glob_to_pattern(s: &str) -> String {
     format!("^(?i){}$", string)
 }
 
+fn is_datetime_field(s: &str) -> bool {
+    s.to_ascii_lowercase() == "created" ||
+        s.to_ascii_lowercase() == "accessed" ||
+        s.to_ascii_lowercase() == "modified"
+}
+
+fn parse_datetime(s: &str) -> Result<(DateTime<Local>, DateTime<Local>), &str> {
+    use chrono::TimeZone;
+
+    let regex = Regex::new("(\\d{4})-(\\d{1,2})-(\\d{1,2}) ?(\\d{1,2})?:?(\\d{1,2})?:?(\\d{1,2})?").unwrap();
+    match regex.captures(s) {
+        Some(cap) => {
+            let year: i32 = cap[1].parse().unwrap();
+            let month: u32 = cap[2].parse().unwrap();
+            let day: u32 = cap[3].parse().unwrap();
+
+            let hour_start: u32;
+            let hour_finish: u32;
+            match cap.get(4) {
+                Some(val) => {
+                    hour_start = val.as_str().parse().unwrap();
+                    hour_finish = hour_start;
+                },
+                None => {
+                    hour_start = 0;
+                    hour_finish = 23;
+                }
+            }
+
+            let min_start: u32;
+            let min_finish: u32;
+            match cap.get(5) {
+                Some(val) => {
+                    min_start = val.as_str().parse().unwrap();
+                    min_finish = min_start;
+                },
+                None => {
+                    min_start = 0;
+                    min_finish = 23;
+                }
+            }
+
+            let sec_start: u32;
+            let sec_finish: u32;
+            match cap.get(6) {
+                Some(val) => {
+                    sec_start = val.as_str().parse().unwrap();
+                    sec_finish = min_start;
+                },
+                None => {
+                    sec_start = 0;
+                    sec_finish = 23;
+                }
+            }
+
+            let date = Local.ymd(year, month, day);
+            let start = date.and_hms(hour_start, min_start, sec_start);
+            let finish = date.and_hms(hour_finish, min_finish, sec_finish);
+
+            Ok((start, finish))
+        },
+        None => {
+            Err("Error parsing date/time")
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Query {
     pub fields: Vec<String>,
@@ -362,6 +437,9 @@ pub struct Expr {
     pub op: Option<Op>,
     pub val: Option<String>,
     pub regex: Option<Regex>,
+
+    pub dt_from: Option<DateTime<Local>>,
+    pub dt_to: Option<DateTime<Local>>,
 }
 
 impl Expr {
@@ -375,6 +453,9 @@ impl Expr {
             op: None,
             val: None,
             regex: None,
+
+            dt_from: None,
+            dt_to: None,
         }
     }
 
@@ -388,6 +469,9 @@ impl Expr {
             op,
             val: Some(val),
             regex: None,
+
+            dt_from: None,
+            dt_to: None,
         }
     }
 
@@ -401,6 +485,9 @@ impl Expr {
             op,
             val: Some(val),
             regex: Some(regex),
+
+            dt_from: None,
+            dt_to: None,
         }
     }
 }

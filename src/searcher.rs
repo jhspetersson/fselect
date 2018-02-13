@@ -7,7 +7,6 @@ use std::io;
 use chrono::DateTime;
 use chrono::Local;
 use humansize::{FileSize, file_size_opts};
-use regex::Regex;
 use term;
 use term::StdoutTerminal;
 #[cfg(unix)]
@@ -1066,7 +1065,7 @@ impl Searcher {
                 }
             } else if field.to_ascii_lowercase() == "created" {
                 match expr.val {
-                    Some(ref val) => {
+                    Some(ref _val) => {
                         if !meta.is_some() {
                             let metadata = entry.metadata().unwrap();
                             meta = Some(Box::new(metadata));
@@ -1077,20 +1076,18 @@ impl Searcher {
                                 match metadata.created() {
                                     Ok(sdt) => {
                                         let dt: DateTime<Local> = DateTime::from(sdt);
-                                        match parse_datetime(val.as_str()) {
-                                            Ok((start, finish)) => {
-                                                result = match expr.op {
-                                                    Some(Op::Eq) => dt >= start && dt <= finish,
-                                                    Some(Op::Ne) => dt < start || dt > finish,
-                                                    Some(Op::Gt) => dt > finish,
-                                                    Some(Op::Gte) => dt >= start,
-                                                    Some(Op::Lt) => dt < start,
-                                                    Some(Op::Lte) => dt <= finish,
-                                                    _ => false
-                                                };
-                                            },
-                                            _ => { }
-                                        }
+                                        let start = expr.dt_from.unwrap();
+                                        let finish = expr.dt_to.unwrap();
+
+                                        result = match expr.op {
+                                            Some(Op::Eq) => dt >= start && dt <= finish,
+                                            Some(Op::Ne) => dt < start || dt > finish,
+                                            Some(Op::Gt) => dt > finish,
+                                            Some(Op::Gte) => dt >= start,
+                                            Some(Op::Lt) => dt < start,
+                                            Some(Op::Lte) => dt <= finish,
+                                            _ => false
+                                        };
                                     },
                                     _ => { }
                                 }
@@ -1102,7 +1099,7 @@ impl Searcher {
                 }
             } else if field.to_ascii_lowercase() == "accessed" {
                 match expr.val {
-                    Some(ref val) => {
+                    Some(ref _val) => {
                         if !meta.is_some() {
                             let metadata = entry.metadata().unwrap();
                             meta = Some(Box::new(metadata));
@@ -1113,20 +1110,18 @@ impl Searcher {
                                 match metadata.accessed() {
                                     Ok(sdt) => {
                                         let dt: DateTime<Local> = DateTime::from(sdt);
-                                        match parse_datetime(val.as_str()) {
-                                            Ok((start, finish)) => {
-                                                result = match expr.op {
-                                                    Some(Op::Eq) => dt >= start && dt <= finish,
-                                                    Some(Op::Ne) => dt < start || dt > finish,
-                                                    Some(Op::Gt) => dt > finish,
-                                                    Some(Op::Gte) => dt >= start,
-                                                    Some(Op::Lt) => dt < start,
-                                                    Some(Op::Lte) => dt <= finish,
-                                                    _ => false
-                                                };
-                                            },
-                                            _ => { }
-                                        }
+                                        let start = expr.dt_from.unwrap();
+                                        let finish = expr.dt_to.unwrap();
+
+                                        result = match expr.op {
+                                            Some(Op::Eq) => dt >= start && dt <= finish,
+                                            Some(Op::Ne) => dt < start || dt > finish,
+                                            Some(Op::Gt) => dt > finish,
+                                            Some(Op::Gte) => dt >= start,
+                                            Some(Op::Lt) => dt < start,
+                                            Some(Op::Lte) => dt <= finish,
+                                            _ => false
+                                        };
                                     },
                                     _ => { }
                                 }
@@ -1138,7 +1133,7 @@ impl Searcher {
                 }
             } else if field.to_ascii_lowercase() == "modified" {
                 match expr.val {
-                    Some(ref val) => {
+                    Some(ref _val) => {
                         if !meta.is_some() {
                             let metadata = entry.metadata().unwrap();
                             meta = Some(Box::new(metadata));
@@ -1149,20 +1144,18 @@ impl Searcher {
                                 match metadata.modified() {
                                     Ok(sdt) => {
                                         let dt: DateTime<Local> = DateTime::from(sdt);
-                                        match parse_datetime(val.as_str()) {
-                                            Ok((start, finish)) => {
-                                                result = match expr.op {
-                                                    Some(Op::Eq) => dt >= start && dt <= finish,
-                                                    Some(Op::Ne) => dt < start || dt > finish,
-                                                    Some(Op::Gt) => dt > finish,
-                                                    Some(Op::Gte) => dt >= start,
-                                                    Some(Op::Lt) => dt < start,
-                                                    Some(Op::Lte) => dt <= finish,
-                                                    _ => false
-                                                };
-                                            },
-                                            _ => { }
-                                        }
+                                        let start = expr.dt_from.unwrap();
+                                        let finish = expr.dt_to.unwrap();
+
+                                        result = match expr.op {
+                                            Some(Op::Eq) => dt >= start && dt <= finish,
+                                            Some(Op::Ne) => dt < start || dt > finish,
+                                            Some(Op::Gt) => dt > finish,
+                                            Some(Op::Gte) => dt >= start,
+                                            Some(Op::Lt) => dt < start,
+                                            Some(Op::Lte) => dt <= finish,
+                                            _ => false
+                                        };
                                     },
                                     _ => { }
                                 }
@@ -1311,67 +1304,6 @@ impl Searcher {
         }
 
         (result, meta)
-    }
-}
-
-fn parse_datetime(s: &str) -> Result<(DateTime<Local>, DateTime<Local>), &str> {
-    use chrono::TimeZone;
-
-    let regex = Regex::new("(\\d{4})-(\\d{1,2})-(\\d{1,2}) ?(\\d{1,2})?:?(\\d{1,2})?:?(\\d{1,2})?").unwrap();
-    match regex.captures(s) {
-        Some(cap) => {
-            let year: i32 = cap[1].parse().unwrap();
-            let month: u32 = cap[2].parse().unwrap();
-            let day: u32 = cap[3].parse().unwrap();
-
-            let hour_start: u32;
-            let hour_finish: u32;
-            match cap.get(4) {
-                Some(val) => {
-                    hour_start = val.as_str().parse().unwrap();
-                    hour_finish = hour_start;
-                },
-                None => {
-                    hour_start = 0;
-                    hour_finish = 23;
-                }
-            }
-
-            let min_start: u32;
-            let min_finish: u32;
-            match cap.get(5) {
-                Some(val) => {
-                    min_start = val.as_str().parse().unwrap();
-                    min_finish = min_start;
-                },
-                None => {
-                    min_start = 0;
-                    min_finish = 23;
-                }
-            }
-
-            let sec_start: u32;
-            let sec_finish: u32;
-            match cap.get(6) {
-                Some(val) => {
-                    sec_start = val.as_str().parse().unwrap();
-                    sec_finish = min_start;
-                },
-                None => {
-                    sec_start = 0;
-                    sec_finish = 23;
-                }
-            }
-
-            let date = Local.ymd(year, month, day);
-            let start = date.and_hms(hour_start, min_start, sec_start);
-            let finish = date.and_hms(hour_finish, min_finish, sec_finish);
-
-            Ok((start, finish))
-        },
-        None => {
-            Err("Error parsing date/time")
-        }
     }
 }
 

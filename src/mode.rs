@@ -33,19 +33,19 @@ fn get_mode_unix(mode: u32) -> String {
 
     // user
 
-    if mode & S_IRUSR == S_IRUSR {
+    if mode_user_read(mode) {
         s.push('r')
     } else {
         s.push('-');
     }
 
-    if mode & S_IWUSR == S_IWUSR {
+    if mode_user_write(mode) {
         s.push('w')
     } else {
         s.push('-');
     }
 
-    if mode & S_IXUSR == S_IXUSR {
+    if mode_user_exec(mode) {
         s.push('x')
     } else {
         s.push('-');
@@ -53,19 +53,19 @@ fn get_mode_unix(mode: u32) -> String {
 
     // group
 
-    if mode & S_IRGRP == S_IRGRP {
+    if mode_group_read(mode) {
         s.push('r')
     } else {
         s.push('-');
     }
 
-    if mode & S_IWGRP == S_IWGRP {
+    if mode_group_write(mode) {
         s.push('w')
     } else {
         s.push('-');
     }
 
-    if mode & S_IXGRP == S_IXGRP {
+    if mode_group_exec(mode) {
         s.push('x')
     } else {
         s.push('-');
@@ -73,19 +73,19 @@ fn get_mode_unix(mode: u32) -> String {
 
     // other
 
-    if mode & S_IROTH == S_IROTH {
+    if mode_other_read(mode) {
         s.push('r')
     } else {
         s.push('-');
     }
 
-    if mode & S_IWOTH == S_IWOTH {
+    if mode_other_write(mode) {
         s.push('w')
     } else {
         s.push('-');
     }
 
-    if mode & S_IXOTH == S_IXOTH {
+    if mode_other_exec(mode) {
         s.push('x')
     } else {
         s.push('-');
@@ -109,65 +109,101 @@ fn get_mode_unix_int(meta: &Box<Metadata>) -> Option<u32> {
 
 pub fn user_read(meta: &Box<Metadata>) -> bool {
     match get_mode_unix_int(meta) {
-        Some(mode) => mode & S_IRUSR == S_IRUSR,
+        Some(mode) => mode_user_read(mode),
         None => false
     }
+}
+
+pub fn mode_user_read(mode: u32) -> bool {
+    mode & S_IRUSR == S_IRUSR
 }
 
 pub fn user_write(meta: &Box<Metadata>) -> bool {
     match get_mode_unix_int(meta) {
-        Some(mode) => mode & S_IWUSR == S_IWUSR,
+        Some(mode) => mode_user_write(mode),
         None => false
     }
+}
+
+pub fn mode_user_write(mode: u32) -> bool {
+    mode & S_IWUSR == S_IWUSR
 }
 
 pub fn user_exec(meta: &Box<Metadata>) -> bool {
     match get_mode_unix_int(meta) {
-        Some(mode) => mode & S_IXUSR == S_IXUSR,
+        Some(mode) => mode_user_exec(mode),
         None => false
     }
+}
+
+pub fn mode_user_exec(mode: u32) -> bool {
+    mode & S_IXUSR == S_IXUSR
 }
 
 pub fn group_read(meta: &Box<Metadata>) -> bool {
     match get_mode_unix_int(meta) {
-        Some(mode) => mode & S_IRGRP == S_IRGRP,
+        Some(mode) => mode_group_read(mode),
         None => false
     }
+}
+
+pub fn mode_group_read(mode: u32) -> bool {
+    mode & S_IRGRP == S_IRGRP
 }
 
 pub fn group_write(meta: &Box<Metadata>) -> bool {
     match get_mode_unix_int(meta) {
-        Some(mode) => mode & S_IWGRP == S_IWGRP,
+        Some(mode) => mode_group_write(mode),
         None => false
     }
+}
+
+pub fn mode_group_write(mode: u32) -> bool {
+    mode & S_IWGRP == S_IWGRP
 }
 
 pub fn group_exec(meta: &Box<Metadata>) -> bool {
     match get_mode_unix_int(meta) {
-        Some(mode) => mode & S_IXGRP == S_IXGRP,
+        Some(mode) => mode_group_exec(mode),
         None => false
     }
+}
+
+pub fn mode_group_exec(mode: u32) -> bool {
+    mode & S_IXGRP == S_IXGRP
 }
 
 pub fn other_read(meta: &Box<Metadata>) -> bool {
     match get_mode_unix_int(meta) {
-        Some(mode) => mode & S_IROTH == S_IROTH,
+        Some(mode) => mode_other_read(mode),
         None => false
     }
+}
+
+pub fn mode_other_read(mode: u32) -> bool {
+    mode & S_IROTH == S_IROTH
 }
 
 pub fn other_write(meta: &Box<Metadata>) -> bool {
     match get_mode_unix_int(meta) {
-        Some(mode) => mode & S_IWOTH == S_IWOTH,
+        Some(mode) => mode_other_write(mode),
         None => false
     }
 }
 
+pub fn mode_other_write(mode: u32) -> bool {
+    mode & S_IWOTH == S_IWOTH
+}
+
 pub fn other_exec(meta: &Box<Metadata>) -> bool {
     match get_mode_unix_int(meta) {
-        Some(mode) => mode & S_IXOTH == S_IXOTH,
+        Some(mode) => mode_other_exec(),
         None => false
     }
+}
+
+pub fn mode_other_exec(mode: u32) -> bool {
+    mode & S_IXOTH == S_IXOTH
 }
 
 const S_IRUSR: u32 = 400;

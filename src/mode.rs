@@ -94,7 +94,7 @@ fn get_mode_unix(mode: u32) -> String {
     s
 }
 
-fn get_mode_unix_int(meta: &Box<Metadata>) -> Option<u32> {
+pub fn get_mode_from_boxed_unix_int(meta: &Box<Metadata>) -> Option<u32> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::MetadataExt;
@@ -108,7 +108,7 @@ fn get_mode_unix_int(meta: &Box<Metadata>) -> Option<u32> {
 }
 
 pub fn user_read(meta: &Box<Metadata>) -> bool {
-    match get_mode_unix_int(meta) {
+    match get_mode_from_boxed_unix_int(meta) {
         Some(mode) => mode_user_read(mode),
         None => false
     }
@@ -119,7 +119,7 @@ pub fn mode_user_read(mode: u32) -> bool {
 }
 
 pub fn user_write(meta: &Box<Metadata>) -> bool {
-    match get_mode_unix_int(meta) {
+    match get_mode_from_boxed_unix_int(meta) {
         Some(mode) => mode_user_write(mode),
         None => false
     }
@@ -130,7 +130,7 @@ pub fn mode_user_write(mode: u32) -> bool {
 }
 
 pub fn user_exec(meta: &Box<Metadata>) -> bool {
-    match get_mode_unix_int(meta) {
+    match get_mode_from_boxed_unix_int(meta) {
         Some(mode) => mode_user_exec(mode),
         None => false
     }
@@ -141,7 +141,7 @@ pub fn mode_user_exec(mode: u32) -> bool {
 }
 
 pub fn group_read(meta: &Box<Metadata>) -> bool {
-    match get_mode_unix_int(meta) {
+    match get_mode_from_boxed_unix_int(meta) {
         Some(mode) => mode_group_read(mode),
         None => false
     }
@@ -152,7 +152,7 @@ pub fn mode_group_read(mode: u32) -> bool {
 }
 
 pub fn group_write(meta: &Box<Metadata>) -> bool {
-    match get_mode_unix_int(meta) {
+    match get_mode_from_boxed_unix_int(meta) {
         Some(mode) => mode_group_write(mode),
         None => false
     }
@@ -163,7 +163,7 @@ pub fn mode_group_write(mode: u32) -> bool {
 }
 
 pub fn group_exec(meta: &Box<Metadata>) -> bool {
-    match get_mode_unix_int(meta) {
+    match get_mode_from_boxed_unix_int(meta) {
         Some(mode) => mode_group_exec(mode),
         None => false
     }
@@ -174,7 +174,7 @@ pub fn mode_group_exec(mode: u32) -> bool {
 }
 
 pub fn other_read(meta: &Box<Metadata>) -> bool {
-    match get_mode_unix_int(meta) {
+    match get_mode_from_boxed_unix_int(meta) {
         Some(mode) => mode_other_read(mode),
         None => false
     }
@@ -185,7 +185,7 @@ pub fn mode_other_read(mode: u32) -> bool {
 }
 
 pub fn other_write(meta: &Box<Metadata>) -> bool {
-    match get_mode_unix_int(meta) {
+    match get_mode_from_boxed_unix_int(meta) {
         Some(mode) => mode_other_write(mode),
         None => false
     }
@@ -196,7 +196,7 @@ pub fn mode_other_write(mode: u32) -> bool {
 }
 
 pub fn other_exec(meta: &Box<Metadata>) -> bool {
-    match get_mode_unix_int(meta) {
+    match get_mode_from_boxed_unix_int(meta) {
         Some(mode) => mode_other_exec(mode),
         None => false
     }

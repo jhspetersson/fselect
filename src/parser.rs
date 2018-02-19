@@ -73,7 +73,7 @@ impl Parser {
 
     fn parse_roots(&mut self) -> Vec<Root> {
         enum RootParsingMode {
-            Unknown, From, Root, Depth, DepthValue, Comma
+            Unknown, From, Root, Depth, DepthValue, Archives, Comma
         }
 
         let mut roots: Vec<Root> = Vec::new();
@@ -100,6 +100,7 @@ impl Parser {
         if let RootParsingMode::From = mode {
             let mut path: String = String::from("");
             let mut depth: u32 = 0;
+            let mut archives = false;
 
             loop {
                 let lexem = self.get_lexem();
@@ -115,6 +116,9 @@ impl Parser {
                                     RootParsingMode::Root => {
                                         if s.to_ascii_lowercase() == "depth" {
                                             mode = RootParsingMode::Depth;
+                                        } else if s.to_ascii_lowercase().starts_with("arc") {
+                                            archives = true;
+                                            mode = RootParsingMode::Archives;
                                         } else {
                                             self.drop_lexem();
                                             break;
@@ -133,15 +137,33 @@ impl Parser {
                                             }
                                         }
                                     },
+                                    RootParsingMode::DepthValue => {
+                                        if s.to_ascii_lowercase().starts_with("arc") {
+                                            archives = true;
+                                            mode = RootParsingMode::Archives;
+                                        } else {
+                                            self.drop_lexem();
+                                            break;
+                                        }
+                                    },
+                                    RootParsingMode::Archives => {
+                                        if s.to_ascii_lowercase() == "depth" {
+                                            mode = RootParsingMode::Depth;
+                                        } else {
+                                            self.drop_lexem();
+                                            break;
+                                        }
+                                    },
                                     _ => { }
                                 }
                             },
                             &Lexem::Comma => {
                                 if path.len() > 0 {
-                                    roots.push(Root::new(path, depth));
+                                    roots.push(Root::new(path, depth, archives));
 
                                     path = String::from("");
                                     depth = 0;
+                                    archives = false;
 
                                     mode = RootParsingMode::Comma;
                                 } else {
@@ -151,7 +173,11 @@ impl Parser {
                             },
                             _ => {
                                 if path.len() > 0 {
-                                    roots.push(Root::new(path, depth));
+                                    roots.push(Root::new(path, depth, archives));
+
+                                    path = String::from("");
+                                    depth = 0;
+                                    archives = false;
                                 }
 
                                 self.drop_lexem();
@@ -161,7 +187,11 @@ impl Parser {
                     },
                     None => {
                         if path.len() > 0 {
-                            roots.push(Root::new(path, depth));
+                            roots.push(Root::new(path, depth, archives));
+
+                            path = String::from("");
+                            depth = 0;
+                            archives = false;
                         }
                         break;
                     }
@@ -419,8 +449,8 @@ pub struct Root {
 }
 
 impl Root {
-    fn new(path: String, depth: u32) -> Root {
-        Root { path, depth, archives: false }
+    fn new(path: String, depth: u32, archives: bool) -> Root {
+        Root { path, depth, archives }
     }
 
     fn default() -> Root {

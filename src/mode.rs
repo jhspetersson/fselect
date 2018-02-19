@@ -197,7 +197,7 @@ pub fn mode_other_write(mode: u32) -> bool {
 
 pub fn other_exec(meta: &Box<Metadata>) -> bool {
     match get_mode_unix_int(meta) {
-        Some(mode) => mode_other_exec(),
+        Some(mode) => mode_other_exec(mode),
         None => false
     }
 }

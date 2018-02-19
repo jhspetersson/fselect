@@ -1,24 +1,31 @@
 use std::fs::Metadata;
 
 pub fn get_mode(meta: &Box<Metadata>) -> String {
-    let mode: u32;
-    let mut mode_str = String::new();
-
     #[cfg(unix)]
     {
         use std::os::unix::fs::MetadataExt;
-        mode = meta.mode();
-        mode_str.push_str(&get_mode_unix(mode));
+        format_mode(meta.mode())
     }
 
     #[cfg(windows)]
     {
         use std::os::windows::fs::MetadataExt;
-        mode = meta.file_attributes();
-        mode_str.push_str(&get_mode_windows(mode));
+        format_mode(meta.file_attributes())
+    }
+}
+
+pub fn format_mode(mode: u32) -> String {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        get_mode_unix(mode)
     }
 
-    mode_str
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::MetadataExt;
+        get_mode_windows(mode)
+    }
 }
 
 fn get_mode_unix(mode: u32) -> String {

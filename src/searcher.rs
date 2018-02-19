@@ -11,6 +11,7 @@ use term;
 use term::StdoutTerminal;
 #[cfg(unix)]
 use users::{Groups, Users, UsersCache};
+use zip;
 
 use mode;
 use parser::Query;
@@ -40,7 +41,8 @@ impl Searcher {
         for root in &self.query.clone().roots {
             let root_dir = Path::new(&root.path);
             let max_depth = root.depth;
-            let _result = self.visit_dirs(root_dir, need_metadata, max_depth, 1, t);
+            let search_archives = root.archives;
+            let _result = self.visit_dirs(root_dir, need_metadata, max_depth, 1, search_archives, t);
         }
 
         Ok(())
@@ -51,6 +53,7 @@ impl Searcher {
                   need_metadata: bool,
                   max_depth: u32,
                   depth: u32,
+                  search_archives: bool,
                   t: &mut Box<StdoutTerminal>) -> io::Result<()> {
         if max_depth == 0 || (max_depth > 0 && depth <= max_depth) {
             let metadata = dir.metadata();
@@ -67,9 +70,24 @@ impl Searcher {
                                     match entry {
                                         Ok(entry) => {
                                             let path = entry.path();
-                                            self.check_file(&entry, need_metadata);
+
+                                            self.check_file(&entry, &None, need_metadata);
+
+                                            if search_archives && is_zip_archive(&path.to_string_lossy()) {
+                                                if let Ok(file) = fs::File::open(&path) {
+                                                    if let Ok(mut archive) = zip::ZipArchive::new(file) {
+                                                        for i in 0..archive.len() {
+                                                            if let Ok(afile) = archive.by_index(i) {
+                                                                let file_info = to_file_info(&afile);
+                                                                self.check_file(&entry, &Some(file_info), need_metadata);
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+
                                             if path.is_dir() {
-                                                let result = self.visit_dirs(&path, need_metadata, max_depth, depth + 1, t);
+                                                let result = self.visit_dirs(&path, need_metadata, max_depth, depth + 1, search_archives, t);
                                                 if result.is_err() {
                                                     error_message(&path, result.err().unwrap(), t);
                                                 }
@@ -96,10 +114,10 @@ impl Searcher {
         Ok(())
     }
 
-    fn check_file(&mut self, entry: &DirEntry, need_metadata: bool) {
+    fn check_file(&mut self, entry: &DirEntry, file_info: &Option<FileInfo>, need_metadata: bool) {
         let mut meta = None;
         if let Some(ref expr) = self.query.expr.clone() {
-            let (result, entry_meta) = self.conforms(entry, expr, None);
+            let (result, entry_meta) = self.conforms(entry, file_info, expr, None);
             if !result {
                 return
             }
@@ -127,34 +145,85 @@ impl Searcher {
         for field in self.query.fields.iter() {
             match field.as_str() {
                 "name" => {
-                    println!("{}", entry.file_name().to_string_lossy())
+                    match file_info {
+                        &Some(ref file_info) => {
+                            println!("[{}] {}", entry.path().to_string_lossy(), file_info.name)
+                        },
+                        _ => {
+                            println!("{}", entry.file_name().to_string_lossy())
+                        }
+                    }
                 },
                 "path" => {
-                    println!("{}", entry.path().to_string_lossy())
+                    match file_info {
+                        &Some(ref file_info) => {
+                            println!("[{}] {}", entry.path().to_string_lossy(), file_info.name)
+                        },
+                        _ => {
+                            println!("{}", entry.path().to_string_lossy())
+                        }
+                    }
                 },
                 "size" => {
-                    if let Some(ref attrs) = attrs {
-                        println!("{}", attrs.len());
+                    match file_info {
+                        &Some(ref file_info) => {
+                            println!("{}", file_info.size)
+                        },
+                        _ => {
+                            if let Some(ref attrs) = attrs {
+                                println!("{}", attrs.len());
+                            }
+                        }
                     }
                 },
                 "hsize" | "fsize" => {
-                    if let Some(ref attrs) = attrs {
-                        println!("{}", attrs.len().file_size(file_size_opts::BINARY).unwrap());
+                    match file_info {
+                        &Some(ref file_info) => {
+                            println!("{}", file_info.size.file_size(file_size_opts::BINARY).unwrap())
+                        },
+                        _ => {
+                            if let Some(ref attrs) = attrs {
+                                println!("{}", attrs.len().file_size(file_size_opts::BINARY).unwrap());
+                            }
+                        }
                     }
                 },
                 "is_dir" => {
-                    if let Some(ref attrs) = attrs {
-                        println!("{}", attrs.is_dir());
+                    match file_info {
+                        &Some(ref file_info) => {
+                            //TODO
+                        },
+                        _ => {
+                            if let Some(ref attrs) = attrs {
+                                println!("{}", attrs.is_dir());
+                            }
+                        }
                     }
                 },
                 "is_file" => {
-                    if let Some(ref attrs) = attrs {
-                        println!("{}", attrs.is_file());
+                    match file_info {
+                        &Some(ref file_info) => {
+                            //TODO
+                        },
+                        _ => {
+                            if let Some(ref attrs) = attrs {
+                                println!("{}", attrs.is_file());
+                            }
+                        }
                     }
                 },
                 "mode" => {
-                    if let Some(ref attrs) = attrs {
-                        println!("{}", mode::get_mode(attrs));
+                    match file_info {
+                        &Some(ref file_info) => {
+                            if let Some(mode) = file_info.mode {
+                                println!("{}", mode::format_mode(mode));
+                            }
+                        },
+                        _ => {
+                            if let Some(ref attrs) = attrs {
+                                println!("{}", mode::get_mode(attrs));
+                            }
+                        }
                     }
                 },
                 "user_read" => {
@@ -313,6 +382,7 @@ impl Searcher {
 
     fn conforms(&mut self,
                 entry: &DirEntry,
+                file_info: &Option<FileInfo>,
                 expr: &Box<Expr>,
                 entry_meta: Option<Box<fs::Metadata>>) -> (bool, Option<Box<fs::Metadata>>) {
         let mut result = false;
@@ -323,7 +393,7 @@ impl Searcher {
             let mut right_result = false;
 
             if let Some(ref left) = expr.left {
-                let (left_res, left_meta) = self.conforms(entry, &left, meta);
+                let (left_res, left_meta) = self.conforms(entry, file_info, &left, meta);
                 left_result = left_res;
                 meta = left_meta;
             }
@@ -334,7 +404,7 @@ impl Searcher {
                         result = false;
                     } else {
                         if let Some(ref right) = expr.right {
-                            let (right_res, right_meta) = self.conforms(entry, &right, meta);
+                            let (right_res, right_meta) = self.conforms(entry, file_info, &right, meta);
                             right_result = right_res;
                             meta = right_meta;
                         }
@@ -347,7 +417,7 @@ impl Searcher {
                         result = true;
                     } else {
                         if let Some(ref right) = expr.right {
-                            let (right_res, right_meta) = self.conforms(entry, &right, meta);
+                            let (right_res, right_meta) = self.conforms(entry, file_info, &right, meta);
                             right_result = right_res;
                             meta = right_meta;
                         }
@@ -1379,6 +1449,12 @@ fn parse_filesize(s: &str) -> Option<u64> {
     }
 }
 
+const ZIP_ARCHIVE: &'static [&'static str] = &[".zip", ".jar", ".war", ".ear" ];
+
+fn is_zip_archive(file_name: &str) -> bool {
+    has_extension(file_name, &ZIP_ARCHIVE)
+}
+
 const ARCHIVE: &'static [&'static str] = &[".7zip", ".bzip2", ".gz", ".gzip", ".rar", ".tar", ".xz", ".zip"];
 
 fn is_archive(file_name: &str) -> bool {
@@ -1431,6 +1507,20 @@ fn error_message(p: &Path, e: io::Error, t: &mut Box<StdoutTerminal>) {
     t.fg(term::color::RED).unwrap();
     eprintln!("{}", e.description());
     t.reset().unwrap();
+}
+
+struct FileInfo {
+    name: String,
+    size: u64,
+    mode: Option<u32>,
+}
+
+fn to_file_info(zipped_file: &zip::read::ZipFile) -> FileInfo {
+    FileInfo {
+        name: zipped_file.name().to_string(),
+        size: zipped_file.size(),
+        mode: zipped_file.unix_mode(),
+    }
 }
 
 #[cfg(windows)]

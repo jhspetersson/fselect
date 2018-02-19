@@ -415,15 +415,16 @@ pub struct Query {
 pub struct Root {
     pub path: String,
     pub depth: u32,
+    pub archives: bool,
 }
 
 impl Root {
     fn new(path: String, depth: u32) -> Root {
-        Root { path, depth }
+        Root { path, depth, archives: false }
     }
 
     fn default() -> Root {
-        Root { path: String::from("."), depth: 0 }
+        Root { path: String::from("."), depth: 0, archives: false }
     }
 }
 

@@ -4,6 +4,7 @@ extern crate regex;
 extern crate term;
 #[cfg(unix)]
 extern crate users;
+extern crate zip;
 
 use std::env;
 

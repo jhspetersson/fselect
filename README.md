@@ -7,6 +7,7 @@ While it doesn't tend to fully replace traditional `find` and `ls`, **fselect** 
 
 * complex queries
 * SQL-like (not real SQL, but highly relaxed!) grammar easily understandable by humans
+* search within archives
 * shortcuts to common file types
 
 More is under way!
@@ -87,6 +88,14 @@ With maximum depth specified:
 
     fselect path from /home/user/oldstuff depth 5 where name = *.jpg
     fselect path from /home/user/oldstuff depth 5, /home/user/newstuff depth 10 where name = *.jpg
+    
+Search within archives (currently only zip-archives are supported):
+
+    fselect path, size from /home/user archives where name = *.jpg
+    
+Or in combination:
+
+    fselect path, size from /home/user depth 5 archives where name = *.jpg limit 100    
     
 Shortcuts to common file extensions:
 

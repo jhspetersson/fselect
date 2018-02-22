@@ -7,6 +7,7 @@ use std::io;
 use chrono::DateTime;
 use chrono::Local;
 use humansize::{FileSize, file_size_opts};
+use imagesize;
 use term;
 use term::StdoutTerminal;
 #[cfg(unix)]
@@ -38,11 +39,25 @@ impl Searcher {
         let need_metadata = self.query.fields.iter()
             .filter(|s| s.as_str().ne("name")).count() > 0;
 
+        let need_dim = self.query.fields.iter()
+            .filter(|s| {
+                let str = s.as_str();
+                str.eq("width") || str.eq("height")
+            }).count() > 0;
+
         for root in &self.query.clone().roots {
             let root_dir = Path::new(&root.path);
             let max_depth = root.depth;
             let search_archives = root.archives;
-            let _result = self.visit_dirs(root_dir, need_metadata, max_depth, 1, search_archives, t);
+            let _result = self.visit_dirs(
+                root_dir,
+                need_metadata,
+                need_dim,
+                max_depth,
+                1,
+                search_archives,
+                t
+            );
         }
 
         Ok(())
@@ -51,6 +66,7 @@ impl Searcher {
     fn visit_dirs(&mut self,
                   dir: &Path,
                   need_metadata: bool,
+                  need_dim: bool,
                   max_depth: u32,
                   depth: u32,
                   search_archives: bool,
@@ -71,7 +87,7 @@ impl Searcher {
                                         Ok(entry) => {
                                             let path = entry.path();
 
-                                            self.check_file(&entry, &None, need_metadata);
+                                            self.check_file(&entry, &None, need_metadata, need_dim);
 
                                             if search_archives && is_zip_archive(&path.to_string_lossy()) {
                                                 if let Ok(file) = fs::File::open(&path) {
@@ -83,7 +99,7 @@ impl Searcher {
 
                                                             if let Ok(afile) = archive.by_index(i) {
                                                                 let file_info = to_file_info(&afile);
-                                                                self.check_file(&entry, &Some(file_info), need_metadata);
+                                                                self.check_file(&entry, &Some(file_info), need_metadata, need_dim);
                                                             }
                                                         }
                                                     }
@@ -91,7 +107,7 @@ impl Searcher {
                                             }
 
                                             if path.is_dir() {
-                                                let result = self.visit_dirs(&path, need_metadata, max_depth, depth + 1, search_archives, t);
+                                                let result = self.visit_dirs(&path, need_metadata, need_dim, max_depth, depth + 1, search_archives, t);
                                                 if result.is_err() {
                                                     error_message(&path, result.err().unwrap(), t);
                                                 }
@@ -118,15 +134,21 @@ impl Searcher {
         Ok(())
     }
 
-    fn check_file(&mut self, entry: &DirEntry, file_info: &Option<FileInfo>, need_metadata: bool) {
+    fn check_file(&mut self,
+                  entry: &DirEntry,
+                  file_info: &Option<FileInfo>,
+                  need_metadata: bool,
+                  need_dim: bool) {
         let mut meta = None;
+        let mut dim = None;
         if let Some(ref expr) = self.query.expr.clone() {
-            let (result, entry_meta) = self.conforms(entry, file_info, expr, None);
+            let (result, entry_meta, entry_dim) = self.conforms(entry, file_info, expr, None, None);
             if !result {
                 return
             }
 
             meta = entry_meta;
+            dim = entry_dim;
         }
 
         self.found += 1;
@@ -139,6 +161,20 @@ impl Searcher {
                     let result = fs::metadata(entry.path());
                     match result {
                         Ok(meta) => Some(Box::new(meta)),
+                        _ => None
+                    }
+                }
+            },
+            false => None
+        };
+
+        let dimensions = match need_dim {
+            true => {
+                if dim.is_some() {
+                    dim
+                } else {
+                    match imagesize::size(entry.path()) {
+                        Ok(imgsize) => Some((imgsize.width, imgsize.height)),
                         _ => None
                     }
                 }
@@ -438,6 +474,16 @@ impl Searcher {
                         }
                     }
                 },
+                "width" => {
+                    if let Some(ref dimensions) = dimensions {
+                        println!("{}", dimensions.0);
+                    }
+                },
+                "height" => {
+                    if let Some(ref dimensions) = dimensions {
+                        println!("{}", dimensions.1);
+                    }
+                },
                 "is_archive" => {
                     let is_archive = is_archive(&entry.file_name().to_string_lossy());
                     println!("{}", is_archive);
@@ -469,18 +515,21 @@ impl Searcher {
                 entry: &DirEntry,
                 file_info: &Option<FileInfo>,
                 expr: &Box<Expr>,
-                entry_meta: Option<Box<fs::Metadata>>) -> (bool, Option<Box<fs::Metadata>>) {
+                entry_meta: Option<Box<fs::Metadata>>,
+                entry_dim: Option<(usize, usize)>) -> (bool, Option<Box<fs::Metadata>>, Option<(usize, usize)>) {
         let mut result = false;
         let mut meta = entry_meta;
+        let mut dim = entry_dim;
 
         if let Some(ref logical_op) = expr.logical_op {
             let mut left_result = false;
             let mut right_result = false;
 
             if let Some(ref left) = expr.left {
-                let (left_res, left_meta) = self.conforms(entry, file_info, &left, meta);
+                let (left_res, left_meta, left_dim) = self.conforms(entry, file_info, &left, meta, dim);
                 left_result = left_res;
                 meta = left_meta;
+                dim = left_dim;
             }
 
             match logical_op {
@@ -489,9 +538,10 @@ impl Searcher {
                         result = false;
                     } else {
                         if let Some(ref right) = expr.right {
-                            let (right_res, right_meta) = self.conforms(entry, file_info, &right, meta);
+                            let (right_res, right_meta, right_dim) = self.conforms(entry, file_info, &right, meta, dim);
                             right_result = right_res;
                             meta = right_meta;
+                            dim = right_dim;
                         }
 
                         result = left_result && right_result;
@@ -502,9 +552,10 @@ impl Searcher {
                         result = true;
                     } else {
                         if let Some(ref right) = expr.right {
-                            let (right_res, right_meta) = self.conforms(entry, file_info, &right, meta);
+                            let (right_res, right_meta, right_dim) = self.conforms(entry, file_info, &right, meta, dim);
                             right_result = right_res;
                             meta = right_meta;
+                            dim = right_dim;
                         }
 
                         result = left_result || right_result
@@ -627,7 +678,7 @@ impl Searcher {
                 }
             } else if field.to_ascii_lowercase() == "uid" {
                 if file_info.is_some() {
-                    return (false, meta)
+                    return (false, meta, dim)
                 }
 
                 match expr.val {
@@ -668,7 +719,7 @@ impl Searcher {
                 }
             } else if field.to_ascii_lowercase() == "user" {
                 if file_info.is_some() {
-                    return (false, meta)
+                    return (false, meta, dim)
                 }
 
                 match expr.val {
@@ -721,7 +772,7 @@ impl Searcher {
                 }
             } else if field.to_ascii_lowercase() == "gid" {
                 if file_info.is_some() {
-                    return (false, meta)
+                    return (false, meta, dim)
                 }
 
                 match expr.val {
@@ -762,7 +813,7 @@ impl Searcher {
                 }
             } else if field.to_ascii_lowercase() == "group" {
                 if file_info.is_some() {
-                    return (false, meta)
+                    return (false, meta, dim)
                 }
 
                 match expr.val {
@@ -1307,7 +1358,7 @@ impl Searcher {
                 }
             } else if field.to_ascii_lowercase() == "created" {
                 if file_info.is_some() {
-                    return (false, meta)
+                    return (false, meta, dim)
                 }
 
                 match expr.val {
@@ -1345,7 +1396,7 @@ impl Searcher {
                 }
             } else if field.to_ascii_lowercase() == "accessed" {
                 if file_info.is_some() {
-                    return (false, meta)
+                    return (false, meta, dim)
                 }
 
                 match expr.val {
@@ -1383,7 +1434,7 @@ impl Searcher {
                 }
             } else if field.to_ascii_lowercase() == "modified" {
                 if file_info.is_some() {
-                    return (false, meta)
+                    return (false, meta, dim)
                 }
 
                 match expr.val {
@@ -1408,6 +1459,88 @@ impl Searcher {
                                             Some(Op::Gte) => dt >= start,
                                             Some(Op::Lt) => dt < start,
                                             Some(Op::Lte) => dt <= finish,
+                                            _ => false
+                                        };
+                                    },
+                                    _ => { }
+                                }
+                            },
+                            None => { }
+                        }
+                    },
+                    None => { }
+                }
+            } else if field.to_ascii_lowercase() == "width" {
+                if file_info.is_some() {
+                    return (false, meta, dim)
+                }
+
+                if !is_image_dim_readable(&entry.file_name().to_string_lossy()) {
+                    return (false, meta, dim)
+                }
+
+                match expr.val {
+                    Some(ref val) => {
+                        if !dim.is_some() {
+                            dim = match imagesize::size(entry.path()) {
+                                Ok(dimensions) => Some((dimensions.width, dimensions.height)),
+                                _ => None
+                            };
+                        }
+
+                        match dim {
+                            Some((width, _)) => {
+                                let val = val.parse::<usize>();
+                                match val {
+                                    Ok(val) => {
+                                        result = match expr.op {
+                                            Some(Op::Eq) => width == val,
+                                            Some(Op::Ne) => width != val,
+                                            Some(Op::Gt) => width > val,
+                                            Some(Op::Gte) => width >= val,
+                                            Some(Op::Lt) => width < val,
+                                            Some(Op::Lte) => width <= val,
+                                            _ => false
+                                        };
+                                    },
+                                    _ => { }
+                                }
+                            },
+                            None => { }
+                        }
+                    },
+                    None => { }
+                }
+            } else if field.to_ascii_lowercase() == "height" {
+                if file_info.is_some() {
+                    return (false, meta, dim)
+                }
+
+                if !is_image_dim_readable(&entry.file_name().to_string_lossy()) {
+                    return (false, meta, dim)
+                }
+
+                match expr.val {
+                    Some(ref val) => {
+                        if !dim.is_some() {
+                            dim = match imagesize::size(entry.path()) {
+                                Ok(dimensions) => Some((dimensions.width, dimensions.height)),
+                                _ => None
+                            };
+                        }
+
+                        match dim {
+                            Some((_, height)) => {
+                                let val = val.parse::<usize>();
+                                match val {
+                                    Ok(val) => {
+                                        result = match expr.op {
+                                            Some(Op::Eq) => height == val,
+                                            Some(Op::Ne) => height != val,
+                                            Some(Op::Gt) => height > val,
+                                            Some(Op::Gte) => height >= val,
+                                            Some(Op::Lt) => height < val,
+                                            Some(Op::Lte) => height <= val,
                                             _ => false
                                         };
                                     },
@@ -1577,7 +1710,7 @@ impl Searcher {
             }
         }
 
-        (result, meta)
+        (result, meta, dim)
     }
 }
 
@@ -1677,10 +1810,16 @@ fn is_doc(file_name: &str) -> bool {
     has_extension(file_name, &DOC)
 }
 
-const IMAGE: &'static [&'static str] = &[".bmp", ".gif", ".jpeg", ".jpg", ".png", ".tiff"];
+const IMAGE: &'static [&'static str] = &[".bmp", ".gif", ".jpeg", ".jpg", ".png", ".tiff", ".webp"];
 
 fn is_image(file_name: &str) -> bool {
     has_extension(file_name, &IMAGE)
+}
+
+const IMAGE_DIM: &'static [&'static str] = &[".bmp", ".gif", ".jpeg", ".jpg", ".png", ".webp"];
+
+fn is_image_dim_readable(file_name: &str) -> bool {
+    has_extension(file_name, &IMAGE_DIM)
 }
 
 const VIDEO: &'static [&'static str] = &[".3gp", ".avi", ".flv", ".m4p", ".m4v", ".mkv", ".mov", ".mp4", ".mpeg", ".mpg", ".webm", ".wmv"];

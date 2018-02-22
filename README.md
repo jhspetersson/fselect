@@ -8,6 +8,7 @@ While it doesn't tend to fully replace traditional `find` and `ls`, **fselect** 
 * complex queries
 * SQL-like (not real SQL, but highly relaxed!) grammar easily understandable by humans
 * search within archives
+* search by width and height of images
 * shortcuts to common file types
 
 More is under way!
@@ -97,6 +98,10 @@ Or in combination:
 
     fselect path, size from /home/user depth 5 archives where name = *.jpg limit 100    
     
+Search by image dimensions:
+
+    fselect path, width, height from /home/user/photos where width gte 2000 or height gte 2000
+    
 Shortcuts to common file extensions:
 
     fselect path from /home/user where is_archive = true
@@ -151,6 +156,8 @@ Finally limit the results:
 * `other_read`
 * `other_write`
 * `other_exec`
+* `width`
+* `height`
 * `is_archive`
 * `is_audio`
 * `is_doc`
@@ -178,7 +185,7 @@ Finally limit the results:
 * is_archive: `.7zip`, `.bzip2`, `.gz`, `.gzip`, `.rar`, `.tar`, `.xz`, `.zip`
 * is_audio: `.aac`, `.aiff`, `.amr`, `.flac`, `.gsm`, `.m4a`, `.m4b`, `.m4p`, `.mp3`, `.ogg`, `.wav`, `.wma`
 * is_doc: `.accdb`, `.doc`, `.docx`, `.dot`, `.dotx`, `.mdb`, `.ods`, `.odt`, `.pdf`, `.ppt`, `.pptx`, `.rtf`, `.xls`, `.xlt`, `.xlsx`, `.xps`
-* is_image: `.bmp`, `.gif`, `.jpeg`, `.jpg`, `.png`, `.tiff`
+* is_image: `.bmp`, `.gif`, `.jpeg`, `.jpg`, `.png`, `.tiff`, `.webp`
 * is_video: `.3gp`, `.avi`, `.flv`, `.m4p`, `.m4v`, `.mkv`, `.mov`, `.mp4`, `.mpeg`, `.mpg`, `.webm`, `.wmv`
 
 ### License

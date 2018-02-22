@@ -1,5 +1,6 @@
 extern crate chrono;
 extern crate humansize;
+extern crate imagesize;
 extern crate regex;
 extern crate term;
 #[cfg(unix)]

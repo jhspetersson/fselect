@@ -527,6 +527,8 @@ impl Expr {
 pub enum Op {
     Eq,
     Ne,
+    Eeq,
+    Ene,
     Gt,
     Gte,
     Lt,
@@ -548,6 +550,10 @@ impl Op {
             return  Some(Op::Ne);
         } else if text.eq_ignore_ascii_case("ne") {
             return  Some(Op::Ne);
+        } else if text.eq_ignore_ascii_case("===") {
+            return  Some(Op::Eeq);
+        } else if text.eq_ignore_ascii_case("!==") {
+            return  Some(Op::Ene);
         } else if text.eq_ignore_ascii_case(">") {
             return  Some(Op::Gt);
         } else if text.eq_ignore_ascii_case("gt") {

@@ -592,6 +592,12 @@ impl Searcher {
                                     None => false
                                 }
                             },
+                            Some(Op::Eeq) => {
+                                val.eq(&file_name)
+                            },
+                            Some(Op::Ne) => {
+                                val.ne(&file_name)
+                            },
                             _ => false
                         };
                     },
@@ -623,6 +629,12 @@ impl Searcher {
                                     Some(ref regex) => regex.is_match(&file_path),
                                     None => false
                                 }
+                            },
+                            Some(Op::Eeq) => {
+                                val.eq(&file_path)
+                            },
+                            Some(Op::Ene) => {
+                                val.ne(&file_path)
                             },
                             _ => false
                         };
@@ -659,8 +671,8 @@ impl Searcher {
                                 match size {
                                     Some(size) => {
                                         result = match expr.op {
-                                            Some(Op::Eq) => file_size == size,
-                                            Some(Op::Ne) => file_size != size,
+                                            Some(Op::Eq) | Some(Op::Eeq) => file_size == size,
+                                            Some(Op::Ne) | Some(Op::Ene) => file_size != size,
                                             Some(Op::Gt) => file_size > size,
                                             Some(Op::Gte) => file_size >= size,
                                             Some(Op::Lt) => file_size < size,
@@ -697,8 +709,8 @@ impl Searcher {
                                         match file_uid {
                                             Some(file_uid) => {
                                                 result = match expr.op {
-                                                    Some(Op::Eq) => file_uid == uid,
-                                                    Some(Op::Ne) => file_uid != uid,
+                                                    Some(Op::Eq) | Some(Op::Eeq) => file_uid == uid,
+                                                    Some(Op::Ne) | Some(Op::Ene) => file_uid != uid,
                                                     Some(Op::Gt) => file_uid > uid,
                                                     Some(Op::Gte) => file_uid >= uid,
                                                     Some(Op::Lt) => file_uid < uid,
@@ -756,6 +768,12 @@ impl Searcher {
                                                             None => false
                                                         }
                                                     },
+                                                    Some(Op::Eeq) => {
+                                                        val.eq(user_name)
+                                                    },
+                                                    Some(Op::Ene) => {
+                                                        val.ne(user_name)
+                                                    },
                                                     _ => false
                                                 };
                                             },
@@ -791,8 +809,8 @@ impl Searcher {
                                         match file_gid {
                                             Some(file_gid) => {
                                                 result = match expr.op {
-                                                    Some(Op::Eq) => file_gid == gid,
-                                                    Some(Op::Ne) => file_gid != gid,
+                                                    Some(Op::Eq) | Some(Op::Eeq) => file_gid == gid,
+                                                    Some(Op::Ne) | Some(Op::Ene) => file_gid != gid,
                                                     Some(Op::Gt) => file_gid > gid,
                                                     Some(Op::Gte) => file_gid >= gid,
                                                     Some(Op::Lt) => file_gid < gid,
@@ -850,6 +868,12 @@ impl Searcher {
                                                             None => false
                                                         }
                                                     },
+                                                    Some(Op::Eq) => {
+                                                        val.eq(group_name)
+                                                    },
+                                                    Some(Op::Ne) => {
+                                                        val.ne(group_name)
+                                                    },
                                                     _ => false
                                                 };
                                             },
@@ -888,14 +912,14 @@ impl Searcher {
                         let bool_val = str_val.eq("true") || str_val.eq("1");
 
                         result = match expr.op {
-                            Some(Op::Eq) => {
+                            Some(Op::Eq) | Some(Op::Eeq) => {
                                 if bool_val {
                                     is_dir
                                 } else {
                                     !is_dir
                                 }
                             },
-                            Some(Op::Ne) => {
+                            Some(Op::Ne) | Some(Op::Ene) => {
                                 if bool_val {
                                     !is_dir
                                 } else {
@@ -930,14 +954,14 @@ impl Searcher {
                         let bool_val = str_val.eq("true") || str_val.eq("1");
 
                         result = match expr.op {
-                            Some(Op::Eq) => {
+                            Some(Op::Eq) | Some(Op::Eeq) => {
                                 if bool_val {
                                     is_file
                                 } else {
                                     !is_file
                                 }
                             },
-                            Some(Op::Ne) => {
+                            Some(Op::Ne) | Some(Op::Ene) => {
                                 if bool_val {
                                     !is_file
                                 } else {
@@ -1494,8 +1518,8 @@ impl Searcher {
                                 match val {
                                     Ok(val) => {
                                         result = match expr.op {
-                                            Some(Op::Eq) => width == val,
-                                            Some(Op::Ne) => width != val,
+                                            Some(Op::Eq) | Some(Op::Eeq) => width == val,
+                                            Some(Op::Ne) | Some(Op::Ene) => width != val,
                                             Some(Op::Gt) => width > val,
                                             Some(Op::Gte) => width >= val,
                                             Some(Op::Lt) => width < val,
@@ -1535,8 +1559,8 @@ impl Searcher {
                                 match val {
                                     Ok(val) => {
                                         result = match expr.op {
-                                            Some(Op::Eq) => height == val,
-                                            Some(Op::Ne) => height != val,
+                                            Some(Op::Eq) | Some(Op::Eq) => height == val,
+                                            Some(Op::Ne) | Some(Op::Ene) => height != val,
                                             Some(Op::Gt) => height > val,
                                             Some(Op::Gte) => height >= val,
                                             Some(Op::Lt) => height < val,
@@ -1564,14 +1588,14 @@ impl Searcher {
                         let bool_val = str_val.eq("true") || str_val.eq("1");
 
                         result = match expr.op {
-                            Some(Op::Eq) => {
+                            Some(Op::Eq) | Some(Op::Eeq) => {
                                 if bool_val {
                                     is_archive(&file_name)
                                 } else {
                                     !is_archive(&file_name)
                                 }
                             },
-                            Some(Op::Ne) => {
+                            Some(Op::Ne) | Some(Op::Ene) => {
                                 if bool_val {
                                     !is_archive(&file_name)
                                 } else {
@@ -1595,14 +1619,14 @@ impl Searcher {
                         let bool_val = str_val.eq("true") || str_val.eq("1");
 
                         result = match expr.op {
-                            Some(Op::Eq) => {
+                            Some(Op::Eq) | Some(Op::Eeq) => {
                                 if bool_val {
                                     is_audio(&file_name)
                                 } else {
                                     !is_audio(&file_name)
                                 }
                             },
-                            Some(Op::Ne) => {
+                            Some(Op::Ne) | Some(Op::Ene) => {
                                 if bool_val {
                                     !is_audio(&file_name)
                                 } else {
@@ -1626,14 +1650,14 @@ impl Searcher {
                         let bool_val = str_val.eq("true") || str_val.eq("1");
 
                         result = match expr.op {
-                            Some(Op::Eq) => {
+                            Some(Op::Eq) | Some(Op::Eeq) => {
                                 if bool_val {
                                     is_doc(&file_name)
                                 } else {
                                     !is_doc(&file_name)
                                 }
                             },
-                            Some(Op::Ne) => {
+                            Some(Op::Ne) | Some(Op::Ene) => {
                                 if bool_val {
                                     !is_doc(&file_name)
                                 } else {
@@ -1657,14 +1681,14 @@ impl Searcher {
                         let bool_val = str_val.eq("true") || str_val.eq("1");
 
                         result = match expr.op {
-                            Some(Op::Eq) => {
+                            Some(Op::Eq) | Some(Op::Eeq) => {
                                 if bool_val {
                                     is_image(&file_name)
                                 } else {
                                     !is_image(&file_name)
                                 }
                             },
-                            Some(Op::Ne) => {
+                            Some(Op::Ne) | Some(Op::Ene) => {
                                 if bool_val {
                                     !is_image(&file_name)
                                 } else {
@@ -1688,14 +1712,14 @@ impl Searcher {
                         let bool_val = str_val.eq("true") || str_val.eq("1");
 
                         result = match expr.op {
-                            Some(Op::Eq) => {
+                            Some(Op::Eq) | Some(Op::Eeq) => {
                                 if bool_val {
                                     is_video(&file_name)
                                 } else {
                                     !is_video(&file_name)
                                 }
                             },
-                            Some(Op::Ne) => {
+                            Some(Op::Ne) | Some(Op::Ene) => {
                                 if bool_val {
                                     !is_video(&file_name)
                                 } else {

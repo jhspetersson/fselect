@@ -1,6 +1,6 @@
 [package]
 name = "fselect"
-version = "0.1.1"
+version = "0.1.2"
 authors = ["jhspetersson <jhspetersson@gmail.com>"]
 description = "Find files with SQL-like queries"
 keywords = ["find", "files", "sql", "query", "tool"]
@@ -16,7 +16,7 @@ chrono = "0.4"
 humansize = "1.1.0"
 imagesize = "0.5"
 regex = "0.2"
-term = "0.4"
+term = "0.5"
 zip = "0.3.1"
 
 [target.'cfg(unix)'.dependencies]

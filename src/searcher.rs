@@ -187,31 +187,31 @@ impl Searcher {
                 "name" => {
                     match file_info {
                         &Some(ref file_info) => {
-                            println!("[{}] {}", entry.path().to_string_lossy(), file_info.name)
+                            print!("[{}] {}", entry.path().to_string_lossy(), file_info.name)
                         },
                         _ => {
-                            println!("{}", entry.file_name().to_string_lossy())
+                            print!("{}", entry.file_name().to_string_lossy())
                         }
                     }
                 },
                 "path" => {
                     match file_info {
                         &Some(ref file_info) => {
-                            println!("[{}] {}", entry.path().to_string_lossy(), file_info.name)
+                            print!("[{}] {}", entry.path().to_string_lossy(), file_info.name)
                         },
                         _ => {
-                            println!("{}", entry.path().to_string_lossy())
+                            print!("{}", entry.path().to_string_lossy())
                         }
                     }
                 },
                 "size" => {
                     match file_info {
                         &Some(ref file_info) => {
-                            println!("{}", file_info.size)
+                            print!("{}", file_info.size)
                         },
                         _ => {
                             if let Some(ref attrs) = attrs {
-                                println!("{}", attrs.len());
+                                print!("{}", attrs.len());
                             }
                         }
                     }
@@ -219,11 +219,11 @@ impl Searcher {
                 "hsize" | "fsize" => {
                     match file_info {
                         &Some(ref file_info) => {
-                            println!("{}", file_info.size.file_size(file_size_opts::BINARY).unwrap())
+                            print!("{}", file_info.size.file_size(file_size_opts::BINARY).unwrap())
                         },
                         _ => {
                             if let Some(ref attrs) = attrs {
-                                println!("{}", attrs.len().file_size(file_size_opts::BINARY).unwrap());
+                                print!("{}", attrs.len().file_size(file_size_opts::BINARY).unwrap());
                             }
                         }
                     }
@@ -231,11 +231,11 @@ impl Searcher {
                 "is_dir" => {
                     match file_info {
                         &Some(ref file_info) => {
-                            println!("{}", file_info.name.ends_with('/'));
+                            print!("{}", file_info.name.ends_with('/'));
                         },
                         _ => {
                             if let Some(ref attrs) = attrs {
-                                println!("{}", attrs.is_dir());
+                                print!("{}", attrs.is_dir());
                             }
                         }
                     }
@@ -243,11 +243,11 @@ impl Searcher {
                 "is_file" => {
                     match file_info {
                         &Some(ref file_info) => {
-                            println!("{}", !file_info.name.ends_with('/'));
+                            print!("{}", !file_info.name.ends_with('/'));
                         },
                         _ => {
                             if let Some(ref attrs) = attrs {
-                                println!("{}", attrs.is_file());
+                                print!("{}", attrs.is_file());
                             }
                         }
                     }
@@ -256,12 +256,12 @@ impl Searcher {
                     match file_info {
                         &Some(ref file_info) => {
                             if let Some(mode) = file_info.mode {
-                                println!("{}", mode::format_mode(mode));
+                                print!("{}", mode::format_mode(mode));
                             }
                         },
                         _ => {
                             if let Some(ref attrs) = attrs {
-                                println!("{}", mode::get_mode(attrs));
+                                print!("{}", mode::get_mode(attrs));
                             }
                         }
                     }
@@ -270,12 +270,12 @@ impl Searcher {
                     match file_info {
                         &Some(ref file_info) => {
                             if let Some(mode) = file_info.mode {
-                                println!("{}", mode::mode_user_read(mode));
+                                print!("{}", mode::mode_user_read(mode));
                             }
                         },
                         _ => {
                             if let Some(ref attrs) = attrs {
-                                println!("{}", mode::user_read(attrs));
+                                print!("{}", mode::user_read(attrs));
                             }
                         }
                     }
@@ -284,12 +284,12 @@ impl Searcher {
                     match file_info {
                         &Some(ref file_info) => {
                             if let Some(mode) = file_info.mode {
-                                println!("{}", mode::mode_user_write(mode));
+                                print!("{}", mode::mode_user_write(mode));
                             }
                         },
                         _ => {
                             if let Some(ref attrs) = attrs {
-                                println!("{}", mode::user_write(attrs));
+                                print!("{}", mode::user_write(attrs));
                             }
                         }
                     }
@@ -298,12 +298,12 @@ impl Searcher {
                     match file_info {
                         &Some(ref file_info) => {
                             if let Some(mode) = file_info.mode {
-                                println!("{}", mode::mode_user_exec(mode));
+                                print!("{}", mode::mode_user_exec(mode));
                             }
                         },
                         _ => {
                             if let Some(ref attrs) = attrs {
-                                println!("{}", mode::user_exec(attrs));
+                                print!("{}", mode::user_exec(attrs));
                             }
                         }
                     }
@@ -312,12 +312,12 @@ impl Searcher {
                     match file_info {
                         &Some(ref file_info) => {
                             if let Some(mode) = file_info.mode {
-                                println!("{}", mode::mode_group_read(mode));
+                                print!("{}", mode::mode_group_read(mode));
                             }
                         },
                         _ => {
                             if let Some(ref attrs) = attrs {
-                                println!("{}", mode::group_read(attrs));
+                                print!("{}", mode::group_read(attrs));
                             }
                         }
                     }
@@ -326,12 +326,12 @@ impl Searcher {
                     match file_info {
                         &Some(ref file_info) => {
                             if let Some(mode) = file_info.mode {
-                                println!("{}", mode::mode_group_write(mode));
+                                print!("{}", mode::mode_group_write(mode));
                             }
                         },
                         _ => {
                             if let Some(ref attrs) = attrs {
-                                println!("{}", mode::group_write(attrs));
+                                print!("{}", mode::group_write(attrs));
                             }
                         }
                     }
@@ -340,12 +340,12 @@ impl Searcher {
                     match file_info {
                         &Some(ref file_info) => {
                             if let Some(mode) = file_info.mode {
-                                println!("{}", mode::mode_group_exec(mode));
+                                print!("{}", mode::mode_group_exec(mode));
                             }
                         },
                         _ => {
                             if let Some(ref attrs) = attrs {
-                                println!("{}", mode::group_exec(attrs));
+                                print!("{}", mode::group_exec(attrs));
                             }
                         }
                     }
@@ -354,12 +354,12 @@ impl Searcher {
                     match file_info {
                         &Some(ref file_info) => {
                             if let Some(mode) = file_info.mode {
-                                println!("{}", mode::mode_other_read(mode));
+                                print!("{}", mode::mode_other_read(mode));
                             }
                         },
                         _ => {
                             if let Some(ref attrs) = attrs {
-                                println!("{}", mode::other_read(attrs));
+                                print!("{}", mode::other_read(attrs));
                             }
                         }
                     }
@@ -368,12 +368,12 @@ impl Searcher {
                     match file_info {
                         &Some(ref file_info) => {
                             if let Some(mode) = file_info.mode {
-                                println!("{}", mode::mode_other_write(mode));
+                                print!("{}", mode::mode_other_write(mode));
                             }
                         },
                         _ => {
                             if let Some(ref attrs) = attrs {
-                                println!("{}", mode::other_write(attrs));
+                                print!("{}", mode::other_write(attrs));
                             }
                         }
                     }
@@ -382,12 +382,12 @@ impl Searcher {
                     match file_info {
                         &Some(ref file_info) => {
                             if let Some(mode) = file_info.mode {
-                                println!("{}", mode::mode_other_exec(mode));
+                                print!("{}", mode::mode_other_exec(mode));
                             }
                         },
                         _ => {
                             if let Some(ref attrs) = attrs {
-                                println!("{}", mode::other_exec(attrs));
+                                print!("{}", mode::other_exec(attrs));
                             }
                         }
                     }
@@ -395,7 +395,7 @@ impl Searcher {
                 "uid" => {
                     if let Some(ref attrs) = attrs {
                         match mode::get_uid(attrs) {
-                            Some(uid) => println!("{}", uid),
+                            Some(uid) => print!("{}", uid),
                             None => { }
                         }
                     }
@@ -403,7 +403,7 @@ impl Searcher {
                 "gid" => {
                     if let Some(ref attrs) = attrs {
                         match mode::get_gid(attrs) {
-                            Some(gid) => println!("{}", gid),
+                            Some(gid) => print!("{}", gid),
                             None => { }
                         }
                     }
@@ -414,7 +414,7 @@ impl Searcher {
                             Some(uid) => {
                                 match self.user_cache.get_user_by_uid(uid) {
                                     Some(user) => {
-                                        println!("{}", user.name());
+                                        print!("{}", user.name());
                                     },
                                     None => { }
                                 }
@@ -429,7 +429,7 @@ impl Searcher {
                             Some(gid) => {
                                 match self.user_cache.get_group_by_gid(gid) {
                                     Some(group) => {
-                                        println!("{}", group.name());
+                                        print!("{}", group.name());
                                     },
                                     None => { }
                                 }
@@ -444,7 +444,7 @@ impl Searcher {
                             Ok(sdt) => {
                                 let dt: DateTime<Local> = DateTime::from(sdt);
                                 let format = dt.format("%Y-%m-%d %H:%M:%S");
-                                println!("{}", format);
+                                print!("{}", format);
                             },
                             _ => { }
                         }
@@ -456,7 +456,7 @@ impl Searcher {
                             Ok(sdt) => {
                                 let dt: DateTime<Local> = DateTime::from(sdt);
                                 let format = dt.format("%Y-%m-%d %H:%M:%S");
-                                println!("{}", format);
+                                print!("{}", format);
                             },
                             _ => { }
                         }
@@ -468,7 +468,7 @@ impl Searcher {
                             Ok(sdt) => {
                                 let dt: DateTime<Local> = DateTime::from(sdt);
                                 let format = dt.format("%Y-%m-%d %H:%M:%S");
-                                println!("{}", format);
+                                print!("{}", format);
                             },
                             _ => { }
                         }
@@ -476,39 +476,43 @@ impl Searcher {
                 },
                 "width" => {
                     if let Some(ref dimensions) = dimensions {
-                        println!("{}", dimensions.0);
+                        print!("{}", dimensions.0);
                     }
                 },
                 "height" => {
                     if let Some(ref dimensions) = dimensions {
-                        println!("{}", dimensions.1);
+                        print!("{}", dimensions.1);
                     }
                 },
                 "is_archive" => {
                     let is_archive = is_archive(&entry.file_name().to_string_lossy());
-                    println!("{}", is_archive);
+                    print!("{}", is_archive);
                 },
                 "is_audio" => {
                     let is_audio = is_audio(&entry.file_name().to_string_lossy());
-                    println!("{}", is_audio);
+                    print!("{}", is_audio);
                 },
                 "is_doc" => {
                     let is_doc = is_doc(&entry.file_name().to_string_lossy());
-                    println!("{}", is_doc);
+                    print!("{}", is_doc);
                 },
                 "is_image" => {
                     let is_image = is_image(&entry.file_name().to_string_lossy());
-                    println!("{}", is_image);
+                    print!("{}", is_image);
                 },
                 "is_video" => {
                     let is_video = is_video(&entry.file_name().to_string_lossy());
-                    println!("{}", is_video);
+                    print!("{}", is_video);
                 },
                 _ => {
 
                 }
             }
+
+            print!("\t");
         }
+
+        print!("\n");
     }
 
     fn conforms(&mut self,

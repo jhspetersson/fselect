@@ -88,10 +88,7 @@ impl<'a> Lexer<'a> {
                     }
                 },
                 LexingMode::Field => {
-                    if c == ' ' {
-                        self.index += 1;
-                        true
-                    } else if c == ',' || c == ')' {
+                    if c == ' ' || c == ',' || c == ')' {
                         true
                     } else {
                         self.index += 1;

@@ -523,42 +523,6 @@ impl Expr {
     }
 }
 
-impl PartialEq for Expr {
-    fn eq(&self, other: &Expr) -> bool {
-        self.left == other.left
-        && self.logical_op == other.logical_op
-        && self.right == other.right
-
-        && self.field == other.field
-        && self.op == other.op
-        && self.val == other.val
-
-        && match self.regex {
-            Some(ref left_rx) => {
-                match other.regex {
-                    Some(ref right_rx) => {
-                        left_rx.as_str() == right_rx.as_str()
-                    },
-                    _ => false
-                }
-            },
-            None => {
-                match other.regex {
-                    None => true,
-                    _ => false
-                }
-            }
-        }
-
-        && self.dt_from == other.dt_from
-        && self.dt_to == other.dt_to
-    }
-
-    fn ne(&self, other: &Expr) -> bool {
-        !self.eq(other)
-    }
-}
-
 #[derive(Debug, Clone, PartialEq)]
 pub enum Op {
     Eq,
@@ -626,6 +590,43 @@ impl Op {
 pub enum LogicalOp {
     And,
     Or,
+}
+
+#[cfg(test)]
+impl PartialEq for Expr {
+    fn eq(&self, other: &Expr) -> bool {
+        self.left == other.left
+            && self.logical_op == other.logical_op
+            && self.right == other.right
+
+            && self.field == other.field
+            && self.op == other.op
+            && self.val == other.val
+
+            && match self.regex {
+            Some(ref left_rx) => {
+                match other.regex {
+                    Some(ref right_rx) => {
+                        left_rx.as_str() == right_rx.as_str()
+                    },
+                    _ => false
+                }
+            },
+            None => {
+                match other.regex {
+                    None => true,
+                    _ => false
+                }
+            }
+        }
+
+            && self.dt_from == other.dt_from
+            && self.dt_to == other.dt_to
+    }
+
+    fn ne(&self, other: &Expr) -> bool {
+        !self.eq(other)
+    }
 }
 
 #[cfg(test)]

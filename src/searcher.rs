@@ -595,7 +595,7 @@ impl Searcher {
                             Some(Op::Eeq) => {
                                 val.eq(&file_name)
                             },
-                            Some(Op::Ne) => {
+                            Some(Op::Ene) => {
                                 val.ne(&file_name)
                             },
                             _ => false
@@ -868,10 +868,10 @@ impl Searcher {
                                                             None => false
                                                         }
                                                     },
-                                                    Some(Op::Eq) => {
+                                                    Some(Op::Eeq) => {
                                                         val.eq(group_name)
                                                     },
-                                                    Some(Op::Ne) => {
+                                                    Some(Op::Ene) => {
                                                         val.ne(group_name)
                                                     },
                                                     _ => false
@@ -1559,7 +1559,7 @@ impl Searcher {
                                 match val {
                                     Ok(val) => {
                                         result = match expr.op {
-                                            Some(Op::Eq) | Some(Op::Eq) => height == val,
+                                            Some(Op::Eq) | Some(Op::Eeq) => height == val,
                                             Some(Op::Ne) | Some(Op::Ene) => height != val,
                                             Some(Op::Gt) => height > val,
                                             Some(Op::Gte) => height >= val,

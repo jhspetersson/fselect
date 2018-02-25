@@ -441,7 +441,7 @@ pub struct Query {
     pub limit: u32
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Root {
     pub path: String,
     pub depth: u32,
@@ -523,7 +523,43 @@ impl Expr {
     }
 }
 
-#[derive(Debug, Clone)]
+impl PartialEq for Expr {
+    fn eq(&self, other: &Expr) -> bool {
+        self.left == other.left
+        && self.logical_op == other.logical_op
+        && self.right == other.right
+
+        && self.field == other.field
+        && self.op == other.op
+        && self.val == other.val
+
+        && match self.regex {
+            Some(ref left_rx) => {
+                match other.regex {
+                    Some(ref right_rx) => {
+                        left_rx.as_str() == right_rx.as_str()
+                    },
+                    _ => false
+                }
+            },
+            None => {
+                match other.regex {
+                    None => true,
+                    _ => false
+                }
+            }
+        }
+
+        && self.dt_from == other.dt_from
+        && self.dt_to == other.dt_to
+    }
+
+    fn ne(&self, other: &Expr) -> bool {
+        !self.eq(other)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum Op {
     Eq,
     Ne,
@@ -586,8 +622,50 @@ impl Op {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum LogicalOp {
     And,
     Or,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn query() {
+        let query = "select name, path ,size , fsize from /test depth 2, /test2 archives,/test3 depth 3 archives , /test4 ,'/test5' where name != 123 AND ( size gt 456 or fsize lte 758) or name = 'xxx' limit 50";
+        let mut p = Parser::new();
+        let query = p.parse(&query).unwrap();
+
+        assert_eq!(query.fields, vec![String::from("name"), String::from("path"), String::from("size"), String::from("fsize")]);
+        assert_eq!(query.roots, vec![
+            Root::new(String::from("/test"), 2, false),
+            Root::new(String::from("/test2"), 0, true),
+            Root::new(String::from("/test3"), 3, true),
+            Root::new(String::from("/test4"), 0, false),
+            Root::new(String::from("/test5"), 0, false),
+        ]);
+
+        let expr = Expr::node(
+            Some(Box::new(
+                Expr::node(
+                    Some(Box::new(Expr::leaf(String::from("name"), Some(Op::Ne), String::from("123")))),
+                    Some(LogicalOp::And),
+                    Some(Box::new(Expr::node(
+                        Some(Box::new(Expr::leaf(String::from("size"), Some(Op::Gt), String::from("456")))),
+                        Some(LogicalOp::Or),
+                        Some(Box::new(Expr::leaf(String::from("fsize"), Some(Op::Lte), String::from("758")))),
+                    ))),
+                )
+            )),
+            Some(LogicalOp::Or),
+            Some(Box::new(
+                Expr::leaf(String::from("name"), Some(Op::Eq), String::from("xxx"))
+            ))
+        );
+
+        assert_eq!(query.expr, Some(Box::new(expr)));
+        assert_eq!(query.limit, 50);
+    }
 }

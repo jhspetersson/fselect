@@ -21,7 +21,7 @@ impl Parser {
         }
     }
 
-    pub fn parse<'a>(&mut self, query: &String) -> Result<Query, &'a str> {
+    pub fn parse<'a>(&mut self, query: &str) -> Result<Query, &'a str> {
         let mut lexer = Lexer::new(query);
         while let Some(lexem) = lexer.next_lexem() {
             self.lexems.push(lexem);

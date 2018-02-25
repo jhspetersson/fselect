@@ -1820,7 +1820,7 @@ fn is_zip_archive(file_name: &str) -> bool {
     has_extension(file_name, &ZIP_ARCHIVE)
 }
 
-const ARCHIVE: &'static [&'static str] = &[".7zip", ".bzip2", ".gz", ".gzip", ".rar", ".tar", ".xz", ".zip"];
+const ARCHIVE: &'static [&'static str] = &[".7z", ".bzip2", ".gz", ".gzip", ".rar", ".tar", ".xz", ".zip"];
 
 fn is_archive(file_name: &str) -> bool {
     has_extension(file_name, &ARCHIVE)

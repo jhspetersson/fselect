@@ -188,7 +188,7 @@ Finally limit the results:
 
 ### File extensions
 
-* is_archive: `.7zip`, `.bzip2`, `.gz`, `.gzip`, `.rar`, `.tar`, `.xz`, `.zip`
+* is_archive: `.7z`, `.bzip2`, `.gz`, `.gzip`, `.rar`, `.tar`, `.xz`, `.zip`
 * is_audio: `.aac`, `.aiff`, `.amr`, `.flac`, `.gsm`, `.m4a`, `.m4b`, `.m4p`, `.mp3`, `.ogg`, `.wav`, `.wma`
 * is_doc: `.accdb`, `.doc`, `.docx`, `.dot`, `.dotx`, `.mdb`, `.ods`, `.odt`, `.pdf`, `.ppt`, `.pptx`, `.rtf`, `.xls`, `.xlt`, `.xlsx`, `.xps`
 * is_image: `.bmp`, `.gif`, `.jpeg`, `.jpg`, `.png`, `.tiff`, `.webp`

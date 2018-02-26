@@ -166,6 +166,7 @@ Finally limit the results:
 * `is_audio`
 * `is_doc`
 * `is_image`
+* `is_source`
 * `is_video`
 
 ### Operators

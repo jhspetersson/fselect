@@ -29,15 +29,19 @@ More is under way!
 Find temporary or config files (full path and size):
 
     fselect size, path from /home/user where name = '*.cfg' or name = '*.tmp'
+    
+Windows users may omit the quotes:
+
+    fselect size, path from C:\Users\user where name = *.cfg or name = *.tmp
+
+Or put all the arguments into the quotes like this:
+
+    fselect "name from /home/user/tmp where size > 0"
 
 Find files (just names) with any content (size > 0):
 
     fselect name from /home/user/tmp where size gt 0
 
-or put arguments into the quotes:
-
-    fselect "name from /home/user/tmp where size > 0"
-    
 Specify file size and add it to the results:
 
     fselect size, path from /home/user/tmp where size gt 2g

@@ -22,7 +22,7 @@ More is under way!
 
 ### Usage
 
-    fselect COLUMN[, COLUMN...] from ROOT[, ROOT...] [where EXPR] [limit N]
+    fselect COLUMN[, COLUMN...] [from ROOT[, ROOT...]] [where EXPR] [limit N]
 
 ### Examples
 

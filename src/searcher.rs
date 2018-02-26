@@ -500,6 +500,10 @@ impl Searcher {
                     let is_image = is_image(&entry.file_name().to_string_lossy());
                     print!("{}", is_image);
                 },
+                "is_source" => {
+                    let is_source = is_source(&entry.file_name().to_string_lossy());
+                    print!("{}", is_source);
+                },
                 "is_video" => {
                     let is_video = is_video(&entry.file_name().to_string_lossy());
                     print!("{}", is_video);
@@ -1704,6 +1708,37 @@ impl Searcher {
                     },
                     None => { }
                 }
+            } else if field.to_ascii_lowercase() == "is_source" {
+                match expr.val {
+                    Some(ref val) => {
+                        let file_name = match file_info {
+                            &Some(ref file_info) => file_info.name.clone(),
+                            _ => String::from(entry.file_name().to_str().unwrap())
+                        };
+
+                        let str_val = val.to_ascii_lowercase();
+                        let bool_val = str_val.eq("true") || str_val.eq("1");
+
+                        result = match expr.op {
+                            Some(Op::Eq) | Some(Op::Eeq) => {
+                                if bool_val {
+                                    is_source(&file_name)
+                                } else {
+                                    !is_source(&file_name)
+                                }
+                            },
+                            Some(Op::Ne) | Some(Op::Ene) => {
+                                if bool_val {
+                                    !is_source(&file_name)
+                                } else {
+                                    is_source(&file_name)
+                                }
+                            },
+                            _ => false
+                        };
+                    },
+                    None => { }
+                }
             } else if field.to_ascii_lowercase() == "is_video" {
                 match expr.val {
                     Some(ref val) => {
@@ -1848,6 +1883,12 @@ const IMAGE_DIM: &'static [&'static str] = &[".bmp", ".gif", ".jpeg", ".jpg", ".
 
 fn is_image_dim_readable(file_name: &str) -> bool {
     has_extension(file_name, &IMAGE_DIM)
+}
+
+const SOURCE: &'static [&'static str] = &[".asm", ".c", ".cpp", ".cs", ".java", ".js", ".h", ".hpp", ".pas", ".php", ".pl", ".pm", ".py", ".rb", ".rs", ".swift"];
+
+fn is_source(file_name: &str) -> bool {
+    has_extension(file_name, &IMAGE)
 }
 
 const VIDEO: &'static [&'static str] = &[".3gp", ".avi", ".flv", ".m4p", ".m4v", ".mkv", ".mov", ".mp4", ".mpeg", ".mpg", ".webm", ".wmv"];

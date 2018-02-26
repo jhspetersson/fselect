@@ -192,6 +192,7 @@ Finally limit the results:
 * is_audio: `.aac`, `.aiff`, `.amr`, `.flac`, `.gsm`, `.m4a`, `.m4b`, `.m4p`, `.mp3`, `.ogg`, `.wav`, `.wma`
 * is_doc: `.accdb`, `.doc`, `.docx`, `.dot`, `.dotx`, `.mdb`, `.ods`, `.odt`, `.pdf`, `.ppt`, `.pptx`, `.rtf`, `.xls`, `.xlt`, `.xlsx`, `.xps`
 * is_image: `.bmp`, `.gif`, `.jpeg`, `.jpg`, `.png`, `.tiff`, `.webp`
+* is_source: `.asm`, `.c`, `.cpp`, `.cs`, `.java`, `.js`, `.h`, `.hpp`, `.pas`, `.php`, `.pl`, `.pm`, `.py`, `.rb`, `.rs`, `.swift`
 * is_video: `.3gp`, `.avi`, `.flv`, `.m4p`, `.m4v`, `.mkv`, `.mov`, `.mp4`, `.mpeg`, `.mpg`, `.webm`, `.wmv`
 
 ### License

@@ -1,6 +1,7 @@
 use std::error::Error;
 use std::fs;
 use std::fs::DirEntry;
+use std::fs::Metadata;
 use std::path::Path;
 use std::io;
 
@@ -389,6 +390,16 @@ impl Searcher {
                             if let Some(ref attrs) = attrs {
                                 print!("{}", mode::other_exec(attrs));
                             }
+                        }
+                    }
+                },
+                "is_hidden" => {
+                    match file_info {
+                        &Some(ref file_info) => {
+                            print!("{}", is_hidden(&file_info.name, &None, true));
+                        },
+                        _ => {
+                            print!("{}", is_hidden(&entry.file_name().to_string_lossy(), &attrs, false));
                         }
                     }
                 },
@@ -1388,6 +1399,37 @@ impl Searcher {
                         };
                     }
                 }
+            } else if field.to_ascii_lowercase() == "is_hidden" {
+                match expr.val {
+                    Some(ref val) => {
+                        let is_hidden = match file_info {
+                            &Some(ref file_info) => is_hidden(&file_info.name, &None, true),
+                            _ => is_hidden(entry.file_name().to_str().unwrap(), &meta, false)
+                        };
+
+                        let str_val = val.to_ascii_lowercase();
+                        let bool_val = str_val.eq("true") || str_val.eq("1");
+
+                        result = match expr.op {
+                            Some(Op::Eq) | Some(Op::Eeq) => {
+                                if bool_val {
+                                    is_hidden
+                                } else {
+                                    !is_hidden
+                                }
+                            },
+                            Some(Op::Ne) | Some(Op::Ene) => {
+                                if bool_val {
+                                    !is_hidden
+                                } else {
+                                    is_hidden
+                                }
+                            },
+                            _ => false
+                        };
+                    },
+                    None => { }
+                }
             } else if field.to_ascii_lowercase() == "created" {
                 if file_info.is_some() {
                     return (false, meta, dim)
@@ -1846,6 +1888,38 @@ fn parse_filesize(s: &str) -> Option<u64> {
     match string.parse::<u64>() {
         Ok(size) => return Some(size),
         _ => return None
+    }
+}
+
+fn is_hidden(file_name: &str, metadata: &Option<Box<Metadata>>, archive_mode: bool) -> bool {
+    if archive_mode {
+        if !file_name.contains('\\') {
+            return parse_unix_filename(file_name).starts_with('.');
+        } else {
+            return false;
+        }
+    }
+
+    #[cfg(unix)]
+    {
+        return file_name.starts_with('.');
+    }
+
+    #[cfg(windows)]
+    {
+        if let &Some(ref metadata) = metadata {
+            return mode::get_mode(metadata).contains("Hidden");
+        }
+    }
+
+    false
+}
+
+fn parse_unix_filename(s: &str) -> &str {
+    let last_slash = s.rfind('/');
+    match last_slash {
+        Some(idx) => &s[idx..],
+        _ => s
     }
 }
 

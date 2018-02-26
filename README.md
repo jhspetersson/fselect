@@ -160,6 +160,7 @@ Finally limit the results:
 * `other_read`
 * `other_write`
 * `other_exec`
+* `is_hidden`
 * `width`
 * `height`
 * `is_archive`

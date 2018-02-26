@@ -28,7 +28,7 @@ More is under way!
 
 Find temporary or config files (full path and size):
 
-    fselect size, path from /home/user where name = *.cfg or name = *.tmp
+    fselect size, path from /home/user where name = '*.cfg' or name = '*.tmp'
 
 Find files (just names) with any content (size > 0):
 
@@ -46,7 +46,7 @@ Specify file size and add it to the results:
     
 More complex query:
 
-    fselect name from /tmp where (name = *.tmp and size = 0) or (name = *.cfg and size gt 1000000)
+    fselect name from /tmp where (name = '*.tmp' and size = 0) or (name = '*.cfg' and size gt 1000000)
     
 Use single quotes if you need to address files with spaces:
 
@@ -54,11 +54,11 @@ Use single quotes if you need to address files with spaces:
     
 Regular expressions supported:
 
-    fselect name from /home/user where path ~= .*Rust.*
+    fselect name from /home/user where path ~= '.*Rust.*'
     
 And even simple glob will suffice:
 
-    fselect name from /home/user where path = *Rust*
+    fselect name from /home/user where path = '*Rust*'
     
 Exact match operators to search with regexps disabled:
 
@@ -83,24 +83,24 @@ Date and time intervals possible (find everything updated since May 1st):
     
 Default is current directory:
 
-    fselect path, size where name = *.jpg
+    fselect path, size where name = '*.jpg'
     
 Search within multiple locations:
 
-    fselect path from /home/user/oldstuff, /home/user/newstuff where name = *.jpg
+    fselect path from /home/user/oldstuff, /home/user/newstuff where name = '*.jpg'
     
 With maximum depth specified:
 
-    fselect path from /home/user/oldstuff depth 5 where name = *.jpg
-    fselect path from /home/user/oldstuff depth 5, /home/user/newstuff depth 10 where name = *.jpg
+    fselect path from /home/user/oldstuff depth 5 where name = '*.jpg'
+    fselect path from /home/user/oldstuff depth 5, /home/user/newstuff depth 10 where name = '*.jpg'
     
 Search within archives (currently only zip-archives are supported):
 
-    fselect path, size from /home/user archives where name = *.jpg
+    fselect path, size from /home/user archives where name = '*.jpg'
     
 Or in combination:
 
-    fselect size, path from /home/user depth 5 archives where name = *.jpg limit 100    
+    fselect size, path from /home/user depth 5 archives where name = '*.jpg' limit 100    
     
 Search by image dimensions:
 
@@ -120,8 +120,8 @@ Find files with dangerous permissions:
     
 Simple glob-like expressions or even regular expressions on file mode are possible:
     
-    fselect mode, path from /home/user where mode = *rwx
-    fselect mode, path from /home/user where mode ~= .*rwx$
+    fselect mode, path from /home/user where mode = '*rwx'
+    fselect mode, path from /home/user where mode ~= '.*rwx$'
     
 Find files by owner's uid or gid:
 

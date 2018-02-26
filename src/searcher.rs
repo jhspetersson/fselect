@@ -1962,7 +1962,7 @@ fn is_image_dim_readable(file_name: &str) -> bool {
 const SOURCE: &'static [&'static str] = &[".asm", ".c", ".cpp", ".cs", ".java", ".js", ".h", ".hpp", ".pas", ".php", ".pl", ".pm", ".py", ".rb", ".rs", ".swift"];
 
 fn is_source(file_name: &str) -> bool {
-    has_extension(file_name, &IMAGE)
+    has_extension(file_name, &SOURCE)
 }
 
 const VIDEO: &'static [&'static str] = &[".3gp", ".avi", ".flv", ".m4p", ".m4v", ".mkv", ".mov", ".mp4", ".mpeg", ".mpg", ".webm", ".wmv"];

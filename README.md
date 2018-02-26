@@ -1,6 +1,8 @@
 # fselect
 Find files with SQL-like queries
 
+[![](https://img.shields.io/crates/v/fselect.svg)](https://crates.io/crates/fselect)
+
 ### Why use fselect?
 
 While it doesn't tend to fully replace traditional `find` and `ls`, **fselect** has these nice features:

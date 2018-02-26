@@ -28,7 +28,7 @@ More is under way!
 
 Find temporary or config files (full path and size):
 
-    fselect path, size from /home/user where name = *.cfg or name = *.tmp
+    fselect size, path from /home/user where name = *.cfg or name = *.tmp
 
 Find files (just names) with any content (size > 0):
 
@@ -40,9 +40,9 @@ or put arguments into the quotes:
     
 Specify file size and add it to the results:
 
-    fselect path, size from /home/user/tmp where size gt 2g
-    fselect path, fsize from /home/user/tmp where size = 5m
-    fselect path, hsize from /home/user/tmp where size lt 8k
+    fselect size, path from /home/user/tmp where size gt 2g
+    fselect fsize, path from /home/user/tmp where size = 5m
+    fselect hsize, path from /home/user/tmp where size lt 8k
     
 More complex query:
 
@@ -100,11 +100,11 @@ Search within archives (currently only zip-archives are supported):
     
 Or in combination:
 
-    fselect path, size from /home/user depth 5 archives where name = *.jpg limit 100    
+    fselect size, path from /home/user depth 5 archives where name = *.jpg limit 100    
     
 Search by image dimensions:
 
-    fselect path, width, height from /home/user/photos where width gte 2000 or height gte 2000
+    fselect width, height, path from /home/user/photos where width gte 2000 or height gte 2000
     
 Shortcuts to common file extensions:
 
@@ -116,20 +116,20 @@ Shortcuts to common file extensions:
     
 Find files with dangerous permissions:
     
-    fselect path, mode from /home/user where other_write = true or other_exec = true
+    fselect mode, path from /home/user where other_write = true or other_exec = true
     
 Simple glob-like expressions or even regular expressions on file mode are possible:
     
-    fselect path, mode from /home/user where mode = *rwx
-    fselect path, mode from /home/user where mode ~= .*rwx$
+    fselect mode, path from /home/user where mode = *rwx
+    fselect mode, path from /home/user where mode ~= .*rwx$
     
 Find files by owner's uid or gid:
 
-    fselect path, uid, gid from /home/user where uid != 1000 or gid != 1000
+    fselect uid, gid, path from /home/user where uid != 1000 or gid != 1000
     
 Or by owner's or group's name:
 
-    fselect path, user, group from /home/user where user = mike or group = mike
+    fselect user, group, path from /home/user where user = mike or group = mike
     
 Finally limit the results:
 

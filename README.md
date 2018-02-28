@@ -99,6 +99,10 @@ With maximum depth specified:
 
     fselect path from /home/user/oldstuff depth 5 where name = '*.jpg'
     fselect path from /home/user/oldstuff depth 5, /home/user/newstuff depth 10 where name = '*.jpg'
+
+Optionally follow symlinks:
+
+    fselect path, size from /home/user symlinks where name = '*.jpg'
     
 Search within archives (currently only zip-archives are supported):
 
@@ -106,7 +110,7 @@ Search within archives (currently only zip-archives are supported):
     
 Or in combination:
 
-    fselect size, path from /home/user depth 5 archives where name = '*.jpg' limit 100    
+    fselect size, path from /home/user depth 5 archives symlinks where name = '*.jpg' limit 100    
     
 Search by image dimensions:
 

@@ -11,6 +11,7 @@ pub enum Lexem {
     And,
     Or,
     Limit,
+    Into,
 }
 
 #[derive(Debug)]
@@ -148,6 +149,8 @@ impl<'a> Lexer<'a> {
                     Some(Lexem::Operator(s))
                 } else if s.eq_ignore_ascii_case("limit")  {
                     Some(Lexem::Limit)
+                } else if s.eq_ignore_ascii_case("into")  {
+                    Some(Lexem::Into)
                 } else {
                     Some(Lexem::Field(s))
                 }

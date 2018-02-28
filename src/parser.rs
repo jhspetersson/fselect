@@ -31,12 +31,14 @@ impl Parser {
         let roots = self.parse_roots();
         let expr = self.parse_where();
         let limit = self.parse_limit();
+        let output_format = self.parse_output_format();
 
         Ok(Query {
             fields,
             roots,
             expr,
             limit,
+            output_format,
         })
     }
 
@@ -298,13 +300,46 @@ impl Parser {
                             return limit;
                         }
                     },
-                    _ => { }
+                    _ => {
+                        self.drop_lexem();
+                    }
                 }
             },
-            _ => { }
+            _ => {
+                self.drop_lexem();
+            }
         }
 
         0
+    }
+
+    fn parse_output_format(&mut self) -> OutputFormat {
+        let lexem = self.get_lexem();
+        match lexem {
+            Some(Lexem::Limit) => {
+                let lexem = self.get_lexem();
+                match lexem {
+                    Some(Lexem::Field(s)) | Some(Lexem::String(s)) => {
+                        let s = s.to_lowercase();
+                        if s == "lines" {
+                            return OutputFormat::Lines;
+                        } else if s == "csv" {
+                            return OutputFormat::Csv;
+                        } else if s == "json" {
+                            return OutputFormat::Json;
+                        }
+                    },
+                    _ => {
+                        self.drop_lexem();
+                    }
+                }
+            },
+            _ => {
+                self.drop_lexem();
+            }
+        }
+
+        OutputFormat::Tabs
     }
 
     fn get_lexem(&mut self) -> Option<Lexem> {
@@ -418,7 +453,8 @@ pub struct Query {
     pub fields: Vec<String>,
     pub roots: Vec<Root>,
     pub expr: Option<Box<Expr>>,
-    pub limit: u32
+    pub limit: u32,
+    pub output_format: OutputFormat,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -571,6 +607,11 @@ impl Op {
 pub enum LogicalOp {
     And,
     Or,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum OutputFormat {
+    Tabs, Lines, Csv, Json
 }
 
 #[cfg(test)]

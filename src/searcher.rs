@@ -2,6 +2,7 @@ use std::error::Error;
 use std::fs;
 use std::fs::DirEntry;
 use std::fs::Metadata;
+use std::fs::symlink_metadata;
 use std::path::Path;
 use std::io;
 
@@ -156,15 +157,7 @@ impl Searcher {
 
         let attrs = match need_metadata {
             true =>  {
-                if meta.is_some() {
-                    meta
-                } else {
-                    let result = fs::metadata(entry.path());
-                    match result {
-                        Ok(meta) => Some(Box::new(meta)),
-                        _ => None
-                    }
-                }
+                update_meta(entry, meta)
             },
             false => None
         };
@@ -251,6 +244,13 @@ impl Searcher {
                                 print!("{}", attrs.is_file());
                             }
                         }
+                    }
+                },
+                "is_symlink" => {
+                    if let Some(ref attrs) = attrs {
+                        print!("{}", attrs.file_type().is_symlink());
+                    } else {
+                        print!("");
                     }
                 },
                 "mode" => {
@@ -670,10 +670,7 @@ impl Searcher {
                                 Some(file_info.size)
                             },
                             _ => {
-                                if !meta.is_some() {
-                                    let metadata = entry.metadata().unwrap();
-                                    meta = Some(Box::new(metadata));
-                                }
+                                meta = update_meta(entry, meta);
 
                                 match meta {
                                     Some(ref metadata) => {
@@ -714,10 +711,7 @@ impl Searcher {
 
                 match expr.val {
                     Some(ref val) => {
-                        if !meta.is_some() {
-                            let metadata = entry.metadata().unwrap();
-                            meta = Some(Box::new(metadata));
-                        }
+                        meta = update_meta(entry, meta);
 
                         match meta {
                             Some(ref metadata) => {
@@ -755,10 +749,7 @@ impl Searcher {
 
                 match expr.val {
                     Some(ref val) => {
-                        if !meta.is_some() {
-                            let metadata = entry.metadata().unwrap();
-                            meta = Some(Box::new(metadata));
-                        }
+                        meta = update_meta(entry, meta);
 
                         match meta {
                             Some(ref metadata) => {
@@ -814,10 +805,7 @@ impl Searcher {
 
                 match expr.val {
                     Some(ref val) => {
-                        if !meta.is_some() {
-                            let metadata = entry.metadata().unwrap();
-                            meta = Some(Box::new(metadata));
-                        }
+                        meta = update_meta(entry, meta);
 
                         match meta {
                             Some(ref metadata) => {
@@ -855,10 +843,7 @@ impl Searcher {
 
                 match expr.val {
                     Some(ref val) => {
-                        if !meta.is_some() {
-                            let metadata = entry.metadata().unwrap();
-                            meta = Some(Box::new(metadata));
-                        }
+                        meta = update_meta(entry, meta);
 
                         match meta {
                             Some(ref metadata) => {
@@ -912,10 +897,7 @@ impl Searcher {
                     let is_dir = match file_info {
                         &Some(ref file_info) => Some(file_info.name.ends_with('/')),
                         _ => {
-                            if !meta.is_some() {
-                                let metadata = entry.metadata().unwrap();
-                                meta = Some(Box::new(metadata));
-                            }
+                            meta = update_meta(entry, meta);
 
                             match meta {
                                 Some(ref metadata) => {
@@ -954,10 +936,7 @@ impl Searcher {
                     let is_file = match file_info {
                         &Some(ref file_info) => Some(!file_info.name.ends_with('/')),
                         _ => {
-                            if !meta.is_some() {
-                                let metadata = entry.metadata().unwrap();
-                                meta = Some(Box::new(metadata));
-                            }
+                            meta = update_meta(entry, meta);
 
                             match meta {
                                 Some(ref metadata) => {
@@ -991,6 +970,45 @@ impl Searcher {
                         };
                     }
                 }
+            } else if field.to_ascii_lowercase() == "is_symlink" {
+                if let Some(ref val) = expr.val {
+                    let is_symlink = match file_info {
+                        &Some(_) => Some(false),
+                        _ => {
+                            meta = update_meta(entry, meta);
+
+                            match meta {
+                                Some(ref metadata) => {
+                                    Some(metadata.file_type().is_symlink())
+                                },
+                                _ => None
+                            }
+                        }
+                    };
+
+                    if let Some(is_symlink) = is_symlink {
+                        let str_val = val.to_ascii_lowercase();
+                        let bool_val = str_val.eq("true") || str_val.eq("1");
+
+                        result = match expr.op {
+                            Some(Op::Eq) | Some(Op::Eeq) => {
+                                if bool_val {
+                                    is_symlink
+                                } else {
+                                    !is_symlink
+                                }
+                            },
+                            Some(Op::Ne) | Some(Op::Ene) => {
+                                if bool_val {
+                                    !is_symlink
+                                } else {
+                                    is_symlink
+                                }
+                            },
+                            _ => false
+                        };
+                    }
+                }
             } else if field.to_ascii_lowercase() == "mode" {
                 if let Some(ref val) = expr.val {
                     let mode = match file_info {
@@ -1001,10 +1019,7 @@ impl Searcher {
                             }
                         },
                         _ => {
-                            if !meta.is_some() {
-                                let metadata = entry.metadata().unwrap();
-                                meta = Some(Box::new(metadata));
-                            }
+                            meta = update_meta(entry, meta);
 
                             match meta {
                                 Some(ref metadata) => {
@@ -1044,10 +1059,7 @@ impl Searcher {
                     let mode = match file_info {
                         &Some(ref file_info) => file_info.mode,
                         _ => {
-                            if !meta.is_some() {
-                                let metadata = entry.metadata().unwrap();
-                                meta = Some(Box::new(metadata));
-                            }
+                            meta = update_meta(entry, meta);
 
                             match meta {
                                 Some(ref metadata) => mode::get_mode_from_boxed_unix_int(metadata),
@@ -1084,10 +1096,7 @@ impl Searcher {
                     let mode = match file_info {
                         &Some(ref file_info) => file_info.mode,
                         _ => {
-                            if !meta.is_some() {
-                                let metadata = entry.metadata().unwrap();
-                                meta = Some(Box::new(metadata));
-                            }
+                            meta = update_meta(entry, meta);
 
                             match meta {
                                 Some(ref metadata) => mode::get_mode_from_boxed_unix_int(metadata),
@@ -1124,10 +1133,7 @@ impl Searcher {
                     let mode = match file_info {
                         &Some(ref file_info) => file_info.mode,
                         _ => {
-                            if !meta.is_some() {
-                                let metadata = entry.metadata().unwrap();
-                                meta = Some(Box::new(metadata));
-                            }
+                            meta = update_meta(entry, meta);
 
                             match meta {
                                 Some(ref metadata) => mode::get_mode_from_boxed_unix_int(metadata),
@@ -1164,10 +1170,7 @@ impl Searcher {
                     let mode = match file_info {
                         &Some(ref file_info) => file_info.mode,
                         _ => {
-                            if !meta.is_some() {
-                                let metadata = entry.metadata().unwrap();
-                                meta = Some(Box::new(metadata));
-                            }
+                            meta = update_meta(entry, meta);
 
                             match meta {
                                 Some(ref metadata) => mode::get_mode_from_boxed_unix_int(metadata),
@@ -1204,10 +1207,7 @@ impl Searcher {
                     let mode = match file_info {
                         &Some(ref file_info) => file_info.mode,
                         _ => {
-                            if !meta.is_some() {
-                                let metadata = entry.metadata().unwrap();
-                                meta = Some(Box::new(metadata));
-                            }
+                            meta = update_meta(entry, meta);
 
                             match meta {
                                 Some(ref metadata) => mode::get_mode_from_boxed_unix_int(metadata),
@@ -1244,10 +1244,7 @@ impl Searcher {
                     let mode = match file_info {
                         &Some(ref file_info) => file_info.mode,
                         _ => {
-                            if !meta.is_some() {
-                                let metadata = entry.metadata().unwrap();
-                                meta = Some(Box::new(metadata));
-                            }
+                            meta = update_meta(entry, meta);
 
                             match meta {
                                 Some(ref metadata) => mode::get_mode_from_boxed_unix_int(metadata),
@@ -1284,10 +1281,7 @@ impl Searcher {
                     let mode = match file_info {
                         &Some(ref file_info) => file_info.mode,
                         _ => {
-                            if !meta.is_some() {
-                                let metadata = entry.metadata().unwrap();
-                                meta = Some(Box::new(metadata));
-                            }
+                            meta = update_meta(entry, meta);
 
                             match meta {
                                 Some(ref metadata) => mode::get_mode_from_boxed_unix_int(metadata),
@@ -1324,10 +1318,7 @@ impl Searcher {
                     let mode = match file_info {
                         &Some(ref file_info) => file_info.mode,
                         _ => {
-                            if !meta.is_some() {
-                                let metadata = entry.metadata().unwrap();
-                                meta = Some(Box::new(metadata));
-                            }
+                            meta = update_meta(entry, meta);
 
                             match meta {
                                 Some(ref metadata) => mode::get_mode_from_boxed_unix_int(metadata),
@@ -1364,10 +1355,7 @@ impl Searcher {
                     let mode = match file_info {
                         &Some(ref file_info) => file_info.mode,
                         _ => {
-                            if !meta.is_some() {
-                                let metadata = entry.metadata().unwrap();
-                                meta = Some(Box::new(metadata));
-                            }
+                            meta = update_meta(entry, meta);
 
                             match meta {
                                 Some(ref metadata) => mode::get_mode_from_boxed_unix_int(metadata),
@@ -1437,10 +1425,7 @@ impl Searcher {
 
                 match expr.val {
                     Some(ref _val) => {
-                        if !meta.is_some() {
-                            let metadata = entry.metadata().unwrap();
-                            meta = Some(Box::new(metadata));
-                        }
+                        meta = update_meta(entry, meta);
 
                         match meta {
                             Some(ref metadata) => {
@@ -1475,10 +1460,7 @@ impl Searcher {
 
                 match expr.val {
                     Some(ref _val) => {
-                        if !meta.is_some() {
-                            let metadata = entry.metadata().unwrap();
-                            meta = Some(Box::new(metadata));
-                        }
+                        meta = update_meta(entry, meta);
 
                         match meta {
                             Some(ref metadata) => {
@@ -1513,10 +1495,7 @@ impl Searcher {
 
                 match expr.val {
                     Some(ref _val) => {
-                        if !meta.is_some() {
-                            let metadata = entry.metadata().unwrap();
-                            meta = Some(Box::new(metadata));
-                        }
+                        meta = update_meta(entry, meta);
 
                         match meta {
                             Some(ref metadata) => {
@@ -1817,6 +1796,17 @@ impl Searcher {
 
         (result, meta, dim)
     }
+}
+
+fn update_meta(entry: &DirEntry, meta: Option<Box<Metadata>>) -> Option<Box<Metadata>> {
+    if !meta.is_some() {
+        let metadata = symlink_metadata(entry.path());
+        if let Ok(metadata) = metadata {
+            return Some(Box::new(metadata));
+        }
+    }
+
+    meta
 }
 
 fn parse_filesize(s: &str) -> Option<u64> {

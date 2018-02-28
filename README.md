@@ -156,6 +156,7 @@ Finally limit the results:
 * `modified`
 * `is_dir`
 * `is_file`
+* `is_symlink`
 * `mode`
 * `user_read`
 * `user_write`

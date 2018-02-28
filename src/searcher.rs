@@ -253,7 +253,7 @@ impl Searcher {
                 },
                 "is_symlink" => {
                     match file_info {
-                        &Some(ref file_info) => print!("{}", false),
+                        &Some(_) => print!("{}", false),
                         _ => {
                             if let Some(ref attrs) = attrs {
                                 print!("{}", attrs.file_type().is_symlink());

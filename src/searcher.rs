@@ -156,9 +156,7 @@ impl Searcher {
         self.found += 1;
 
         let attrs = match need_metadata {
-            true =>  {
-                update_meta(entry, meta)
-            },
+            true => update_meta(entry, meta),
             false => None
         };
 
@@ -247,10 +245,13 @@ impl Searcher {
                     }
                 },
                 "is_symlink" => {
-                    if let Some(ref attrs) = attrs {
-                        print!("{}", attrs.file_type().is_symlink());
-                    } else {
-                        print!("");
+                    match file_info {
+                        &Some(ref file_info) => print!("{}", false),
+                        _ => {
+                            if let Some(ref attrs) = attrs {
+                                print!("{}", attrs.file_type().is_symlink());
+                            }
+                        }
                     }
                 },
                 "mode" => {
@@ -268,130 +269,31 @@ impl Searcher {
                     }
                 },
                 "user_read" => {
-                    match file_info {
-                        &Some(ref file_info) => {
-                            if let Some(mode) = file_info.mode {
-                                print!("{}", mode::mode_user_read(mode));
-                            }
-                        },
-                        _ => {
-                            if let Some(ref attrs) = attrs {
-                                print!("{}", mode::user_read(attrs));
-                            }
-                        }
-                    }
+                    Self::print_file_mode(&attrs, &mode::user_read, &file_info, &mode::mode_user_read);
                 },
                 "user_write" => {
-                    match file_info {
-                        &Some(ref file_info) => {
-                            if let Some(mode) = file_info.mode {
-                                print!("{}", mode::mode_user_write(mode));
-                            }
-                        },
-                        _ => {
-                            if let Some(ref attrs) = attrs {
-                                print!("{}", mode::user_write(attrs));
-                            }
-                        }
-                    }
+                    Self::print_file_mode(&attrs, &mode::user_write, &file_info, &mode::mode_user_write);
                 },
                 "user_exec" => {
-                    match file_info {
-                        &Some(ref file_info) => {
-                            if let Some(mode) = file_info.mode {
-                                print!("{}", mode::mode_user_exec(mode));
-                            }
-                        },
-                        _ => {
-                            if let Some(ref attrs) = attrs {
-                                print!("{}", mode::user_exec(attrs));
-                            }
-                        }
-                    }
+                    Self::print_file_mode(&attrs, &mode::user_exec, &file_info, &mode::mode_user_exec);
                 },
                 "group_read" => {
-                    match file_info {
-                        &Some(ref file_info) => {
-                            if let Some(mode) = file_info.mode {
-                                print!("{}", mode::mode_group_read(mode));
-                            }
-                        },
-                        _ => {
-                            if let Some(ref attrs) = attrs {
-                                print!("{}", mode::group_read(attrs));
-                            }
-                        }
-                    }
+                    Self::print_file_mode(&attrs, &mode::group_read, &file_info, &mode::mode_group_read);
                 },
                 "group_write" => {
-                    match file_info {
-                        &Some(ref file_info) => {
-                            if let Some(mode) = file_info.mode {
-                                print!("{}", mode::mode_group_write(mode));
-                            }
-                        },
-                        _ => {
-                            if let Some(ref attrs) = attrs {
-                                print!("{}", mode::group_write(attrs));
-                            }
-                        }
-                    }
+                    Self::print_file_mode(&attrs, &mode::group_write, &file_info, &mode::mode_group_write);
                 },
                 "group_exec" => {
-                    match file_info {
-                        &Some(ref file_info) => {
-                            if let Some(mode) = file_info.mode {
-                                print!("{}", mode::mode_group_exec(mode));
-                            }
-                        },
-                        _ => {
-                            if let Some(ref attrs) = attrs {
-                                print!("{}", mode::group_exec(attrs));
-                            }
-                        }
-                    }
+                    Self::print_file_mode(&attrs, &mode::group_exec, &file_info, &mode::mode_group_exec);
                 },
                 "other_read" => {
-                    match file_info {
-                        &Some(ref file_info) => {
-                            if let Some(mode) = file_info.mode {
-                                print!("{}", mode::mode_other_read(mode));
-                            }
-                        },
-                        _ => {
-                            if let Some(ref attrs) = attrs {
-                                print!("{}", mode::other_read(attrs));
-                            }
-                        }
-                    }
+                    Self::print_file_mode(&attrs, &mode::other_read, &file_info, &mode::mode_other_read);
                 },
                 "other_write" => {
-                    match file_info {
-                        &Some(ref file_info) => {
-                            if let Some(mode) = file_info.mode {
-                                print!("{}", mode::mode_other_write(mode));
-                            }
-                        },
-                        _ => {
-                            if let Some(ref attrs) = attrs {
-                                print!("{}", mode::other_write(attrs));
-                            }
-                        }
-                    }
+                    Self::print_file_mode(&attrs, &mode::other_write, &file_info, &mode::mode_other_write);
                 },
                 "other_exec" => {
-                    match file_info {
-                        &Some(ref file_info) => {
-                            if let Some(mode) = file_info.mode {
-                                print!("{}", mode::mode_other_exec(mode));
-                            }
-                        },
-                        _ => {
-                            if let Some(ref attrs) = attrs {
-                                print!("{}", mode::other_exec(attrs));
-                            }
-                        }
-                    }
+                    Self::print_file_mode(&attrs, &mode::other_exec, &file_info, &mode::mode_other_exec);
                 },
                 "is_hidden" => {
                     match file_info {
@@ -405,83 +307,60 @@ impl Searcher {
                 },
                 "uid" => {
                     if let Some(ref attrs) = attrs {
-                        match mode::get_uid(attrs) {
-                            Some(uid) => print!("{}", uid),
-                            None => { }
+                        if let Some(uid) = mode::get_uid(attrs) {
+                            print!("{}", uid);
                         }
                     }
                 },
                 "gid" => {
                     if let Some(ref attrs) = attrs {
-                        match mode::get_gid(attrs) {
-                            Some(gid) => print!("{}", gid),
-                            None => { }
+                        if let Some(gid) = mode::get_gid(attrs) {
+                            print!("{}", gid);
                         }
                     }
                 },
                 "user" => {
                     if let Some(ref attrs) = attrs {
-                        match mode::get_uid(attrs) {
-                            Some(uid) => {
-                                match self.user_cache.get_user_by_uid(uid) {
-                                    Some(user) => {
-                                        print!("{}", user.name());
-                                    },
-                                    None => { }
-                                }
-                            },
-                            None => { }
+                        if let Some(uid) = mode::get_uid(attrs) {
+                            if let Some(user) = self.user_cache.get_user_by_uid(uid) {
+                                print!("{}", user.name());
+                            }
                         }
                     }
                 },
                 "group" => {
                     if let Some(ref attrs) = attrs {
-                        match mode::get_gid(attrs) {
-                            Some(gid) => {
-                                match self.user_cache.get_group_by_gid(gid) {
-                                    Some(group) => {
-                                        print!("{}", group.name());
-                                    },
-                                    None => { }
-                                }
-                            },
-                            None => { }
+                        if let Some(gid) = mode::get_gid(attrs) {
+                            if let Some(group) = self.user_cache.get_group_by_gid(gid) {
+                                print!("{}", group.name());
+                            }
                         }
                     }
                 },
                 "created" => {
                     if let Some(ref attrs) = attrs {
-                        match attrs.created() {
-                            Ok(sdt) => {
-                                let dt: DateTime<Local> = DateTime::from(sdt);
-                                let format = dt.format("%Y-%m-%d %H:%M:%S");
-                                print!("{}", format);
-                            },
-                            _ => { }
+                        if let Ok(sdt) = attrs.created() {
+                            let dt: DateTime<Local> = DateTime::from(sdt);
+                            let format = dt.format("%Y-%m-%d %H:%M:%S");
+                            print!("{}", format);
                         }
                     }
                 },
                 "accessed" => {
                     if let Some(ref attrs) = attrs {
-                        match attrs.accessed() {
-                            Ok(sdt) => {
-                                let dt: DateTime<Local> = DateTime::from(sdt);
-                                let format = dt.format("%Y-%m-%d %H:%M:%S");
-                                print!("{}", format);
-                            },
-                            _ => { }
+                        if let Ok(sdt) = attrs.accessed() {
+                            let dt: DateTime<Local> = DateTime::from(sdt);
+                            let format = dt.format("%Y-%m-%d %H:%M:%S");
+                            print!("{}", format);
                         }
                     }
                 },
                 "modified" => {
                     if let Some(ref attrs) = attrs {
-                        match attrs.modified() {
-                            Ok(sdt) => {
-                                let dt: DateTime<Local> = DateTime::from(sdt);
-                                let format = dt.format("%Y-%m-%d %H:%M:%S");
-                                print!("{}", format);
-                            },
-                            _ => { }
+                        if let Ok(sdt) = attrs.modified() {
+                            let dt: DateTime<Local> = DateTime::from(sdt);
+                            let format = dt.format("%Y-%m-%d %H:%M:%S");
+                            print!("{}", format);
                         }
                     }
                 },
@@ -528,6 +407,24 @@ impl Searcher {
         }
 
         print!("\n");
+    }
+
+    fn print_file_mode(attrs: &Option<Box<Metadata>>,
+                       mode_func_boxed: &Fn(&Box<Metadata>) -> bool,
+                       file_info: &Option<FileInfo>,
+                       mode_func_i32: &Fn(u32) -> bool) {
+        match file_info {
+            &Some(ref file_info) => {
+                if let Some(mode) = file_info.mode {
+                    print!("{}", mode_func_i32(mode));
+                }
+            },
+            _ => {
+                if let &Some(ref attrs) = attrs {
+                    print!("{}", mode_func_boxed(attrs));
+                }
+            }
+        }
     }
 
     fn conforms(&mut self,

@@ -21,6 +21,7 @@ use parser::Query;
 use parser::Expr;
 use parser::LogicalOp;
 use parser::Op;
+use parser::OutputFormat;
 
 pub struct Searcher {
     query: Query,
@@ -410,10 +411,18 @@ impl Searcher {
                 }
             }
 
-            print!("\t");
+            match self.query.output_format {
+                OutputFormat::Lines => print!("\n"),
+                OutputFormat::Tabs => print!("\t"),
+                _ => print!("\t"),
+            }
         }
 
-        print!("\n");
+        match self.query.output_format {
+            OutputFormat::Lines => {},
+            OutputFormat::Tabs => print!("\n"),
+            _ => print!("\n"),
+        }
     }
 
     fn print_file_mode(attrs: &Option<Box<Metadata>>,

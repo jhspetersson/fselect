@@ -316,7 +316,7 @@ impl Parser {
     fn parse_output_format(&mut self) -> OutputFormat {
         let lexem = self.get_lexem();
         match lexem {
-            Some(Lexem::Limit) => {
+            Some(Lexem::Into) => {
                 let lexem = self.get_lexem();
                 match lexem {
                     Some(Lexem::Field(s)) | Some(Lexem::String(s)) => {

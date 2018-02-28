@@ -73,7 +73,7 @@ impl Parser {
 
     fn parse_roots(&mut self) -> Vec<Root> {
         enum RootParsingMode {
-            Unknown, From, Root, Depth, DepthValue, Archives, Comma
+            Unknown, From, Root, Depth, Options, Comma
         }
 
         let mut roots: Vec<Root> = Vec::new();
@@ -101,6 +101,7 @@ impl Parser {
             let mut path: String = String::from("");
             let mut depth: u32 = 0;
             let mut archives = false;
+            let mut symlinks = false;
 
             loop {
                 let lexem = self.get_lexem();
@@ -113,12 +114,15 @@ impl Parser {
                                         path = s.to_string();
                                         mode = RootParsingMode::Root;
                                     },
-                                    RootParsingMode::Root => {
+                                    RootParsingMode::Root | RootParsingMode::Options => {
                                         if s.to_ascii_lowercase() == "depth" {
                                             mode = RootParsingMode::Depth;
                                         } else if s.to_ascii_lowercase().starts_with("arc") {
                                             archives = true;
-                                            mode = RootParsingMode::Archives;
+                                            mode = RootParsingMode::Options;
+                                        } else if s.to_ascii_lowercase().starts_with("symlink") {
+                                            symlinks = true;
+                                            mode = RootParsingMode::Options;
                                         } else {
                                             self.drop_lexem();
                                             break;
@@ -129,7 +133,7 @@ impl Parser {
                                         match d {
                                             Ok(d) => {
                                                 depth = d;
-                                                mode = RootParsingMode::DepthValue;
+                                                mode = RootParsingMode::Options;
                                             },
                                             _ => {
                                                 self.drop_lexem();
@@ -137,33 +141,17 @@ impl Parser {
                                             }
                                         }
                                     },
-                                    RootParsingMode::DepthValue => {
-                                        if s.to_ascii_lowercase().starts_with("arc") {
-                                            archives = true;
-                                            mode = RootParsingMode::Archives;
-                                        } else {
-                                            self.drop_lexem();
-                                            break;
-                                        }
-                                    },
-                                    RootParsingMode::Archives => {
-                                        if s.to_ascii_lowercase() == "depth" {
-                                            mode = RootParsingMode::Depth;
-                                        } else {
-                                            self.drop_lexem();
-                                            break;
-                                        }
-                                    },
                                     _ => { }
                                 }
                             },
                             &Lexem::Comma => {
                                 if path.len() > 0 {
-                                    roots.push(Root::new(path, depth, archives));
+                                    roots.push(Root::new(path, depth, archives, symlinks));
 
                                     path = String::from("");
                                     depth = 0;
                                     archives = false;
+                                    symlinks = false;
 
                                     mode = RootParsingMode::Comma;
                                 } else {
@@ -173,11 +161,7 @@ impl Parser {
                             },
                             _ => {
                                 if path.len() > 0 {
-                                    roots.push(Root::new(path, depth, archives));
-
-                                    path = String::from("");
-                                    depth = 0;
-                                    archives = false;
+                                    roots.push(Root::new(path, depth, archives, symlinks));
                                 }
 
                                 self.drop_lexem();
@@ -187,11 +171,7 @@ impl Parser {
                     },
                     None => {
                         if path.len() > 0 {
-                            roots.push(Root::new(path, depth, archives));
-
-                            path = String::from("");
-                            depth = 0;
-                            archives = false;
+                            roots.push(Root::new(path, depth, archives, symlinks));
                         }
                         break;
                     }
@@ -446,15 +426,16 @@ pub struct Root {
     pub path: String,
     pub depth: u32,
     pub archives: bool,
+    pub symlinks: bool,
 }
 
 impl Root {
-    fn new(path: String, depth: u32, archives: bool) -> Root {
-        Root { path, depth, archives }
+    fn new(path: String, depth: u32, archives: bool, symlinks: bool) -> Root {
+        Root { path, depth, archives, symlinks }
     }
 
     fn default() -> Root {
-        Root { path: String::from("."), depth: 0, archives: false }
+        Root { path: String::from("."), depth: 0, archives: false, symlinks: false }
     }
 }
 
@@ -641,11 +622,11 @@ mod tests {
 
         assert_eq!(query.fields, vec![String::from("name"), String::from("path"), String::from("size"), String::from("fsize")]);
         assert_eq!(query.roots, vec![
-            Root::new(String::from("/test"), 2, false),
-            Root::new(String::from("/test2"), 0, true),
-            Root::new(String::from("/test3"), 3, true),
-            Root::new(String::from("/test4"), 0, false),
-            Root::new(String::from("/test5"), 0, false),
+            Root::new(String::from("/test"), 2, false, false),
+            Root::new(String::from("/test2"), 0, true, false),
+            Root::new(String::from("/test3"), 3, true, false),
+            Root::new(String::from("/test4"), 0, false, false),
+            Root::new(String::from("/test5"), 0, false, false),
         ]);
 
         let expr = Expr::node(

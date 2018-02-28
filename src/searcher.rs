@@ -51,6 +51,7 @@ impl Searcher {
             let root_dir = Path::new(&root.path);
             let max_depth = root.depth;
             let search_archives = root.archives;
+            let follow_symlinks = root.symlinks;
             let _result = self.visit_dirs(
                 root_dir,
                 need_metadata,
@@ -58,6 +59,7 @@ impl Searcher {
                 max_depth,
                 1,
                 search_archives,
+                follow_symlinks,
                 t
             );
         }
@@ -72,9 +74,13 @@ impl Searcher {
                   max_depth: u32,
                   depth: u32,
                   search_archives: bool,
+                  follow_symlinks: bool,
                   t: &mut Box<StdoutTerminal>) -> io::Result<()> {
         if max_depth == 0 || (max_depth > 0 && depth <= max_depth) {
-            let metadata = dir.metadata();
+            let metadata = match follow_symlinks {
+                true => dir.metadata(),
+                false => symlink_metadata(dir)
+            };
             match metadata {
                 Ok(metadata) => {
                     if metadata.is_dir() {
@@ -89,7 +95,7 @@ impl Searcher {
                                         Ok(entry) => {
                                             let path = entry.path();
 
-                                            self.check_file(&entry, &None, need_metadata, need_dim);
+                                            self.check_file(&entry, &None, need_metadata, need_dim, follow_symlinks);
 
                                             if search_archives && is_zip_archive(&path.to_string_lossy()) {
                                                 if let Ok(file) = fs::File::open(&path) {
@@ -101,7 +107,7 @@ impl Searcher {
 
                                                             if let Ok(afile) = archive.by_index(i) {
                                                                 let file_info = to_file_info(&afile);
-                                                                self.check_file(&entry, &Some(file_info), need_metadata, need_dim);
+                                                                self.check_file(&entry, &Some(file_info), need_metadata, need_dim, false);
                                                             }
                                                         }
                                                     }
@@ -109,7 +115,7 @@ impl Searcher {
                                             }
 
                                             if path.is_dir() {
-                                                let result = self.visit_dirs(&path, need_metadata, need_dim, max_depth, depth + 1, search_archives, t);
+                                                let result = self.visit_dirs(&path, need_metadata, need_dim, max_depth, depth + 1, search_archives, follow_symlinks, t);
                                                 if result.is_err() {
                                                     error_message(&path, result.err().unwrap(), t);
                                                 }
@@ -140,11 +146,12 @@ impl Searcher {
                   entry: &DirEntry,
                   file_info: &Option<FileInfo>,
                   need_metadata: bool,
-                  need_dim: bool) {
+                  need_dim: bool,
+                  follow_symlinks: bool) {
         let mut meta = None;
         let mut dim = None;
         if let Some(ref expr) = self.query.expr.clone() {
-            let (result, entry_meta, entry_dim) = self.conforms(entry, file_info, expr, None, None);
+            let (result, entry_meta, entry_dim) = self.conforms(entry, file_info, expr, None, None, follow_symlinks);
             if !result {
                 return
             }
@@ -156,7 +163,7 @@ impl Searcher {
         self.found += 1;
 
         let attrs = match need_metadata {
-            true => update_meta(entry, meta),
+            true => update_meta(entry, meta, follow_symlinks),
             false => None
         };
 
@@ -432,7 +439,8 @@ impl Searcher {
                 file_info: &Option<FileInfo>,
                 expr: &Box<Expr>,
                 entry_meta: Option<Box<fs::Metadata>>,
-                entry_dim: Option<(usize, usize)>) -> (bool, Option<Box<fs::Metadata>>, Option<(usize, usize)>) {
+                entry_dim: Option<(usize, usize)>,
+                follow_symlinks: bool) -> (bool, Option<Box<fs::Metadata>>, Option<(usize, usize)>) {
         let mut result = false;
         let mut meta = entry_meta;
         let mut dim = entry_dim;
@@ -442,7 +450,7 @@ impl Searcher {
             let mut right_result = false;
 
             if let Some(ref left) = expr.left {
-                let (left_res, left_meta, left_dim) = self.conforms(entry, file_info, &left, meta, dim);
+                let (left_res, left_meta, left_dim) = self.conforms(entry, file_info, &left, meta, dim, follow_symlinks);
                 left_result = left_res;
                 meta = left_meta;
                 dim = left_dim;
@@ -454,7 +462,7 @@ impl Searcher {
                         result = false;
                     } else {
                         if let Some(ref right) = expr.right {
-                            let (right_res, right_meta, right_dim) = self.conforms(entry, file_info, &right, meta, dim);
+                            let (right_res, right_meta, right_dim) = self.conforms(entry, file_info, &right, meta, dim, follow_symlinks);
                             right_result = right_res;
                             meta = right_meta;
                             dim = right_dim;
@@ -468,7 +476,7 @@ impl Searcher {
                         result = true;
                     } else {
                         if let Some(ref right) = expr.right {
-                            let (right_res, right_meta, right_dim) = self.conforms(entry, file_info, &right, meta, dim);
+                            let (right_res, right_meta, right_dim) = self.conforms(entry, file_info, &right, meta, dim, follow_symlinks);
                             right_result = right_res;
                             meta = right_meta;
                             dim = right_dim;
@@ -567,7 +575,7 @@ impl Searcher {
                                 Some(file_info.size)
                             },
                             _ => {
-                                meta = update_meta(entry, meta);
+                                meta = update_meta(entry, meta, follow_symlinks);
 
                                 match meta {
                                     Some(ref metadata) => {
@@ -608,7 +616,7 @@ impl Searcher {
 
                 match expr.val {
                     Some(ref val) => {
-                        meta = update_meta(entry, meta);
+                        meta = update_meta(entry, meta, follow_symlinks);
 
                         match meta {
                             Some(ref metadata) => {
@@ -646,7 +654,7 @@ impl Searcher {
 
                 match expr.val {
                     Some(ref val) => {
-                        meta = update_meta(entry, meta);
+                        meta = update_meta(entry, meta, follow_symlinks);
 
                         match meta {
                             Some(ref metadata) => {
@@ -702,7 +710,7 @@ impl Searcher {
 
                 match expr.val {
                     Some(ref val) => {
-                        meta = update_meta(entry, meta);
+                        meta = update_meta(entry, meta, follow_symlinks);
 
                         match meta {
                             Some(ref metadata) => {
@@ -740,7 +748,7 @@ impl Searcher {
 
                 match expr.val {
                     Some(ref val) => {
-                        meta = update_meta(entry, meta);
+                        meta = update_meta(entry, meta, follow_symlinks);
 
                         match meta {
                             Some(ref metadata) => {
@@ -794,7 +802,7 @@ impl Searcher {
                     let is_dir = match file_info {
                         &Some(ref file_info) => Some(file_info.name.ends_with('/')),
                         _ => {
-                            meta = update_meta(entry, meta);
+                            meta = update_meta(entry, meta, follow_symlinks);
 
                             match meta {
                                 Some(ref metadata) => {
@@ -833,7 +841,7 @@ impl Searcher {
                     let is_file = match file_info {
                         &Some(ref file_info) => Some(!file_info.name.ends_with('/')),
                         _ => {
-                            meta = update_meta(entry, meta);
+                            meta = update_meta(entry, meta, follow_symlinks);
 
                             match meta {
                                 Some(ref metadata) => {
@@ -872,7 +880,7 @@ impl Searcher {
                     let is_symlink = match file_info {
                         &Some(_) => Some(false),
                         _ => {
-                            meta = update_meta(entry, meta);
+                            meta = update_meta(entry, meta, follow_symlinks);
 
                             match meta {
                                 Some(ref metadata) => {
@@ -916,7 +924,7 @@ impl Searcher {
                             }
                         },
                         _ => {
-                            meta = update_meta(entry, meta);
+                            meta = update_meta(entry, meta, follow_symlinks);
 
                             match meta {
                                 Some(ref metadata) => {
@@ -956,7 +964,7 @@ impl Searcher {
                     let mode = match file_info {
                         &Some(ref file_info) => file_info.mode,
                         _ => {
-                            meta = update_meta(entry, meta);
+                            meta = update_meta(entry, meta, follow_symlinks);
 
                             match meta {
                                 Some(ref metadata) => mode::get_mode_from_boxed_unix_int(metadata),
@@ -993,7 +1001,7 @@ impl Searcher {
                     let mode = match file_info {
                         &Some(ref file_info) => file_info.mode,
                         _ => {
-                            meta = update_meta(entry, meta);
+                            meta = update_meta(entry, meta, follow_symlinks);
 
                             match meta {
                                 Some(ref metadata) => mode::get_mode_from_boxed_unix_int(metadata),
@@ -1030,7 +1038,7 @@ impl Searcher {
                     let mode = match file_info {
                         &Some(ref file_info) => file_info.mode,
                         _ => {
-                            meta = update_meta(entry, meta);
+                            meta = update_meta(entry, meta, follow_symlinks);
 
                             match meta {
                                 Some(ref metadata) => mode::get_mode_from_boxed_unix_int(metadata),
@@ -1067,7 +1075,7 @@ impl Searcher {
                     let mode = match file_info {
                         &Some(ref file_info) => file_info.mode,
                         _ => {
-                            meta = update_meta(entry, meta);
+                            meta = update_meta(entry, meta, follow_symlinks);
 
                             match meta {
                                 Some(ref metadata) => mode::get_mode_from_boxed_unix_int(metadata),
@@ -1104,7 +1112,7 @@ impl Searcher {
                     let mode = match file_info {
                         &Some(ref file_info) => file_info.mode,
                         _ => {
-                            meta = update_meta(entry, meta);
+                            meta = update_meta(entry, meta, follow_symlinks);
 
                             match meta {
                                 Some(ref metadata) => mode::get_mode_from_boxed_unix_int(metadata),
@@ -1141,7 +1149,7 @@ impl Searcher {
                     let mode = match file_info {
                         &Some(ref file_info) => file_info.mode,
                         _ => {
-                            meta = update_meta(entry, meta);
+                            meta = update_meta(entry, meta, follow_symlinks);
 
                             match meta {
                                 Some(ref metadata) => mode::get_mode_from_boxed_unix_int(metadata),
@@ -1178,7 +1186,7 @@ impl Searcher {
                     let mode = match file_info {
                         &Some(ref file_info) => file_info.mode,
                         _ => {
-                            meta = update_meta(entry, meta);
+                            meta = update_meta(entry, meta, follow_symlinks);
 
                             match meta {
                                 Some(ref metadata) => mode::get_mode_from_boxed_unix_int(metadata),
@@ -1215,7 +1223,7 @@ impl Searcher {
                     let mode = match file_info {
                         &Some(ref file_info) => file_info.mode,
                         _ => {
-                            meta = update_meta(entry, meta);
+                            meta = update_meta(entry, meta, follow_symlinks);
 
                             match meta {
                                 Some(ref metadata) => mode::get_mode_from_boxed_unix_int(metadata),
@@ -1252,7 +1260,7 @@ impl Searcher {
                     let mode = match file_info {
                         &Some(ref file_info) => file_info.mode,
                         _ => {
-                            meta = update_meta(entry, meta);
+                            meta = update_meta(entry, meta, follow_symlinks);
 
                             match meta {
                                 Some(ref metadata) => mode::get_mode_from_boxed_unix_int(metadata),
@@ -1322,7 +1330,7 @@ impl Searcher {
 
                 match expr.val {
                     Some(ref _val) => {
-                        meta = update_meta(entry, meta);
+                        meta = update_meta(entry, meta, follow_symlinks);
 
                         match meta {
                             Some(ref metadata) => {
@@ -1357,7 +1365,7 @@ impl Searcher {
 
                 match expr.val {
                     Some(ref _val) => {
-                        meta = update_meta(entry, meta);
+                        meta = update_meta(entry, meta, follow_symlinks);
 
                         match meta {
                             Some(ref metadata) => {
@@ -1392,7 +1400,7 @@ impl Searcher {
 
                 match expr.val {
                     Some(ref _val) => {
-                        meta = update_meta(entry, meta);
+                        meta = update_meta(entry, meta, follow_symlinks);
 
                         match meta {
                             Some(ref metadata) => {
@@ -1695,9 +1703,13 @@ impl Searcher {
     }
 }
 
-fn update_meta(entry: &DirEntry, meta: Option<Box<Metadata>>) -> Option<Box<Metadata>> {
+fn update_meta(entry: &DirEntry, meta: Option<Box<Metadata>>, follow_symlinks: bool) -> Option<Box<Metadata>> {
     if !meta.is_some() {
-        let metadata = symlink_metadata(entry.path());
+        let metadata = match follow_symlinks {
+            false => symlink_metadata(entry.path()),
+            true => fs::metadata(entry.path())
+        };
+
         if let Ok(metadata) = metadata {
             return Some(Box::new(metadata));
         }

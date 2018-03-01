@@ -434,7 +434,7 @@ impl Searcher {
             },
             OutputFormat::Csv => {
                 if let Some(ref mut csv_writer) = csv_writer {
-                    csv_writer.write_record(records);
+                    let _ = csv_writer.write_record(records);
                 }
             },
             _ => {

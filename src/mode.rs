@@ -1,15 +1,17 @@
 use std::fs::Metadata;
+#[cfg(unix)]
+use std::os::unix::fs::MetadataExt;
+#[cfg(windows)]
+use std::os::windows::fs::MetadataExt;
 
 pub fn get_mode(meta: &Box<Metadata>) -> String {
     #[cfg(unix)]
     {
-        use std::os::unix::fs::MetadataExt;
         format_mode(meta.mode())
     }
 
     #[cfg(windows)]
     {
-        use std::os::windows::fs::MetadataExt;
         format_mode(meta.file_attributes())
     }
 }
@@ -17,17 +19,16 @@ pub fn get_mode(meta: &Box<Metadata>) -> String {
 pub fn format_mode(mode: u32) -> String {
     #[cfg(unix)]
     {
-        use std::os::unix::fs::MetadataExt;
         get_mode_unix(mode)
     }
 
     #[cfg(windows)]
     {
-        use std::os::windows::fs::MetadataExt;
         get_mode_windows(mode)
     }
 }
 
+#[cfg(unix)]
 fn get_mode_unix(mode: u32) -> String {
     let mut s = String::new();
 
@@ -94,14 +95,14 @@ fn get_mode_unix(mode: u32) -> String {
     s
 }
 
+#[allow(unused)]
 pub fn get_mode_from_boxed_unix_int(meta: &Box<Metadata>) -> Option<u32> {
     #[cfg(unix)]
     {
-        use std::os::unix::fs::MetadataExt;
         Some(meta.mode())
     }
 
-    #[cfg(windows)]
+    #[cfg(not(unix))]
     {
         None
     }
@@ -218,8 +219,11 @@ const S_IROTH: u32 = 4;
 const S_IWOTH: u32 = 2;
 const S_IXOTH: u32 = 1;
 
+#[allow(unused)]
 const S_ISUID: u32 = 4000;
+#[allow(unused)]
 const S_ISGID: u32 = 2000;
+#[allow(unused)]
 const S_ISVTX: u32 = 1000;
 
 #[cfg(windows)]
@@ -325,26 +329,28 @@ fn get_mode_windows(mode: u32) -> String {
     v.join(", ")
 }
 
+#[allow(unused)]
 pub fn get_uid(meta: &Box<Metadata>) -> Option<u32> {
     #[cfg(unix)]
     {
-        use std::os::unix::fs::MetadataExt;
-        let uid = meta.uid();
-
-        return Some(uid);
+        Some(meta.uid())
     }
 
-    None
+    #[cfg(not(unix))]
+    {
+        None
+    }
 }
 
+#[allow(unused)]
 pub fn get_gid(meta: &Box<Metadata>) -> Option<u32> {
     #[cfg(unix)]
     {
-        use std::os::unix::fs::MetadataExt;
-        let uid = meta.gid();
-
-        return Some(uid);
+        Some(meta.gid())
     }
 
-    None
+    #[cfg(not(unix))]
+    {
+        None
+    }
 }

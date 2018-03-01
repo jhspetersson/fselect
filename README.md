@@ -13,6 +13,7 @@ While it doesn't tend to fully replace traditional `find` and `ls`, **fselect** 
 * search within archives
 * search by width and height of images
 * shortcuts to common file types
+* various output formatting (CSV, JSON, and others)
 
 More is under way!
 

@@ -131,7 +131,7 @@ Find files with dangerous permissions:
 Simple glob-like expressions or even regular expressions on file mode are possible:
     
     fselect mode, path from /home/user where mode = '*rwx'
-    fselect mode, path from /home/user where mode ~= '.*rwx$'
+    fselect mode, path from /home/user where mode =~ '.*rwx$'
     
 Find files by owner's uid or gid:
 
@@ -191,7 +191,7 @@ Finally limit the results:
 * `>=` or `gte` or `ge`
 * `<` or `lt`
 * `<=` or `lte` or `le`
-* `~=` or `regexp` or `rx`
+* `=~` or `~=` or `regexp` or `rx`
 
 ### File size specifiers
 

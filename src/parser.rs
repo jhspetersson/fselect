@@ -593,6 +593,8 @@ impl Op {
             return  Some(Op::Lte);
         } else if text.eq_ignore_ascii_case("~=") {
             return  Some(Op::Rx);
+        } else if text.eq_ignore_ascii_case("=~") {
+            return  Some(Op::Rx);
         } else if text.eq_ignore_ascii_case("regexp") {
             return  Some(Op::Rx);
         } else if text.eq_ignore_ascii_case("rx") {

@@ -1819,7 +1819,7 @@ fn parse_filesize(s: &str) -> Option<u64> {
     }
 }
 
-fn is_hidden(file_name: &str, metadata: &Option<Box<Metadata>>, archive_mode: bool) -> bool {
+fn is_hidden(file_name: &str, _metadata: &Option<Box<Metadata>>, archive_mode: bool) -> bool {
     if archive_mode {
         if !file_name.contains('\\') {
             return parse_unix_filename(file_name).starts_with('.');
@@ -1835,12 +1835,15 @@ fn is_hidden(file_name: &str, metadata: &Option<Box<Metadata>>, archive_mode: bo
 
     #[cfg(windows)]
     {
-        if let &Some(ref metadata) = metadata {
-            return mode::get_mode(metadata).contains("Hidden");
+        match metadata {
+            &Some(ref metadata) => {
+                return mode::get_mode(metadata).contains("Hidden");
+            }
+            _ => {
+                return false
+            }
         }
     }
-
-    false
 }
 
 fn parse_unix_filename(s: &str) -> &str {

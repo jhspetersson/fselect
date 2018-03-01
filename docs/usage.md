@@ -133,7 +133,7 @@ When you put a directory to search at, you can specify some options.
 
 ### Output formats
 
-    ... INTO format
+    ... into FORMAT
 
 | Format | Description |
 | --- | --- |

@@ -25,7 +25,7 @@ More is under way!
 
 ### Usage
 
-    fselect COLUMN[, COLUMN...] [from ROOT[, ROOT...]] [where EXPR] [limit N]
+    fselect COLUMN[, COLUMN...] [from ROOT[, ROOT...]] [where EXPR] [limit N] [into FORMAT]
 
 ### Examples
 
@@ -145,6 +145,11 @@ Or by owner's or group's name:
 Finally limit the results:
 
     fselect name from /home/user/samples limit 5 
+    
+Format output:
+
+    fselect size, path from /home/user limit 5 into json
+    fselect size, path from /home/user limit 5 into csv
 
 ### Columns and expression fields
 
@@ -208,6 +213,14 @@ Finally limit the results:
 * is_image: `.bmp`, `.gif`, `.jpeg`, `.jpg`, `.png`, `.tiff`, `.webp`
 * is_source: `.asm`, `.c`, `.cpp`, `.cs`, `.java`, `.js`, `.h`, `.hpp`, `.pas`, `.php`, `.pl`, `.pm`, `.py`, `.rb`, `.rs`, `.swift`
 * is_video: `.3gp`, `.avi`, `.flv`, `.m4p`, `.m4v`, `.mkv`, `.mov`, `.mp4`, `.mpeg`, `.mpg`, `.webm`, `.wmv`
+
+### Output formats
+
+* `tabs` - default, columns are separated with tabulation
+* `lines` - each column goes at a separate line
+* `list` - columns are separated with NULL symbol, similar to `-print0` argument of `find`
+* `csv` - comma-separated columns
+* `json` - array of resulting objects with requested columns 
 
 ### License
 

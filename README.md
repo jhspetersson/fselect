@@ -28,6 +28,10 @@ More is under way!
 
     fselect COLUMN[, COLUMN...] [from ROOT[, ROOT...]] [where EXPR] [limit N] [into FORMAT]
 
+### Documentation
+
+[More detailed description. Look examples first.](docs/usage.md)
+
 ### Examples
 
 Find temporary or config files (full path and size):
@@ -151,77 +155,6 @@ Format output:
 
     fselect size, path from /home/user limit 5 into json
     fselect size, path from /home/user limit 5 into csv
-
-### Columns and expression fields
-
-* `path`
-* `name`
-* `size`
-* `hsize` or `fsize`
-* `uid`
-* `gid`
-* `user`
-* `group`
-* `created`
-* `accessed`
-* `modified`
-* `is_dir`
-* `is_file`
-* `is_symlink`
-* `mode`
-* `user_read`
-* `user_write`
-* `user_exec`
-* `group_read`
-* `group_write`
-* `group_exec`
-* `other_read`
-* `other_write`
-* `other_exec`
-* `is_hidden`
-* `width`
-* `height`
-* `is_archive`
-* `is_audio`
-* `is_doc`
-* `is_image`
-* `is_source`
-* `is_video`
-
-### Operators
-
-* `=` or `==` or `eq`
-* `!=` or `<>` or `ne`
-* `===`
-* `!==`
-* `>` or `gt`
-* `>=` or `gte` or `ge`
-* `<` or `lt`
-* `<=` or `lte` or `le`
-* `=~` or `~=` or `regexp` or `rx`
-
-### File size specifiers
-
-* `g` or `gb` for gibibytes
-* `m` or `mb` for mibibytes
-* `k` or `kb` for kibibytes
-
-### File extensions
-
-* is_archive: `.7z`, `.bzip2`, `.gz`, `.gzip`, `.rar`, `.tar`, `.xz`, `.zip`
-* is_audio: `.aac`, `.aiff`, `.amr`, `.flac`, `.gsm`, `.m4a`, `.m4b`, `.m4p`, `.mp3`, `.ogg`, `.wav`, `.wma`
-* is_doc: `.accdb`, `.doc`, `.docx`, `.dot`, `.dotx`, `.mdb`, `.ods`, `.odt`, `.pdf`, `.ppt`, `.pptx`, `.rtf`, `.xls`, `.xlt`, `.xlsx`, `.xps`
-* is_image: `.bmp`, `.gif`, `.jpeg`, `.jpg`, `.png`, `.tiff`, `.webp`
-* is_source: `.asm`, `.c`, `.cpp`, `.cs`, `.java`, `.js`, `.h`, `.hpp`, `.pas`, `.php`, `.pl`, `.pm`, `.py`, `.rb`, `.rs`, `.swift`
-* is_video: `.3gp`, `.avi`, `.flv`, `.m4p`, `.m4v`, `.mkv`, `.mov`, `.mp4`, `.mpeg`, `.mpg`, `.webm`, `.wmv`
-
-### Output formats
-
-* `tabs` - default, columns are separated with tabulation
-* `lines` - each column goes at a separate line
-* `list` - columns are separated with NULL symbol, similar to `-print0` argument of `find`
-* `csv` - comma-separated columns
-* `json` - array of resulting objects with requested columns 
 
 ### License
 

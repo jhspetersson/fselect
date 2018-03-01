@@ -1819,6 +1819,7 @@ fn parse_filesize(s: &str) -> Option<u64> {
     }
 }
 
+#[allow(unused)]
 fn is_hidden(file_name: &str, metadata: &Option<Box<Metadata>>, archive_mode: bool) -> bool {
     if archive_mode {
         if !file_name.contains('\\') {
@@ -1840,7 +1841,10 @@ fn is_hidden(file_name: &str, metadata: &Option<Box<Metadata>>, archive_mode: bo
         }
     }
 
-    false
+    #[cfg(not(unix))]
+    {
+        false
+    }
 }
 
 fn parse_unix_filename(s: &str) -> &str {

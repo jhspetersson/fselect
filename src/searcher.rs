@@ -421,6 +421,7 @@ impl Searcher {
 
             match self.query.output_format {
                 OutputFormat::Lines => print!("{}\n", record),
+                OutputFormat::List => print!("{}\0", record),
                 OutputFormat::Tabs => print!("{}\t", record),
                 OutputFormat::Csv => records.push(record),
                 _ => print!("{}\t", record),
@@ -429,6 +430,9 @@ impl Searcher {
 
         match self.query.output_format {
             OutputFormat::Lines => {},
+            OutputFormat::List => {
+                print!("\0");
+            },
             OutputFormat::Tabs => {
                 print!("\n");
             },

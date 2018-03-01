@@ -323,6 +323,8 @@ impl Parser {
                         let s = s.to_lowercase();
                         if s == "lines" {
                             return OutputFormat::Lines;
+                        } else if s == "list" {
+                            return OutputFormat::List;
                         } else if s == "csv" {
                             return OutputFormat::Csv;
                         } else if s == "json" {
@@ -613,7 +615,7 @@ pub enum LogicalOp {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum OutputFormat {
-    Tabs, Lines, Csv, Json
+    Tabs, Lines, List, Csv, Json
 }
 
 #[cfg(test)]

@@ -1,7 +1,8 @@
 # fselect
 Find files with SQL-like queries
 
-[![](https://img.shields.io/crates/v/fselect.svg)](https://crates.io/crates/fselect)
+[![Crates.io](https://img.shields.io/crates/v/fselect.svg)](https://crates.io/crates/fselect)
+[![Build Status](https://travis-ci.org/jhspetersson/fselect.svg?branch=master)](https://travis-ci.org/jhspetersson/fselect)
 
 ### Why use fselect?
 

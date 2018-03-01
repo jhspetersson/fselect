@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::error::Error;
 use std::fs;
 use std::fs::DirEntry;
@@ -11,6 +12,7 @@ use chrono::Local;
 use csv;
 use humansize::{FileSize, file_size_opts};
 use imagesize;
+use serde_json;
 use term;
 use term::StdoutTerminal;
 #[cfg(unix)]
@@ -49,6 +51,10 @@ impl Searcher {
                 str.eq("width") || str.eq("height")
             }).count() > 0;
 
+        if let OutputFormat::Json = self.query.output_format {
+            print!("[");
+        }
+
         for root in &self.query.clone().roots {
             let root_dir = Path::new(&root.path);
             let max_depth = root.depth;
@@ -64,6 +70,10 @@ impl Searcher {
                 follow_symlinks,
                 t
             );
+        }
+
+        if let OutputFormat::Json = self.query.output_format {
+            print!("]");
         }
 
         Ok(())
@@ -185,8 +195,12 @@ impl Searcher {
 
         let mut csv_writer = None;
         let mut records = vec![];
-        if let OutputFormat::Csv = self.query.output_format {
-            csv_writer = Some(csv::Writer::from_writer(io::stdout()));
+        let mut file_map = HashMap::new();
+        match self.query.output_format {
+            OutputFormat::Csv => {
+                csv_writer = Some(csv::Writer::from_writer(io::stdout()));
+            },
+            _ => {}
         }
 
         for field in self.query.fields.iter() {
@@ -420,19 +434,27 @@ impl Searcher {
             };
 
             match self.query.output_format {
-                OutputFormat::Lines => print!("{}\n", record),
-                OutputFormat::List => print!("{}\0", record),
-                OutputFormat::Tabs => print!("{}\t", record),
-                OutputFormat::Csv => records.push(record),
-                _ => print!("{}\t", record),
+                OutputFormat::Lines => {
+                    print!("{}\n", record);
+                },
+                OutputFormat::List => {
+                    print!("{}\0", record);
+                },
+                OutputFormat::Json => {
+                    file_map.insert(field, record);
+                },
+                OutputFormat::Tabs => {
+                    print!("{}\t", record);
+                },
+                OutputFormat::Csv => {
+                    records.push(record);
+                },
             }
         }
 
         match self.query.output_format {
             OutputFormat::Lines => {},
-            OutputFormat::List => {
-                print!("\0");
-            },
+            OutputFormat::List => {},
             OutputFormat::Tabs => {
                 print!("\n");
             },
@@ -441,8 +463,12 @@ impl Searcher {
                     let _ = csv_writer.write_record(records);
                 }
             },
-            _ => {
-                print!("\n");
+            OutputFormat::Json => {
+                if self.found > 1 {
+                    print!(",");
+                }
+
+                print!("{}", serde_json::to_string(&file_map).unwrap());
             },
         }
     }

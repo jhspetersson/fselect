@@ -3,6 +3,7 @@ extern crate csv;
 extern crate humansize;
 extern crate imagesize;
 extern crate regex;
+extern crate serde_json;
 extern crate term;
 #[cfg(unix)]
 extern crate users;

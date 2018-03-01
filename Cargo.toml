@@ -17,6 +17,7 @@ csv = "1.0.0-beta.5"
 humansize = "1.1.0"
 imagesize = "0.5"
 regex = "0.2"
+serde_json = "1.0"
 term = "0.5"
 zip = "0.3.1"
 

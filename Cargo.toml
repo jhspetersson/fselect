@@ -13,6 +13,7 @@ license = "MIT/Apache-2.0"
 
 [dependencies]
 chrono = "0.4"
+csv = "1.0.0-beta.5"
 humansize = "1.1.0"
 imagesize = "0.5"
 regex = "0.2"

@@ -17,13 +17,11 @@ pub fn get_mode(meta: &Box<Metadata>) -> String {
 pub fn format_mode(mode: u32) -> String {
     #[cfg(unix)]
     {
-        use std::os::unix::fs::MetadataExt;
         get_mode_unix(mode)
     }
 
     #[cfg(windows)]
     {
-        use std::os::windows::fs::MetadataExt;
         get_mode_windows(mode)
     }
 }
@@ -218,8 +216,11 @@ const S_IROTH: u32 = 4;
 const S_IWOTH: u32 = 2;
 const S_IXOTH: u32 = 1;
 
+#[allow(unused)]
 const S_ISUID: u32 = 4000;
+#[allow(unused)]
 const S_ISGID: u32 = 2000;
+#[allow(unused)]
 const S_ISVTX: u32 = 1000;
 
 #[cfg(windows)]
@@ -334,7 +335,10 @@ pub fn get_uid(meta: &Box<Metadata>) -> Option<u32> {
         return Some(uid);
     }
 
-    None
+    #[cfg(windows)]
+    {
+        return None
+    }
 }
 
 pub fn get_gid(meta: &Box<Metadata>) -> Option<u32> {
@@ -346,5 +350,8 @@ pub fn get_gid(meta: &Box<Metadata>) -> Option<u32> {
         return Some(uid);
     }
 
-    None
+    #[cfg(windows)]
+    {
+        return None
+    }
 }

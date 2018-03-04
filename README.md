@@ -66,7 +66,7 @@ Use single quotes if you need to address files with spaces:
     
 Regular expressions supported:
 
-    fselect name from /home/user where path ~= '.*Rust.*'
+    fselect name from /home/user where path =~ '.*Rust.*'
     
 And even simple glob will suffice:
 

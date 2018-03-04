@@ -101,6 +101,7 @@ When you put a directory to search at, you can specify some options.
 * `<` or `lt`
 * `<=` or `lte` or `le`
 * `=~` or `~=` or `regexp` or `rx`
+* `like`
 
 ### File size specifiers
 

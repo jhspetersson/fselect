@@ -72,6 +72,10 @@ And even simple glob will suffice:
 
     fselect name from /home/user where path = '*Rust*'
     
+Classic LIKE:
+
+    fselect path from /home/user where name like %report-2018-__-__???
+    
 Exact match operators to search with regexps disabled:
 
     fselect path from /home/user where name === 'some_*_weird_*_name'

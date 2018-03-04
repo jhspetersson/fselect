@@ -147,6 +147,8 @@ impl<'a> Lexer<'a> {
                     Some(Lexem::Operator(s))
                 } else if s.eq_ignore_ascii_case("rx")  {
                     Some(Lexem::Operator(s))
+                } else if s.eq_ignore_ascii_case("like")  {
+                    Some(Lexem::Operator(s))
                 } else if s.eq_ignore_ascii_case("limit")  {
                     Some(Lexem::Limit)
                 } else if s.eq_ignore_ascii_case("into")  {

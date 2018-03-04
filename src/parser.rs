@@ -1,5 +1,7 @@
 extern crate regex;
 
+use std::ops::Index;
+
 use chrono::DateTime;
 use chrono::Local;
 use regex::Captures;
@@ -249,6 +251,11 @@ impl Parser {
                             if let Some(Op::Rx) = op {
                                 let regex = Regex::new(&s3).unwrap();
                                 expr = Expr::leaf_regex(s.to_string(), op, s3.to_string(), regex);
+                            } else if let Some(Op::Like) = op {
+                                let pattern = convert_like_to_pattern(s3);
+                                let regex = Regex::new(&pattern).unwrap();
+
+                                expr = Expr::leaf_regex(s.to_string(), op, s3.to_string(), regex);
                             } else {
                                 expr = match is_glob(s3) {
                                     true => {
@@ -367,7 +374,6 @@ fn convert_glob_to_pattern(s: &str) -> String {
     let string = s.to_string();
     let regex = Regex::new("(\\.|\\*|\\?|\\[|\\]|\\^|\\$)").unwrap();
     let string = regex.replace_all(&string, |c: &Captures| {
-        use std::ops::Index;
         match c.index(0) {
             "." => "\\.",
             "*" => ".*",
@@ -377,6 +383,21 @@ fn convert_glob_to_pattern(s: &str) -> String {
             "^" => "\\^",
             "$" => "\\$",
             _ => panic!("Error parsing glob")
+        }.to_string()
+    });
+
+    format!("^(?i){}$", string)
+}
+
+fn convert_like_to_pattern(s: &str) -> String {
+    let string = s.to_string();
+    let regex = Regex::new("(%|_|\\?)").unwrap();
+    let string = regex.replace_all(&string, |c: &Captures| {
+        match c.index(0) {
+            "%" => ".*",
+            "_" => ".",
+            "?" => ".?",
+            _ => panic!("Error parsing like expression")
         }.to_string()
     });
 
@@ -553,6 +574,7 @@ pub enum Op {
     Lt,
     Lte,
     Rx,
+    Like,
 }
 
 impl Op {
@@ -601,6 +623,8 @@ impl Op {
             return  Some(Op::Rx);
         } else if text.eq_ignore_ascii_case("rx") {
             return  Some(Op::Rx);
+        } else if text.eq_ignore_ascii_case("like") {
+            return  Some(Op::Like);
         }
 
         None

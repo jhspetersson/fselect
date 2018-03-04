@@ -569,7 +569,7 @@ impl Searcher {
                                     None => val.ne(&file_name)
                                 }
                             },
-                            Some(Op::Rx) => {
+                            Some(Op::Rx) | Some(Op::Like) => {
                                 match expr.regex {
                                     Some(ref regex) => regex.is_match(&file_name),
                                     None => false
@@ -607,7 +607,7 @@ impl Searcher {
                                     None => val.ne(&file_path)
                                 }
                             },
-                            Some(Op::Rx) => {
+                            Some(Op::Rx) | Some(Op::Like) => {
                                 match expr.regex {
                                     Some(ref regex) => regex.is_match(&file_path),
                                     None => false
@@ -736,7 +736,7 @@ impl Searcher {
                                                             None => val.ne(user_name)
                                                         }
                                                     },
-                                                    Some(Op::Rx) => {
+                                                    Some(Op::Rx) | Some(Op::Like) => {
                                                         match expr.regex {
                                                             Some(ref regex) => regex.is_match(user_name),
                                                             None => false
@@ -830,7 +830,7 @@ impl Searcher {
                                                             None => val.ne(group_name)
                                                         }
                                                     },
-                                                    Some(Op::Rx) => {
+                                                    Some(Op::Rx) | Some(Op::Like) => {
                                                         match expr.regex {
                                                             Some(ref regex) => regex.is_match(group_name),
                                                             None => false
@@ -1008,7 +1008,7 @@ impl Searcher {
                                     None => val.ne(&mode)
                                 }
                             },
-                            Some(Op::Rx) => {
+                            Some(Op::Rx) | Some(Op::Like) => {
                                 match expr.regex {
                                     Some(ref regex) => regex.is_match(&mode),
                                     None => false

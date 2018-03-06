@@ -33,6 +33,13 @@ fn main() {
 
     let mut args: Vec<String> = env::args().collect();
     args.remove(0);
+
+    let first_arg = args[0].to_ascii_lowercase();
+    if first_arg.contains("help") || first_arg.contains("-h") || first_arg.contains("/?") {
+        usage_info(&mut t);
+        return;
+    }
+
     let query = args.join(" ");
 
     let mut p = Parser::new();

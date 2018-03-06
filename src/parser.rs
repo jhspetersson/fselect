@@ -4,6 +4,7 @@ use std::ops::Index;
 
 use chrono::DateTime;
 use chrono::Local;
+use chrono::LocalResult;
 use regex::Captures;
 use regex::Regex;
 
@@ -31,9 +32,36 @@ impl Parser {
 
         let fields = self.parse_fields();
         let roots = self.parse_roots();
-        let expr = self.parse_where();
-        let limit = self.parse_limit();
-        let output_format = self.parse_output_format();
+
+        let expr;
+        match self.parse_where() {
+            Ok(expr_) => {
+                expr = expr_;
+            },
+            Err(err) => {
+                return Err(err);
+            }
+        }
+
+        let limit;
+        match self.parse_limit() {
+            Ok(limit_) => {
+                limit = limit_;
+            }
+            Err(err) => {
+                return Err(err);
+            }
+        }
+
+        let output_format;
+        match self.parse_output_format() {
+            Ok(format_) => {
+                output_format = format_;
+            },
+            Err(err) => {
+                return Err(err);
+            }
+        }
 
         Ok(Query {
             fields,
@@ -186,7 +214,7 @@ impl Parser {
         roots
     }
 
-    fn parse_where(&mut self) -> Option<Box<Expr>> {
+    fn parse_where<'a>(&mut self) -> Result<Option<Box<Expr>>, &'a str> {
         let lexem = self.get_lexem();
 
         match lexem {
@@ -195,44 +223,66 @@ impl Parser {
             },
             _ => {
                 self.drop_lexem();
-                None
+                Ok(None)
             }
         }
     }
 
-    fn parse_or(&mut self) -> Option<Box<Expr>> {
-        let mut node = self.parse_and();
+    fn parse_or<'a>(&mut self) -> Result<Option<Box<Expr>>, &'a str> {
+        let node = self.parse_and();
+        match node {
+            Ok(mut node) => {
+                loop {
+                    let lexem = self.get_lexem();
+                    if let Some(Lexem::Or) = lexem {
+                        match self.parse_and() {
+                            Ok(and) => {
+                                node = Some(Box::new(Expr::node(node, Some(LogicalOp::Or), and)));
+                            },
+                            Err(err) => {
+                                return Err(err);
+                            }
+                        }
+                    } else {
+                        self.drop_lexem();
+                        break;
+                    }
+                }
 
-        loop {
-            let lexem = self.get_lexem();
-            if let Some(Lexem::Or) = lexem {
-                node = Some(Box::new(Expr::node(node, Some(LogicalOp::Or), self.parse_and())));
-            } else {
-                self.drop_lexem();
-                break;
-            }
+                Ok(node)
+            },
+            Err(err) => Err(err)
         }
-
-        node
     }
 
-    fn parse_and(&mut self) -> Option<Box<Expr>> {
-        let mut node = self.parse_cond();
+    fn parse_and<'a>(&mut self) -> Result<Option<Box<Expr>>, &'a str> {
+        let node = self.parse_cond();
+        match node {
+            Ok(mut node) => {
+                loop {
+                    let lexem = self.get_lexem();
+                    if let Some(Lexem::And) = lexem {
+                        match self.parse_cond() {
+                            Ok(cond) => {
+                                node = Some(Box::new(Expr::node(node, Some(LogicalOp::And), cond)));
+                            },
+                            Err(err) => {
+                                return Err(err);
+                            }
+                        }
+                    } else {
+                        self.drop_lexem();
+                        break;
+                    }
+                }
 
-        loop {
-            let lexem = self.get_lexem();
-            if let Some(Lexem::And) = lexem {
-                node = Some(Box::new(Expr::node(node, Some(LogicalOp::And), self.parse_cond())));
-            } else {
-                self.drop_lexem();
-                break;
-            }
+                Ok(node)
+            },
+            Err(err) => Err(err)
         }
-
-        node
     }
 
-    fn parse_cond(&mut self) -> Option<Box<Expr>> {
+    fn parse_cond<'a>(&mut self) -> Result<Option<Box<Expr>>, &'a str> {
         let lexem = self.get_lexem();
 
         match lexem {
@@ -269,34 +319,39 @@ impl Parser {
                             };
 
                             if is_datetime_field(s) {
-                                if let Ok((dt_from, dt_to)) = parse_datetime(s3) {
-                                    expr.dt_from = Some(dt_from);
-                                    expr.dt_to = Some(dt_to);
+                                match parse_datetime(s3) {
+                                    Ok((dt_from, dt_to)) => {
+                                        expr.dt_from = Some(dt_from);
+                                        expr.dt_to = Some(dt_to);
+                                    },
+                                    Err(err) => {
+                                        return Err(err);
+                                    }
                                 }
                             }
 
-                            Some(Box::new(expr))
+                            Ok(Some(Box::new(expr)))
                         },
-                        _ => None
+                        _ => Err("Error parsing condition, no operand found")
                     }
                 } else {
-                    None
+                    Err("Error parsing condition, no operator found")
                 }
             },
             Some(Lexem::Open) => {
-                let expr = self.parse_or();
+                let expr_result = self.parse_or();
                 let lexem4 = self.get_lexem();
 
                 match lexem4 {
-                    Some(Lexem::Close) => expr,
-                    _ => None
+                    Some(Lexem::Close) => expr_result,
+                    _ => Ok(None)
                 }
             },
-            _ => None
+            _ => Ok(None)
         }
     }
 
-    fn parse_limit(&mut self) -> u32 {
+    fn parse_limit<'a>(&mut self) -> Result<u32, &'a str> {
         let lexem = self.get_lexem();
         match lexem {
             Some(Lexem::Limit) => {
@@ -304,11 +359,14 @@ impl Parser {
                 match lexem {
                     Some(Lexem::Field(s)) | Some(Lexem::String(s)) => {
                         if let Ok(limit) = s.parse() {
-                            return limit;
+                            return Ok(limit);
+                        } else {
+                            return Err("Error parsing limit");
                         }
                     },
                     _ => {
                         self.drop_lexem();
+                        return Err("Error parsing limit, limit value not found");
                     }
                 }
             },
@@ -317,10 +375,10 @@ impl Parser {
             }
         }
 
-        0
+        Ok(0)
     }
 
-    fn parse_output_format(&mut self) -> OutputFormat {
+    fn parse_output_format<'a>(&mut self) -> Result<OutputFormat, &'a str>{
         let lexem = self.get_lexem();
         match lexem {
             Some(Lexem::Into) => {
@@ -329,17 +387,22 @@ impl Parser {
                     Some(Lexem::Field(s)) | Some(Lexem::String(s)) => {
                         let s = s.to_lowercase();
                         if s == "lines" {
-                            return OutputFormat::Lines;
+                            return Ok(OutputFormat::Lines);
                         } else if s == "list" {
-                            return OutputFormat::List;
+                            return Ok(OutputFormat::List);
                         } else if s == "csv" {
-                            return OutputFormat::Csv;
+                            return Ok(OutputFormat::Csv);
                         } else if s == "json" {
-                            return OutputFormat::Json;
+                            return Ok(OutputFormat::Json);
+                        } else if s == "tabs" {
+                            return Ok(OutputFormat::Tabs);
+                        } else {
+                            return Err("Unknown output format");
                         }
                     },
                     _ => {
                         self.drop_lexem();
+                        return Err("Error parsing output format");
                     }
                 }
             },
@@ -348,7 +411,7 @@ impl Parser {
             }
         }
 
-        OutputFormat::Tabs
+        Ok(OutputFormat::Tabs)
     }
 
     fn get_lexem(&mut self) -> Option<Lexem> {
@@ -410,7 +473,7 @@ fn is_datetime_field(s: &str) -> bool {
         s.to_ascii_lowercase() == "modified"
 }
 
-fn parse_datetime(s: &str) -> Result<(DateTime<Local>, DateTime<Local>), &str> {
+fn parse_datetime<'a>(s: &str) -> Result<(DateTime<Local>, DateTime<Local>), &'a str> {
     use chrono::TimeZone;
 
     let regex = Regex::new("(\\d{4})-(\\d{1,2})-(\\d{1,2}) ?(\\d{1,2})?:?(\\d{1,2})?:?(\\d{1,2})?").unwrap();
@@ -459,14 +522,18 @@ fn parse_datetime(s: &str) -> Result<(DateTime<Local>, DateTime<Local>), &str> {
                 }
             }
 
-            let date = Local.ymd(year, month, day);
-            let start = date.and_hms(hour_start, min_start, sec_start);
-            let finish = date.and_hms(hour_finish, min_finish, sec_finish);
+            match Local.ymd_opt(year, month, day) {
+                LocalResult::Single(date) => {
+                    let start = date.and_hms(hour_start, min_start, sec_start);
+                    let finish = date.and_hms(hour_finish, min_finish, sec_finish);
 
-            Ok((start, finish))
+                    Ok((start, finish))
+                },
+                _ => Err("Error converting date/time to local")
+            }
         },
         None => {
-            Err("Error parsing date/time")
+            Err("Error parsing date/time value")
         }
     }
 }

@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::error::Error;
 use std::fs;
 use std::fs::DirEntry;
 use std::fs::Metadata;
@@ -13,7 +12,6 @@ use csv;
 use humansize::{FileSize, file_size_opts};
 use imagesize;
 use serde_json;
-use term;
 use term::StdoutTerminal;
 #[cfg(unix)]
 use users::{Groups, Users, UsersCache};
@@ -25,6 +23,7 @@ use parser::Expr;
 use parser::LogicalOp;
 use parser::Op;
 use parser::OutputFormat;
+use util::path_error_message;
 
 pub struct Searcher {
     query: Query,
@@ -129,24 +128,24 @@ impl Searcher {
                                             if path.is_dir() {
                                                 let result = self.visit_dirs(&path, need_metadata, need_dim, max_depth, depth + 1, search_archives, follow_symlinks, t);
                                                 if result.is_err() {
-                                                    error_message(&path, result.err().unwrap(), t);
+                                                    path_error_message(&path, result.err().unwrap(), t);
                                                 }
                                             }
                                         },
                                         Err(err) => {
-                                            error_message(dir, err, t);
+                                            path_error_message(dir, err, t);
                                         }
                                     }
                                 }
                             },
                             Err(err) => {
-                                error_message(dir, err, t);
+                                path_error_message(dir, err, t);
                             }
                         }
                     }
                 },
                 Err(err) => {
-                    error_message(dir, err, t);
+                    path_error_message(dir, err, t);
                 }
             }
         }
@@ -1943,18 +1942,6 @@ fn has_extension(file_name: &str, extensions: &[&str]) -> bool {
     }
 
     false
-}
-
-fn error_message(p: &Path, e: io::Error, t: &mut Box<StdoutTerminal>) {
-    t.fg(term::color::YELLOW).unwrap();
-    eprint!("{}", p.to_string_lossy());
-    t.reset().unwrap();
-
-    eprint!(": ");
-
-    t.fg(term::color::RED).unwrap();
-    eprintln!("{}", e.description());
-    t.reset().unwrap();
 }
 
 struct FileInfo {

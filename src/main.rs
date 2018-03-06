@@ -17,9 +17,11 @@ mod lexer;
 mod mode;
 mod parser;
 mod searcher;
+mod util;
 
 use parser::Parser;
 use searcher::Searcher;
+use util::error_message;
 
 fn main() {
     let mut t = term::stdout().unwrap();
@@ -41,7 +43,7 @@ fn main() {
             let mut searcher = Searcher::new(query);
             searcher.list_search_results(&mut t).unwrap()
         },
-        Err(s) => panic!(s)
+        Err(err) => error_message("query", err, &mut t)
     }
 }
 

@@ -552,7 +552,7 @@ impl Searcher {
                     Some(ref val) => {
                         let file_name = match file_info {
                             &Some(ref file_info) => file_info.name.clone(),
-                            _ => entry.file_name().into_string().unwrap()
+                            _ => entry.file_name().to_string_lossy().to_string()
                         };
 
                         result = match expr.op {
@@ -590,7 +590,7 @@ impl Searcher {
                     Some(ref val) => {
                         let file_path = match file_info {
                             &Some(ref file_info) => file_info.name.clone(),
-                            _ => String::from(entry.path().to_str().unwrap())
+                            _ => String::from(entry.path().to_string_lossy())
                         };
 
                         result = match expr.op {
@@ -1355,7 +1355,7 @@ impl Searcher {
                     Some(ref val) => {
                         let is_hidden = match file_info {
                             &Some(ref file_info) => is_hidden(&file_info.name, &None, true),
-                            _ => is_hidden(entry.file_name().to_str().unwrap(), &meta, false)
+                            _ => is_hidden(&entry.file_name().to_string_lossy(), &meta, false)
                         };
 
                         let str_val = val.to_ascii_lowercase();
@@ -1573,7 +1573,7 @@ impl Searcher {
                     Some(ref val) => {
                         let file_name = match file_info {
                             &Some(ref file_info) => file_info.name.clone(),
-                            _ => String::from(entry.file_name().to_str().unwrap())
+                            _ => String::from(entry.file_name().to_string_lossy())
                         };
 
                         let str_val = val.to_ascii_lowercase();
@@ -1604,7 +1604,7 @@ impl Searcher {
                     Some(ref val) => {
                         let file_name = match file_info {
                             &Some(ref file_info) => file_info.name.clone(),
-                            _ => String::from(entry.file_name().to_str().unwrap())
+                            _ => String::from(entry.file_name().to_string_lossy())
                         };
 
                         let str_val = val.to_ascii_lowercase();
@@ -1635,7 +1635,7 @@ impl Searcher {
                     Some(ref val) => {
                         let file_name = match file_info {
                             &Some(ref file_info) => file_info.name.clone(),
-                            _ => String::from(entry.file_name().to_str().unwrap())
+                            _ => String::from(entry.file_name().to_string_lossy())
                         };
 
                         let str_val = val.to_ascii_lowercase();
@@ -1666,7 +1666,7 @@ impl Searcher {
                     Some(ref val) => {
                         let file_name = match file_info {
                             &Some(ref file_info) => file_info.name.clone(),
-                            _ => String::from(entry.file_name().to_str().unwrap())
+                            _ => String::from(entry.file_name().to_string_lossy())
                         };
 
                         let str_val = val.to_ascii_lowercase();
@@ -1697,7 +1697,7 @@ impl Searcher {
                     Some(ref val) => {
                         let file_name = match file_info {
                             &Some(ref file_info) => file_info.name.clone(),
-                            _ => String::from(entry.file_name().to_str().unwrap())
+                            _ => String::from(entry.file_name().to_string_lossy())
                         };
 
                         let str_val = val.to_ascii_lowercase();
@@ -1728,7 +1728,7 @@ impl Searcher {
                     Some(ref val) => {
                         let file_name = match file_info {
                             &Some(ref file_info) => file_info.name.clone(),
-                            _ => String::from(entry.file_name().to_str().unwrap())
+                            _ => String::from(entry.file_name().to_string_lossy())
                         };
 
                         let str_val = val.to_ascii_lowercase();

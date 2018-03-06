@@ -5,6 +5,7 @@ use std::fs::Metadata;
 use std::fs::symlink_metadata;
 use std::path::Path;
 use std::io;
+use std::process;
 
 use chrono::DateTime;
 use chrono::Local;
@@ -23,7 +24,7 @@ use parser::Expr;
 use parser::LogicalOp;
 use parser::Op;
 use parser::OutputFormat;
-use util::path_error_message;
+use util::*;
 
 pub struct Searcher {
     query: Query,
@@ -106,7 +107,7 @@ impl Searcher {
                                         Ok(entry) => {
                                             let path = entry.path();
 
-                                            self.check_file(&entry, &None, need_metadata, need_dim, follow_symlinks);
+                                            self.check_file(&entry, &None, need_metadata, need_dim, follow_symlinks, t);
 
                                             if search_archives && is_zip_archive(&path.to_string_lossy()) {
                                                 if let Ok(file) = fs::File::open(&path) {
@@ -118,7 +119,7 @@ impl Searcher {
 
                                                             if let Ok(afile) = archive.by_index(i) {
                                                                 let file_info = to_file_info(&afile);
-                                                                self.check_file(&entry, &Some(file_info), need_metadata, need_dim, false);
+                                                                self.check_file(&entry, &Some(file_info), need_metadata, need_dim, false, t);
                                                             }
                                                         }
                                                     }
@@ -158,7 +159,8 @@ impl Searcher {
                   file_info: &Option<FileInfo>,
                   need_metadata: bool,
                   need_dim: bool,
-                  follow_symlinks: bool) {
+                  follow_symlinks: bool,
+                  t: &mut Box<StdoutTerminal>) {
         let mut meta = None;
         let mut dim = None;
         if let Some(ref expr) = self.query.expr.clone() {
@@ -429,7 +431,10 @@ impl Searcher {
                     let is_video = is_video(&entry.file_name().to_string_lossy());
                     record = format!("{}", is_video);
                 },
-                _ => {}
+                unknown_field => {
+                    error_message(unknown_field, "unknown search field", t);
+                    process::exit(1);
+                }
             };
 
             match self.query.output_format {

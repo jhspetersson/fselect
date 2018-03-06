@@ -306,18 +306,30 @@ impl Parser {
                             let op = Op::from(s2.to_string());
                             let mut expr: Expr;
                             if let Some(Op::Rx) = op {
-                                let regex = Regex::new(&s3).unwrap();
+                                let regex;
+                                match Regex::new(&s3) {
+                                    Ok(regex_) => regex = regex_,
+                                    _ => return Err("Error parsing regular expression")
+                                }
                                 expr = Expr::leaf_regex(s.to_string(), op, s3.to_string(), regex);
                             } else if let Some(Op::Like) = op {
                                 let pattern = convert_like_to_pattern(s3);
-                                let regex = Regex::new(&pattern).unwrap();
+                                let regex;
+                                match Regex::new(&pattern) {
+                                    Ok(regex_) => regex = regex_,
+                                    _ => return Err("Error parsing LIKE expression")
+                                }
 
                                 expr = Expr::leaf_regex(s.to_string(), op, s3.to_string(), regex);
                             } else {
                                 expr = match is_glob(s3) {
                                     true => {
                                         let pattern = convert_glob_to_pattern(s3);
-                                        let regex = Regex::new(&pattern).unwrap();
+                                        let regex;
+                                        match Regex::new(&pattern) {
+                                            Ok(regex_) => regex = regex_,
+                                            _ => return Err("Error parsing glob pattern")
+                                        }
 
                                         Expr::leaf_regex(s.to_string(), op, s3.to_string(), regex)
                                     },

@@ -454,7 +454,7 @@ fn is_glob(s: &str) -> bool {
 
 fn convert_glob_to_pattern(s: &str) -> String {
     let string = s.to_string();
-    let regex = Regex::new("(\\.|\\*|\\?|\\[|\\]|\\^|\\$)").unwrap();
+    let regex = Regex::new("(\\?|\\.|\\*|\\[|\\]|\\(|\\)|\\^|\\$)").unwrap();
     let string = regex.replace_all(&string, |c: &Captures| {
         match c.index(0) {
             "." => "\\.",
@@ -462,6 +462,8 @@ fn convert_glob_to_pattern(s: &str) -> String {
             "?" => ".",
             "[" => "\\[",
             "]" => "\\]",
+            "(" => "\\(",
+            ")" => "\\)",
             "^" => "\\^",
             "$" => "\\$",
             _ => panic!("Error parsing glob")
@@ -473,12 +475,20 @@ fn convert_glob_to_pattern(s: &str) -> String {
 
 fn convert_like_to_pattern(s: &str) -> String {
     let string = s.to_string();
-    let regex = Regex::new("(%|_|\\?)").unwrap();
+    let regex = Regex::new("(%|_|\\?|\\.|\\*|\\[|\\]|\\(|\\)|\\^|\\$)").unwrap();
     let string = regex.replace_all(&string, |c: &Captures| {
         match c.index(0) {
             "%" => ".*",
             "_" => ".",
             "?" => ".?",
+            "." => "\\.",
+            "*" => "\\*",
+            "[" => "\\[",
+            "]" => "\\]",
+            "(" => "\\(",
+            ")" => "\\)",
+            "^" => "\\^",
+            "$" => "\\$",
             _ => panic!("Error parsing like expression")
         }.to_string()
     });

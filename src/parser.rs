@@ -82,8 +82,15 @@ impl Parser {
                 &Lexem::Field(ref s) => {
                     if s.to_ascii_lowercase() != "select" {
                         if s == "*" {
-                            fields.push("name".to_string());
+                            #[cfg(unix)]
+                            {
+                                fields.push("mode".to_string());
+                                fields.push("user".to_string());
+                                fields.push("group".to_string());
+                            }
+
                             fields.push("size".to_string());
+                            fields.push("path".to_string());
                         } else {
                             fields.push(s.to_string());
                         }

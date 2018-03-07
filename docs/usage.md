@@ -24,6 +24,8 @@ Limiting search results is possible with `limit`. Formatting options are support
 If you want to use operators containing `>` or `<`, 
 put the whole query into the double quotes. 
 This will protect query from the shell and output redirection.
+The same applies to queries with parentheses or *, ? and other special symbols
+ that are supposed to be executed on Linux or Mac OS.
 
 ### It's not a real SQL
 

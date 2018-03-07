@@ -71,6 +71,13 @@ Joins, unions, aggregating functions, and subselects are not supported (yet?).
 * `is_hidden`
 * `width`
 * `height`
+* `bitrate`
+* `freq`
+* `title`
+* `artist`
+* `album`
+* `year`
+* `genre`
 * `is_archive`
 * `is_audio`
 * `is_doc`

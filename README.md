@@ -12,6 +12,7 @@ While it doesn't tend to fully replace traditional `find` and `ls`, **fselect** 
 * SQL-like (not real SQL, but highly relaxed!) grammar easily understandable by humans
 * search within archives
 * search by width and height of images
+* search by MP3 info
 * shortcuts to common file types
 * various output formatting (CSV, JSON, and others)
 
@@ -125,6 +126,10 @@ Or in combination:
 Search by image dimensions:
 
     fselect width, height, path from /home/user/photos where width gte 2000 or height gte 2000
+    
+Find old-school rap MP3 files:
+
+    fselect path from /home/user/music where genre = Rap and bitrate = 320 and year lt 2000  
     
 Shortcuts to common file extensions:
 

@@ -2,6 +2,7 @@ extern crate chrono;
 extern crate csv;
 extern crate humansize;
 extern crate imagesize;
+extern crate mp3_metadata;
 extern crate regex;
 extern crate serde_json;
 extern crate term;

@@ -12,6 +12,8 @@ use chrono::Local;
 use csv;
 use humansize::{FileSize, file_size_opts};
 use imagesize;
+use mp3_metadata;
+use mp3_metadata::MP3Metadata;
 use serde_json;
 use term::StdoutTerminal;
 #[cfg(unix)]
@@ -51,6 +53,14 @@ impl Searcher {
                 str.eq("width") || str.eq("height")
             }).count() > 0;
 
+        let need_mp3 = self.query.fields.iter()
+            .filter(|s| {
+                let str = s.as_str();
+                str.eq("bitrate") || str.eq("freq") ||
+                    str.eq("title") || str.eq("artist") ||
+                    str.eq("album") || str.eq("year") || str.eq("genre")
+            }).count() > 0;
+
         if let OutputFormat::Json = self.query.output_format {
             print!("[");
         }
@@ -64,6 +74,7 @@ impl Searcher {
                 root_dir,
                 need_metadata,
                 need_dim,
+                need_mp3,
                 max_depth,
                 1,
                 search_archives,
@@ -83,6 +94,7 @@ impl Searcher {
                   dir: &Path,
                   need_metadata: bool,
                   need_dim: bool,
+                  need_mp3: bool,
                   max_depth: u32,
                   depth: u32,
                   search_archives: bool,
@@ -107,7 +119,7 @@ impl Searcher {
                                         Ok(entry) => {
                                             let path = entry.path();
 
-                                            self.check_file(&entry, &None, need_metadata, need_dim, follow_symlinks, t);
+                                            self.check_file(&entry, &None, need_metadata, need_dim, need_mp3, follow_symlinks, t);
 
                                             if search_archives && is_zip_archive(&path.to_string_lossy()) {
                                                 if let Ok(file) = fs::File::open(&path) {
@@ -119,7 +131,7 @@ impl Searcher {
 
                                                             if let Ok(afile) = archive.by_index(i) {
                                                                 let file_info = to_file_info(&afile);
-                                                                self.check_file(&entry, &Some(file_info), need_metadata, need_dim, false, t);
+                                                                self.check_file(&entry, &Some(file_info), need_metadata, need_dim, need_mp3, false, t);
                                                             }
                                                         }
                                                     }
@@ -127,7 +139,7 @@ impl Searcher {
                                             }
 
                                             if path.is_dir() {
-                                                let result = self.visit_dirs(&path, need_metadata, need_dim, max_depth, depth + 1, search_archives, follow_symlinks, t);
+                                                let result = self.visit_dirs(&path, need_metadata, need_dim, need_mp3, max_depth, depth + 1, search_archives, follow_symlinks, t);
                                                 if result.is_err() {
                                                     path_error_message(&path, result.err().unwrap(), t);
                                                 }
@@ -159,18 +171,22 @@ impl Searcher {
                   file_info: &Option<FileInfo>,
                   need_metadata: bool,
                   need_dim: bool,
+                  need_mp3: bool,
                   follow_symlinks: bool,
                   t: &mut Box<StdoutTerminal>) {
         let mut meta = None;
         let mut dim = None;
+        let mut mp3 = None;
+
         if let Some(ref expr) = self.query.expr.clone() {
-            let (result, entry_meta, entry_dim) = self.conforms(entry, file_info, expr, None, None, follow_symlinks);
+            let (result, entry_meta, entry_dim, entry_mp3) = self.conforms(entry, file_info, expr, None, None, None, follow_symlinks);
             if !result {
                 return
             }
 
             meta = entry_meta;
             dim = entry_dim;
+            mp3 = entry_mp3;
         }
 
         self.found += 1;
@@ -187,6 +203,20 @@ impl Searcher {
                 } else {
                     match imagesize::size(entry.path()) {
                         Ok(imgsize) => Some((imgsize.width, imgsize.height)),
+                        _ => None
+                    }
+                }
+            },
+            false => None
+        };
+
+        let mp3_info = match need_mp3 {
+            true => {
+                if mp3.is_some() {
+                    mp3
+                } else {
+                    match mp3_metadata::read_from_file(entry.path()) {
+                        Ok(mp3_meta) => Some(mp3_meta),
                         _ => None
                     }
                 }
@@ -407,6 +437,51 @@ impl Searcher {
                         record = format!("{}", dimensions.1);
                     }
                 },
+                "bitrate" => {
+                    if let Some(ref mp3_info) = mp3_info {
+                        record = format!("{}", mp3_info.frames[0].bitrate);
+                    }
+                },
+                "freq" => {
+                    if let Some(ref mp3_info) = mp3_info {
+                        record = format!("{}", mp3_info.frames[0].sampling_freq);
+                    }
+                },
+                "title" => {
+                    if let Some(ref mp3_info) = mp3_info {
+                        if let Some(ref mp3_tag) = mp3_info.tag {
+                            record = format!("{}", mp3_tag.title);
+                        }
+                    }
+                },
+                "artist" => {
+                    if let Some(ref mp3_info) = mp3_info {
+                        if let Some(ref mp3_tag) = mp3_info.tag {
+                            record = format!("{}", mp3_tag.artist);
+                        }
+                    }
+                },
+                "album" => {
+                    if let Some(ref mp3_info) = mp3_info {
+                        if let Some(ref mp3_tag) = mp3_info.tag {
+                            record = format!("{}", mp3_tag.album);
+                        }
+                    }
+                },
+                "year" => {
+                    if let Some(ref mp3_info) = mp3_info {
+                        if let Some(ref mp3_tag) = mp3_info.tag {
+                            record = format!("{}", mp3_tag.year);
+                        }
+                    }
+                },
+                "genre" => {
+                    if let Some(ref mp3_info) = mp3_info {
+                        if let Some(ref mp3_tag) = mp3_info.tag {
+                            record = format!("{:?}", mp3_tag.genre);
+                        }
+                    }
+                },
                 "is_archive" => {
                     let is_archive = is_archive(&entry.file_name().to_string_lossy());
                     record = format!("{}", is_archive);
@@ -503,20 +578,23 @@ impl Searcher {
                 expr: &Box<Expr>,
                 entry_meta: Option<Box<fs::Metadata>>,
                 entry_dim: Option<(usize, usize)>,
-                follow_symlinks: bool) -> (bool, Option<Box<fs::Metadata>>, Option<(usize, usize)>) {
+                entry_mp3: Option<MP3Metadata>,
+                follow_symlinks: bool) -> (bool, Option<Box<fs::Metadata>>, Option<(usize, usize)>, Option<MP3Metadata>) {
         let mut result = false;
         let mut meta = entry_meta;
         let mut dim = entry_dim;
+        let mut mp3 = entry_mp3;
 
         if let Some(ref logical_op) = expr.logical_op {
             let mut left_result = false;
             let mut right_result = false;
 
             if let Some(ref left) = expr.left {
-                let (left_res, left_meta, left_dim) = self.conforms(entry, file_info, &left, meta, dim, follow_symlinks);
+                let (left_res, left_meta, left_dim, left_mp3) = self.conforms(entry, file_info, &left, meta, dim, mp3, follow_symlinks);
                 left_result = left_res;
                 meta = left_meta;
                 dim = left_dim;
+                mp3 = left_mp3;
             }
 
             match logical_op {
@@ -525,10 +603,11 @@ impl Searcher {
                         result = false;
                     } else {
                         if let Some(ref right) = expr.right {
-                            let (right_res, right_meta, right_dim) = self.conforms(entry, file_info, &right, meta, dim, follow_symlinks);
+                            let (right_res, right_meta, right_dim, right_mp3) = self.conforms(entry, file_info, &right, meta, dim, mp3, follow_symlinks);
                             right_result = right_res;
                             meta = right_meta;
                             dim = right_dim;
+                            mp3 = right_mp3;
                         }
 
                         result = left_result && right_result;
@@ -539,10 +618,11 @@ impl Searcher {
                         result = true;
                     } else {
                         if let Some(ref right) = expr.right {
-                            let (right_res, right_meta, right_dim) = self.conforms(entry, file_info, &right, meta, dim, follow_symlinks);
+                            let (right_res, right_meta, right_dim, right_mp3) = self.conforms(entry, file_info, &right, meta, dim, mp3, follow_symlinks);
                             right_result = right_res;
                             meta = right_meta;
                             dim = right_dim;
+                            mp3 = right_mp3;
                         }
 
                         result = left_result || right_result
@@ -674,7 +754,7 @@ impl Searcher {
                 }
             } else if field.to_ascii_lowercase() == "uid" {
                 if file_info.is_some() {
-                    return (false, meta, dim)
+                    return (false, meta, dim, mp3)
                 }
 
                 match expr.val {
@@ -712,7 +792,7 @@ impl Searcher {
                 }
             } else if field.to_ascii_lowercase() == "user" {
                 if file_info.is_some() {
-                    return (false, meta, dim)
+                    return (false, meta, dim, mp3)
                 }
 
                 match expr.val {
@@ -768,7 +848,7 @@ impl Searcher {
                 }
             } else if field.to_ascii_lowercase() == "gid" {
                 if file_info.is_some() {
-                    return (false, meta, dim)
+                    return (false, meta, dim, mp3)
                 }
 
                 match expr.val {
@@ -806,7 +886,7 @@ impl Searcher {
                 }
             } else if field.to_ascii_lowercase() == "group" {
                 if file_info.is_some() {
-                    return (false, meta, dim)
+                    return (false, meta, dim, mp3)
                 }
 
                 match expr.val {
@@ -1388,7 +1468,7 @@ impl Searcher {
                 }
             } else if field.to_ascii_lowercase() == "created" {
                 if file_info.is_some() {
-                    return (false, meta, dim)
+                    return (false, meta, dim, mp3)
                 }
 
                 match expr.val {
@@ -1423,7 +1503,7 @@ impl Searcher {
                 }
             } else if field.to_ascii_lowercase() == "accessed" {
                 if file_info.is_some() {
-                    return (false, meta, dim)
+                    return (false, meta, dim, mp3)
                 }
 
                 match expr.val {
@@ -1458,7 +1538,7 @@ impl Searcher {
                 }
             } else if field.to_ascii_lowercase() == "modified" {
                 if file_info.is_some() {
-                    return (false, meta, dim)
+                    return (false, meta, dim, mp3)
                 }
 
                 match expr.val {
@@ -1493,11 +1573,11 @@ impl Searcher {
                 }
             } else if field.to_ascii_lowercase() == "width" {
                 if file_info.is_some() {
-                    return (false, meta, dim)
+                    return (false, meta, dim, mp3)
                 }
 
                 if !is_image_dim_readable(&entry.file_name().to_string_lossy()) {
-                    return (false, meta, dim)
+                    return (false, meta, dim, mp3)
                 }
 
                 match expr.val {
@@ -1534,11 +1614,11 @@ impl Searcher {
                 }
             } else if field.to_ascii_lowercase() == "height" {
                 if file_info.is_some() {
-                    return (false, meta, dim)
+                    return (false, meta, dim, mp3)
                 }
 
                 if !is_image_dim_readable(&entry.file_name().to_string_lossy()) {
-                    return (false, meta, dim)
+                    return (false, meta, dim, mp3)
                 }
 
                 match expr.val {
@@ -1566,6 +1646,327 @@ impl Searcher {
                                         };
                                     },
                                     _ => { }
+                                }
+                            },
+                            None => { }
+                        }
+                    },
+                    None => { }
+                }
+            } else if field.to_ascii_lowercase() == "bitrate" {
+                if file_info.is_some() {
+                    return (false, meta, dim, mp3)
+                }
+
+                match expr.val {
+                    Some(ref val) => {
+                        if !mp3.is_some() {
+                            mp3 = match mp3_metadata::read_from_file(entry.path()) {
+                                Ok(mp3_meta) => Some(mp3_meta),
+                                _ => None
+                            };
+                        }
+
+                        match mp3 {
+                            Some(ref mp3_meta) => {
+                                let val = val.parse::<usize>();
+                                match val {
+                                    Ok(val) => {
+                                        let bitrate = mp3_meta.frames[0].bitrate as usize;
+                                        result = match expr.op {
+                                            Some(Op::Eq) | Some(Op::Eeq) => bitrate == val,
+                                            Some(Op::Ne) | Some(Op::Ene) => bitrate != val,
+                                            Some(Op::Gt) => bitrate > val,
+                                            Some(Op::Gte) => bitrate >= val,
+                                            Some(Op::Lt) => bitrate < val,
+                                            Some(Op::Lte) => bitrate <= val,
+                                            _ => false
+                                        };
+                                    },
+                                    _ => { }
+                                }
+                            },
+                            None => { }
+                        }
+                    },
+                    None => { }
+                }
+            } else if field.to_ascii_lowercase() == "freq" {
+                if file_info.is_some() {
+                    return (false, meta, dim, mp3)
+                }
+
+                match expr.val {
+                    Some(ref val) => {
+                        if !mp3.is_some() {
+                            mp3 = match mp3_metadata::read_from_file(entry.path()) {
+                                Ok(mp3_meta) => Some(mp3_meta),
+                                _ => None
+                            };
+                        }
+
+                        match mp3 {
+                            Some(ref mp3_meta) => {
+                                let val = val.parse::<usize>();
+                                match val {
+                                    Ok(val) => {
+                                        let freq = mp3_meta.frames[0].sampling_freq as usize;
+                                        result = match expr.op {
+                                            Some(Op::Eq) | Some(Op::Eeq) => freq == val,
+                                            Some(Op::Ne) | Some(Op::Ene) => freq != val,
+                                            Some(Op::Gt) => freq > val,
+                                            Some(Op::Gte) => freq >= val,
+                                            Some(Op::Lt) => freq < val,
+                                            Some(Op::Lte) => freq <= val,
+                                            _ => false
+                                        };
+                                    },
+                                    _ => { }
+                                }
+                            },
+                            None => { }
+                        }
+                    },
+                    None => { }
+                }
+            } else if field.to_ascii_lowercase() == "title" {
+                if file_info.is_some() {
+                    return (false, meta, dim, mp3)
+                }
+
+                match expr.val {
+                    Some(ref val) => {
+                        if !mp3.is_some() {
+                            mp3 = match mp3_metadata::read_from_file(entry.path()) {
+                                Ok(mp3_meta) => Some(mp3_meta),
+                                _ => None
+                            };
+                        }
+
+                        match mp3 {
+                            Some(ref mp3_meta) => {
+                                match mp3_meta.tag {
+                                    Some(ref mp3_tag) => {
+                                        let title = &mp3_tag.title;
+
+                                        result = match expr.op {
+                                            Some(Op::Eq) | Some(Op::Eeq) => {
+                                                match expr.regex {
+                                                    Some(ref regex) => regex.is_match(title),
+                                                    None => val.eq(title)
+                                                }
+                                            },
+                                            Some(Op::Ne) | Some(Op::Ene) => {
+                                                match expr.regex {
+                                                    Some(ref regex) => !regex.is_match(title),
+                                                    None => val.ne(title)
+                                                }
+                                            },
+                                            Some(Op::Rx) | Some(Op::Like) => {
+                                                match expr.regex {
+                                                    Some(ref regex) => regex.is_match(title),
+                                                    None => false
+                                                }
+                                            },
+                                            _ => false
+                                        };
+                                    },
+                                    _ => {}
+                                }
+                            },
+                            None => { }
+                        }
+                    },
+                    None => { }
+                }
+            } else if field.to_ascii_lowercase() == "artist" {
+                if file_info.is_some() {
+                    return (false, meta, dim, mp3)
+                }
+
+                match expr.val {
+                    Some(ref val) => {
+                        if !mp3.is_some() {
+                            mp3 = match mp3_metadata::read_from_file(entry.path()) {
+                                Ok(mp3_meta) => Some(mp3_meta),
+                                _ => None
+                            };
+                        }
+
+                        match mp3 {
+                            Some(ref mp3_meta) => {
+                                match mp3_meta.tag {
+                                    Some(ref mp3_tag) => {
+                                        let artist = &mp3_tag.artist;
+
+                                        result = match expr.op {
+                                            Some(Op::Eq) | Some(Op::Eeq) => {
+                                                match expr.regex {
+                                                    Some(ref regex) => regex.is_match(artist),
+                                                    None => val.eq(artist)
+                                                }
+                                            },
+                                            Some(Op::Ne) | Some(Op::Ene) => {
+                                                match expr.regex {
+                                                    Some(ref regex) => !regex.is_match(artist),
+                                                    None => val.ne(artist)
+                                                }
+                                            },
+                                            Some(Op::Rx) | Some(Op::Like) => {
+                                                match expr.regex {
+                                                    Some(ref regex) => regex.is_match(artist),
+                                                    None => false
+                                                }
+                                            },
+                                            _ => false
+                                        };
+                                    },
+                                    _ => {}
+                                }
+                            },
+                            None => { }
+                        }
+                    },
+                    None => { }
+                }
+            } else if field.to_ascii_lowercase() == "album" {
+                if file_info.is_some() {
+                    return (false, meta, dim, mp3)
+                }
+
+                match expr.val {
+                    Some(ref val) => {
+                        if !mp3.is_some() {
+                            mp3 = match mp3_metadata::read_from_file(entry.path()) {
+                                Ok(mp3_meta) => Some(mp3_meta),
+                                _ => None
+                            };
+                        }
+
+                        match mp3 {
+                            Some(ref mp3_meta) => {
+                                match mp3_meta.tag {
+                                    Some(ref mp3_tag) => {
+                                        let album = &mp3_tag.album;
+
+                                        result = match expr.op {
+                                            Some(Op::Eq) | Some(Op::Eeq) => {
+                                                match expr.regex {
+                                                    Some(ref regex) => regex.is_match(album),
+                                                    None => val.eq(album)
+                                                }
+                                            },
+                                            Some(Op::Ne) | Some(Op::Ene) => {
+                                                match expr.regex {
+                                                    Some(ref regex) => !regex.is_match(album),
+                                                    None => val.ne(album)
+                                                }
+                                            },
+                                            Some(Op::Rx) | Some(Op::Like) => {
+                                                match expr.regex {
+                                                    Some(ref regex) => regex.is_match(album),
+                                                    None => false
+                                                }
+                                            },
+                                            _ => false
+                                        };
+                                    },
+                                    _ => {}
+                                }
+                            },
+                            None => { }
+                        }
+                    },
+                    None => { }
+                }
+            } else if field.to_ascii_lowercase() == "year" {
+                if file_info.is_some() {
+                    return (false, meta, dim, mp3)
+                }
+
+                match expr.val {
+                    Some(ref val) => {
+                        if !mp3.is_some() {
+                            mp3 = match mp3_metadata::read_from_file(entry.path()) {
+                                Ok(mp3_meta) => Some(mp3_meta),
+                                _ => None
+                            };
+                        }
+
+                        match mp3 {
+                            Some(ref mp3_meta) => {
+                                let val = val.parse::<usize>();
+                                match val {
+                                    Ok(val) => {
+                                        match mp3_meta.tag {
+                                            Some(ref mp3_tag) => {
+                                                let year = mp3_tag.year as usize;
+                                                if year > 0 {
+                                                    result = match expr.op {
+                                                        Some(Op::Eq) | Some(Op::Eeq) => year == val,
+                                                        Some(Op::Ne) | Some(Op::Ene) => year != val,
+                                                        Some(Op::Gt) => year > val,
+                                                        Some(Op::Gte) => year >= val,
+                                                        Some(Op::Lt) => year < val,
+                                                        Some(Op::Lte) => year <= val,
+                                                        _ => false
+                                                    };
+                                                }
+                                            },
+                                            _ => {}
+                                        }
+                                    },
+                                    _ => { }
+                                }
+                            },
+                            None => { }
+                        }
+                    },
+                    None => { }
+                }
+            } else if field.to_ascii_lowercase() == "genre" {
+                if file_info.is_some() {
+                    return (false, meta, dim, mp3)
+                }
+
+                match expr.val {
+                    Some(ref val) => {
+                        if !mp3.is_some() {
+                            mp3 = match mp3_metadata::read_from_file(entry.path()) {
+                                Ok(mp3_meta) => Some(mp3_meta),
+                                _ => None
+                            };
+                        }
+
+                        match mp3 {
+                            Some(ref mp3_meta) => {
+                                match mp3_meta.tag {
+                                    Some(ref mp3_tag) => {
+                                        let genre = &format!("{:?}", &mp3_tag.genre);
+
+                                        result = match expr.op {
+                                            Some(Op::Eq) | Some(Op::Eeq) => {
+                                                match expr.regex {
+                                                    Some(ref regex) => regex.is_match(genre),
+                                                    None => val.eq(genre)
+                                                }
+                                            },
+                                            Some(Op::Ne) | Some(Op::Ene) => {
+                                                match expr.regex {
+                                                    Some(ref regex) => !regex.is_match(genre),
+                                                    None => val.ne(genre)
+                                                }
+                                            },
+                                            Some(Op::Rx) | Some(Op::Like) => {
+                                                match expr.regex {
+                                                    Some(ref regex) => regex.is_match(genre),
+                                                    None => false
+                                                }
+                                            },
+                                            _ => false
+                                        };
+                                    },
+                                    _ => {}
                                 }
                             },
                             None => { }
@@ -1762,7 +2163,7 @@ impl Searcher {
             }
         }
 
-        (result, meta, dim)
+        (result, meta, dim, mp3)
     }
 }
 

@@ -59,7 +59,7 @@ Specify file size and add it to the results:
     
 More complex query:
 
-    fselect name from /tmp where (name = '*.tmp' and size = 0) or (name = '*.cfg' and size gt 1000000)
+    fselect "name from /tmp where (name = *.tmp and size = 0) or (name = *.cfg and size > 1000000)"
     
 Use single quotes if you need to address files with spaces:
 

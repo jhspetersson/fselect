@@ -141,6 +141,17 @@ When you put a directory to search at, you can specify some options.
     fselect path from /home/user where is_image = false
     fselect path from /home/user where is_video != true
 
+### MP3 support
+
+**fselect** can parse basic MP3 metadata and search by bitrate or sampling frequency of the first frame,
+title of the track, artist's name, album, genre, and year.
+
+[List of supported genres](https://docs.rs/mp3-metadata/0.3.0/mp3_metadata/enum.Genre.html)
+
+    fselect bitrate, path from /home/user/music
+    fselect year, album, title from /home/user/music where artist like %Vampire% and bitrate gte 320
+    fselect bitrate, freq, path from /home/user/music where genre = Rap or genre = HipHop
+
 ### Output formats
 
     ... into FORMAT

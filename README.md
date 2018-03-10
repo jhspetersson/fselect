@@ -20,10 +20,18 @@ More is under way!
 
 ### Installation
 
+#### From source
+
 * Install [Rust with Cargo](https://www.rust-lang.org/en-US/install.html) and its dependencies to build a binary
 * Run `cargo install fselect`
 
-...or download a statically precompiled binary from Github if you are on a modern Windows 64bit
+#### Arch Linux
+
+[AUR package](https://aur.archlinux.org/packages/fselect/), thanks to [@asm0dey](https://github.com/asm0dey)
+
+#### Windows 64bit
+
+A statically precompiled [binary](https://github.com/jhspetersson/fselect/releases/download/0.3.2/fselect.zip) is available at Github downloads.
 
 ### Usage
 

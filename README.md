@@ -33,6 +33,11 @@ More is under way!
 
 A statically precompiled [binary](https://github.com/jhspetersson/fselect/releases/download/0.3.2/fselect.zip) is available at Github downloads.
 
+#### Mac
+
+* Install [brew](https://docs.brew.sh/Installation)
+* Run `brew install fselect`
+
 ### Usage
 
     fselect COLUMN[, COLUMN...] [from ROOT[, ROOT...]] [where EXPR] [limit N] [into FORMAT]

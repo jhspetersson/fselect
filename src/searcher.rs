@@ -1114,338 +1114,41 @@ impl Searcher {
                     }
                 }
             } else if field.to_ascii_lowercase() == "user_read" {
-                if let Some(ref val) = expr.val {
-                    let mode = match file_info {
-                        &Some(ref file_info) => file_info.mode,
-                        _ => {
-                            meta = update_meta(entry, meta, follow_symlinks);
-
-                            match meta {
-                                Some(ref metadata) => mode::get_mode_from_boxed_unix_int(metadata),
-                                _ => None
-                            }
-                        }
-                    };
-
-                    if let Some(mode) = mode {
-                        let str_val = val.to_ascii_lowercase();
-                        let bool_val = str_val.eq("true") || str_val.eq("1");
-
-                        result = match expr.op {
-                            Some(Op::Eq) => {
-                                if bool_val {
-                                    mode::mode_user_read(mode)
-                                } else {
-                                    !mode::mode_user_read(mode)
-                                }
-                            },
-                            Some(Op::Ne) => {
-                                if bool_val {
-                                    !mode::mode_user_read(mode)
-                                } else {
-                                    mode::mode_user_read(mode)
-                                }
-                            },
-                            _ => false
-                        };
-                    }
-                }
+                let (res_, meta_) = confirm_file_mode(&expr.op, &expr.val, &entry, meta, &file_info, follow_symlinks, &mode::mode_user_read);
+                meta = meta_;
+                result = res_;
             } else if field.to_ascii_lowercase() == "user_write" {
-                if let Some(ref val) = expr.val {
-                    let mode = match file_info {
-                        &Some(ref file_info) => file_info.mode,
-                        _ => {
-                            meta = update_meta(entry, meta, follow_symlinks);
-
-                            match meta {
-                                Some(ref metadata) => mode::get_mode_from_boxed_unix_int(metadata),
-                                _ => None
-                            }
-                        }
-                    };
-
-                    if let Some(mode) = mode {
-                        let str_val = val.to_ascii_lowercase();
-                        let bool_val = str_val.eq("true") || str_val.eq("1");
-
-                        result = match expr.op {
-                            Some(Op::Eq) => {
-                                if bool_val {
-                                    mode::mode_user_write(mode)
-                                } else {
-                                    !mode::mode_user_write(mode)
-                                }
-                            },
-                            Some(Op::Ne) => {
-                                if bool_val {
-                                    !mode::mode_user_write(mode)
-                                } else {
-                                    mode::mode_user_write(mode)
-                                }
-                            },
-                            _ => false
-                        };
-                    }
-                }
+                let (res_, meta_) = confirm_file_mode(&expr.op, &expr.val, &entry, meta, &file_info, follow_symlinks, &mode::mode_user_write);
+                meta = meta_;
+                result = res_;
             } else if field.to_ascii_lowercase() == "user_exec" {
-                if let Some(ref val) = expr.val {
-                    let mode = match file_info {
-                        &Some(ref file_info) => file_info.mode,
-                        _ => {
-                            meta = update_meta(entry, meta, follow_symlinks);
-
-                            match meta {
-                                Some(ref metadata) => mode::get_mode_from_boxed_unix_int(metadata),
-                                _ => None
-                            }
-                        }
-                    };
-
-                    if let Some(mode) = mode {
-                        let str_val = val.to_ascii_lowercase();
-                        let bool_val = str_val.eq("true") || str_val.eq("1");
-
-                        result = match expr.op {
-                            Some(Op::Eq) => {
-                                if bool_val {
-                                    mode::mode_user_exec(mode)
-                                } else {
-                                    !mode::mode_user_exec(mode)
-                                }
-                            },
-                            Some(Op::Ne) => {
-                                if bool_val {
-                                    !mode::mode_user_exec(mode)
-                                } else {
-                                    mode::mode_user_exec(mode)
-                                }
-                            },
-                            _ => false
-                        };
-                    }
-                }
+                let (res_, meta_) = confirm_file_mode(&expr.op, &expr.val, &entry, meta, &file_info, follow_symlinks, &mode::mode_user_exec);
+                meta = meta_;
+                result = res_;
             } else if field.to_ascii_lowercase() == "group_read" {
-                if let Some(ref val) = expr.val {
-                    let mode = match file_info {
-                        &Some(ref file_info) => file_info.mode,
-                        _ => {
-                            meta = update_meta(entry, meta, follow_symlinks);
-
-                            match meta {
-                                Some(ref metadata) => mode::get_mode_from_boxed_unix_int(metadata),
-                                _ => None
-                            }
-                        }
-                    };
-
-                    if let Some(mode) = mode {
-                        let str_val = val.to_ascii_lowercase();
-                        let bool_val = str_val.eq("true") || str_val.eq("1");
-
-                        result = match expr.op {
-                            Some(Op::Eq) => {
-                                if bool_val {
-                                    mode::mode_group_read(mode)
-                                } else {
-                                    !mode::mode_group_read(mode)
-                                }
-                            },
-                            Some(Op::Ne) => {
-                                if bool_val {
-                                    !mode::mode_group_read(mode)
-                                } else {
-                                    mode::mode_group_read(mode)
-                                }
-                            },
-                            _ => false
-                        };
-                    }
-                }
+                let (res_, meta_) = confirm_file_mode(&expr.op, &expr.val, &entry, meta, &file_info, follow_symlinks, &mode::mode_group_read);
+                meta = meta_;
+                result = res_;
             } else if field.to_ascii_lowercase() == "group_write" {
-                if let Some(ref val) = expr.val {
-                    let mode = match file_info {
-                        &Some(ref file_info) => file_info.mode,
-                        _ => {
-                            meta = update_meta(entry, meta, follow_symlinks);
-
-                            match meta {
-                                Some(ref metadata) => mode::get_mode_from_boxed_unix_int(metadata),
-                                _ => None
-                            }
-                        }
-                    };
-
-                    if let Some(mode) = mode {
-                        let str_val = val.to_ascii_lowercase();
-                        let bool_val = str_val.eq("true") || str_val.eq("1");
-
-                        result = match expr.op {
-                            Some(Op::Eq) => {
-                                if bool_val {
-                                    mode::mode_group_write(mode)
-                                } else {
-                                    !mode::mode_group_write(mode)
-                                }
-                            },
-                            Some(Op::Ne) => {
-                                if bool_val {
-                                    !mode::mode_group_write(mode)
-                                } else {
-                                    mode::mode_group_write(mode)
-                                }
-                            },
-                            _ => false
-                        };
-                    }
-                }
+                let (res_, meta_) = confirm_file_mode(&expr.op, &expr.val, &entry, meta, &file_info, follow_symlinks, &mode::mode_group_write);
+                meta = meta_;
+                result = res_;
             } else if field.to_ascii_lowercase() == "group_exec" {
-                if let Some(ref val) = expr.val {
-                    let mode = match file_info {
-                        &Some(ref file_info) => file_info.mode,
-                        _ => {
-                            meta = update_meta(entry, meta, follow_symlinks);
-
-                            match meta {
-                                Some(ref metadata) => mode::get_mode_from_boxed_unix_int(metadata),
-                                _ => None
-                            }
-                        }
-                    };
-
-                    if let Some(mode) = mode {
-                        let str_val = val.to_ascii_lowercase();
-                        let bool_val = str_val.eq("true") || str_val.eq("1");
-
-                        result = match expr.op {
-                            Some(Op::Eq) => {
-                                if bool_val {
-                                    mode::mode_group_exec(mode)
-                                } else {
-                                    !mode::mode_group_exec(mode)
-                                }
-                            },
-                            Some(Op::Ne) => {
-                                if bool_val {
-                                    !mode::mode_group_exec(mode)
-                                } else {
-                                    mode::mode_group_exec(mode)
-                                }
-                            },
-                            _ => false
-                        };
-                    }
-                }
+                let (res_, meta_) = confirm_file_mode(&expr.op, &expr.val, &entry, meta, &file_info, follow_symlinks, &mode::mode_group_exec);
+                meta = meta_;
+                result = res_;
             } else if field.to_ascii_lowercase() == "other_read" {
-                if let Some(ref val) = expr.val {
-                    let mode = match file_info {
-                        &Some(ref file_info) => file_info.mode,
-                        _ => {
-                            meta = update_meta(entry, meta, follow_symlinks);
-
-                            match meta {
-                                Some(ref metadata) => mode::get_mode_from_boxed_unix_int(metadata),
-                                _ => None
-                            }
-                        }
-                    };
-
-                    if let Some(mode) = mode {
-                        let str_val = val.to_ascii_lowercase();
-                        let bool_val = str_val.eq("true") || str_val.eq("1");
-
-                        result = match expr.op {
-                            Some(Op::Eq) => {
-                                if bool_val {
-                                    mode::mode_other_read(mode)
-                                } else {
-                                    !mode::mode_other_read(mode)
-                                }
-                            },
-                            Some(Op::Ne) => {
-                                if bool_val {
-                                    !mode::mode_other_read(mode)
-                                } else {
-                                    mode::mode_other_read(mode)
-                                }
-                            },
-                            _ => false
-                        };
-                    }
-                }
+                let (res_, meta_) = confirm_file_mode(&expr.op, &expr.val, &entry, meta, &file_info, follow_symlinks, &mode::mode_other_read);
+                meta = meta_;
+                result = res_;
             } else if field.to_ascii_lowercase() == "other_write" {
-                if let Some(ref val) = expr.val {
-                    let mode = match file_info {
-                        &Some(ref file_info) => file_info.mode,
-                        _ => {
-                            meta = update_meta(entry, meta, follow_symlinks);
-
-                            match meta {
-                                Some(ref metadata) => mode::get_mode_from_boxed_unix_int(metadata),
-                                _ => None
-                            }
-                        }
-                    };
-
-                    if let Some(mode) = mode {
-                        let str_val = val.to_ascii_lowercase();
-                        let bool_val = str_val.eq("true") || str_val.eq("1");
-
-                        result = match expr.op {
-                            Some(Op::Eq) => {
-                                if bool_val {
-                                    mode::mode_other_write(mode)
-                                } else {
-                                    !mode::mode_other_write(mode)
-                                }
-                            },
-                            Some(Op::Ne) => {
-                                if bool_val {
-                                    !mode::mode_other_write(mode)
-                                } else {
-                                    mode::mode_other_write(mode)
-                                }
-                            },
-                            _ => false
-                        };
-                    }
-                }
+                let (res_, meta_) = confirm_file_mode(&expr.op, &expr.val, &entry, meta, &file_info, follow_symlinks, &mode::mode_other_write);
+                meta = meta_;
+                result = res_;
             } else if field.to_ascii_lowercase() == "other_exec" {
-                if let Some(ref val) = expr.val {
-                    let mode = match file_info {
-                        &Some(ref file_info) => file_info.mode,
-                        _ => {
-                            meta = update_meta(entry, meta, follow_symlinks);
-
-                            match meta {
-                                Some(ref metadata) => mode::get_mode_from_boxed_unix_int(metadata),
-                                _ => None
-                            }
-                        }
-                    };
-
-                    if let Some(mode) = mode {
-                        let str_val = val.to_ascii_lowercase();
-                        let bool_val = str_val.eq("true") || str_val.eq("1");
-
-                        result = match expr.op {
-                            Some(Op::Eq) => {
-                                if bool_val {
-                                    mode::mode_other_exec(mode)
-                                } else {
-                                    !mode::mode_other_exec(mode)
-                                }
-                            },
-                            Some(Op::Ne) => {
-                                if bool_val {
-                                    !mode::mode_other_exec(mode)
-                                } else {
-                                    mode::mode_other_exec(mode)
-                                }
-                            },
-                            _ => false
-                        };
-                    }
-                }
+                let (res_, meta_) = confirm_file_mode(&expr.op, &expr.val, &entry, meta, &file_info, follow_symlinks, &mode::mode_other_exec);
+                meta = meta_;
+                result = res_;
             } else if field.to_ascii_lowercase() == "is_hidden" {
                 match expr.val {
                     Some(ref val) => {
@@ -1987,196 +1690,113 @@ impl Searcher {
                     None => { }
                 }
             } else if field.to_ascii_lowercase() == "is_archive" {
-                match expr.val {
-                    Some(ref val) => {
-                        let file_name = match file_info {
-                            &Some(ref file_info) => file_info.name.clone(),
-                            _ => String::from(entry.file_name().to_string_lossy())
-                        };
-
-                        let str_val = val.to_ascii_lowercase();
-                        let bool_val = str_val.eq("true") || str_val.eq("1");
-
-                        result = match expr.op {
-                            Some(Op::Eq) | Some(Op::Eeq) => {
-                                if bool_val {
-                                    is_archive(&file_name)
-                                } else {
-                                    !is_archive(&file_name)
-                                }
-                            },
-                            Some(Op::Ne) | Some(Op::Ene) => {
-                                if bool_val {
-                                    !is_archive(&file_name)
-                                } else {
-                                    is_archive(&file_name)
-                                }
-                            },
-                            _ => false
-                        };
-                    },
-                    None => { }
-                }
+                result = confirm_file_ext(&expr.op, &expr.val, &entry, &file_info, &is_archive);
             } else if field.to_ascii_lowercase() == "is_audio" {
-                match expr.val {
-                    Some(ref val) => {
-                        let file_name = match file_info {
-                            &Some(ref file_info) => file_info.name.clone(),
-                            _ => String::from(entry.file_name().to_string_lossy())
-                        };
-
-                        let str_val = val.to_ascii_lowercase();
-                        let bool_val = str_val.eq("true") || str_val.eq("1");
-
-                        result = match expr.op {
-                            Some(Op::Eq) | Some(Op::Eeq) => {
-                                if bool_val {
-                                    is_audio(&file_name)
-                                } else {
-                                    !is_audio(&file_name)
-                                }
-                            },
-                            Some(Op::Ne) | Some(Op::Ene) => {
-                                if bool_val {
-                                    !is_audio(&file_name)
-                                } else {
-                                    is_audio(&file_name)
-                                }
-                            },
-                            _ => false
-                        };
-                    },
-                    None => { }
-                }
+                result = confirm_file_ext(&expr.op, &expr.val, &entry, &file_info, &is_audio);
             } else if field.to_ascii_lowercase() == "is_doc" {
-                match expr.val {
-                    Some(ref val) => {
-                        let file_name = match file_info {
-                            &Some(ref file_info) => file_info.name.clone(),
-                            _ => String::from(entry.file_name().to_string_lossy())
-                        };
-
-                        let str_val = val.to_ascii_lowercase();
-                        let bool_val = str_val.eq("true") || str_val.eq("1");
-
-                        result = match expr.op {
-                            Some(Op::Eq) | Some(Op::Eeq) => {
-                                if bool_val {
-                                    is_doc(&file_name)
-                                } else {
-                                    !is_doc(&file_name)
-                                }
-                            },
-                            Some(Op::Ne) | Some(Op::Ene) => {
-                                if bool_val {
-                                    !is_doc(&file_name)
-                                } else {
-                                    is_doc(&file_name)
-                                }
-                            },
-                            _ => false
-                        };
-                    },
-                    None => { }
-                }
+                result = confirm_file_ext(&expr.op, &expr.val, &entry, &file_info, &is_doc);
             } else if field.to_ascii_lowercase() == "is_image" {
-                match expr.val {
-                    Some(ref val) => {
-                        let file_name = match file_info {
-                            &Some(ref file_info) => file_info.name.clone(),
-                            _ => String::from(entry.file_name().to_string_lossy())
-                        };
-
-                        let str_val = val.to_ascii_lowercase();
-                        let bool_val = str_val.eq("true") || str_val.eq("1");
-
-                        result = match expr.op {
-                            Some(Op::Eq) | Some(Op::Eeq) => {
-                                if bool_val {
-                                    is_image(&file_name)
-                                } else {
-                                    !is_image(&file_name)
-                                }
-                            },
-                            Some(Op::Ne) | Some(Op::Ene) => {
-                                if bool_val {
-                                    !is_image(&file_name)
-                                } else {
-                                    is_image(&file_name)
-                                }
-                            },
-                            _ => false
-                        };
-                    },
-                    None => { }
-                }
+                result = confirm_file_ext(&expr.op, &expr.val, &entry, &file_info, &is_image);
             } else if field.to_ascii_lowercase() == "is_source" {
-                match expr.val {
-                    Some(ref val) => {
-                        let file_name = match file_info {
-                            &Some(ref file_info) => file_info.name.clone(),
-                            _ => String::from(entry.file_name().to_string_lossy())
-                        };
-
-                        let str_val = val.to_ascii_lowercase();
-                        let bool_val = str_val.eq("true") || str_val.eq("1");
-
-                        result = match expr.op {
-                            Some(Op::Eq) | Some(Op::Eeq) => {
-                                if bool_val {
-                                    is_source(&file_name)
-                                } else {
-                                    !is_source(&file_name)
-                                }
-                            },
-                            Some(Op::Ne) | Some(Op::Ene) => {
-                                if bool_val {
-                                    !is_source(&file_name)
-                                } else {
-                                    is_source(&file_name)
-                                }
-                            },
-                            _ => false
-                        };
-                    },
-                    None => { }
-                }
+                result = confirm_file_ext(&expr.op, &expr.val, &entry, &file_info, &is_source);
             } else if field.to_ascii_lowercase() == "is_video" {
-                match expr.val {
-                    Some(ref val) => {
-                        let file_name = match file_info {
-                            &Some(ref file_info) => file_info.name.clone(),
-                            _ => String::from(entry.file_name().to_string_lossy())
-                        };
-
-                        let str_val = val.to_ascii_lowercase();
-                        let bool_val = str_val.eq("true") || str_val.eq("1");
-
-                        result = match expr.op {
-                            Some(Op::Eq) | Some(Op::Eeq) => {
-                                if bool_val {
-                                    is_video(&file_name)
-                                } else {
-                                    !is_video(&file_name)
-                                }
-                            },
-                            Some(Op::Ne) | Some(Op::Ene) => {
-                                if bool_val {
-                                    !is_video(&file_name)
-                                } else {
-                                    is_video(&file_name)
-                                }
-                            },
-                            _ => false
-                        };
-                    },
-                    None => { }
-                }
+                result = confirm_file_ext(&expr.op, &expr.val, &entry, &file_info, &is_video);
             }
         }
 
         (result, meta, dim, mp3)
     }
+}
+
+fn confirm_file_mode(expr_op: &Option<Op>,
+                     expr_val: &Option<String>,
+                     entry: &DirEntry,
+                     meta: Option<Box<Metadata>>,
+                     file_info: &Option<FileInfo>,
+                     follow_symlinks: bool,
+                     mode_func: &Fn(u32) -> bool) -> (bool, Option<Box<Metadata>>) {
+    let mut result = false;
+    let mut meta = meta;
+
+    if let &Some(ref val) = expr_val {
+        let mode = match file_info {
+            &Some(ref file_info) => file_info.mode,
+            _ => {
+                meta = update_meta(entry, meta, follow_symlinks);
+
+                match meta {
+                    Some(ref metadata) => mode::get_mode_from_boxed_unix_int(metadata),
+                    _ => None
+                }
+            }
+        };
+
+        if let Some(mode) = mode {
+            let str_val = val.to_ascii_lowercase();
+            let bool_val = str_val.eq("true") || str_val.eq("1");
+
+            result = match expr_op {
+                &Some(Op::Eq) => {
+                    if bool_val {
+                        mode_func(mode)
+                    } else {
+                        !mode_func(mode)
+                    }
+                },
+                &Some(Op::Ne) => {
+                    if bool_val {
+                        !mode_func(mode)
+                    } else {
+                        mode_func(mode)
+                    }
+                },
+                _ => false
+            };
+        }
+    }
+
+    (result, meta)
+}
+
+fn confirm_file_ext(expr_op: &Option<Op>,
+                    expr_val: &Option<String>,
+                    entry: &DirEntry,
+                    file_info: &Option<FileInfo>,
+                    file_ext_func: &Fn(&str) -> bool) -> bool {
+    let mut result = false;
+
+    match expr_val {
+        &Some(ref val) => {
+            let file_name = match file_info {
+                &Some(ref file_info) => file_info.name.clone(),
+                _ => String::from(entry.file_name().to_string_lossy())
+            };
+
+            let str_val = val.to_ascii_lowercase();
+            let bool_val = str_val.eq("true") || str_val.eq("1");
+
+            result = match expr_op {
+                &Some(Op::Eq) | &Some(Op::Eeq) => {
+                    if bool_val {
+                        file_ext_func(&file_name)
+                    } else {
+                        !file_ext_func(&file_name)
+                    }
+                },
+                &Some(Op::Ne) | &Some(Op::Ene) => {
+                    if bool_val {
+                        !file_ext_func(&file_name)
+                    } else {
+                        file_ext_func(&file_name)
+                    }
+                },
+                _ => false
+            };
+        },
+        _ => { }
+    }
+
+    result
 }
 
 fn update_meta(entry: &DirEntry, meta: Option<Box<Metadata>>, follow_symlinks: bool) -> Option<Box<Metadata>> {

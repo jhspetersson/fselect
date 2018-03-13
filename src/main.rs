@@ -6,6 +6,7 @@ extern crate mp3_metadata;
 extern crate regex;
 extern crate serde_json;
 extern crate term;
+extern crate time;
 #[cfg(unix)]
 extern crate users;
 extern crate zip;

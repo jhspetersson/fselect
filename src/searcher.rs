@@ -9,6 +9,7 @@ use std::process;
 
 use chrono::DateTime;
 use chrono::Local;
+use chrono::TimeZone;
 use csv;
 use humansize::{FileSize, file_size_opts};
 use imagesize;
@@ -16,6 +17,7 @@ use mp3_metadata;
 use mp3_metadata::MP3Metadata;
 use serde_json;
 use term::StdoutTerminal;
+use time::Tm;
 #[cfg(unix)]
 use users::{Groups, Users, UsersCache};
 use zip;
@@ -419,11 +421,20 @@ impl Searcher {
                     }
                 },
                 "modified" => {
-                    if let Some(ref attrs) = attrs {
-                        if let Ok(sdt) = attrs.modified() {
-                            let dt: DateTime<Local> = DateTime::from(sdt);
+                    match file_info {
+                        &Some(ref file_info) => {
+                            let dt: DateTime<Local> = to_local_datetime(&file_info.modified);
                             let format = dt.format("%Y-%m-%d %H:%M:%S");
                             record = format!("{}", format);
+                        },
+                        _ => {
+                            if let Some(ref attrs) = attrs {
+                                if let Ok(sdt) = attrs.modified() {
+                                    let dt: DateTime<Local> = DateTime::from(sdt);
+                                    let format = dt.format("%Y-%m-%d %H:%M:%S");
+                                    record = format!("{}", format);
+                                }
+                            }
                         }
                     }
                 },
@@ -1537,39 +1548,40 @@ impl Searcher {
                     None => { }
                 }
             } else if field.to_ascii_lowercase() == "modified" {
-                if file_info.is_some() {
-                    return (false, meta, dim, mp3)
-                }
-
                 match expr.val {
                     Some(ref _val) => {
-                        meta = update_meta(entry, meta, follow_symlinks);
-
-                        match meta {
-                            Some(ref metadata) => {
-                                match metadata.modified() {
-                                    Ok(sdt) => {
-                                        let dt: DateTime<Local> = DateTime::from(sdt);
-                                        let start = expr.dt_from.unwrap();
-                                        let finish = expr.dt_to.unwrap();
-
-                                        result = match expr.op {
-                                            Some(Op::Eq) => dt >= start && dt <= finish,
-                                            Some(Op::Ne) => dt < start || dt > finish,
-                                            Some(Op::Gt) => dt > finish,
-                                            Some(Op::Gte) => dt >= start,
-                                            Some(Op::Lt) => dt < start,
-                                            Some(Op::Lte) => dt <= finish,
-                                            _ => false
-                                        };
+                        let dt = match file_info {
+                            &Some(ref file_info) => Some(to_local_datetime(&file_info.modified)),
+                            _ => {
+                                meta = update_meta(entry, meta, follow_symlinks);
+                                match meta {
+                                    Some(ref metadata) => {
+                                        match metadata.modified() {
+                                            Ok(sdt) => Some(DateTime::from(sdt)),
+                                            _ => None
+                                        }
                                     },
-                                    _ => { }
+                                    _ => None
                                 }
-                            },
-                            None => { }
+                            }
+                        };
+
+                        if let Some(dt) = dt {
+                            let start = expr.dt_from.unwrap();
+                            let finish = expr.dt_to.unwrap();
+
+                            result = match expr.op {
+                                Some(Op::Eq) => dt >= start && dt <= finish,
+                                Some(Op::Ne) => dt < start || dt > finish,
+                                Some(Op::Gt) => dt > finish,
+                                Some(Op::Gte) => dt >= start,
+                                Some(Op::Lt) => dt < start,
+                                Some(Op::Lte) => dt <= finish,
+                                _ => false
+                            };
                         }
                     },
-                    None => { }
+                    _ => { }
                 }
             } else if field.to_ascii_lowercase() == "width" {
                 if file_info.is_some() {
@@ -2354,6 +2366,7 @@ struct FileInfo {
     name: String,
     size: u64,
     mode: Option<u32>,
+    modified: Tm,
 }
 
 fn to_file_info(zipped_file: &zip::read::ZipFile) -> FileInfo {
@@ -2361,7 +2374,13 @@ fn to_file_info(zipped_file: &zip::read::ZipFile) -> FileInfo {
         name: zipped_file.name().to_string(),
         size: zipped_file.size(),
         mode: zipped_file.unix_mode(),
+        modified: zipped_file.last_modified()
     }
+}
+
+fn to_local_datetime(tm: &Tm) -> DateTime<Local> {
+    Local.ymd(tm.tm_year + 1900, (tm.tm_mon + 1) as u32, tm.tm_mday as u32)
+        .and_hms(tm.tm_hour as u32, tm.tm_min as u32, tm.tm_sec as u32)
 }
 
 #[cfg(windows)]

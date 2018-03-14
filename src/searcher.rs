@@ -900,8 +900,7 @@ impl Searcher {
                     };
 
                     if let Some(is_dir) = is_dir {
-                        let str_val = val.to_ascii_lowercase();
-                        let bool_val = str_val.eq("true") || str_val.eq("1");
+                        let bool_val = str_to_bool(val);
 
                         result = match expr.op {
                             Some(Op::Eq) | Some(Op::Eeq) => {
@@ -939,8 +938,7 @@ impl Searcher {
                     };
 
                     if let Some(is_file) = is_file {
-                        let str_val = val.to_ascii_lowercase();
-                        let bool_val = str_val.eq("true") || str_val.eq("1");
+                        let bool_val = str_to_bool(val);
 
                         result = match expr.op {
                             Some(Op::Eq) | Some(Op::Eeq) => {
@@ -978,8 +976,7 @@ impl Searcher {
                     };
 
                     if let Some(is_symlink) = is_symlink {
-                        let str_val = val.to_ascii_lowercase();
-                        let bool_val = str_val.eq("true") || str_val.eq("1");
+                        let bool_val = str_to_bool(val);
 
                         result = match expr.op {
                             Some(Op::Eq) | Some(Op::Eeq) => {
@@ -1088,8 +1085,7 @@ impl Searcher {
                         _ => is_hidden(&entry.file_name().to_string_lossy(), &meta, false)
                     };
 
-                    let str_val = val.to_ascii_lowercase();
-                    let bool_val = str_val.eq("true") || str_val.eq("1");
+                    let bool_val = str_to_bool(val);
 
                     result = match expr.op {
                         Some(Op::Eq) | Some(Op::Eeq) => {
@@ -1520,8 +1516,7 @@ fn confirm_file_mode(expr_op: &Option<Op>,
         };
 
         if let Some(mode) = mode {
-            let str_val = val.to_ascii_lowercase();
-            let bool_val = str_val.eq("true") || str_val.eq("1");
+            let bool_val = str_to_bool(val);
 
             result = match expr_op {
                 &Some(Op::Eq) => {
@@ -1559,8 +1554,7 @@ fn confirm_file_ext(expr_op: &Option<Op>,
             _ => String::from(entry.file_name().to_string_lossy())
         };
 
-        let str_val = val.to_ascii_lowercase();
-        let bool_val = str_val.eq("true") || str_val.eq("1");
+        let bool_val = str_to_bool(val);
 
         result = match expr_op {
             &Some(Op::Eq) | &Some(Op::Eeq) => {
@@ -1681,6 +1675,11 @@ fn parse_filesize(s: &str) -> Option<u64> {
         Ok(size) => return Some(size),
         _ => return None
     }
+}
+
+fn str_to_bool(val: &str) -> bool {
+    let str_val = val.to_ascii_lowercase();
+    str_val.eq("true") || str_val.eq("1")
 }
 
 #[allow(unused)]

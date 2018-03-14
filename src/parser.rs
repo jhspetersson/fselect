@@ -114,9 +114,11 @@ impl Parser {
         }
 
         self.index = skip;
+
         if fields.is_empty() {
             return Err("Error parsing fields, no selector found")
         }
+
         Ok(fields)
     }
 
@@ -685,55 +687,19 @@ pub enum Op {
 
 impl Op {
     fn from(text: String) -> Option<Op> {
-        if text.eq_ignore_ascii_case("=") {
-            return Some(Op::Eq);
-        } else if text.eq_ignore_ascii_case("==") {
-            return  Some(Op::Eq);
-        } else if text.eq_ignore_ascii_case("eq") {
-            return  Some(Op::Eq);
-        } else if text.eq_ignore_ascii_case("!=") {
-            return  Some(Op::Ne);
-        } else if text.eq_ignore_ascii_case("<>") {
-            return  Some(Op::Ne);
-        } else if text.eq_ignore_ascii_case("ne") {
-            return  Some(Op::Ne);
-        } else if text.eq_ignore_ascii_case("===") {
-            return  Some(Op::Eeq);
-        } else if text.eq_ignore_ascii_case("!==") {
-            return  Some(Op::Ene);
-        } else if text.eq_ignore_ascii_case(">") {
-            return  Some(Op::Gt);
-        } else if text.eq_ignore_ascii_case("gt") {
-            return  Some(Op::Gt);
-        } else if text.eq_ignore_ascii_case(">=") {
-            return  Some(Op::Gte);
-        } else if text.eq_ignore_ascii_case("gte") {
-            return  Some(Op::Gte);
-        } else if text.eq_ignore_ascii_case("ge") {
-            return  Some(Op::Gte);
-        } else if text.eq_ignore_ascii_case("<") {
-            return  Some(Op::Lt);
-        } else if text.eq_ignore_ascii_case("lt") {
-            return  Some(Op::Lt);
-        } else if text.eq_ignore_ascii_case("<=") {
-            return  Some(Op::Lte);
-        } else if text.eq_ignore_ascii_case("lte") {
-            return  Some(Op::Lte);
-        } else if text.eq_ignore_ascii_case("le") {
-            return  Some(Op::Lte);
-        } else if text.eq_ignore_ascii_case("~=") {
-            return  Some(Op::Rx);
-        } else if text.eq_ignore_ascii_case("=~") {
-            return  Some(Op::Rx);
-        } else if text.eq_ignore_ascii_case("regexp") {
-            return  Some(Op::Rx);
-        } else if text.eq_ignore_ascii_case("rx") {
-            return  Some(Op::Rx);
-        } else if text.eq_ignore_ascii_case("like") {
-            return  Some(Op::Like);
+        match text.to_lowercase().as_str() {
+            "=" | "==" | "eq" => Some(Op::Eq),
+            "!=" | "<>" | "ne" => Some(Op::Ne),
+            "===" => Some(Op::Eeq),
+            "!==" => Some(Op::Ene),
+            ">" | "gt" => Some(Op::Gt),
+            ">=" | "gte" | "ge" => Some(Op::Gte),
+            "<" | "lt" => Some(Op::Lt),
+            "<=" | "lte" | "le" => Some(Op::Lte),
+            "~=" | "=~" | "regexp" | "rx" => Some(Op::Rx),
+            "like" => Some(Op::Like),
+            _ => None
         }
-
-        None
     }
 }
 

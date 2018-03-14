@@ -119,42 +119,16 @@ impl<'a> Lexer<'a> {
             LexingMode::String => Some(Lexem::String(s)),
             LexingMode::Operator => Some(Lexem::Operator(s)),
             LexingMode::Field => {
-                if s.eq_ignore_ascii_case("from")  {
-                    Some(Lexem::From)
-                } else if s.eq_ignore_ascii_case("where")  {
-                    Some(Lexem::Where)
-                } else if s.eq_ignore_ascii_case("or")  {
-                    Some(Lexem::Or)
-                } else if s.eq_ignore_ascii_case("and")  {
-                    Some(Lexem::And)
-                } else if s.eq_ignore_ascii_case("eq")  {
-                    Some(Lexem::Operator(s))
-                } else if s.eq_ignore_ascii_case("ne")  {
-                    Some(Lexem::Operator(s))
-                } else if s.eq_ignore_ascii_case("gt")  {
-                    Some(Lexem::Operator(s))
-                } else if s.eq_ignore_ascii_case("lt")  {
-                    Some(Lexem::Operator(s))
-                } else if s.eq_ignore_ascii_case("gte")  {
-                    Some(Lexem::Operator(s))
-                } else if s.eq_ignore_ascii_case("lte")  {
-                    Some(Lexem::Operator(s))
-                } else if s.eq_ignore_ascii_case("ge")  {
-                    Some(Lexem::Operator(s))
-                } else if s.eq_ignore_ascii_case("le")  {
-                    Some(Lexem::Operator(s))
-                } else if s.eq_ignore_ascii_case("regexp")  {
-                    Some(Lexem::Operator(s))
-                } else if s.eq_ignore_ascii_case("rx")  {
-                    Some(Lexem::Operator(s))
-                } else if s.eq_ignore_ascii_case("like")  {
-                    Some(Lexem::Operator(s))
-                } else if s.eq_ignore_ascii_case("limit")  {
-                    Some(Lexem::Limit)
-                } else if s.eq_ignore_ascii_case("into")  {
-                    Some(Lexem::Into)
-                } else {
-                    Some(Lexem::Field(s))
+                match s.to_lowercase().as_str() {
+                    "from" => Some(Lexem::From),
+                    "where" => Some(Lexem::Where),
+                    "or" => Some(Lexem::Or),
+                    "and" => Some(Lexem::And),
+                    "limit" => Some(Lexem::Limit),
+                    "into" => Some(Lexem::Into),
+                    "eq" | "ne" | "gt" | "lt" | "ge" | "le" | "gte" | "lte" | 
+                    "regexp" | "rx" | "like" => Some(Lexem::Operator(s)),
+                    _ => Some(Lexem::Field(s)),
                 }
             },
             LexingMode::Comma =>  Some(Lexem::Comma),

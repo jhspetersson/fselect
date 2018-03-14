@@ -44,22 +44,20 @@ impl<'a> Lexer<'a> {
                 LexingMode::Undefined => {
                     self.index += 1;
 
-                    if c == ' ' {
-                        // skip spaces
-                    } else if c == '\'' {
-                        mode = LexingMode::String;
-                    } else if c == ',' {
-                        mode = LexingMode::Comma;
-                    } else if c == '(' {
-                        mode = LexingMode::Open;
-                    } else if c == ')' {
-                        mode = LexingMode::Close;
-                    } else if is_op_char(c)  {
-                        mode = LexingMode::Operator;
-                        s.push(c);
-                    } else {
-                        mode = LexingMode::Field;
-                        s.push(c);
+                    match c {
+                        ' ' => {},
+                        '\'' =>  mode = LexingMode::String,
+                        ',' =>  mode = LexingMode::Comma,
+                        '(' => mode = LexingMode::Open,
+                        ')' => mode = LexingMode::Close,
+                        _ => {
+                            if is_op_char(c) {
+                                mode = LexingMode::Operator;
+                            } else {
+                                mode = LexingMode::Field;
+                            }
+                            s.push(c);
+                        }
                     }
 
                     false
@@ -99,13 +97,7 @@ impl<'a> Lexer<'a> {
                         false
                     }
                 },
-                LexingMode::Comma => {
-                    true
-                },
-                LexingMode::Open => {
-                    true
-                },
-                LexingMode::Close => {
+                LexingMode::Comma | LexingMode::Open | LexingMode::Close => {
                     true
                 },
             };
@@ -131,9 +123,9 @@ impl<'a> Lexer<'a> {
                     _ => Some(Lexem::Field(s)),
                 }
             },
-            LexingMode::Comma =>  Some(Lexem::Comma),
-            LexingMode::Open =>   Some(Lexem::Open),
-            LexingMode::Close =>  Some(Lexem::Close),
+            LexingMode::Comma => Some(Lexem::Comma),
+            LexingMode::Open => Some(Lexem::Open),
+            LexingMode::Close => Some(Lexem::Close),
             _ => None
         }
     }
@@ -141,12 +133,8 @@ impl<'a> Lexer<'a> {
 
 fn is_op_char(c: char) -> bool {
     match c {
-        '=' => true,
-        '!' => true,
-        '<' => true,
-        '>' => true,
-        '~' => true,
-        _ 	=> false
+        '=' | '!' | '<' | '>' | '~' => true,
+        _ => false
     }
 }
 

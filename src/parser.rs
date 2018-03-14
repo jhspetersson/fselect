@@ -30,7 +30,15 @@ impl Parser {
             self.lexems.push(lexem);
         }
 
-        let fields = self.parse_fields();
+        let fields;
+        match self.parse_fields() {
+            Ok(fields_) => {
+                fields = fields_;
+            },
+            Err(err) => {
+                return Err(err);
+            }
+        }
         let roots = self.parse_roots();
 
         let expr;
@@ -72,7 +80,7 @@ impl Parser {
         })
     }
 
-    fn parse_fields(&mut self) -> Vec<String> {
+    fn parse_fields<'a>(&mut self) -> Result<Vec<String>, &'a str> {
         let mut fields = vec![];
         let mut skip = 0;
 
@@ -106,8 +114,10 @@ impl Parser {
         }
 
         self.index = skip;
-
-        fields
+        if fields.is_empty() {
+            return Err("Error parsing fields, no selector found")
+        }
+        Ok(fields)
     }
 
     fn parse_roots(&mut self) -> Vec<Root> {

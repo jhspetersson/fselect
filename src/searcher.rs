@@ -1375,12 +1375,7 @@ impl Searcher {
 
                 match expr.val {
                     Some(ref val) => {
-                        if !mp3.is_some() {
-                            mp3 = match mp3_metadata::read_from_file(entry.path()) {
-                                Ok(mp3_meta) => Some(mp3_meta),
-                                _ => None
-                            };
-                        }
+                        mp3 = update_mp3_meta(&entry, mp3);
 
                         match mp3 {
                             Some(ref mp3_meta) => {
@@ -1413,12 +1408,7 @@ impl Searcher {
 
                 match expr.val {
                     Some(ref val) => {
-                        if !mp3.is_some() {
-                            mp3 = match mp3_metadata::read_from_file(entry.path()) {
-                                Ok(mp3_meta) => Some(mp3_meta),
-                                _ => None
-                            };
-                        }
+                        mp3 = update_mp3_meta(&entry, mp3);
 
                         match mp3 {
                             Some(ref mp3_meta) => {
@@ -1451,12 +1441,7 @@ impl Searcher {
 
                 match expr.val {
                     Some(ref val) => {
-                        if !mp3.is_some() {
-                            mp3 = match mp3_metadata::read_from_file(entry.path()) {
-                                Ok(mp3_meta) => Some(mp3_meta),
-                                _ => None
-                            };
-                        }
+                        mp3 = update_mp3_meta(&entry, mp3);
 
                         match mp3 {
                             Some(ref mp3_meta) => {
@@ -1501,12 +1486,7 @@ impl Searcher {
 
                 match expr.val {
                     Some(ref val) => {
-                        if !mp3.is_some() {
-                            mp3 = match mp3_metadata::read_from_file(entry.path()) {
-                                Ok(mp3_meta) => Some(mp3_meta),
-                                _ => None
-                            };
-                        }
+                        mp3 = update_mp3_meta(&entry, mp3);
 
                         match mp3 {
                             Some(ref mp3_meta) => {
@@ -1551,12 +1531,7 @@ impl Searcher {
 
                 match expr.val {
                     Some(ref val) => {
-                        if !mp3.is_some() {
-                            mp3 = match mp3_metadata::read_from_file(entry.path()) {
-                                Ok(mp3_meta) => Some(mp3_meta),
-                                _ => None
-                            };
-                        }
+                        mp3 = update_mp3_meta(&entry, mp3);
 
                         match mp3 {
                             Some(ref mp3_meta) => {
@@ -1601,12 +1576,7 @@ impl Searcher {
 
                 match expr.val {
                     Some(ref val) => {
-                        if !mp3.is_some() {
-                            mp3 = match mp3_metadata::read_from_file(entry.path()) {
-                                Ok(mp3_meta) => Some(mp3_meta),
-                                _ => None
-                            };
-                        }
+                        mp3 = update_mp3_meta(&entry, mp3);
 
                         match mp3 {
                             Some(ref mp3_meta) => {
@@ -1646,12 +1616,7 @@ impl Searcher {
 
                 match expr.val {
                     Some(ref val) => {
-                        if !mp3.is_some() {
-                            mp3 = match mp3_metadata::read_from_file(entry.path()) {
-                                Ok(mp3_meta) => Some(mp3_meta),
-                                _ => None
-                            };
-                        }
+                        mp3 = update_mp3_meta(&entry, mp3);
 
                         match mp3 {
                             Some(ref mp3_meta) => {
@@ -1812,6 +1777,18 @@ fn update_meta(entry: &DirEntry, meta: Option<Box<Metadata>>, follow_symlinks: b
     }
 
     meta
+}
+
+fn update_mp3_meta(entry: &DirEntry, mp3: Option<MP3Metadata>) -> Option<MP3Metadata> {
+    match mp3 {
+        None => {
+            match mp3_metadata::read_from_file(entry.path()) {
+                Ok(mp3_meta) => Some(mp3_meta),
+                _ => None
+            }
+        },
+        Some(mp3_) => Some(mp3_)
+    }
 }
 
 fn parse_filesize(s: &str) -> Option<u64> {

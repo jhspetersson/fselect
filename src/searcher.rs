@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 use std::fs;
 use std::fs::DirEntry;
+#[cfg(unix)]
+use std::fs::File;
 use std::fs::Metadata;
 use std::fs::symlink_metadata;
 use std::path::Path;
@@ -20,6 +22,8 @@ use term::StdoutTerminal;
 use time::Tm;
 #[cfg(unix)]
 use users::{Groups, Users, UsersCache};
+#[cfg(unix)]
+use xattr::FileExt;
 use zip;
 
 use mode;
@@ -435,6 +439,21 @@ impl Searcher {
                         }
                     }
                 },
+                "has_xattr" => {
+                    #[cfg(unix)]
+                    {
+                        if let Ok(file) = File::open(entry) {
+                            if let Ok(xattrs) = file.list_xattr() {
+                                let has_xattr = xattrs.count() > 0;
+                            }
+                        }
+                    }
+
+                    #[cfg(not(unix))]
+                    {
+                        record = format!("{}", false);
+                    }
+                }
                 "width" => {
                     if let Some(ref dimensions) = dimensions {
                         record = format!("{}", dimensions.0);
@@ -1188,6 +1207,40 @@ impl Searcher {
                             Some(Op::Lte) => dt <= finish,
                             _ => false
                         };
+                    }
+                }
+            } else if field.to_ascii_lowercase() == "has_xattr" {
+                #[cfg(unix)]
+                {
+                    if file_info.is_some() {
+                        return (false, meta, dim, mp3)
+                    }
+
+                    if let Some(ref val) = expr.val {
+                        if let Ok(file) = File::open(entry) {
+                            if let Ok(xattrs) = file.list_xattr() {
+                                let has_xattr = xattrs.count() > 0;
+                                let bool_val = str_to_bool(val);
+
+                                result = match &expr.op {
+                                    &Some(Op::Eq) | &Some(Op::Eeq) => {
+                                        if bool_val {
+                                            has_xattr
+                                        } else {
+                                            !has_xattr
+                                        }
+                                    },
+                                    &Some(Op::Ne) | &Some(Op::Ene) => {
+                                        if bool_val {
+                                            !has_xattr
+                                        } else {
+                                            has_xattr
+                                        }
+                                    },
+                                    _ => false
+                                };
+                            }
+                        }
                     }
                 }
             } else if field.to_ascii_lowercase() == "width" {

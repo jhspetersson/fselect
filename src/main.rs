@@ -9,6 +9,8 @@ extern crate term;
 extern crate time;
 #[cfg(unix)]
 extern crate users;
+#[cfg(unix)]
+extern crate xattr;
 extern crate zip;
 
 use std::env;

@@ -445,6 +445,7 @@ impl Searcher {
                         if let Ok(file) = File::open(&entry.path()) {
                             if let Ok(xattrs) = file.list_xattr() {
                                 let has_xattr = xattrs.count() > 0;
+                                record = format!("{}", has_xattr);
                             }
                         }
                     }

@@ -442,7 +442,7 @@ impl Searcher {
                 "has_xattr" => {
                     #[cfg(unix)]
                     {
-                        if let Ok(file) = File::open(entry) {
+                        if let Ok(file) = File::open(&entry.path()) {
                             if let Ok(xattrs) = file.list_xattr() {
                                 let has_xattr = xattrs.count() > 0;
                             }
@@ -1217,7 +1217,7 @@ impl Searcher {
                     }
 
                     if let Some(ref val) = expr.val {
-                        if let Ok(file) = File::open(entry) {
+                        if let Ok(file) = File::open(&entry.path()) {
                             if let Ok(xattrs) = file.list_xattr() {
                                 let has_xattr = xattrs.count() > 0;
                                 let bool_val = str_to_bool(val);

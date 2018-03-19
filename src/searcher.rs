@@ -217,16 +217,7 @@ impl Searcher {
         };
 
         let mp3_info = match need_mp3 {
-            true => {
-                if mp3.is_some() {
-                    mp3
-                } else {
-                    match mp3_metadata::read_from_file(entry.path()) {
-                        Ok(mp3_meta) => Some(mp3_meta),
-                        _ => None
-                    }
-                }
-            },
+            true => update_mp3_meta(&entry, mp3),
             false => None
         };
 

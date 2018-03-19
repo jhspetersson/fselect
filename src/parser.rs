@@ -3,8 +3,10 @@ extern crate regex;
 use std::ops::Index;
 
 use chrono::DateTime;
+use chrono::Duration;
 use chrono::Local;
 use chrono::LocalResult;
+use chrono::TimeZone;
 use regex::Captures;
 use regex::Regex;
 
@@ -515,7 +517,21 @@ fn is_datetime_field(s: &str) -> bool {
 }
 
 fn parse_datetime<'a>(s: &str) -> Result<(DateTime<Local>, DateTime<Local>), &'a str> {
-    use chrono::TimeZone;
+    if s == "today" {
+        let date = Local::now().date();
+        let start = date.and_hms(0, 0, 0);
+        let finish = date.and_hms(23, 59, 59);
+
+        return Ok((start, finish));
+    }
+
+    if s == "yesterday" {
+        let date = Local::now().date() - Duration::days(1);
+        let start = date.and_hms(0, 0, 0);
+        let finish = date.and_hms(23, 59, 59);
+
+        return Ok((start, finish));
+    }
 
     let regex = Regex::new("(\\d{4})-(\\d{1,2})-(\\d{1,2}) ?(\\d{1,2})?:?(\\d{1,2})?:?(\\d{1,2})?").unwrap();
     match regex.captures(s) {

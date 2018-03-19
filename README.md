@@ -94,9 +94,11 @@ Exact match operators to search with regexps disabled:
 
     fselect path from /home/user where name === 'some_*_weird_*_name'
     
-Find files by creation date:
+Find files by date:
 
     fselect path from /home/user where created = 2017-05-01
+    fselect path from /home/user where modified = today
+    fselect path from /home/user where accessed = yesterday
     
 Be more specific to match all files created at 3PM:
 

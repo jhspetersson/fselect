@@ -203,16 +203,7 @@ impl Searcher {
         };
 
         let dimensions = match need_dim {
-            true => {
-                if dim.is_some() {
-                    dim
-                } else {
-                    match imagesize::size(entry.path()) {
-                        Ok(imgsize) => Some((imgsize.width, imgsize.height)),
-                        _ => None
-                    }
-                }
-            },
+            true => update_img_dimensions(&entry, dim),
             false => None
         };
 
@@ -1245,12 +1236,7 @@ impl Searcher {
                 }
 
                 if let Some(ref val) = expr.val {
-                    if !dim.is_some() {
-                        dim = match imagesize::size(entry.path()) {
-                            Ok(dimensions) => Some((dimensions.width, dimensions.height)),
-                            _ => None
-                        };
-                    }
+                    dim = update_img_dimensions(&entry, dim);
 
                     if let Some((width, _)) = dim {
                         let val = val.parse::<usize>();
@@ -1277,12 +1263,7 @@ impl Searcher {
                 }
 
                 if let Some(ref val) = expr.val {
-                    if !dim.is_some() {
-                        dim = match imagesize::size(entry.path()) {
-                            Ok(dimensions) => Some((dimensions.width, dimensions.height)),
-                            _ => None
-                        };
-                    }
+                    dim = update_img_dimensions(&entry, dim);
 
                     if let Some((_, height)) = dim {
                         let val = val.parse::<usize>();
@@ -1636,6 +1617,18 @@ fn update_meta(entry: &DirEntry, meta: Option<Box<Metadata>>, follow_symlinks: b
     }
 
     meta
+}
+
+fn update_img_dimensions(entry: &DirEntry, dim: Option<(usize, usize)>) -> Option<(usize, usize)> {
+    match dim {
+        None => {
+            match imagesize::size(entry.path()) {
+                Ok(dimensions) => Some((dimensions.width, dimensions.height)),
+                _ => None
+            }
+        },
+        Some(dim_) => Some(dim_)
+    }
 }
 
 fn update_mp3_meta(entry: &DirEntry, mp3: Option<MP3Metadata>) -> Option<MP3Metadata> {

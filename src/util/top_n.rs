@@ -47,8 +47,11 @@ impl<K: Ord, V> TopN<K, V> {
     }
 
     // see: https://github.com/rust-lang/rfcs/blob/master/text/1522-conservative-impl-trait.md
-    pub fn values(&self) -> impl Iterator<Item=&V> {
-        self.echelons.values().flat_map(|v| v)
+//    pub fn values(&self) -> impl Iterator<Item=&V> {
+//        self.echelons.values().flat_map(|v| v)
+//    }
+    pub fn values(&self) -> Vec<V> where V: Clone {
+        self.echelons.values().flat_map(|v| v.iter().cloned()).collect()
     }
 }
 
@@ -75,8 +78,7 @@ mod tests {
         top_n.insert("a", 1);
         top_n.insert("b", 2);
         top_n.insert("z", -1);
-        let values: Vec<i32> = top_n.values().cloned().collect();
-        assert_eq!(values, vec![1, 2]);
+        assert_eq!(top_n.values(), vec![1, 2]);
     }
 
     #[test]
@@ -85,8 +87,7 @@ mod tests {
         top_n.insert("a", 1);
         top_n.insert("b", 2);
         top_n.insert("b", -1);
-        let values: Vec<i32> = top_n.values().cloned().collect();
-        assert_eq!(values, vec![1, 2]);
+        assert_eq!(top_n.values(), vec![1, 2]);
     }
 
     #[test]
@@ -95,34 +96,26 @@ mod tests {
         top_n.insert("b", "second");
         top_n.insert("c", "last");
         top_n.insert("a", "first");
-        let values: Vec<&str> = top_n.values().cloned().collect();
-        assert_eq!(values, vec!["first", "second"]);
+        assert_eq!(top_n.values(), vec!["first", "second"]);
     }
 
     #[test]
     fn test_insert_past_limit_comprehensive() {
         let mut top_n = TopN::new(5);
         top_n.insert("asdf", 1);
-        let values: Vec<i32> = top_n.values().cloned().collect();
-        assert_eq!(values, vec![1]);
+        assert_eq!(top_n.values(), vec![1]);
         top_n.insert("asdf", 3);
-        let values: Vec<i32> = top_n.values().cloned().collect();
-        assert_eq!(values, vec![1, 3]);
+        assert_eq!(top_n.values(), vec![1, 3]);
         top_n.insert("asdf", 3);
-        let values: Vec<i32> = top_n.values().cloned().collect();
-        assert_eq!(values, vec![1, 3, 3]);
+        assert_eq!(top_n.values(), vec![1, 3, 3]);
         top_n.insert("xyz", 4);
-        let values: Vec<i32> = top_n.values().cloned().collect();
-        assert_eq!(values, vec![1, 3, 3, 4]);
+        assert_eq!(top_n.values(), vec![1, 3, 3, 4]);
         top_n.insert("asdf", 2);
-        let values: Vec<i32> = top_n.values().cloned().collect();
-        assert_eq!(values, vec![1, 3, 3, 2, 4]);
+        assert_eq!(top_n.values(), vec![1, 3, 3, 2, 4]);
         top_n.insert("xyz", 5);
-        let values: Vec<i32> = top_n.values().cloned().collect();
-        assert_eq!(values, vec![1, 3, 3, 2, 4]);
+        assert_eq!(top_n.values(), vec![1, 3, 3, 2, 4]);
         top_n.insert("asdf", -1);
-        let values: Vec<i32> = top_n.values().cloned().collect();
-        assert_eq!(values, vec![1, 3, 3, 2, -1]);
+        assert_eq!(top_n.values(), vec![1, 3, 3, 2, -1]);
     }
 
     #[test]
@@ -132,8 +125,7 @@ mod tests {
         top_n.insert("y", 2);
         top_n.insert("a", 1);
         top_n.insert("a", 0);
-        let values: Vec<i32> = top_n.values().cloned().collect();
-        assert_eq!(values, vec![1, 0, 2, 3]);
+        assert_eq!(top_n.values(), vec![1, 0, 2, 3]);
     }
 }
 

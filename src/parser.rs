@@ -1,6 +1,7 @@
 extern crate regex;
 
 use std::ops::Index;
+use std::rc::Rc;
 
 use chrono::DateTime;
 use chrono::Duration;
@@ -52,6 +53,7 @@ impl Parser {
                 return Err(err);
             }
         }
+        let (ordering_fields, ordering_asc) = self.parse_order_by(&fields);
 
         let limit;
         match self.parse_limit() {
@@ -77,6 +79,8 @@ impl Parser {
             fields,
             roots,
             expr,
+            ordering_fields,
+            ordering_asc: Rc::new(ordering_asc),
             limit,
             output_format,
         })
@@ -384,6 +388,45 @@ impl Parser {
         }
     }
 
+    fn parse_order_by(&mut self, fields: &Vec<String>) -> (Vec<String>, Vec<bool>) {
+        let mut order_by_fields: Vec<String> = vec![];
+        let mut order_by_directions: Vec<bool> = vec![];
+
+        match self.get_lexem() {
+            Some(Lexem::OrderBy) => {
+            },
+            _ => {
+                self.drop_lexem();
+                return (order_by_fields, order_by_directions);
+            },
+        };
+
+        loop {
+            match self.get_lexem() {
+                Some(Lexem::Comma) => {},
+                Some(Lexem::Field(ref ordering_field)) => {
+                    let actual_field = match ordering_field.parse::<usize>() {
+                        Ok(idx) => &fields[idx - 1],
+                        _ => ordering_field,
+                    };
+                    order_by_fields.push(actual_field.clone());
+                    order_by_directions.push(true);
+                },
+                Some(Lexem::DescendingOrder) => {
+                    let cnt = order_by_directions.len();
+                    order_by_directions[cnt - 1] = false;
+                },
+                _ => {
+                    self.drop_lexem();
+                    break;
+                },
+            }
+        }
+
+        (order_by_fields, order_by_directions)
+    }
+
+
     fn parse_limit<'a>(&mut self) -> Result<u32, &'a str> {
         let lexem = self.get_lexem();
         match lexem {
@@ -600,6 +643,8 @@ pub struct Query {
     pub fields: Vec<String>,
     pub roots: Vec<Root>,
     pub expr: Option<Box<Expr>>,
+    pub ordering_fields: Vec<String>,
+    pub ordering_asc: Rc<Vec<bool>>,
     pub limit: u32,
     pub output_format: OutputFormat,
 }

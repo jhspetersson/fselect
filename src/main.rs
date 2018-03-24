@@ -1,3 +1,6 @@
+#![feature(conservative_impl_trait)]
+#![feature(trace_macros)]
+
 extern crate chrono;
 extern crate csv;
 extern crate humansize;

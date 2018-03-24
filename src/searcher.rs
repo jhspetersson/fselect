@@ -7,6 +7,7 @@ use std::fs::Metadata;
 use std::fs::symlink_metadata;
 use std::path::Path;
 use std::io;
+use std::io::Write;
 use std::process;
 
 use chrono::DateTime;
@@ -38,15 +39,59 @@ pub struct Searcher {
     query: Query,
     user_cache: UsersCache,
     found: u32,
+    output_buffer: TopN<Criteria<String>, String>,
+}
+
+pub struct WritableBuffer {
+    buf: String,
+}
+
+impl WritableBuffer {
+    fn new() -> WritableBuffer {
+        WritableBuffer { buf: String::new() }
+    }
+}
+
+impl From<WritableBuffer> for String {
+    fn from(wb: WritableBuffer) -> Self {
+        wb.buf
+    }
+}
+
+impl Write for WritableBuffer {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        use std::fmt::Write;
+        match String::from_utf8(buf.into()) {
+            Ok(string) => {
+                let l = string.len();
+                match self.buf.write_str(string.as_str()) {
+                    Ok(()) => Ok(l),
+                    Err(_) => Err(io::ErrorKind::InvalidInput.into()),
+                }
+            }
+            Err(_) => Err(io::ErrorKind::InvalidInput.into()),
+        }
+
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
 }
 
 impl Searcher {
     pub fn new(query: Query) -> Self {
+        let limit = query.limit;
         Searcher {
             query,
             user_cache: UsersCache::new(),
-            found: 0
+            found: 0,
+            output_buffer: if limit == 0 { TopN::limitless() } else { TopN::new(limit) }
         }
+    }
+
+    pub fn is_buffered(&self) -> bool {
+        !self.query.ordering_fields.is_empty()
     }
 
     pub fn list_search_results(&mut self, t: &mut Box<StdoutTerminal>) -> io::Result<()> {
@@ -89,6 +134,12 @@ impl Searcher {
             );
         }
 
+        if self.is_buffered() {
+            for piece in self.output_buffer.values() {
+                print!("{}", piece);
+            }
+        }
+
         if let OutputFormat::Json = self.query.output_format {
             print!("]");
         }
@@ -117,7 +168,7 @@ impl Searcher {
                         match fs::read_dir(dir) {
                             Ok(entry_list) => {
                                 for entry in entry_list {
-                                    if self.query.limit > 0 && self.query.limit <= self.found {
+                                    if !self.is_buffered() && self.query.limit > 0 && self.query.limit <= self.found {
                                         break;
                                     }
 
@@ -172,6 +223,311 @@ impl Searcher {
         Ok(())
     }
 
+    fn get_field_value(&self, entry: &DirEntry, file_info: &Option<FileInfo>, mp3_info: &Option<MP3Metadata>, attrs: &Option<Box<Metadata>>, dimensions: Option<(usize, usize)>, field: &String, t: &mut Box<StdoutTerminal>) -> String {
+        match field.as_str() {
+            "name" => {
+                match file_info {
+                    &Some(ref file_info) => {
+                        return format!("[{}] {}", entry.file_name().to_string_lossy(), file_info.name);
+                    },
+                    _ => {
+                        return format!("{}", entry.file_name().to_string_lossy());
+                    }
+                }
+            },
+            "path" => {
+                match file_info {
+                    &Some(ref file_info) => {
+                        return format!("[{}] {}", entry.path().to_string_lossy(), file_info.name);
+                    },
+                    _ => {
+                        return format!("{}", entry.path().to_string_lossy());
+                    }
+                }
+            },
+            "size" => {
+                match file_info {
+                    &Some(ref file_info) => {
+                        return format!("{}", file_info.size);
+                    },
+                    _ => {
+                        if let &Some(ref attrs) = attrs {
+                            return format!("{}", attrs.len());
+                        }
+                    }
+                }
+            },
+            "hsize" | "fsize" => {
+                match file_info {
+                    &Some(ref file_info) => {
+                        return format!("{}", file_info.size.file_size(file_size_opts::BINARY).unwrap());
+                    },
+                    _ => {
+                        if let &Some(ref attrs) = attrs {
+                            return format!("{}", attrs.len().file_size(file_size_opts::BINARY).unwrap());
+                        }
+                    }
+                }
+            },
+            "is_dir" => {
+                match file_info {
+                    &Some(ref file_info) => {
+                        return format!("{}", file_info.name.ends_with('/'));
+                    },
+                    _ => {
+                        if let &Some(ref attrs) = attrs {
+                            return format!("{}", attrs.is_dir());
+                        }
+                    }
+                }
+            },
+            "is_file" => {
+                match file_info {
+                    &Some(ref file_info) => {
+                        return format!("{}", !file_info.name.ends_with('/'));
+                    },
+                    _ => {
+                        if let &Some(ref attrs) = attrs {
+                            return format!("{}", attrs.is_file());
+                        }
+                    }
+                }
+            },
+            "is_symlink" => {
+                match file_info {
+                    &Some(_) => {
+                        return format!("{}", false);
+                    },
+                    _ => {
+                        if let &Some(ref attrs) = attrs {
+                            return format!("{}", attrs.file_type().is_symlink());
+                        }
+                    }
+                }
+            },
+            "mode" => {
+                match file_info {
+                    &Some(ref file_info) => {
+                        if let Some(mode) = file_info.mode {
+                            return format!("{}", mode::format_mode(mode));
+                        }
+                    },
+                    _ => {
+                        if let &Some(ref attrs) = attrs {
+                            return format!("{}", mode::get_mode(attrs));
+                        }
+                    }
+                }
+            },
+            "user_read" => {
+                return Self::print_file_mode(&attrs, &mode::user_read, &file_info, &mode::mode_user_read);
+            },
+            "user_write" => {
+                return Self::print_file_mode(&attrs, &mode::user_write, &file_info, &mode::mode_user_write);
+            },
+            "user_exec" => {
+                return Self::print_file_mode(&attrs, &mode::user_exec, &file_info, &mode::mode_user_exec);
+            },
+            "group_read" => {
+                return Self::print_file_mode(&attrs, &mode::group_read, &file_info, &mode::mode_group_read);
+            },
+            "group_write" => {
+                return Self::print_file_mode(&attrs, &mode::group_write, &file_info, &mode::mode_group_write);
+            },
+            "group_exec" => {
+                return Self::print_file_mode(&attrs, &mode::group_exec, &file_info, &mode::mode_group_exec);
+            },
+            "other_read" => {
+                return Self::print_file_mode(&attrs, &mode::other_read, &file_info, &mode::mode_other_read);
+            },
+            "other_write" => {
+                return Self::print_file_mode(&attrs, &mode::other_write, &file_info, &mode::mode_other_write);
+            },
+            "other_exec" => {
+                return Self::print_file_mode(&attrs, &mode::other_exec, &file_info, &mode::mode_other_exec);
+            },
+            "is_hidden" => {
+                match file_info {
+                    &Some(ref file_info) => {
+                        return format!("{}", is_hidden(&file_info.name, &None, true));
+                    },
+                    _ => {
+                        return format!("{}", is_hidden(&entry.file_name().to_string_lossy(), &attrs, false));
+                    }
+                }
+            },
+            "uid" => {
+                if let &Some(ref attrs) = attrs {
+                    if let Some(uid) = mode::get_uid(attrs) {
+                        return format!("{}", uid);
+                    }
+                }
+            },
+            "gid" => {
+                if let &Some(ref attrs) = attrs {
+                    if let Some(gid) = mode::get_gid(attrs) {
+                        return format!("{}", gid);
+                    }
+                }
+            },
+            "user" => {
+                if let &Some(ref attrs) = attrs {
+                    if let Some(uid) = mode::get_uid(attrs) {
+                        if let Some(user) = self.user_cache.get_user_by_uid(uid) {
+                            return format!("{}", user.name());
+                        }
+                    }
+                }
+            },
+            "group" => {
+                if let &Some(ref attrs) = attrs {
+                    if let Some(gid) = mode::get_gid(attrs) {
+                        if let Some(group) = self.user_cache.get_group_by_gid(gid) {
+                            return format!("{}", group.name());
+                        }
+                    }
+                }
+            },
+            "created" => {
+                if let &Some(ref attrs) = attrs {
+                    if let Ok(sdt) = attrs.created() {
+                        let dt: DateTime<Local> = DateTime::from(sdt);
+                        let format = dt.format("%Y-%m-%d %H:%M:%S");
+                        return format!("{}", format);
+                    }
+                }
+            },
+            "accessed" => {
+                if let &Some(ref attrs) = attrs {
+                    if let Ok(sdt) = attrs.accessed() {
+                        let dt: DateTime<Local> = DateTime::from(sdt);
+                        let format = dt.format("%Y-%m-%d %H:%M:%S");
+                        return format!("{}", format);
+                    }
+                }
+            },
+            "modified" => {
+                match file_info {
+                    &Some(ref file_info) => {
+                        let dt: DateTime<Local> = to_local_datetime(&file_info.modified);
+                        let format = dt.format("%Y-%m-%d %H:%M:%S");
+                        return format!("{}", format);
+                    },
+                    _ => {
+                        if let &Some(ref attrs) = attrs {
+                            if let Ok(sdt) = attrs.modified() {
+                                let dt: DateTime<Local> = DateTime::from(sdt);
+                                let format = dt.format("%Y-%m-%d %H:%M:%S");
+                                return format!("{}", format);
+                            }
+                        }
+                    }
+                }
+            },
+            "has_xattr" => {
+                #[cfg(unix)]
+                {
+                    if let Ok(file) = File::open(&entry.path()) {
+                        if let Ok(xattrs) = file.list_xattr() {
+                            let has_xattr = xattrs.count() > 0;
+                            return format!("{}", has_xattr);
+                        }
+                    }
+                }
+
+                #[cfg(not(unix))]
+                {
+                    return format!("{}", false);
+                }
+            }
+            "width" => {
+                if let Some(ref dimensions) = dimensions {
+                    return format!("{}", dimensions.0);
+                }
+            },
+            "height" => {
+                if let Some(ref dimensions) = dimensions {
+                    return format!("{}", dimensions.1);
+                }
+            },
+            "bitrate" => {
+                if let &Some(ref mp3_info) = mp3_info {
+                    return format!("{}", mp3_info.frames[0].bitrate);
+                }
+            },
+            "freq" => {
+                if let &Some(ref mp3_info) = mp3_info {
+                    return format!("{}", mp3_info.frames[0].sampling_freq);
+                }
+            },
+            "title" => {
+                if let &Some(ref mp3_info) = mp3_info {
+                    if let Some(ref mp3_tag) = mp3_info.tag {
+                        return format!("{}", mp3_tag.title);
+                    }
+                }
+            },
+            "artist" => {
+                if let &Some(ref mp3_info) = mp3_info {
+                    if let Some(ref mp3_tag) = mp3_info.tag {
+                        return format!("{}", mp3_tag.artist);
+                    }
+                }
+            },
+            "album" => {
+                if let &Some(ref mp3_info) = mp3_info {
+                    if let Some(ref mp3_tag) = mp3_info.tag {
+                        return format!("{}", mp3_tag.album);
+                    }
+                }
+            },
+            "year" => {
+                if let &Some(ref mp3_info) = mp3_info {
+                    if let Some(ref mp3_tag) = mp3_info.tag {
+                        return format!("{}", mp3_tag.year);
+                    }
+                }
+            },
+            "genre" => {
+                if let &Some(ref mp3_info) = mp3_info {
+                    if let Some(ref mp3_tag) = mp3_info.tag {
+                        return format!("{:?}", mp3_tag.genre);
+                    }
+                }
+            },
+            "is_archive" => {
+                let is_archive = is_archive(&entry.file_name().to_string_lossy());
+                return format!("{}", is_archive);
+            },
+            "is_audio" => {
+                let is_audio = is_audio(&entry.file_name().to_string_lossy());
+                return format!("{}", is_audio);
+            },
+            "is_doc" => {
+                let is_doc = is_doc(&entry.file_name().to_string_lossy());
+                return format!("{}", is_doc);
+            },
+            "is_image" => {
+                let is_image = is_image(&entry.file_name().to_string_lossy());
+                return format!("{}", is_image);
+            },
+            "is_source" => {
+                let is_source = is_source(&entry.file_name().to_string_lossy());
+                return format!("{}", is_source);
+            },
+            "is_video" => {
+                let is_video = is_video(&entry.file_name().to_string_lossy());
+                return format!("{}", is_video);
+            },
+            unknown_field => {
+                error_message(unknown_field, "unknown search field", t);
+                process::exit(1);
+            }
+        };
+
+        return String::new();
+    }
+
     fn check_file(&mut self,
                   entry: &DirEntry,
                   file_info: &Option<FileInfo>,
@@ -212,352 +568,67 @@ impl Searcher {
             false => None
         };
 
-        let mut csv_writer = None;
         let mut records = vec![];
         let mut file_map = HashMap::new();
-        if let OutputFormat::Csv = self.query.output_format {
-            csv_writer = Some(csv::Writer::from_writer(io::stdout()));
-        }
+
+        let mut output_value = String::new();
+        let mut criteria = vec!["".to_string(); self.query.ordering_fields.len()];
 
         for field in self.query.fields.iter() {
-            let mut record = String::new();
-            match field.as_str() {
-                "name" => {
-                    match file_info {
-                        &Some(ref file_info) => {
-                            record = format!("[{}] {}", entry.path().to_string_lossy(), file_info.name);
-                        },
-                        _ => {
-                            record = format!("{}", entry.file_name().to_string_lossy());
-                        }
-                    }
-                },
-                "path" => {
-                    match file_info {
-                        &Some(ref file_info) => {
-                            record = format!("[{}] {}", entry.path().to_string_lossy(), file_info.name);
-                        },
-                        _ => {
-                            record = format!("{}", entry.path().to_string_lossy());
-                        }
-                    }
-                },
-                "size" => {
-                    match file_info {
-                        &Some(ref file_info) => {
-                            record = format!("{}", file_info.size);
-                        },
-                        _ => {
-                            if let Some(ref attrs) = attrs {
-                                record = format!("{}", attrs.len());
-                            }
-                        }
-                    }
-                },
-                "hsize" | "fsize" => {
-                    match file_info {
-                        &Some(ref file_info) => {
-                            record = format!("{}", file_info.size.file_size(file_size_opts::BINARY).unwrap());
-                        },
-                        _ => {
-                            if let Some(ref attrs) = attrs {
-                                record = format!("{}", attrs.len().file_size(file_size_opts::BINARY).unwrap());
-                            }
-                        }
-                    }
-                },
-                "is_dir" => {
-                    match file_info {
-                        &Some(ref file_info) => {
-                            record = format!("{}", file_info.name.ends_with('/'));
-                        },
-                        _ => {
-                            if let Some(ref attrs) = attrs {
-                                record = format!("{}", attrs.is_dir());
-                            }
-                        }
-                    }
-                },
-                "is_file" => {
-                    match file_info {
-                        &Some(ref file_info) => {
-                            record = format!("{}", !file_info.name.ends_with('/'));
-                        },
-                        _ => {
-                            if let Some(ref attrs) = attrs {
-                                record = format!("{}", attrs.is_file());
-                            }
-                        }
-                    }
-                },
-                "is_symlink" => {
-                    match file_info {
-                        &Some(_) => {
-                            record = format!("{}", false);
-                        },
-                        _ => {
-                            if let Some(ref attrs) = attrs {
-                                record = format!("{}", attrs.file_type().is_symlink());
-                            }
-                        }
-                    }
-                },
-                "mode" => {
-                    match file_info {
-                        &Some(ref file_info) => {
-                            if let Some(mode) = file_info.mode {
-                                record = format!("{}", mode::format_mode(mode));
-                            }
-                        },
-                        _ => {
-                            if let Some(ref attrs) = attrs {
-                                record = format!("{}", mode::get_mode(attrs));
-                            }
-                        }
-                    }
-                },
-                "user_read" => {
-                    record = Self::print_file_mode(&attrs, &mode::user_read, &file_info, &mode::mode_user_read);
-                },
-                "user_write" => {
-                    record = Self::print_file_mode(&attrs, &mode::user_write, &file_info, &mode::mode_user_write);
-                },
-                "user_exec" => {
-                    record = Self::print_file_mode(&attrs, &mode::user_exec, &file_info, &mode::mode_user_exec);
-                },
-                "group_read" => {
-                    record = Self::print_file_mode(&attrs, &mode::group_read, &file_info, &mode::mode_group_read);
-                },
-                "group_write" => {
-                    record = Self::print_file_mode(&attrs, &mode::group_write, &file_info, &mode::mode_group_write);
-                },
-                "group_exec" => {
-                    record = Self::print_file_mode(&attrs, &mode::group_exec, &file_info, &mode::mode_group_exec);
-                },
-                "other_read" => {
-                    record = Self::print_file_mode(&attrs, &mode::other_read, &file_info, &mode::mode_other_read);
-                },
-                "other_write" => {
-                    record = Self::print_file_mode(&attrs, &mode::other_write, &file_info, &mode::mode_other_write);
-                },
-                "other_exec" => {
-                    record = Self::print_file_mode(&attrs, &mode::other_exec, &file_info, &mode::mode_other_exec);
-                },
-                "is_hidden" => {
-                    match file_info {
-                        &Some(ref file_info) => {
-                            record = format!("{}", is_hidden(&file_info.name, &None, true));
-                        },
-                        _ => {
-                            record = format!("{}", is_hidden(&entry.file_name().to_string_lossy(), &attrs, false));
-                        }
-                    }
-                },
-                "uid" => {
-                    if let Some(ref attrs) = attrs {
-                        if let Some(uid) = mode::get_uid(attrs) {
-                            record = format!("{}", uid);
-                        }
-                    }
-                },
-                "gid" => {
-                    if let Some(ref attrs) = attrs {
-                        if let Some(gid) = mode::get_gid(attrs) {
-                            record = format!("{}", gid);
-                        }
-                    }
-                },
-                "user" => {
-                    if let Some(ref attrs) = attrs {
-                        if let Some(uid) = mode::get_uid(attrs) {
-                            if let Some(user) = self.user_cache.get_user_by_uid(uid) {
-                                record = format!("{}", user.name());
-                            }
-                        }
-                    }
-                },
-                "group" => {
-                    if let Some(ref attrs) = attrs {
-                        if let Some(gid) = mode::get_gid(attrs) {
-                            if let Some(group) = self.user_cache.get_group_by_gid(gid) {
-                                record = format!("{}", group.name());
-                            }
-                        }
-                    }
-                },
-                "created" => {
-                    if let Some(ref attrs) = attrs {
-                        if let Ok(sdt) = attrs.created() {
-                            let dt: DateTime<Local> = DateTime::from(sdt);
-                            let format = dt.format("%Y-%m-%d %H:%M:%S");
-                            record = format!("{}", format);
-                        }
-                    }
-                },
-                "accessed" => {
-                    if let Some(ref attrs) = attrs {
-                        if let Ok(sdt) = attrs.accessed() {
-                            let dt: DateTime<Local> = DateTime::from(sdt);
-                            let format = dt.format("%Y-%m-%d %H:%M:%S");
-                            record = format!("{}", format);
-                        }
-                    }
-                },
-                "modified" => {
-                    match file_info {
-                        &Some(ref file_info) => {
-                            let dt: DateTime<Local> = to_local_datetime(&file_info.modified);
-                            let format = dt.format("%Y-%m-%d %H:%M:%S");
-                            record = format!("{}", format);
-                        },
-                        _ => {
-                            if let Some(ref attrs) = attrs {
-                                if let Ok(sdt) = attrs.modified() {
-                                    let dt: DateTime<Local> = DateTime::from(sdt);
-                                    let format = dt.format("%Y-%m-%d %H:%M:%S");
-                                    record = format!("{}", format);
-                                }
-                            }
-                        }
-                    }
-                },
-                "has_xattr" => {
-                    #[cfg(unix)]
-                    {
-                        if let Ok(file) = File::open(&entry.path()) {
-                            if let Ok(xattrs) = file.list_xattr() {
-                                let has_xattr = xattrs.count() > 0;
-                                record = format!("{}", has_xattr);
-                            }
-                        }
-                    }
-
-                    #[cfg(not(unix))]
-                    {
-                        record = format!("{}", false);
-                    }
-                }
-                "width" => {
-                    if let Some(ref dimensions) = dimensions {
-                        record = format!("{}", dimensions.0);
-                    }
-                },
-                "height" => {
-                    if let Some(ref dimensions) = dimensions {
-                        record = format!("{}", dimensions.1);
-                    }
-                },
-                "bitrate" => {
-                    if let Some(ref mp3_info) = mp3_info {
-                        record = format!("{}", mp3_info.frames[0].bitrate);
-                    }
-                },
-                "freq" => {
-                    if let Some(ref mp3_info) = mp3_info {
-                        record = format!("{}", mp3_info.frames[0].sampling_freq);
-                    }
-                },
-                "title" => {
-                    if let Some(ref mp3_info) = mp3_info {
-                        if let Some(ref mp3_tag) = mp3_info.tag {
-                            record = format!("{}", mp3_tag.title);
-                        }
-                    }
-                },
-                "artist" => {
-                    if let Some(ref mp3_info) = mp3_info {
-                        if let Some(ref mp3_tag) = mp3_info.tag {
-                            record = format!("{}", mp3_tag.artist);
-                        }
-                    }
-                },
-                "album" => {
-                    if let Some(ref mp3_info) = mp3_info {
-                        if let Some(ref mp3_tag) = mp3_info.tag {
-                            record = format!("{}", mp3_tag.album);
-                        }
-                    }
-                },
-                "year" => {
-                    if let Some(ref mp3_info) = mp3_info {
-                        if let Some(ref mp3_tag) = mp3_info.tag {
-                            record = format!("{}", mp3_tag.year);
-                        }
-                    }
-                },
-                "genre" => {
-                    if let Some(ref mp3_info) = mp3_info {
-                        if let Some(ref mp3_tag) = mp3_info.tag {
-                            record = format!("{:?}", mp3_tag.genre);
-                        }
-                    }
-                },
-                "is_archive" => {
-                    let is_archive = is_archive(&entry.file_name().to_string_lossy());
-                    record = format!("{}", is_archive);
-                },
-                "is_audio" => {
-                    let is_audio = is_audio(&entry.file_name().to_string_lossy());
-                    record = format!("{}", is_audio);
-                },
-                "is_doc" => {
-                    let is_doc = is_doc(&entry.file_name().to_string_lossy());
-                    record = format!("{}", is_doc);
-                },
-                "is_image" => {
-                    let is_image = is_image(&entry.file_name().to_string_lossy());
-                    record = format!("{}", is_image);
-                },
-                "is_source" => {
-                    let is_source = is_source(&entry.file_name().to_string_lossy());
-                    record = format!("{}", is_source);
-                },
-                "is_video" => {
-                    let is_video = is_video(&entry.file_name().to_string_lossy());
-                    record = format!("{}", is_video);
-                },
-                unknown_field => {
-                    error_message(unknown_field, "unknown search field", t);
-                    process::exit(1);
-                }
-            };
+            let mut record = self.get_field_value(entry, file_info, &mp3_info, &attrs, dimensions, &field, t);
 
             match self.query.output_format {
                 OutputFormat::Lines => {
-                    print!("{}\n", record);
+                    output_value.push_str(&record);
+                    output_value.push('\n');
                 },
                 OutputFormat::List => {
-                    print!("{}\0", record);
+                    output_value.push_str(&record);
+                    output_value.push('\0');
                 },
                 OutputFormat::Json => {
                     file_map.insert(field, record);
                 },
                 OutputFormat::Tabs => {
-                    print!("{}\t", record);
+                    output_value.push_str(&record);
+                    output_value.push('\t');
                 },
                 OutputFormat::Csv => {
                     records.push(record);
                 },
             }
         }
+        for (idx, field) in self.query.ordering_fields.iter().enumerate() {
+            let mut record = self.get_field_value(entry, file_info, &mp3_info, &attrs, dimensions, &field, t);
+            criteria[idx] = record;
+        }
 
         match self.query.output_format {
             OutputFormat::Lines | OutputFormat::List => {},
             OutputFormat::Tabs => {
-                print!("\n");
+                output_value.push('\n');
             },
             OutputFormat::Csv => {
-                if let Some(ref mut csv_writer) = csv_writer {
+                let mut csv_output = WritableBuffer::new();
+                {
+                    let mut csv_writer = csv::Writer::from_writer(&mut csv_output);
                     let _ = csv_writer.write_record(records);
                 }
+                let result: String = csv_output.into();
+                output_value.push_str(result.as_ref());
             },
             OutputFormat::Json => {
                 if self.found > 1 {
-                    print!(",");
+                    output_value.push(',');
                 }
-
-                print!("{}", serde_json::to_string(&file_map).unwrap());
+                output_value.push_str(&serde_json::to_string(&file_map).unwrap());
             },
+        }
+
+        if self.is_buffered() {
+            self.output_buffer.insert(Criteria::new(criteria, self.query.ordering_asc.clone()), output_value);
+        } else {
+            print!("{}", output_value);
         }
     }
 
@@ -1756,52 +1827,25 @@ fn parse_unix_filename(s: &str) -> &str {
     }
 }
 
-const ZIP_ARCHIVE: &'static [&'static str] = &[".zip", ".jar", ".war", ".ear" ];
-
-fn is_zip_archive(file_name: &str) -> bool {
-    has_extension(file_name, &ZIP_ARCHIVE)
+macro_rules! def_extension_queries {
+    ($($name:ident $extensions:expr);*) => {
+        $(
+            fn $name(file_name: &str) -> bool {
+                has_extension(file_name, &$extensions)
+            }
+        )*
+    }
 }
 
-const ARCHIVE: &'static [&'static str] = &[".7z", ".bzip2", ".gz", ".gzip", ".rar", ".tar", ".xz", ".zip"];
-
-fn is_archive(file_name: &str) -> bool {
-    has_extension(file_name, &ARCHIVE)
-}
-
-const AUDIO: &'static [&'static str] = &[".aac", ".aiff", ".amr", ".flac", ".gsm", ".m4a", ".m4b", ".m4p", ".mp3", ".ogg", ".wav", ".wma"];
-
-fn is_audio(file_name: &str) -> bool {
-    has_extension(file_name, &AUDIO)
-}
-
-const DOC: &'static [&'static str] = &[".accdb", ".doc", ".docx", ".dot", ".dotx", ".mdb", ".ods", ".odt", ".pdf", ".ppt", ".pptx", ".rtf", ".xls", ".xlt", ".xlsx", ".xps"];
-
-fn is_doc(file_name: &str) -> bool {
-    has_extension(file_name, &DOC)
-}
-
-const IMAGE: &'static [&'static str] = &[".bmp", ".gif", ".jpeg", ".jpg", ".png", ".tiff", ".webp"];
-
-fn is_image(file_name: &str) -> bool {
-    has_extension(file_name, &IMAGE)
-}
-
-const IMAGE_DIM: &'static [&'static str] = &[".bmp", ".gif", ".jpeg", ".jpg", ".png", ".webp"];
-
-fn is_image_dim_readable(file_name: &str) -> bool {
-    has_extension(file_name, &IMAGE_DIM)
-}
-
-const SOURCE: &'static [&'static str] = &[".asm", ".c", ".cpp", ".cs", ".java", ".js", ".h", ".hpp", ".pas", ".php", ".pl", ".pm", ".py", ".rb", ".rs", ".swift"];
-
-fn is_source(file_name: &str) -> bool {
-    has_extension(file_name, &SOURCE)
-}
-
-const VIDEO: &'static [&'static str] = &[".3gp", ".avi", ".flv", ".m4p", ".m4v", ".mkv", ".mov", ".mp4", ".mpeg", ".mpg", ".webm", ".wmv"];
-
-fn is_video(file_name: &str) -> bool {
-    has_extension(file_name, &VIDEO)
+def_extension_queries! {
+    is_zip_archive          [".zip", ".jar", ".war", ".ear"]
+;   is_archive              [".7z", ".bzip2", ".gz", ".gzip", ".rar", ".tar", ".xz", ".zip"]
+;   is_audio                [".aac", ".aiff", ".amr", ".flac", ".gsm", ".m4a", ".m4b", ".m4p", ".mp3", ".ogg", ".wav", ".wma"]
+;   is_doc                  [".accdb", ".doc", ".docx", ".dot", ".dotx", ".mdb", ".ods", ".odt", ".pdf", ".ppt", ".pptx", ".rtf", ".xls", ".xlt", ".xlsx", ".xps"]
+;   is_image                [".bmp", ".gif", ".jpeg", ".jpg", ".png", ".tiff", ".webp"]
+;   is_image_dim_readable   [".bmp", ".gif", ".jpeg", ".jpg", ".png", ".webp"]
+;   is_source               [".asm", ".c", ".cpp", ".cs", ".java", ".js", ".h", ".hpp", ".pas", ".php", ".pl", ".pm", ".py", ".rb", ".rs", ".swift"]
+;   is_video                [".3gp", ".avi", ".flv", ".m4p", ".m4v", ".mkv", ".mov", ".mp4", ".mpeg", ".mpg", ".webm", ".wmv"]
 }
 
 fn has_extension(file_name: &str, extensions: &[&str]) -> bool {

@@ -135,7 +135,15 @@ impl Searcher {
         }
 
         if self.is_buffered() {
+            let mut first = true;
             for piece in self.output_buffer.values() {
+                if let OutputFormat::Json = self.query.output_format {
+                    if first {
+                        first = false;
+                    } else {
+                        print!(",");
+                    }
+                }
                 print!("{}", piece);
             }
         }
@@ -618,7 +626,7 @@ impl Searcher {
                 output_value.push_str(result.as_ref());
             },
             OutputFormat::Json => {
-                if self.found > 1 {
+                if !self.is_buffered() && self.found > 1 {
                     output_value.push(',');
                 }
                 output_value.push_str(&serde_json::to_string(&file_map).unwrap());

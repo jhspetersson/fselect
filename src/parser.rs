@@ -392,35 +392,34 @@ impl Parser {
         let mut order_by_fields: Vec<String> = vec![];
         let mut order_by_directions: Vec<bool> = vec![];
 
-        match self.get_lexem() {
-            Some(Lexem::OrderBy) => {
-            },
-            _ => {
+        if let Some(Lexem::Order) = self.get_lexem() {
+            if let Some(Lexem::By) = self.get_lexem() {
+                loop {
+                    match self.get_lexem() {
+                        Some(Lexem::Comma) => {},
+                        Some(Lexem::Field(ref ordering_field)) => {
+                            let actual_field = match ordering_field.parse::<usize>() {
+                                Ok(idx) => &fields[idx - 1],
+                                _ => ordering_field,
+                            };
+                            order_by_fields.push(actual_field.clone());
+                            order_by_directions.push(true);
+                        },
+                        Some(Lexem::DescendingOrder) => {
+                            let cnt = order_by_directions.len();
+                            order_by_directions[cnt - 1] = false;
+                        },
+                        _ => {
+                            self.drop_lexem();
+                            break;
+                        },
+                    }
+                }
+            } else {
                 self.drop_lexem();
-                return (order_by_fields, order_by_directions);
-            },
-        };
-
-        loop {
-            match self.get_lexem() {
-                Some(Lexem::Comma) => {},
-                Some(Lexem::Field(ref ordering_field)) => {
-                    let actual_field = match ordering_field.parse::<usize>() {
-                        Ok(idx) => &fields[idx - 1],
-                        _ => ordering_field,
-                    };
-                    order_by_fields.push(actual_field.clone());
-                    order_by_directions.push(true);
-                },
-                Some(Lexem::DescendingOrder) => {
-                    let cnt = order_by_directions.len();
-                    order_by_directions[cnt - 1] = false;
-                },
-                _ => {
-                    self.drop_lexem();
-                    break;
-                },
             }
+        } else {
+            self.drop_lexem();
         }
 
         (order_by_fields, order_by_directions)

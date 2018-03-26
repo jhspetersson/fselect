@@ -817,7 +817,7 @@ mod tests {
 
     #[test]
     fn query() {
-        let query = "select name, path ,size , fsize from /test depth 2, /test2 archives,/test3 depth 3 archives , /test4 ,'/test5' where name != 123 AND ( size gt 456 or fsize lte 758) or name = 'xxx' limit 50";
+        let query = "select name, path ,size , fsize from /test depth 2, /test2 archives,/test3 depth 3 archives , /test4 ,'/test5' where name != 123 AND ( size gt 456 or fsize lte 758) or name = 'xxx' order by 2, size desc limit 50";
         let mut p = Parser::new();
         let query = p.parse(&query).unwrap();
 
@@ -849,6 +849,8 @@ mod tests {
         );
 
         assert_eq!(query.expr, Some(Box::new(expr)));
+        assert_eq!(query.ordering_fields, vec!["path", "size"]);
+        assert_eq!(query.ordering_asc, Rc::new(vec![true, false]));
         assert_eq!(query.limit, 50);
     }
 }

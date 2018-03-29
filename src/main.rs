@@ -4,6 +4,7 @@ extern crate humansize;
 extern crate imagesize;
 extern crate mp3_metadata;
 extern crate regex;
+extern crate serde;
 extern crate serde_json;
 extern crate term;
 extern crate time;
@@ -17,6 +18,7 @@ use std::env;
 
 use term::StdoutTerminal;
 
+mod field;
 mod lexer;
 mod mode;
 mod parser;
@@ -54,7 +56,7 @@ fn main() {
             let mut searcher = Searcher::new(query);
             searcher.list_search_results(&mut t).unwrap()
         },
-        Err(err) => error_message("query", err, &mut t)
+        Err(err) => error_message("query", &err, &mut t)
     }
 }
 

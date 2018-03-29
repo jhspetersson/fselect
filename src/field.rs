@@ -1,0 +1,123 @@
+extern crate serde;
+
+use std::str::FromStr;
+
+use serde::ser::{Serialize, Serializer};
+use std::fmt::Display;
+use std::fmt::Formatter;
+use std::fmt::Error;
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum Field {
+    Name,
+    Path,
+    Size,
+    FormattedSize,
+    Uid,
+    Gid,
+    User,
+    Group,
+    Created,
+    Accessed,
+    Modified,
+    IsDir,
+    IsFile,
+    IsSymlink,
+    Mode,
+    UserRead,
+    UserWrite,
+    UserExec,
+    GroupRead,
+    GroupWrite,
+    GroupExec,
+    OtherRead,
+    OtherWrite,
+    OtherExec,
+    IsHidden,
+    HasXattr,
+    Width,
+    Height,
+    Bitrate,
+    Freq,
+    Title,
+    Artist,
+    Album,
+    Year,
+    Genre,
+    IsArchive,
+    IsAudio,
+    IsDoc,
+    IsImage,
+    IsSource,
+    IsVideo,
+}
+
+impl FromStr for Field {
+    type Err = String;
+
+    fn from_str<'a>(s: &str) -> Result<Self, Self::Err> {
+        let field = s.to_ascii_lowercase();
+
+        match field.as_str() {
+            "name" => Ok(Field::Name),
+            "path" => Ok(Field::Path),
+            "size" => Ok(Field::Size),
+            "fsize" | "hsize" => Ok(Field::FormattedSize),
+            "uid" => Ok(Field::Uid),
+            "gid" => Ok(Field::Gid),
+            "user" => Ok(Field::User),
+            "group" => Ok(Field::Group),
+            "created" => Ok(Field::Created),
+            "accessed" => Ok(Field::Accessed),
+            "modified" => Ok(Field::Modified),
+            "is_dir" => Ok(Field::IsDir),
+            "is_file" => Ok(Field::IsFile),
+            "is_symlink" => Ok(Field::IsSymlink),
+            "mode" => Ok(Field::Mode),
+            "user_read" => Ok(Field::UserRead),
+            "user_write" => Ok(Field::UserWrite),
+            "user_exec" => Ok(Field::UserExec),
+            "group_read" => Ok(Field::GroupRead),
+            "group_write" => Ok(Field::GroupWrite),
+            "group_exec" => Ok(Field::GroupExec),
+            "other_read" => Ok(Field::OtherRead),
+            "other_write" => Ok(Field::OtherWrite),
+            "other_exec" => Ok(Field::OtherExec),
+            "is_hidden" => Ok(Field::IsHidden),
+            "has_xattr" => Ok(Field::HasXattr),
+            "width" => Ok(Field::Width),
+            "height" => Ok(Field::Height),
+            "bitrate" => Ok(Field::Bitrate),
+            "freq" => Ok(Field::Freq),
+            "title" => Ok(Field::Title),
+            "artist" => Ok(Field::Artist),
+            "album" => Ok(Field::Album),
+            "year" => Ok(Field::Year),
+            "genre" => Ok(Field::Genre),
+            "is_archive" => Ok(Field::IsArchive),
+            "is_audio" => Ok(Field::IsAudio),
+            "is_doc" => Ok(Field::IsDoc),
+            "is_image" => Ok(Field::IsImage),
+            "is_source" => Ok(Field::IsSource),
+            "is_video" => Ok(Field::IsVideo),
+            _ => {
+                let err = String::from("Unknown field ") + &field;
+                Err(err)
+            }
+        }
+    }
+}
+
+impl Display for Field {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), Error>{
+        write!(f, "{:?}", self)
+    }
+}
+
+impl Serialize for Field {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+        where S: Serializer
+    {
+        serializer.serialize_str(&self.to_string())
+    }
+}

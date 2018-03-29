@@ -1,6 +1,6 @@
 #[derive(Clone, PartialEq, Debug)]
 pub enum Lexem {
-    Field(String),
+    RawString(String),
     Comma,
     From,
     Where,
@@ -20,7 +20,7 @@ pub enum Lexem {
 #[derive(Debug)]
 enum LexingMode {
     Undefined,
-    Field,
+    RawString,
     Comma,
     Operator,
     String,
@@ -57,7 +57,7 @@ impl<'a> Lexer<'a> {
                             if is_op_char(c) {
                                 mode = LexingMode::Operator;
                             } else {
-                                mode = LexingMode::Field;
+                                mode = LexingMode::RawString;
                             }
                             s.push(c);
                         }
@@ -89,12 +89,12 @@ impl<'a> Lexer<'a> {
                         true
                     }
                 },
-                LexingMode::Field => {
+                LexingMode::RawString => {
                     if c == ' ' || c == ',' || c == ')' {
                         true
                     } else {
                         self.index += 1;
-                        mode = LexingMode::Field;
+                        mode = LexingMode::RawString;
                         s.push(c);
 
                         false
@@ -113,7 +113,7 @@ impl<'a> Lexer<'a> {
         match mode {
             LexingMode::String => Some(Lexem::String(s)),
             LexingMode::Operator => Some(Lexem::Operator(s)),
-            LexingMode::Field => {
+            LexingMode::RawString => {
                 match s.to_lowercase().as_str() {
                     "from" => Some(Lexem::From),
                     "where" => Some(Lexem::Where),
@@ -127,7 +127,7 @@ impl<'a> Lexer<'a> {
                     "into" => Some(Lexem::Into),
                     "eq" | "ne" | "gt" | "lt" | "ge" | "le" | "gte" | "lte" | 
                     "regexp" | "rx" | "like" => Some(Lexem::Operator(s)),
-                    _ => Some(Lexem::Field(s)),
+                    _ => Some(Lexem::RawString(s)),
                 }
             },
             LexingMode::Comma => Some(Lexem::Comma),
@@ -154,58 +154,58 @@ mod tests {
     fn lexems() {
         let mut lexer = Lexer::new("select name, path ,size , fsize from /test depth 2, /test2 archives,/test3 depth 3 archives , /test4 ,'/test5' where name != 123 AND ( size gt 456 or fsize lte 758) or name = 'xxx' order by 1 ,3 desc , path asc limit 50");
 
-        assert_eq!(lexer.next_lexem(), Some(Lexem::Field(String::from("select"))));
-        assert_eq!(lexer.next_lexem(), Some(Lexem::Field(String::from("name"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("select"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("name"))));
         assert_eq!(lexer.next_lexem(), Some(Lexem::Comma));
-        assert_eq!(lexer.next_lexem(), Some(Lexem::Field(String::from("path"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("path"))));
         assert_eq!(lexer.next_lexem(), Some(Lexem::Comma));
-        assert_eq!(lexer.next_lexem(), Some(Lexem::Field(String::from("size"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("size"))));
         assert_eq!(lexer.next_lexem(), Some(Lexem::Comma));
-        assert_eq!(lexer.next_lexem(), Some(Lexem::Field(String::from("fsize"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("fsize"))));
         assert_eq!(lexer.next_lexem(), Some(Lexem::From));
-        assert_eq!(lexer.next_lexem(), Some(Lexem::Field(String::from("/test"))));
-        assert_eq!(lexer.next_lexem(), Some(Lexem::Field(String::from("depth"))));
-        assert_eq!(lexer.next_lexem(), Some(Lexem::Field(String::from("2"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("/test"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("depth"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("2"))));
         assert_eq!(lexer.next_lexem(), Some(Lexem::Comma));
-        assert_eq!(lexer.next_lexem(), Some(Lexem::Field(String::from("/test2"))));
-        assert_eq!(lexer.next_lexem(), Some(Lexem::Field(String::from("archives"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("/test2"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("archives"))));
         assert_eq!(lexer.next_lexem(), Some(Lexem::Comma));
-        assert_eq!(lexer.next_lexem(), Some(Lexem::Field(String::from("/test3"))));
-        assert_eq!(lexer.next_lexem(), Some(Lexem::Field(String::from("depth"))));
-        assert_eq!(lexer.next_lexem(), Some(Lexem::Field(String::from("3"))));
-        assert_eq!(lexer.next_lexem(), Some(Lexem::Field(String::from("archives"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("/test3"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("depth"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("3"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("archives"))));
         assert_eq!(lexer.next_lexem(), Some(Lexem::Comma));
-        assert_eq!(lexer.next_lexem(), Some(Lexem::Field(String::from("/test4"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("/test4"))));
         assert_eq!(lexer.next_lexem(), Some(Lexem::Comma));
         assert_eq!(lexer.next_lexem(), Some(Lexem::String(String::from("/test5"))));
         assert_eq!(lexer.next_lexem(), Some(Lexem::Where));
-        assert_eq!(lexer.next_lexem(), Some(Lexem::Field(String::from("name"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("name"))));
         assert_eq!(lexer.next_lexem(), Some(Lexem::Operator(String::from("!="))));
-        assert_eq!(lexer.next_lexem(), Some(Lexem::Field(String::from("123"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("123"))));
         assert_eq!(lexer.next_lexem(), Some(Lexem::And));
         assert_eq!(lexer.next_lexem(), Some(Lexem::Open));
-        assert_eq!(lexer.next_lexem(), Some(Lexem::Field(String::from("size"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("size"))));
         assert_eq!(lexer.next_lexem(), Some(Lexem::Operator(String::from("gt"))));
-        assert_eq!(lexer.next_lexem(), Some(Lexem::Field(String::from("456"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("456"))));
         assert_eq!(lexer.next_lexem(), Some(Lexem::Or));
-        assert_eq!(lexer.next_lexem(), Some(Lexem::Field(String::from("fsize"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("fsize"))));
         assert_eq!(lexer.next_lexem(), Some(Lexem::Operator(String::from("lte"))));
-        assert_eq!(lexer.next_lexem(), Some(Lexem::Field(String::from("758"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("758"))));
         assert_eq!(lexer.next_lexem(), Some(Lexem::Close));
         assert_eq!(lexer.next_lexem(), Some(Lexem::Or));
-        assert_eq!(lexer.next_lexem(), Some(Lexem::Field(String::from("name"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("name"))));
         assert_eq!(lexer.next_lexem(), Some(Lexem::Operator(String::from("="))));
         assert_eq!(lexer.next_lexem(), Some(Lexem::String(String::from("xxx"))));
         assert_eq!(lexer.next_lexem(), Some(Lexem::Order));
         assert_eq!(lexer.next_lexem(), Some(Lexem::By));
-        assert_eq!(lexer.next_lexem(), Some(Lexem::Field(String::from("1"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("1"))));
         assert_eq!(lexer.next_lexem(), Some(Lexem::Comma));
-        assert_eq!(lexer.next_lexem(), Some(Lexem::Field(String::from("3"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("3"))));
         assert_eq!(lexer.next_lexem(), Some(Lexem::DescendingOrder));
         assert_eq!(lexer.next_lexem(), Some(Lexem::Comma));
-        assert_eq!(lexer.next_lexem(), Some(Lexem::Field(String::from("path"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("path"))));
         assert_eq!(lexer.next_lexem(), Some(Lexem::Limit));
-        assert_eq!(lexer.next_lexem(), Some(Lexem::Field(String::from("50"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("50"))));
     }
 
 }

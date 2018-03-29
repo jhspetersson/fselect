@@ -8,7 +8,6 @@ use std::fs::symlink_metadata;
 use std::path::Path;
 use std::io;
 use std::io::Write;
-use std::process;
 
 use chrono::DateTime;
 use chrono::Local;
@@ -96,20 +95,18 @@ impl Searcher {
 
     pub fn list_search_results(&mut self, t: &mut Box<StdoutTerminal>) -> io::Result<()> {
         let need_metadata = self.query.fields.iter()
-            .filter(|s| s.as_str().ne("name")).count() > 0;
+            .filter(|f| **f != Field::Name).count() > 0;
 
         let need_dim = self.query.fields.iter()
-            .filter(|s| {
-                let str = s.as_str();
-                str.eq("width") || str.eq("height")
+            .filter(|f| {
+                **f == Field::Width || **f == Field::Height
             }).count() > 0;
 
         let need_mp3 = self.query.fields.iter()
-            .filter(|s| {
-                let str = s.as_str();
-                str.eq("bitrate") || str.eq("freq") ||
-                    str.eq("title") || str.eq("artist") ||
-                    str.eq("album") || str.eq("year") || str.eq("genre")
+            .filter(|f| {
+                let s = &**f;
+                s == &Field::Bitrate || s == &Field::Freq || s == &Field::Title || s == &Field::Artist
+                    || s == &Field::Album || s == &Field::Year || s == &Field::Genre
             }).count() > 0;
 
         if let OutputFormat::Json = self.query.output_format {
@@ -231,9 +228,16 @@ impl Searcher {
         Ok(())
     }
 
-    fn get_field_value(&self, entry: &DirEntry, file_info: &Option<FileInfo>, mp3_info: &Option<MP3Metadata>, attrs: &Option<Box<Metadata>>, dimensions: Option<(usize, usize)>, field: &String, t: &mut Box<StdoutTerminal>) -> String {
-        match field.as_str() {
-            "name" => {
+    fn get_field_value(&self,
+                       entry: &DirEntry,
+                       file_info: &Option<FileInfo>,
+                       mp3_info: &Option<MP3Metadata>,
+                       attrs: &Option<Box<Metadata>>,
+                       dimensions: Option<(usize, usize)>,
+                       field: &Field,
+                       t: &mut Box<StdoutTerminal>) -> String {
+        match *field {
+            Field::Name => {
                 match file_info {
                     &Some(ref file_info) => {
                         return format!("[{}] {}", entry.file_name().to_string_lossy(), file_info.name);
@@ -243,7 +247,7 @@ impl Searcher {
                     }
                 }
             },
-            "path" => {
+            Field::Path => {
                 match file_info {
                     &Some(ref file_info) => {
                         return format!("[{}] {}", entry.path().to_string_lossy(), file_info.name);
@@ -253,7 +257,7 @@ impl Searcher {
                     }
                 }
             },
-            "size" => {
+            Field::Size => {
                 match file_info {
                     &Some(ref file_info) => {
                         return format!("{}", file_info.size);
@@ -265,7 +269,7 @@ impl Searcher {
                     }
                 }
             },
-            "hsize" | "fsize" => {
+            Field::FormattedSize => {
                 match file_info {
                     &Some(ref file_info) => {
                         return format!("{}", file_info.size.file_size(file_size_opts::BINARY).unwrap());
@@ -277,7 +281,7 @@ impl Searcher {
                     }
                 }
             },
-            "is_dir" => {
+            Field::IsDir => {
                 match file_info {
                     &Some(ref file_info) => {
                         return format!("{}", file_info.name.ends_with('/'));
@@ -289,7 +293,7 @@ impl Searcher {
                     }
                 }
             },
-            "is_file" => {
+            Field::IsFile => {
                 match file_info {
                     &Some(ref file_info) => {
                         return format!("{}", !file_info.name.ends_with('/'));
@@ -301,7 +305,7 @@ impl Searcher {
                     }
                 }
             },
-            "is_symlink" => {
+            Field::IsSymlink => {
                 match file_info {
                     &Some(_) => {
                         return format!("{}", false);
@@ -313,7 +317,7 @@ impl Searcher {
                     }
                 }
             },
-            "mode" => {
+            Field::Mode => {
                 match file_info {
                     &Some(ref file_info) => {
                         if let Some(mode) = file_info.mode {
@@ -327,34 +331,34 @@ impl Searcher {
                     }
                 }
             },
-            "user_read" => {
+            Field::UserRead => {
                 return Self::print_file_mode(&attrs, &mode::user_read, &file_info, &mode::mode_user_read);
             },
-            "user_write" => {
+            Field::UserWrite => {
                 return Self::print_file_mode(&attrs, &mode::user_write, &file_info, &mode::mode_user_write);
             },
-            "user_exec" => {
+            Field::UserExec => {
                 return Self::print_file_mode(&attrs, &mode::user_exec, &file_info, &mode::mode_user_exec);
             },
-            "group_read" => {
+            Field::GroupRead => {
                 return Self::print_file_mode(&attrs, &mode::group_read, &file_info, &mode::mode_group_read);
             },
-            "group_write" => {
+            Field::GroupWrite => {
                 return Self::print_file_mode(&attrs, &mode::group_write, &file_info, &mode::mode_group_write);
             },
-            "group_exec" => {
+            Field::GroupExec => {
                 return Self::print_file_mode(&attrs, &mode::group_exec, &file_info, &mode::mode_group_exec);
             },
-            "other_read" => {
+            Field::OtherRead => {
                 return Self::print_file_mode(&attrs, &mode::other_read, &file_info, &mode::mode_other_read);
             },
-            "other_write" => {
+            Field::OtherWrite => {
                 return Self::print_file_mode(&attrs, &mode::other_write, &file_info, &mode::mode_other_write);
             },
-            "other_exec" => {
+            Field::OtherExec => {
                 return Self::print_file_mode(&attrs, &mode::other_exec, &file_info, &mode::mode_other_exec);
             },
-            "is_hidden" => {
+            Field::IsHidden => {
                 match file_info {
                     &Some(ref file_info) => {
                         return format!("{}", is_hidden(&file_info.name, &None, true));
@@ -364,21 +368,21 @@ impl Searcher {
                     }
                 }
             },
-            "uid" => {
+            Field::Uid => {
                 if let &Some(ref attrs) = attrs {
                     if let Some(uid) = mode::get_uid(attrs) {
                         return format!("{}", uid);
                     }
                 }
             },
-            "gid" => {
+            Field::Gid => {
                 if let &Some(ref attrs) = attrs {
                     if let Some(gid) = mode::get_gid(attrs) {
                         return format!("{}", gid);
                     }
                 }
             },
-            "user" => {
+            Field::User => {
                 if let &Some(ref attrs) = attrs {
                     if let Some(uid) = mode::get_uid(attrs) {
                         if let Some(user) = self.user_cache.get_user_by_uid(uid) {
@@ -387,7 +391,7 @@ impl Searcher {
                     }
                 }
             },
-            "group" => {
+            Field::Group => {
                 if let &Some(ref attrs) = attrs {
                     if let Some(gid) = mode::get_gid(attrs) {
                         if let Some(group) = self.user_cache.get_group_by_gid(gid) {
@@ -396,7 +400,7 @@ impl Searcher {
                     }
                 }
             },
-            "created" => {
+            Field::Created => {
                 if let &Some(ref attrs) = attrs {
                     if let Ok(sdt) = attrs.created() {
                         let dt: DateTime<Local> = DateTime::from(sdt);
@@ -405,7 +409,7 @@ impl Searcher {
                     }
                 }
             },
-            "accessed" => {
+            Field::Accessed => {
                 if let &Some(ref attrs) = attrs {
                     if let Ok(sdt) = attrs.accessed() {
                         let dt: DateTime<Local> = DateTime::from(sdt);
@@ -414,7 +418,7 @@ impl Searcher {
                     }
                 }
             },
-            "modified" => {
+            Field::Modified => {
                 match file_info {
                     &Some(ref file_info) => {
                         let dt: DateTime<Local> = to_local_datetime(&file_info.modified);
@@ -432,7 +436,7 @@ impl Searcher {
                     }
                 }
             },
-            "has_xattr" => {
+            Field::HasXattr => {
                 #[cfg(unix)]
                 {
                     if let Ok(file) = File::open(&entry.path()) {
@@ -448,88 +452,84 @@ impl Searcher {
                     return format!("{}", false);
                 }
             }
-            "width" => {
+            Field::Width => {
                 if let Some(ref dimensions) = dimensions {
                     return format!("{}", dimensions.0);
                 }
             },
-            "height" => {
+            Field::Height => {
                 if let Some(ref dimensions) = dimensions {
                     return format!("{}", dimensions.1);
                 }
             },
-            "bitrate" => {
+            Field::Bitrate => {
                 if let &Some(ref mp3_info) = mp3_info {
                     return format!("{}", mp3_info.frames[0].bitrate);
                 }
             },
-            "freq" => {
+            Field::Freq => {
                 if let &Some(ref mp3_info) = mp3_info {
                     return format!("{}", mp3_info.frames[0].sampling_freq);
                 }
             },
-            "title" => {
+            Field::Title => {
                 if let &Some(ref mp3_info) = mp3_info {
                     if let Some(ref mp3_tag) = mp3_info.tag {
                         return format!("{}", mp3_tag.title);
                     }
                 }
             },
-            "artist" => {
+            Field::Artist => {
                 if let &Some(ref mp3_info) = mp3_info {
                     if let Some(ref mp3_tag) = mp3_info.tag {
                         return format!("{}", mp3_tag.artist);
                     }
                 }
             },
-            "album" => {
+            Field::Album => {
                 if let &Some(ref mp3_info) = mp3_info {
                     if let Some(ref mp3_tag) = mp3_info.tag {
                         return format!("{}", mp3_tag.album);
                     }
                 }
             },
-            "year" => {
+            Field::Year => {
                 if let &Some(ref mp3_info) = mp3_info {
                     if let Some(ref mp3_tag) = mp3_info.tag {
                         return format!("{}", mp3_tag.year);
                     }
                 }
             },
-            "genre" => {
+            Field::Genre => {
                 if let &Some(ref mp3_info) = mp3_info {
                     if let Some(ref mp3_tag) = mp3_info.tag {
                         return format!("{:?}", mp3_tag.genre);
                     }
                 }
             },
-            "is_archive" => {
+            Field::IsArchive => {
                 let is_archive = is_archive(&entry.file_name().to_string_lossy());
                 return format!("{}", is_archive);
             },
-            "is_audio" => {
+            Field::IsAudio => {
                 let is_audio = is_audio(&entry.file_name().to_string_lossy());
                 return format!("{}", is_audio);
             },
-            "is_doc" => {
+            Field::IsDoc => {
                 let is_doc = is_doc(&entry.file_name().to_string_lossy());
                 return format!("{}", is_doc);
             },
-            "is_image" => {
+            Field::IsImage => {
                 let is_image = is_image(&entry.file_name().to_string_lossy());
                 return format!("{}", is_image);
             },
-            "is_source" => {
+            Field::IsSource => {
                 let is_source = is_source(&entry.file_name().to_string_lossy());
                 return format!("{}", is_source);
             },
-            "is_video" => {
+            Field::IsVideo => {
                 let is_video = is_video(&entry.file_name().to_string_lossy());
                 return format!("{}", is_video);
-            },
-            unknown_field => {
-                error_message(unknown_field, "unknown search field", t);
-                process::exit(1);
             }
         };
 
@@ -1891,6 +1891,7 @@ fn to_local_datetime(tm: &Tm) -> DateTime<Local> {
 
 #[cfg(windows)]
 use std;
+use field::Field;
 
 #[cfg(windows)]
 struct UsersCache;

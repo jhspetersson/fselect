@@ -2,6 +2,7 @@ extern crate regex;
 
 use std::ops::Index;
 use std::rc::Rc;
+use std::str::FromStr;
 
 use chrono::DateTime;
 use chrono::Duration;
@@ -13,6 +14,7 @@ use regex::Regex;
 
 use lexer::Lexer;
 use lexer::Lexem;
+use field::Field;
 
 pub struct Parser {
     lexems: Vec<Lexem>,
@@ -27,7 +29,7 @@ impl Parser {
         }
     }
 
-    pub fn parse<'a>(&mut self, query: &str) -> Result<Query, &'a str> {
+    pub fn parse(&mut self, query: &str) -> Result<Query, String> {
         let mut lexer = Lexer::new(query);
         while let Some(lexem) = lexer.next_lexem() {
             self.lexems.push(lexem);
@@ -50,10 +52,21 @@ impl Parser {
                 expr = expr_;
             },
             Err(err) => {
-                return Err(err);
+                return Err(err.to_string());
             }
         }
-        let (ordering_fields, ordering_asc) = self.parse_order_by(&fields);
+
+        let ordering_fields;
+        let ordering_asc;
+        match self.parse_order_by(&fields) {
+            Ok((fields, asc)) => {
+                ordering_fields = fields;
+                ordering_asc = asc;
+            },
+            Err(err) => {
+                return Err(err.to_string());
+            }
+        }
 
         let limit;
         match self.parse_limit() {
@@ -61,7 +74,7 @@ impl Parser {
                 limit = limit_;
             }
             Err(err) => {
-                return Err(err);
+                return Err(err.to_string());
             }
         }
 
@@ -71,7 +84,7 @@ impl Parser {
                 output_format = format_;
             },
             Err(err) => {
-                return Err(err);
+                return Err(err.to_string());
             }
         }
 
@@ -86,27 +99,30 @@ impl Parser {
         })
     }
 
-    fn parse_fields<'a>(&mut self) -> Result<Vec<String>, &'a str> {
+    fn parse_fields(&mut self) -> Result<Vec<Field>, String> {
         let mut fields = vec![];
         let mut skip = 0;
 
         let lexems = &self.lexems;
         for lexem in lexems {
             match lexem {
-                &Lexem::Field(ref s) => {
+                &Lexem::RawString(ref s) => {
                     if s.to_ascii_lowercase() != "select" {
                         if s == "*" {
                             #[cfg(unix)]
                             {
-                                fields.push("mode".to_string());
-                                fields.push("user".to_string());
-                                fields.push("group".to_string());
+                                fields.push(Field::Mode);
+                                fields.push(Field::User);
+                                fields.push(Field::Group);
                             }
 
-                            fields.push("size".to_string());
-                            fields.push("path".to_string());
+                            fields.push(Field::Size);
+                            fields.push(Field::Path);
                         } else {
-                            fields.push(s.to_string());
+                            match Field::from_str(s) {
+                                Ok(field) => fields.push(field),
+                                Err(err) => return Err(err)
+                            }
                         }
                     }
 
@@ -122,7 +138,7 @@ impl Parser {
         self.index = skip;
 
         if fields.is_empty() {
-            return Err("Error parsing fields, no selector found")
+            return Err(String::from("Error parsing fields, no selector found"))
         }
 
         Ok(fields)
@@ -165,7 +181,7 @@ impl Parser {
                 match lexem {
                     Some(ref lexem) => {
                         match lexem {
-                            &Lexem::String(ref s) | &Lexem::Field(ref s) => {
+                            &Lexem::String(ref s) | &Lexem::RawString(ref s) => {
                                 match mode {
                                     RootParsingMode::From | RootParsingMode::Comma => {
                                         path = s.to_string();
@@ -311,7 +327,7 @@ impl Parser {
         let lexem = self.get_lexem();
 
         match lexem {
-            Some(Lexem::Field(ref s)) => {
+            Some(Lexem::RawString(ref s)) => {
 
                 let lexem2 = self.get_lexem();
 
@@ -320,7 +336,7 @@ impl Parser {
                     let lexem3 = self.get_lexem();
 
                     match lexem3 {
-                        Some(Lexem::String(ref s3)) | Some(Lexem::Field(ref s3)) => {
+                        Some(Lexem::String(ref s3)) | Some(Lexem::RawString(ref s3)) => {
                             let op = Op::from(s2.to_string());
                             let mut expr: Expr;
                             if let Some(Op::Rx) = op {
@@ -388,19 +404,20 @@ impl Parser {
         }
     }
 
-    fn parse_order_by(&mut self, fields: &Vec<String>) -> (Vec<String>, Vec<bool>) {
-        let mut order_by_fields: Vec<String> = vec![];
+    fn parse_order_by(&mut self, fields: &Vec<Field>) -> Result<(Vec<Field>, Vec<bool>), String> {
+        let mut order_by_fields: Vec<Field> = vec![];
         let mut order_by_directions: Vec<bool> = vec![];
 
         if let Some(Lexem::Order) = self.get_lexem() {
             if let Some(Lexem::By) = self.get_lexem() {
                 loop {
+                    use std::str::FromStr;
                     match self.get_lexem() {
                         Some(Lexem::Comma) => {},
-                        Some(Lexem::Field(ref ordering_field)) => {
+                        Some(Lexem::RawString(ref ordering_field)) => {
                             let actual_field = match ordering_field.parse::<usize>() {
-                                Ok(idx) => &fields[idx - 1],
-                                _ => ordering_field,
+                                Ok(idx) => fields[idx - 1].clone(),
+                                _ => Field::from_str(ordering_field)?,
                             };
                             order_by_fields.push(actual_field.clone());
                             order_by_directions.push(true);
@@ -422,7 +439,7 @@ impl Parser {
             self.drop_lexem();
         }
 
-        (order_by_fields, order_by_directions)
+        Ok((order_by_fields, order_by_directions))
     }
 
 
@@ -432,7 +449,7 @@ impl Parser {
             Some(Lexem::Limit) => {
                 let lexem = self.get_lexem();
                 match lexem {
-                    Some(Lexem::Field(s)) | Some(Lexem::String(s)) => {
+                    Some(Lexem::RawString(s)) | Some(Lexem::String(s)) => {
                         if let Ok(limit) = s.parse() {
                             return Ok(limit);
                         } else {
@@ -459,7 +476,7 @@ impl Parser {
             Some(Lexem::Into) => {
                 let lexem = self.get_lexem();
                 match lexem {
-                    Some(Lexem::Field(s)) | Some(Lexem::String(s)) => {
+                    Some(Lexem::RawString(s)) | Some(Lexem::String(s)) => {
                         let s = s.to_lowercase();
                         if s == "lines" {
                             return Ok(OutputFormat::Lines);
@@ -639,10 +656,10 @@ fn parse_datetime<'a>(s: &str) -> Result<(DateTime<Local>, DateTime<Local>), &'a
 
 #[derive(Debug, Clone)]
 pub struct Query {
-    pub fields: Vec<String>,
+    pub fields: Vec<Field>,
     pub roots: Vec<Root>,
     pub expr: Option<Box<Expr>>,
-    pub ordering_fields: Vec<String>,
+    pub ordering_fields: Vec<Field>,
     pub ordering_asc: Rc<Vec<bool>>,
     pub limit: u32,
     pub output_format: OutputFormat,
@@ -821,7 +838,7 @@ mod tests {
         let mut p = Parser::new();
         let query = p.parse(&query).unwrap();
 
-        assert_eq!(query.fields, vec![String::from("name"), String::from("path"), String::from("size"), String::from("fsize")]);
+        assert_eq!(query.fields, vec![Field::Name, Field::Path, Field::Size, Field::FormattedSize]);
         assert_eq!(query.roots, vec![
             Root::new(String::from("/test"), 2, false, false),
             Root::new(String::from("/test2"), 0, true, false),
@@ -849,7 +866,7 @@ mod tests {
         );
 
         assert_eq!(query.expr, Some(Box::new(expr)));
-        assert_eq!(query.ordering_fields, vec!["path", "size"]);
+        assert_eq!(query.ordering_fields, vec![Field::Path, Field::Size]);
         assert_eq!(query.ordering_asc, Rc::new(vec![true, false]));
         assert_eq!(query.limit, 50);
     }

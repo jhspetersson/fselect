@@ -26,6 +26,7 @@ use users::{Groups, Users, UsersCache};
 use xattr::FileExt;
 use zip;
 
+use field::Field;
 use mode;
 use parser::Query;
 use parser::Expr;
@@ -235,7 +236,7 @@ impl Searcher {
                        attrs: &Option<Box<Metadata>>,
                        dimensions: Option<(usize, usize)>,
                        field: &Field,
-                       t: &mut Box<StdoutTerminal>) -> String {
+                       _t: &mut Box<StdoutTerminal>) -> String {
         match *field {
             Field::Name => {
                 match file_info {
@@ -720,856 +721,411 @@ impl Searcher {
         }
 
         if let Some(ref field) = expr.field {
-            if field.to_ascii_lowercase() == "name" {
-                if let Some(ref val) = expr.val {
-                    let file_name = match file_info {
-                        &Some(ref file_info) => file_info.name.clone(),
-                        _ => entry.file_name().to_string_lossy().to_string()
-                    };
-
-                    result = match expr.op {
-                        Some(Op::Eq) => {
-                            match expr.regex {
-                                Some(ref regex) => regex.is_match(&file_name),
-                                None => val.eq(&file_name)
-                            }
-                        },
-                        Some(Op::Ne) => {
-                            match expr.regex {
-                                Some(ref regex) => !regex.is_match(&file_name),
-                                None => val.ne(&file_name)
-                            }
-                        },
-                        Some(Op::Rx) | Some(Op::Like) => {
-                            match expr.regex {
-                                Some(ref regex) => regex.is_match(&file_name),
-                                None => false
-                            }
-                        },
-                        Some(Op::Eeq) => {
-                            val.eq(&file_name)
-                        },
-                        Some(Op::Ene) => {
-                            val.ne(&file_name)
-                        },
-                        _ => false
-                    };
-                }
-            } else if field.to_ascii_lowercase() == "path" {
-                if let Some(ref val) = expr.val {
-                    let file_path = match file_info {
-                        &Some(ref file_info) => file_info.name.clone(),
-                        _ => String::from(entry.path().to_string_lossy())
-                    };
-
-                    result = match expr.op {
-                        Some(Op::Eq) => {
-                            match expr.regex {
-                                Some(ref regex) => regex.is_match(&file_path),
-                                None => val.eq(&file_path)
-                            }
-                        },
-                        Some(Op::Ne) => {
-                            match expr.regex {
-                                Some(ref regex) => !regex.is_match(&file_path),
-                                None => val.ne(&file_path)
-                            }
-                        },
-                        Some(Op::Rx) | Some(Op::Like) => {
-                            match expr.regex {
-                                Some(ref regex) => regex.is_match(&file_path),
-                                None => false
-                            }
-                        },
-                        Some(Op::Eeq) => {
-                            val.eq(&file_path)
-                        },
-                        Some(Op::Ene) => {
-                            val.ne(&file_path)
-                        },
-                        _ => false
-                    };
-                }
-            } else if field.to_ascii_lowercase() == "size" ||
-                field.to_ascii_lowercase() == "hsize" ||
-                field.to_ascii_lowercase() == "fsize" {
-                if let Some(ref val) = expr.val {
-                    let file_size = match file_info {
-                        &Some(ref file_info) => {
-                            Some(file_info.size)
-                        },
-                        _ => {
-                            meta = update_meta(entry, meta, follow_symlinks);
-                            match meta {
-                                Some(ref metadata) => {
-                                    Some(metadata.len())
-                                },
-                                _ => None
-                            }
-                        }
-                    };
-
-                    if let Some(file_size) = file_size {
-                        let size = parse_filesize(val);
-                        if let Some(size) = size {
-                            result = match expr.op {
-                                Some(Op::Eq) | Some(Op::Eeq) => file_size == size,
-                                Some(Op::Ne) | Some(Op::Ene) => file_size != size,
-                                Some(Op::Gt) => file_size > size,
-                                Some(Op::Gte) => file_size >= size,
-                                Some(Op::Lt) => file_size < size,
-                                Some(Op::Lte) => file_size <= size,
-                                _ => false
-                            };
-                        }
-                    }
-                }
-            } else if field.to_ascii_lowercase() == "uid" {
-                if file_info.is_some() {
-                    return (false, meta, dim, mp3)
-                }
-
-                if let Some(ref val) = expr.val {
-                    meta = update_meta(entry, meta, follow_symlinks);
-
-                    if let Some(ref metadata) = meta {
-                        let uid = val.parse::<u32>();
-                        if let Ok(uid) = uid {
-                            let file_uid = mode::get_uid(metadata);
-                            if let Some(file_uid) = file_uid {
-                                result = match expr.op {
-                                    Some(Op::Eq) | Some(Op::Eeq) => file_uid == uid,
-                                    Some(Op::Ne) | Some(Op::Ene) => file_uid != uid,
-                                    Some(Op::Gt) => file_uid > uid,
-                                    Some(Op::Gte) => file_uid >= uid,
-                                    Some(Op::Lt) => file_uid < uid,
-                                    Some(Op::Lte) => file_uid <= uid,
-                                    _ => false
-                                };
-                            }
-                        }
-                    }
-                }
-            } else if field.to_ascii_lowercase() == "user" {
-                if file_info.is_some() {
-                    return (false, meta, dim, mp3)
-                }
-
-                if let Some(ref val) = expr.val {
-                    meta = update_meta(entry, meta, follow_symlinks);
-
-                    if let Some(ref metadata) = meta {
-                        let file_uid = mode::get_uid(metadata);
-                        if let Some(file_uid) = file_uid {
-                            if let Some(user) = self.user_cache.get_user_by_uid(file_uid) {
-                                let user_name = user.name();
-                                result = match expr.op {
-                                    Some(Op::Eq) => {
-                                        match expr.regex {
-                                            Some(ref regex) => regex.is_match(user_name),
-                                            None => val.eq(user_name)
-                                        }
-                                    },
-                                    Some(Op::Ne) => {
-                                        match expr.regex {
-                                            Some(ref regex) => !regex.is_match(user_name),
-                                            None => val.ne(user_name)
-                                        }
-                                    },
-                                    Some(Op::Rx) | Some(Op::Like) => {
-                                        match expr.regex {
-                                            Some(ref regex) => regex.is_match(user_name),
-                                            None => false
-                                        }
-                                    },
-                                    Some(Op::Eeq) => {
-                                        val.eq(user_name)
-                                    },
-                                    Some(Op::Ene) => {
-                                        val.ne(user_name)
-                                    },
-                                    _ => false
-                                };
-                            }
-                        }
-                    }
-                }
-            } else if field.to_ascii_lowercase() == "gid" {
-                if file_info.is_some() {
-                    return (false, meta, dim, mp3)
-                }
-
-                if let Some(ref val) = expr.val {
-                    meta = update_meta(entry, meta, follow_symlinks);
-
-                    if let Some(ref metadata) = meta {
-                        let gid = val.parse::<u32>();
-                        if let Ok(gid) = gid {
-                            let file_gid = mode::get_gid(metadata);
-                            if let Some(file_gid) = file_gid {
-                                result = match expr.op {
-                                    Some(Op::Eq) | Some(Op::Eeq) => file_gid == gid,
-                                    Some(Op::Ne) | Some(Op::Ene) => file_gid != gid,
-                                    Some(Op::Gt) => file_gid > gid,
-                                    Some(Op::Gte) => file_gid >= gid,
-                                    Some(Op::Lt) => file_gid < gid,
-                                    Some(Op::Lte) => file_gid <= gid,
-                                    _ => false
-                                };
-                            }
-                        }
-                    }
-                }
-            } else if field.to_ascii_lowercase() == "group" {
-                if file_info.is_some() {
-                    return (false, meta, dim, mp3)
-                }
-
-                if let Some(ref val) = expr.val {
-                    meta = update_meta(entry, meta, follow_symlinks);
-
-                    if let Some(ref metadata) = meta {
-                        let file_gid = mode::get_gid(metadata);
-                        if let Some(file_gid) = file_gid {
-                            if let Some(group) = self.user_cache.get_group_by_gid(file_gid) {
-                                let group_name = group.name();
-                                result = match expr.op {
-                                    Some(Op::Eq) => {
-                                        match expr.regex {
-                                            Some(ref regex) => regex.is_match(group_name),
-                                            None => val.eq(group_name)
-                                        }
-                                    },
-                                    Some(Op::Ne) => {
-                                        match expr.regex {
-                                            Some(ref regex) => !regex.is_match(group_name),
-                                            None => val.ne(group_name)
-                                        }
-                                    },
-                                    Some(Op::Rx) | Some(Op::Like) => {
-                                        match expr.regex {
-                                            Some(ref regex) => regex.is_match(group_name),
-                                            None => false
-                                        }
-                                    },
-                                    Some(Op::Eeq) => {
-                                        val.eq(group_name)
-                                    },
-                                    Some(Op::Ene) => {
-                                        val.ne(group_name)
-                                    },
-                                    _ => false
-                                };
-                            }
-                        }
-                    }
-                }
-            } else if field.to_ascii_lowercase() == "is_dir" {
-                if let Some(ref val) = expr.val {
-                    let is_dir = match file_info {
-                        &Some(ref file_info) => Some(file_info.name.ends_with('/')),
-                        _ => {
-                            meta = update_meta(entry, meta, follow_symlinks);
-
-                            match meta {
-                                Some(ref metadata) => {
-                                    Some(metadata.is_dir())
-                                },
-                                _ => None
-                            }
-                        }
-                    };
-
-                    if let Some(is_dir) = is_dir {
-                        let bool_val = str_to_bool(val);
-
-                        result = match expr.op {
-                            Some(Op::Eq) | Some(Op::Eeq) => {
-                                if bool_val {
-                                    is_dir
-                                } else {
-                                    !is_dir
-                                }
-                            },
-                            Some(Op::Ne) | Some(Op::Ene) => {
-                                if bool_val {
-                                    !is_dir
-                                } else {
-                                    is_dir
-                                }
-                            },
-                            _ => false
+            match *field {
+                Field::Name => {
+                    if let Some(ref val) = expr.val {
+                        let file_name = match file_info {
+                            &Some(ref file_info) => file_info.name.clone(),
+                            _ => entry.file_name().to_string_lossy().to_string()
                         };
-                    }
-                }
-            } else if field.to_ascii_lowercase() == "is_file" {
-                if let Some(ref val) = expr.val {
-                    let is_file = match file_info {
-                        &Some(ref file_info) => Some(!file_info.name.ends_with('/')),
-                        _ => {
-                            meta = update_meta(entry, meta, follow_symlinks);
 
-                            match meta {
-                                Some(ref metadata) => {
-                                    Some(metadata.is_file())
-                                },
-                                _ => None
-                            }
-                        }
-                    };
-
-                    if let Some(is_file) = is_file {
-                        let bool_val = str_to_bool(val);
-
-                        result = match expr.op {
-                            Some(Op::Eq) | Some(Op::Eeq) => {
-                                if bool_val {
-                                    is_file
-                                } else {
-                                    !is_file
-                                }
-                            },
-                            Some(Op::Ne) | Some(Op::Ene) => {
-                                if bool_val {
-                                    !is_file
-                                } else {
-                                    is_file
-                                }
-                            },
-                            _ => false
-                        };
-                    }
-                }
-            } else if field.to_ascii_lowercase() == "is_symlink" {
-                if let Some(ref val) = expr.val {
-                    let is_symlink = match file_info {
-                        &Some(_) => Some(false),
-                        _ => {
-                            meta = update_meta(entry, meta, follow_symlinks);
-
-                            match meta {
-                                Some(ref metadata) => {
-                                    Some(metadata.file_type().is_symlink())
-                                },
-                                _ => None
-                            }
-                        }
-                    };
-
-                    if let Some(is_symlink) = is_symlink {
-                        let bool_val = str_to_bool(val);
-
-                        result = match expr.op {
-                            Some(Op::Eq) | Some(Op::Eeq) => {
-                                if bool_val {
-                                    is_symlink
-                                } else {
-                                    !is_symlink
-                                }
-                            },
-                            Some(Op::Ne) | Some(Op::Ene) => {
-                                if bool_val {
-                                    !is_symlink
-                                } else {
-                                    is_symlink
-                                }
-                            },
-                            _ => false
-                        };
-                    }
-                }
-            } else if field.to_ascii_lowercase() == "mode" {
-                if let Some(ref val) = expr.val {
-                    let mode = match file_info {
-                        &Some(ref file_info) => {
-                            match file_info.mode {
-                                Some(mode) => Some(mode::format_mode(mode)),
-                                _ => None
-                            }
-                        },
-                        _ => {
-                            meta = update_meta(entry, meta, follow_symlinks);
-
-                            match meta {
-                                Some(ref metadata) => {
-                                    Some(mode::get_mode(metadata))
-                                },
-                                _ => None
-                            }
-                        }
-                    };
-
-                    if let Some(mode) = mode {
                         result = match expr.op {
                             Some(Op::Eq) => {
                                 match expr.regex {
-                                    Some(ref regex) => regex.is_match(&mode),
-                                    None => val.eq(&mode)
+                                    Some(ref regex) => regex.is_match(&file_name),
+                                    None => val.eq(&file_name)
                                 }
                             },
                             Some(Op::Ne) => {
                                 match expr.regex {
-                                    Some(ref regex) => !regex.is_match(&mode),
-                                    None => val.ne(&mode)
+                                    Some(ref regex) => !regex.is_match(&file_name),
+                                    None => val.ne(&file_name)
                                 }
                             },
                             Some(Op::Rx) | Some(Op::Like) => {
                                 match expr.regex {
-                                    Some(ref regex) => regex.is_match(&mode),
+                                    Some(ref regex) => regex.is_match(&file_name),
                                     None => false
                                 }
+                            },
+                            Some(Op::Eeq) => {
+                                val.eq(&file_name)
+                            },
+                            Some(Op::Ene) => {
+                                val.ne(&file_name)
                             },
                             _ => false
                         };
                     }
-                }
-            } else if field.to_ascii_lowercase() == "user_read" {
-                let (res_, meta_) = confirm_file_mode(&expr.op, &expr.val, &entry, meta, &file_info, follow_symlinks, &mode::mode_user_read);
-                meta = meta_;
-                result = res_;
-            } else if field.to_ascii_lowercase() == "user_write" {
-                let (res_, meta_) = confirm_file_mode(&expr.op, &expr.val, &entry, meta, &file_info, follow_symlinks, &mode::mode_user_write);
-                meta = meta_;
-                result = res_;
-            } else if field.to_ascii_lowercase() == "user_exec" {
-                let (res_, meta_) = confirm_file_mode(&expr.op, &expr.val, &entry, meta, &file_info, follow_symlinks, &mode::mode_user_exec);
-                meta = meta_;
-                result = res_;
-            } else if field.to_ascii_lowercase() == "group_read" {
-                let (res_, meta_) = confirm_file_mode(&expr.op, &expr.val, &entry, meta, &file_info, follow_symlinks, &mode::mode_group_read);
-                meta = meta_;
-                result = res_;
-            } else if field.to_ascii_lowercase() == "group_write" {
-                let (res_, meta_) = confirm_file_mode(&expr.op, &expr.val, &entry, meta, &file_info, follow_symlinks, &mode::mode_group_write);
-                meta = meta_;
-                result = res_;
-            } else if field.to_ascii_lowercase() == "group_exec" {
-                let (res_, meta_) = confirm_file_mode(&expr.op, &expr.val, &entry, meta, &file_info, follow_symlinks, &mode::mode_group_exec);
-                meta = meta_;
-                result = res_;
-            } else if field.to_ascii_lowercase() == "other_read" {
-                let (res_, meta_) = confirm_file_mode(&expr.op, &expr.val, &entry, meta, &file_info, follow_symlinks, &mode::mode_other_read);
-                meta = meta_;
-                result = res_;
-            } else if field.to_ascii_lowercase() == "other_write" {
-                let (res_, meta_) = confirm_file_mode(&expr.op, &expr.val, &entry, meta, &file_info, follow_symlinks, &mode::mode_other_write);
-                meta = meta_;
-                result = res_;
-            } else if field.to_ascii_lowercase() == "other_exec" {
-                let (res_, meta_) = confirm_file_mode(&expr.op, &expr.val, &entry, meta, &file_info, follow_symlinks, &mode::mode_other_exec);
-                meta = meta_;
-                result = res_;
-            } else if field.to_ascii_lowercase() == "is_hidden" {
-                if let Some(ref val) = expr.val {
-                    let is_hidden = match file_info {
-                        &Some(ref file_info) => is_hidden(&file_info.name, &None, true),
-                        _ => is_hidden(&entry.file_name().to_string_lossy(), &meta, false)
-                    };
-
-                    let bool_val = str_to_bool(val);
-
-                    result = match expr.op {
-                        Some(Op::Eq) | Some(Op::Eeq) => {
-                            if bool_val {
-                                is_hidden
-                            } else {
-                                !is_hidden
-                            }
-                        },
-                        Some(Op::Ne) | Some(Op::Ene) => {
-                            if bool_val {
-                                !is_hidden
-                            } else {
-                                is_hidden
-                            }
-                        },
-                        _ => false
-                    };
-                }
-            } else if field.to_ascii_lowercase() == "created" {
-                if file_info.is_some() {
-                    return (false, meta, dim, mp3)
-                }
-
-                if let Some(ref _val) = expr.val {
-                    meta = update_meta(entry, meta, follow_symlinks);
-
-                    if let Some(ref metadata) = meta {
-                        if let Ok(sdt) = metadata.created() {
-                            let dt: DateTime<Local> = DateTime::from(sdt);
-                            let start = expr.dt_from.unwrap();
-                            let finish = expr.dt_to.unwrap();
-
-                            result = match expr.op {
-                                Some(Op::Eq) => dt >= start && dt <= finish,
-                                Some(Op::Ne) => dt < start || dt > finish,
-                                Some(Op::Gt) => dt > finish,
-                                Some(Op::Gte) => dt >= start,
-                                Some(Op::Lt) => dt < start,
-                                Some(Op::Lte) => dt <= finish,
-                                _ => false
-                            };
-                        }
-                    }
-                }
-            } else if field.to_ascii_lowercase() == "accessed" {
-                if file_info.is_some() {
-                    return (false, meta, dim, mp3)
-                }
-
-                if let Some(ref _val) = expr.val {
-                    meta = update_meta(entry, meta, follow_symlinks);
-
-                    if let Some(ref metadata) = meta {
-                        if let Ok(sdt) = metadata.accessed() {
-                            let dt: DateTime<Local> = DateTime::from(sdt);
-                            let start = expr.dt_from.unwrap();
-                            let finish = expr.dt_to.unwrap();
-
-                            result = match expr.op {
-                                Some(Op::Eq) => dt >= start && dt <= finish,
-                                Some(Op::Ne) => dt < start || dt > finish,
-                                Some(Op::Gt) => dt > finish,
-                                Some(Op::Gte) => dt >= start,
-                                Some(Op::Lt) => dt < start,
-                                Some(Op::Lte) => dt <= finish,
-                                _ => false
-                            };
-                        }
-                    }
-                }
-            } else if field.to_ascii_lowercase() == "modified" {
-                if let Some(ref _val) = expr.val {
-                    let dt = match file_info {
-                        &Some(ref file_info) => Some(to_local_datetime(&file_info.modified)),
-                        _ => {
-                            meta = update_meta(entry, meta, follow_symlinks);
-                            match meta {
-                                Some(ref metadata) => {
-                                    match metadata.modified() {
-                                        Ok(sdt) => Some(DateTime::from(sdt)),
-                                        _ => None
-                                    }
-                                },
-                                _ => None
-                            }
-                        }
-                    };
-
-                    if let Some(dt) = dt {
-                        let start = expr.dt_from.unwrap();
-                        let finish = expr.dt_to.unwrap();
+                },
+                Field::Path => {
+                    if let Some(ref val) = expr.val {
+                        let file_path = match file_info {
+                            &Some(ref file_info) => file_info.name.clone(),
+                            _ => String::from(entry.path().to_string_lossy())
+                        };
 
                         result = match expr.op {
-                            Some(Op::Eq) => dt >= start && dt <= finish,
-                            Some(Op::Ne) => dt < start || dt > finish,
-                            Some(Op::Gt) => dt > finish,
-                            Some(Op::Gte) => dt >= start,
-                            Some(Op::Lt) => dt < start,
-                            Some(Op::Lte) => dt <= finish,
+                            Some(Op::Eq) => {
+                                match expr.regex {
+                                    Some(ref regex) => regex.is_match(&file_path),
+                                    None => val.eq(&file_path)
+                                }
+                            },
+                            Some(Op::Ne) => {
+                                match expr.regex {
+                                    Some(ref regex) => !regex.is_match(&file_path),
+                                    None => val.ne(&file_path)
+                                }
+                            },
+                            Some(Op::Rx) | Some(Op::Like) => {
+                                match expr.regex {
+                                    Some(ref regex) => regex.is_match(&file_path),
+                                    None => false
+                                }
+                            },
+                            Some(Op::Eeq) => {
+                                val.eq(&file_path)
+                            },
+                            Some(Op::Ene) => {
+                                val.ne(&file_path)
+                            },
                             _ => false
                         };
                     }
-                }
-            } else if field.to_ascii_lowercase() == "has_xattr" {
-                #[cfg(unix)]
-                {
+                },
+                Field::Size | Field::FormattedSize => {
+                    if let Some(ref val) = expr.val {
+                        let file_size = match file_info {
+                            &Some(ref file_info) => {
+                                Some(file_info.size)
+                            },
+                            _ => {
+                                meta = update_meta(entry, meta, follow_symlinks);
+                                match meta {
+                                    Some(ref metadata) => {
+                                        Some(metadata.len())
+                                    },
+                                    _ => None
+                                }
+                            }
+                        };
+
+                        if let Some(file_size) = file_size {
+                            let size = parse_filesize(val);
+                            if let Some(size) = size {
+                                result = match expr.op {
+                                    Some(Op::Eq) | Some(Op::Eeq) => file_size == size,
+                                    Some(Op::Ne) | Some(Op::Ene) => file_size != size,
+                                    Some(Op::Gt) => file_size > size,
+                                    Some(Op::Gte) => file_size >= size,
+                                    Some(Op::Lt) => file_size < size,
+                                    Some(Op::Lte) => file_size <= size,
+                                    _ => false
+                                };
+                            }
+                        }
+                    }
+                },
+                Field::Uid => {
                     if file_info.is_some() {
                         return (false, meta, dim, mp3)
                     }
 
                     if let Some(ref val) = expr.val {
-                        if let Ok(file) = File::open(&entry.path()) {
-                            if let Ok(xattrs) = file.list_xattr() {
-                                let has_xattr = xattrs.count() > 0;
-                                let bool_val = str_to_bool(val);
+                        meta = update_meta(entry, meta, follow_symlinks);
 
-                                result = match &expr.op {
-                                    &Some(Op::Eq) | &Some(Op::Eeq) => {
-                                        if bool_val {
-                                            has_xattr
-                                        } else {
-                                            !has_xattr
-                                        }
-                                    },
-                                    &Some(Op::Ne) | &Some(Op::Ene) => {
-                                        if bool_val {
-                                            !has_xattr
-                                        } else {
-                                            has_xattr
-                                        }
-                                    },
-                                    _ => false
-                                };
-                            }
-                        }
-                    }
-                }
-            } else if field.to_ascii_lowercase() == "width" {
-                if file_info.is_some() {
-                    return (false, meta, dim, mp3)
-                }
-
-                if !is_image_dim_readable(&entry.file_name().to_string_lossy()) {
-                    return (false, meta, dim, mp3)
-                }
-
-                if let Some(ref val) = expr.val {
-                    dim = update_img_dimensions(&entry, dim);
-
-                    if let Some((width, _)) = dim {
-                        let val = val.parse::<usize>();
-                        if let Ok(val) = val {
-                            result = match expr.op {
-                                Some(Op::Eq) | Some(Op::Eeq) => width == val,
-                                Some(Op::Ne) | Some(Op::Ene) => width != val,
-                                Some(Op::Gt) => width > val,
-                                Some(Op::Gte) => width >= val,
-                                Some(Op::Lt) => width < val,
-                                Some(Op::Lte) => width <= val,
-                                _ => false
-                            };
-                        }
-                    }
-                }
-            } else if field.to_ascii_lowercase() == "height" {
-                if file_info.is_some() {
-                    return (false, meta, dim, mp3)
-                }
-
-                if !is_image_dim_readable(&entry.file_name().to_string_lossy()) {
-                    return (false, meta, dim, mp3)
-                }
-
-                if let Some(ref val) = expr.val {
-                    dim = update_img_dimensions(&entry, dim);
-
-                    if let Some((_, height)) = dim {
-                        let val = val.parse::<usize>();
-                        if let Ok(val) = val {
-                            result = match expr.op {
-                                Some(Op::Eq) | Some(Op::Eeq) => height == val,
-                                Some(Op::Ne) | Some(Op::Ene) => height != val,
-                                Some(Op::Gt) => height > val,
-                                Some(Op::Gte) => height >= val,
-                                Some(Op::Lt) => height < val,
-                                Some(Op::Lte) => height <= val,
-                                _ => false
-                            };
-                        }
-                    }
-                }
-            } else if field.to_ascii_lowercase() == "bitrate" {
-                if file_info.is_some() {
-                    return (false, meta, dim, mp3)
-                }
-
-                if let Some(ref val) = expr.val {
-                    mp3 = update_mp3_meta(&entry, mp3);
-
-                    if let Some(ref mp3_meta) = mp3 {
-                        let val = val.parse::<usize>();
-                        if let Ok(val) = val {
-                            let bitrate = mp3_meta.frames[0].bitrate as usize;
-                            result = match expr.op {
-                                Some(Op::Eq) | Some(Op::Eeq) => bitrate == val,
-                                Some(Op::Ne) | Some(Op::Ene) => bitrate != val,
-                                Some(Op::Gt) => bitrate > val,
-                                Some(Op::Gte) => bitrate >= val,
-                                Some(Op::Lt) => bitrate < val,
-                                Some(Op::Lte) => bitrate <= val,
-                                _ => false
-                            };
-                        }
-                    }
-                }
-            } else if field.to_ascii_lowercase() == "freq" {
-                if file_info.is_some() {
-                    return (false, meta, dim, mp3)
-                }
-
-                if let Some(ref val) = expr.val {
-                    mp3 = update_mp3_meta(&entry, mp3);
-
-                    if let Some(ref mp3_meta) = mp3 {
-                        let val = val.parse::<usize>();
-                        if let Ok(val) = val {
-                            let freq = mp3_meta.frames[0].sampling_freq as usize;
-                            result = match expr.op {
-                                Some(Op::Eq) | Some(Op::Eeq) => freq == val,
-                                Some(Op::Ne) | Some(Op::Ene) => freq != val,
-                                Some(Op::Gt) => freq > val,
-                                Some(Op::Gte) => freq >= val,
-                                Some(Op::Lt) => freq < val,
-                                Some(Op::Lte) => freq <= val,
-                                _ => false
-                            };
-                        }
-                    }
-                }
-            } else if field.to_ascii_lowercase() == "title" {
-                if file_info.is_some() {
-                    return (false, meta, dim, mp3)
-                }
-
-                if let Some(ref val) = expr.val {
-                    mp3 = update_mp3_meta(&entry, mp3);
-
-                    if let Some(ref mp3_meta) = mp3 {
-                        if let Some(ref mp3_tag) = mp3_meta.tag {
-                            let title = &mp3_tag.title;
-                            result = match expr.op {
-                                Some(Op::Eq) | Some(Op::Eeq) => {
-                                    match expr.regex {
-                                        Some(ref regex) => regex.is_match(title),
-                                        None => val.eq(title)
-                                    }
-                                },
-                                Some(Op::Ne) | Some(Op::Ene) => {
-                                    match expr.regex {
-                                        Some(ref regex) => !regex.is_match(title),
-                                        None => val.ne(title)
-                                    }
-                                },
-                                Some(Op::Rx) | Some(Op::Like) => {
-                                    match expr.regex {
-                                        Some(ref regex) => regex.is_match(title),
-                                        None => false
-                                    }
-                                },
-                                _ => false
-                            };
-                        }
-                    }
-                }
-            } else if field.to_ascii_lowercase() == "artist" {
-                if file_info.is_some() {
-                    return (false, meta, dim, mp3)
-                }
-
-                if let Some(ref val) = expr.val {
-                    mp3 = update_mp3_meta(&entry, mp3);
-
-                    if let Some(ref mp3_meta) = mp3 {
-                        if let Some(ref mp3_tag) = mp3_meta.tag {
-                            let artist = &mp3_tag.artist;
-
-                            result = match expr.op {
-                                Some(Op::Eq) | Some(Op::Eeq) => {
-                                    match expr.regex {
-                                        Some(ref regex) => regex.is_match(artist),
-                                        None => val.eq(artist)
-                                    }
-                                },
-                                Some(Op::Ne) | Some(Op::Ene) => {
-                                    match expr.regex {
-                                        Some(ref regex) => !regex.is_match(artist),
-                                        None => val.ne(artist)
-                                    }
-                                },
-                                Some(Op::Rx) | Some(Op::Like) => {
-                                    match expr.regex {
-                                        Some(ref regex) => regex.is_match(artist),
-                                        None => false
-                                    }
-                                },
-                                _ => false
-                            };
-                        }
-                    }
-                }
-            } else if field.to_ascii_lowercase() == "album" {
-                if file_info.is_some() {
-                    return (false, meta, dim, mp3)
-                }
-
-                if let Some(ref val) = expr.val {
-                        mp3 = update_mp3_meta(&entry, mp3);
-
-                    if let Some(ref mp3_meta) = mp3 {
-                        if let Some(ref mp3_tag) = mp3_meta.tag {
-                            let album = &mp3_tag.album;
-
-                            result = match expr.op {
-                                Some(Op::Eq) | Some(Op::Eeq) => {
-                                    match expr.regex {
-                                        Some(ref regex) => regex.is_match(album),
-                                        None => val.eq(album)
-                                    }
-                                },
-                                Some(Op::Ne) | Some(Op::Ene) => {
-                                    match expr.regex {
-                                        Some(ref regex) => !regex.is_match(album),
-                                        None => val.ne(album)
-                                    }
-                                },
-                                Some(Op::Rx) | Some(Op::Like) => {
-                                    match expr.regex {
-                                        Some(ref regex) => regex.is_match(album),
-                                        None => false
-                                    }
-                                },
-                                _ => false
-                            };
-                        }
-                    }
-                }
-            } else if field.to_ascii_lowercase() == "year" {
-                if file_info.is_some() {
-                    return (false, meta, dim, mp3)
-                }
-
-                if let Some(ref val) = expr.val {
-                    mp3 = update_mp3_meta(&entry, mp3);
-
-                    if let Some(ref mp3_meta) = mp3 {
-                        let val = val.parse::<usize>();
-                        if let Ok(val) = val {
-                            if let Some(ref mp3_tag) = mp3_meta.tag {
-                                let year = mp3_tag.year as usize;
-                                if year > 0 {
+                        if let Some(ref metadata) = meta {
+                            let uid = val.parse::<u32>();
+                            if let Ok(uid) = uid {
+                                let file_uid = mode::get_uid(metadata);
+                                if let Some(file_uid) = file_uid {
                                     result = match expr.op {
-                                        Some(Op::Eq) | Some(Op::Eeq) => year == val,
-                                        Some(Op::Ne) | Some(Op::Ene) => year != val,
-                                        Some(Op::Gt) => year > val,
-                                        Some(Op::Gte) => year >= val,
-                                        Some(Op::Lt) => year < val,
-                                        Some(Op::Lte) => year <= val,
+                                        Some(Op::Eq) | Some(Op::Eeq) => file_uid == uid,
+                                        Some(Op::Ne) | Some(Op::Ene) => file_uid != uid,
+                                        Some(Op::Gt) => file_uid > uid,
+                                        Some(Op::Gte) => file_uid >= uid,
+                                        Some(Op::Lt) => file_uid < uid,
+                                        Some(Op::Lte) => file_uid <= uid,
                                         _ => false
                                     };
                                 }
                             }
                         }
                     }
-                }
-            } else if field.to_ascii_lowercase() == "genre" {
-                if file_info.is_some() {
-                    return (false, meta, dim, mp3)
-                }
+                },
+                Field::User => {
+                    if file_info.is_some() {
+                        return (false, meta, dim, mp3)
+                    }
 
-                if let Some(ref val) = expr.val {
-                    mp3 = update_mp3_meta(&entry, mp3);
+                    if let Some(ref val) = expr.val {
+                        meta = update_meta(entry, meta, follow_symlinks);
 
-                    if let Some(ref mp3_meta) = mp3 {
-                        if let Some(ref mp3_tag) = mp3_meta.tag {
-                            let genre = &format!("{:?}", &mp3_tag.genre);
+                        if let Some(ref metadata) = meta {
+                            let file_uid = mode::get_uid(metadata);
+                            if let Some(file_uid) = file_uid {
+                                if let Some(user) = self.user_cache.get_user_by_uid(file_uid) {
+                                    let user_name = user.name();
+                                    result = match expr.op {
+                                        Some(Op::Eq) => {
+                                            match expr.regex {
+                                                Some(ref regex) => regex.is_match(user_name),
+                                                None => val.eq(user_name)
+                                            }
+                                        },
+                                        Some(Op::Ne) => {
+                                            match expr.regex {
+                                                Some(ref regex) => !regex.is_match(user_name),
+                                                None => val.ne(user_name)
+                                            }
+                                        },
+                                        Some(Op::Rx) | Some(Op::Like) => {
+                                            match expr.regex {
+                                                Some(ref regex) => regex.is_match(user_name),
+                                                None => false
+                                            }
+                                        },
+                                        Some(Op::Eeq) => {
+                                            val.eq(user_name)
+                                        },
+                                        Some(Op::Ene) => {
+                                            val.ne(user_name)
+                                        },
+                                        _ => false
+                                    };
+                                }
+                            }
+                        }
+                    }
+                },
+                Field::Gid => {
+                    if file_info.is_some() {
+                        return (false, meta, dim, mp3)
+                    }
+
+                    if let Some(ref val) = expr.val {
+                        meta = update_meta(entry, meta, follow_symlinks);
+
+                        if let Some(ref metadata) = meta {
+                            let gid = val.parse::<u32>();
+                            if let Ok(gid) = gid {
+                                let file_gid = mode::get_gid(metadata);
+                                if let Some(file_gid) = file_gid {
+                                    result = match expr.op {
+                                        Some(Op::Eq) | Some(Op::Eeq) => file_gid == gid,
+                                        Some(Op::Ne) | Some(Op::Ene) => file_gid != gid,
+                                        Some(Op::Gt) => file_gid > gid,
+                                        Some(Op::Gte) => file_gid >= gid,
+                                        Some(Op::Lt) => file_gid < gid,
+                                        Some(Op::Lte) => file_gid <= gid,
+                                        _ => false
+                                    };
+                                }
+                            }
+                        }
+                    }
+                },
+                Field::Group => {
+                    if file_info.is_some() {
+                        return (false, meta, dim, mp3)
+                    }
+
+                    if let Some(ref val) = expr.val {
+                        meta = update_meta(entry, meta, follow_symlinks);
+
+                        if let Some(ref metadata) = meta {
+                            let file_gid = mode::get_gid(metadata);
+                            if let Some(file_gid) = file_gid {
+                                if let Some(group) = self.user_cache.get_group_by_gid(file_gid) {
+                                    let group_name = group.name();
+                                    result = match expr.op {
+                                        Some(Op::Eq) => {
+                                            match expr.regex {
+                                                Some(ref regex) => regex.is_match(group_name),
+                                                None => val.eq(group_name)
+                                            }
+                                        },
+                                        Some(Op::Ne) => {
+                                            match expr.regex {
+                                                Some(ref regex) => !regex.is_match(group_name),
+                                                None => val.ne(group_name)
+                                            }
+                                        },
+                                        Some(Op::Rx) | Some(Op::Like) => {
+                                            match expr.regex {
+                                                Some(ref regex) => regex.is_match(group_name),
+                                                None => false
+                                            }
+                                        },
+                                        Some(Op::Eeq) => {
+                                            val.eq(group_name)
+                                        },
+                                        Some(Op::Ene) => {
+                                            val.ne(group_name)
+                                        },
+                                        _ => false
+                                    };
+                                }
+                            }
+                        }
+                    }
+                },
+                Field::IsDir => {
+                    if let Some(ref val) = expr.val {
+                        let is_dir = match file_info {
+                            &Some(ref file_info) => Some(file_info.name.ends_with('/')),
+                            _ => {
+                                meta = update_meta(entry, meta, follow_symlinks);
+
+                                match meta {
+                                    Some(ref metadata) => {
+                                        Some(metadata.is_dir())
+                                    },
+                                    _ => None
+                                }
+                            }
+                        };
+
+                        if let Some(is_dir) = is_dir {
+                            let bool_val = str_to_bool(val);
 
                             result = match expr.op {
                                 Some(Op::Eq) | Some(Op::Eeq) => {
-                                    match expr.regex {
-                                        Some(ref regex) => regex.is_match(genre),
-                                        None => val.eq(genre)
+                                    if bool_val {
+                                        is_dir
+                                    } else {
+                                        !is_dir
                                     }
                                 },
                                 Some(Op::Ne) | Some(Op::Ene) => {
+                                    if bool_val {
+                                        !is_dir
+                                    } else {
+                                        is_dir
+                                    }
+                                },
+                                _ => false
+                            };
+                        }
+                    }
+                },
+                Field::IsFile => {
+                    if let Some(ref val) = expr.val {
+                        let is_file = match file_info {
+                            &Some(ref file_info) => Some(!file_info.name.ends_with('/')),
+                            _ => {
+                                meta = update_meta(entry, meta, follow_symlinks);
+
+                                match meta {
+                                    Some(ref metadata) => {
+                                        Some(metadata.is_file())
+                                    },
+                                    _ => None
+                                }
+                            }
+                        };
+
+                        if let Some(is_file) = is_file {
+                            let bool_val = str_to_bool(val);
+
+                            result = match expr.op {
+                                Some(Op::Eq) | Some(Op::Eeq) => {
+                                    if bool_val {
+                                        is_file
+                                    } else {
+                                        !is_file
+                                    }
+                                },
+                                Some(Op::Ne) | Some(Op::Ene) => {
+                                    if bool_val {
+                                        !is_file
+                                    } else {
+                                        is_file
+                                    }
+                                },
+                                _ => false
+                            };
+                        }
+                    }
+                },
+                Field::IsSymlink => {
+                    if let Some(ref val) = expr.val {
+                        let is_symlink = match file_info {
+                            &Some(_) => Some(false),
+                            _ => {
+                                meta = update_meta(entry, meta, follow_symlinks);
+
+                                match meta {
+                                    Some(ref metadata) => {
+                                        Some(metadata.file_type().is_symlink())
+                                    },
+                                    _ => None
+                                }
+                            }
+                        };
+
+                        if let Some(is_symlink) = is_symlink {
+                            let bool_val = str_to_bool(val);
+
+                            result = match expr.op {
+                                Some(Op::Eq) | Some(Op::Eeq) => {
+                                    if bool_val {
+                                        is_symlink
+                                    } else {
+                                        !is_symlink
+                                    }
+                                },
+                                Some(Op::Ne) | Some(Op::Ene) => {
+                                    if bool_val {
+                                        !is_symlink
+                                    } else {
+                                        is_symlink
+                                    }
+                                },
+                                _ => false
+                            };
+                        }
+                    }
+                },
+                Field::Mode => {
+                    if let Some(ref val) = expr.val {
+                        let mode = match file_info {
+                            &Some(ref file_info) => {
+                                match file_info.mode {
+                                    Some(mode) => Some(mode::format_mode(mode)),
+                                    _ => None
+                                }
+                            },
+                            _ => {
+                                meta = update_meta(entry, meta, follow_symlinks);
+
+                                match meta {
+                                    Some(ref metadata) => {
+                                        Some(mode::get_mode(metadata))
+                                    },
+                                    _ => None
+                                }
+                            }
+                        };
+
+                        if let Some(mode) = mode {
+                            result = match expr.op {
+                                Some(Op::Eq) => {
                                     match expr.regex {
-                                        Some(ref regex) => !regex.is_match(genre),
-                                        None => val.ne(genre)
+                                        Some(ref regex) => regex.is_match(&mode),
+                                        None => val.eq(&mode)
+                                    }
+                                },
+                                Some(Op::Ne) => {
+                                    match expr.regex {
+                                        Some(ref regex) => !regex.is_match(&mode),
+                                        None => val.ne(&mode)
                                     }
                                 },
                                 Some(Op::Rx) | Some(Op::Like) => {
                                     match expr.regex {
-                                        Some(ref regex) => regex.is_match(genre),
+                                        Some(ref regex) => regex.is_match(&mode),
                                         None => false
                                     }
                                 },
@@ -1577,19 +1133,503 @@ impl Searcher {
                             };
                         }
                     }
+                },
+                Field::UserRead => {
+                    let (res_, meta_) = confirm_file_mode(&expr.op, &expr.val, &entry, meta, &file_info, follow_symlinks, &mode::mode_user_read);
+                    meta = meta_;
+                    result = res_;
+                },
+                Field::UserWrite => {
+                    let (res_, meta_) = confirm_file_mode(&expr.op, &expr.val, &entry, meta, &file_info, follow_symlinks, &mode::mode_user_write);
+                    meta = meta_;
+                    result = res_;
+                },
+                Field::UserExec => {
+                    let (res_, meta_) = confirm_file_mode(&expr.op, &expr.val, &entry, meta, &file_info, follow_symlinks, &mode::mode_user_exec);
+                    meta = meta_;
+                    result = res_;
+                },
+                Field::GroupRead => {
+                    let (res_, meta_) = confirm_file_mode(&expr.op, &expr.val, &entry, meta, &file_info, follow_symlinks, &mode::mode_group_read);
+                    meta = meta_;
+                    result = res_;
+                },
+                Field::GroupWrite => {
+                    let (res_, meta_) = confirm_file_mode(&expr.op, &expr.val, &entry, meta, &file_info, follow_symlinks, &mode::mode_group_write);
+                    meta = meta_;
+                    result = res_;
+                },
+                Field::GroupExec => {
+                    let (res_, meta_) = confirm_file_mode(&expr.op, &expr.val, &entry, meta, &file_info, follow_symlinks, &mode::mode_group_exec);
+                    meta = meta_;
+                    result = res_;
+                },
+                Field::OtherRead => {
+                    let (res_, meta_) = confirm_file_mode(&expr.op, &expr.val, &entry, meta, &file_info, follow_symlinks, &mode::mode_other_read);
+                    meta = meta_;
+                    result = res_;
+                },
+                Field::OtherWrite => {
+                    let (res_, meta_) = confirm_file_mode(&expr.op, &expr.val, &entry, meta, &file_info, follow_symlinks, &mode::mode_other_write);
+                    meta = meta_;
+                    result = res_;
+                },
+                Field::OtherExec => {
+                    let (res_, meta_) = confirm_file_mode(&expr.op, &expr.val, &entry, meta, &file_info, follow_symlinks, &mode::mode_other_exec);
+                    meta = meta_;
+                    result = res_;
+                },
+                Field::IsHidden => {
+                    if let Some(ref val) = expr.val {
+                        let is_hidden = match file_info {
+                            &Some(ref file_info) => is_hidden(&file_info.name, &None, true),
+                            _ => is_hidden(&entry.file_name().to_string_lossy(), &meta, false)
+                        };
+
+                        let bool_val = str_to_bool(val);
+
+                        result = match expr.op {
+                            Some(Op::Eq) | Some(Op::Eeq) => {
+                                if bool_val {
+                                    is_hidden
+                                } else {
+                                    !is_hidden
+                                }
+                            },
+                            Some(Op::Ne) | Some(Op::Ene) => {
+                                if bool_val {
+                                    !is_hidden
+                                } else {
+                                    is_hidden
+                                }
+                            },
+                            _ => false
+                        };
+                    }
+                },
+                Field::Created => {
+                    if file_info.is_some() {
+                        return (false, meta, dim, mp3)
+                    }
+
+                    if let Some(ref _val) = expr.val {
+                        meta = update_meta(entry, meta, follow_symlinks);
+
+                        if let Some(ref metadata) = meta {
+                            if let Ok(sdt) = metadata.created() {
+                                let dt: DateTime<Local> = DateTime::from(sdt);
+                                let start = expr.dt_from.unwrap();
+                                let finish = expr.dt_to.unwrap();
+
+                                result = match expr.op {
+                                    Some(Op::Eq) => dt >= start && dt <= finish,
+                                    Some(Op::Ne) => dt < start || dt > finish,
+                                    Some(Op::Gt) => dt > finish,
+                                    Some(Op::Gte) => dt >= start,
+                                    Some(Op::Lt) => dt < start,
+                                    Some(Op::Lte) => dt <= finish,
+                                    _ => false
+                                };
+                            }
+                        }
+                    }
+                },
+                Field::Accessed => {
+                    if file_info.is_some() {
+                        return (false, meta, dim, mp3)
+                    }
+
+                    if let Some(ref _val) = expr.val {
+                        meta = update_meta(entry, meta, follow_symlinks);
+
+                        if let Some(ref metadata) = meta {
+                            if let Ok(sdt) = metadata.accessed() {
+                                let dt: DateTime<Local> = DateTime::from(sdt);
+                                let start = expr.dt_from.unwrap();
+                                let finish = expr.dt_to.unwrap();
+
+                                result = match expr.op {
+                                    Some(Op::Eq) => dt >= start && dt <= finish,
+                                    Some(Op::Ne) => dt < start || dt > finish,
+                                    Some(Op::Gt) => dt > finish,
+                                    Some(Op::Gte) => dt >= start,
+                                    Some(Op::Lt) => dt < start,
+                                    Some(Op::Lte) => dt <= finish,
+                                    _ => false
+                                };
+                            }
+                        }
+                    }
+                },
+                Field::Modified => {
+                    if let Some(ref _val) = expr.val {
+                        let dt = match file_info {
+                            &Some(ref file_info) => Some(to_local_datetime(&file_info.modified)),
+                            _ => {
+                                meta = update_meta(entry, meta, follow_symlinks);
+                                match meta {
+                                    Some(ref metadata) => {
+                                        match metadata.modified() {
+                                            Ok(sdt) => Some(DateTime::from(sdt)),
+                                            _ => None
+                                        }
+                                    },
+                                    _ => None
+                                }
+                            }
+                        };
+
+                        if let Some(dt) = dt {
+                            let start = expr.dt_from.unwrap();
+                            let finish = expr.dt_to.unwrap();
+
+                            result = match expr.op {
+                                Some(Op::Eq) => dt >= start && dt <= finish,
+                                Some(Op::Ne) => dt < start || dt > finish,
+                                Some(Op::Gt) => dt > finish,
+                                Some(Op::Gte) => dt >= start,
+                                Some(Op::Lt) => dt < start,
+                                Some(Op::Lte) => dt <= finish,
+                                _ => false
+                            };
+                        }
+                    }
+                },
+                Field::HasXattr => {
+                    #[cfg(unix)]
+                        {
+                            if file_info.is_some() {
+                                return (false, meta, dim, mp3)
+                            }
+
+                            if let Some(ref val) = expr.val {
+                                if let Ok(file) = File::open(&entry.path()) {
+                                    if let Ok(xattrs) = file.list_xattr() {
+                                        let has_xattr = xattrs.count() > 0;
+                                        let bool_val = str_to_bool(val);
+
+                                        result = match &expr.op {
+                                            &Some(Op::Eq) | &Some(Op::Eeq) => {
+                                                if bool_val {
+                                                    has_xattr
+                                                } else {
+                                                    !has_xattr
+                                                }
+                                            },
+                                            &Some(Op::Ne) | &Some(Op::Ene) => {
+                                                if bool_val {
+                                                    !has_xattr
+                                                } else {
+                                                    has_xattr
+                                                }
+                                            },
+                                            _ => false
+                                        };
+                                    }
+                                }
+                            }
+                        }
+                },
+                Field::Width => {
+                    if file_info.is_some() {
+                        return (false, meta, dim, mp3)
+                    }
+
+                    if !is_image_dim_readable(&entry.file_name().to_string_lossy()) {
+                        return (false, meta, dim, mp3)
+                    }
+
+                    if let Some(ref val) = expr.val {
+                        dim = update_img_dimensions(&entry, dim);
+
+                        if let Some((width, _)) = dim {
+                            let val = val.parse::<usize>();
+                            if let Ok(val) = val {
+                                result = match expr.op {
+                                    Some(Op::Eq) | Some(Op::Eeq) => width == val,
+                                    Some(Op::Ne) | Some(Op::Ene) => width != val,
+                                    Some(Op::Gt) => width > val,
+                                    Some(Op::Gte) => width >= val,
+                                    Some(Op::Lt) => width < val,
+                                    Some(Op::Lte) => width <= val,
+                                    _ => false
+                                };
+                            }
+                        }
+                    }
+                },
+                Field::Height => {
+                    if file_info.is_some() {
+                        return (false, meta, dim, mp3)
+                    }
+
+                    if !is_image_dim_readable(&entry.file_name().to_string_lossy()) {
+                        return (false, meta, dim, mp3)
+                    }
+
+                    if let Some(ref val) = expr.val {
+                        dim = update_img_dimensions(&entry, dim);
+
+                        if let Some((_, height)) = dim {
+                            let val = val.parse::<usize>();
+                            if let Ok(val) = val {
+                                result = match expr.op {
+                                    Some(Op::Eq) | Some(Op::Eeq) => height == val,
+                                    Some(Op::Ne) | Some(Op::Ene) => height != val,
+                                    Some(Op::Gt) => height > val,
+                                    Some(Op::Gte) => height >= val,
+                                    Some(Op::Lt) => height < val,
+                                    Some(Op::Lte) => height <= val,
+                                    _ => false
+                                };
+                            }
+                        }
+                    }
+                },
+                Field::Bitrate => {
+                    if file_info.is_some() {
+                        return (false, meta, dim, mp3)
+                    }
+
+                    if let Some(ref val) = expr.val {
+                        mp3 = update_mp3_meta(&entry, mp3);
+
+                        if let Some(ref mp3_meta) = mp3 {
+                            let val = val.parse::<usize>();
+                            if let Ok(val) = val {
+                                let bitrate = mp3_meta.frames[0].bitrate as usize;
+                                result = match expr.op {
+                                    Some(Op::Eq) | Some(Op::Eeq) => bitrate == val,
+                                    Some(Op::Ne) | Some(Op::Ene) => bitrate != val,
+                                    Some(Op::Gt) => bitrate > val,
+                                    Some(Op::Gte) => bitrate >= val,
+                                    Some(Op::Lt) => bitrate < val,
+                                    Some(Op::Lte) => bitrate <= val,
+                                    _ => false
+                                };
+                            }
+                        }
+                    }
+                },
+                Field::Freq => {
+                    if file_info.is_some() {
+                        return (false, meta, dim, mp3)
+                    }
+
+                    if let Some(ref val) = expr.val {
+                        mp3 = update_mp3_meta(&entry, mp3);
+
+                        if let Some(ref mp3_meta) = mp3 {
+                            let val = val.parse::<usize>();
+                            if let Ok(val) = val {
+                                let freq = mp3_meta.frames[0].sampling_freq as usize;
+                                result = match expr.op {
+                                    Some(Op::Eq) | Some(Op::Eeq) => freq == val,
+                                    Some(Op::Ne) | Some(Op::Ene) => freq != val,
+                                    Some(Op::Gt) => freq > val,
+                                    Some(Op::Gte) => freq >= val,
+                                    Some(Op::Lt) => freq < val,
+                                    Some(Op::Lte) => freq <= val,
+                                    _ => false
+                                };
+                            }
+                        }
+                    }
+                },
+                Field::Title => {
+                    if file_info.is_some() {
+                        return (false, meta, dim, mp3)
+                    }
+
+                    if let Some(ref val) = expr.val {
+                        mp3 = update_mp3_meta(&entry, mp3);
+
+                        if let Some(ref mp3_meta) = mp3 {
+                            if let Some(ref mp3_tag) = mp3_meta.tag {
+                                let title = &mp3_tag.title;
+                                result = match expr.op {
+                                    Some(Op::Eq) | Some(Op::Eeq) => {
+                                        match expr.regex {
+                                            Some(ref regex) => regex.is_match(title),
+                                            None => val.eq(title)
+                                        }
+                                    },
+                                    Some(Op::Ne) | Some(Op::Ene) => {
+                                        match expr.regex {
+                                            Some(ref regex) => !regex.is_match(title),
+                                            None => val.ne(title)
+                                        }
+                                    },
+                                    Some(Op::Rx) | Some(Op::Like) => {
+                                        match expr.regex {
+                                            Some(ref regex) => regex.is_match(title),
+                                            None => false
+                                        }
+                                    },
+                                    _ => false
+                                };
+                            }
+                        }
+                    }
+                },
+                Field::Artist => {
+                    if file_info.is_some() {
+                        return (false, meta, dim, mp3)
+                    }
+
+                    if let Some(ref val) = expr.val {
+                        mp3 = update_mp3_meta(&entry, mp3);
+
+                        if let Some(ref mp3_meta) = mp3 {
+                            if let Some(ref mp3_tag) = mp3_meta.tag {
+                                let artist = &mp3_tag.artist;
+
+                                result = match expr.op {
+                                    Some(Op::Eq) | Some(Op::Eeq) => {
+                                        match expr.regex {
+                                            Some(ref regex) => regex.is_match(artist),
+                                            None => val.eq(artist)
+                                        }
+                                    },
+                                    Some(Op::Ne) | Some(Op::Ene) => {
+                                        match expr.regex {
+                                            Some(ref regex) => !regex.is_match(artist),
+                                            None => val.ne(artist)
+                                        }
+                                    },
+                                    Some(Op::Rx) | Some(Op::Like) => {
+                                        match expr.regex {
+                                            Some(ref regex) => regex.is_match(artist),
+                                            None => false
+                                        }
+                                    },
+                                    _ => false
+                                };
+                            }
+                        }
+                    }
+                },
+                Field::Album => {
+                    if file_info.is_some() {
+                        return (false, meta, dim, mp3)
+                    }
+
+                    if let Some(ref val) = expr.val {
+                        mp3 = update_mp3_meta(&entry, mp3);
+
+                        if let Some(ref mp3_meta) = mp3 {
+                            if let Some(ref mp3_tag) = mp3_meta.tag {
+                                let album = &mp3_tag.album;
+
+                                result = match expr.op {
+                                    Some(Op::Eq) | Some(Op::Eeq) => {
+                                        match expr.regex {
+                                            Some(ref regex) => regex.is_match(album),
+                                            None => val.eq(album)
+                                        }
+                                    },
+                                    Some(Op::Ne) | Some(Op::Ene) => {
+                                        match expr.regex {
+                                            Some(ref regex) => !regex.is_match(album),
+                                            None => val.ne(album)
+                                        }
+                                    },
+                                    Some(Op::Rx) | Some(Op::Like) => {
+                                        match expr.regex {
+                                            Some(ref regex) => regex.is_match(album),
+                                            None => false
+                                        }
+                                    },
+                                    _ => false
+                                };
+                            }
+                        }
+                    }
+                },
+                Field::Year => {
+                    if file_info.is_some() {
+                        return (false, meta, dim, mp3)
+                    }
+
+                    if let Some(ref val) = expr.val {
+                        mp3 = update_mp3_meta(&entry, mp3);
+
+                        if let Some(ref mp3_meta) = mp3 {
+                            let val = val.parse::<usize>();
+                            if let Ok(val) = val {
+                                if let Some(ref mp3_tag) = mp3_meta.tag {
+                                    let year = mp3_tag.year as usize;
+                                    if year > 0 {
+                                        result = match expr.op {
+                                            Some(Op::Eq) | Some(Op::Eeq) => year == val,
+                                            Some(Op::Ne) | Some(Op::Ene) => year != val,
+                                            Some(Op::Gt) => year > val,
+                                            Some(Op::Gte) => year >= val,
+                                            Some(Op::Lt) => year < val,
+                                            Some(Op::Lte) => year <= val,
+                                            _ => false
+                                        };
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                Field::Genre => {
+                    if file_info.is_some() {
+                        return (false, meta, dim, mp3)
+                    }
+
+                    if let Some(ref val) = expr.val {
+                        mp3 = update_mp3_meta(&entry, mp3);
+
+                        if let Some(ref mp3_meta) = mp3 {
+                            if let Some(ref mp3_tag) = mp3_meta.tag {
+                                let genre = &format!("{:?}", &mp3_tag.genre);
+
+                                result = match expr.op {
+                                    Some(Op::Eq) | Some(Op::Eeq) => {
+                                        match expr.regex {
+                                            Some(ref regex) => regex.is_match(genre),
+                                            None => val.eq(genre)
+                                        }
+                                    },
+                                    Some(Op::Ne) | Some(Op::Ene) => {
+                                        match expr.regex {
+                                            Some(ref regex) => !regex.is_match(genre),
+                                            None => val.ne(genre)
+                                        }
+                                    },
+                                    Some(Op::Rx) | Some(Op::Like) => {
+                                        match expr.regex {
+                                            Some(ref regex) => regex.is_match(genre),
+                                            None => false
+                                        }
+                                    },
+                                    _ => false
+                                };
+                            }
+                        }
+                    }
+                },
+                Field::IsArchive => {
+                    result = confirm_file_ext(&expr.op, &expr.val, &entry, &file_info, &is_archive);
+                },
+                Field::IsAudio => {
+                    result = confirm_file_ext(&expr.op, &expr.val, &entry, &file_info, &is_audio);
+                },
+                Field::IsDoc => {
+                    result = confirm_file_ext(&expr.op, &expr.val, &entry, &file_info, &is_doc);
+                },
+                Field::IsImage => {
+                    result = confirm_file_ext(&expr.op, &expr.val, &entry, &file_info, &is_image);
+                },
+                Field::IsSource => {
+                    result = confirm_file_ext(&expr.op, &expr.val, &entry, &file_info, &is_source);
+                },
+                Field::IsVideo => {
+                    result = confirm_file_ext(&expr.op, &expr.val, &entry, &file_info, &is_video);
                 }
-            } else if field.to_ascii_lowercase() == "is_archive" {
-                result = confirm_file_ext(&expr.op, &expr.val, &entry, &file_info, &is_archive);
-            } else if field.to_ascii_lowercase() == "is_audio" {
-                result = confirm_file_ext(&expr.op, &expr.val, &entry, &file_info, &is_audio);
-            } else if field.to_ascii_lowercase() == "is_doc" {
-                result = confirm_file_ext(&expr.op, &expr.val, &entry, &file_info, &is_doc);
-            } else if field.to_ascii_lowercase() == "is_image" {
-                result = confirm_file_ext(&expr.op, &expr.val, &entry, &file_info, &is_image);
-            } else if field.to_ascii_lowercase() == "is_source" {
-                result = confirm_file_ext(&expr.op, &expr.val, &entry, &file_info, &is_source);
-            } else if field.to_ascii_lowercase() == "is_video" {
-                result = confirm_file_ext(&expr.op, &expr.val, &entry, &file_info, &is_video);
             }
         }
 
@@ -1891,7 +1931,6 @@ fn to_local_datetime(tm: &Tm) -> DateTime<Local> {
 
 #[cfg(windows)]
 use std;
-use field::Field;
 
 #[cfg(windows)]
 struct UsersCache;

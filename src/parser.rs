@@ -52,7 +52,7 @@ impl Parser {
                 expr = expr_;
             },
             Err(err) => {
-                return Err(err.to_string());
+                return Err(err);
             }
         }
 
@@ -255,7 +255,7 @@ impl Parser {
         roots
     }
 
-    fn parse_where<'a>(&mut self) -> Result<Option<Box<Expr>>, &'a str> {
+    fn parse_where(&mut self) -> Result<Option<Box<Expr>>, String> {
         let lexem = self.get_lexem();
 
         match lexem {
@@ -269,7 +269,7 @@ impl Parser {
         }
     }
 
-    fn parse_or<'a>(&mut self) -> Result<Option<Box<Expr>>, &'a str> {
+    fn parse_or(&mut self) -> Result<Option<Box<Expr>>, String> {
         let node = self.parse_and();
         match node {
             Ok(mut node) => {
@@ -296,7 +296,7 @@ impl Parser {
         }
     }
 
-    fn parse_and<'a>(&mut self) -> Result<Option<Box<Expr>>, &'a str> {
+    fn parse_and(&mut self) -> Result<Option<Box<Expr>>, String> {
         let node = self.parse_cond();
         match node {
             Ok(mut node) => {
@@ -323,7 +323,7 @@ impl Parser {
         }
     }
 
-    fn parse_cond<'a>(&mut self) -> Result<Option<Box<Expr>>, &'a str> {
+    fn parse_cond(&mut self) -> Result<Option<Box<Expr>>, String> {
         let lexem = self.get_lexem();
 
         match lexem {
@@ -339,22 +339,27 @@ impl Parser {
                         Some(Lexem::String(ref s3)) | Some(Lexem::RawString(ref s3)) => {
                             let op = Op::from(s2.to_string());
                             let mut expr: Expr;
+                            let field;
+                            match Field::from_str(s) {
+                                Ok(field_) => field = field_,
+                                Err(err) => return Err(err)
+                            }
                             if let Some(Op::Rx) = op {
                                 let regex;
                                 match Regex::new(&s3) {
                                     Ok(regex_) => regex = regex_,
-                                    _ => return Err("Error parsing regular expression")
+                                    _ => return Err("Error parsing regular expression".to_string())
                                 }
-                                expr = Expr::leaf_regex(s.to_string(), op, s3.to_string(), regex);
+                                expr = Expr::leaf_regex(field, op, s3.to_string(), regex);
                             } else if let Some(Op::Like) = op {
                                 let pattern = convert_like_to_pattern(s3);
                                 let regex;
                                 match Regex::new(&pattern) {
                                     Ok(regex_) => regex = regex_,
-                                    _ => return Err("Error parsing LIKE expression")
+                                    _ => return Err("Error parsing LIKE expression".to_string())
                                 }
 
-                                expr = Expr::leaf_regex(s.to_string(), op, s3.to_string(), regex);
+                                expr = Expr::leaf_regex(field, op, s3.to_string(), regex);
                             } else {
                                 expr = match is_glob(s3) {
                                     true => {
@@ -362,33 +367,33 @@ impl Parser {
                                         let regex;
                                         match Regex::new(&pattern) {
                                             Ok(regex_) => regex = regex_,
-                                            _ => return Err("Error parsing glob pattern")
+                                            _ => return Err("Error parsing glob pattern".to_string())
                                         }
 
-                                        Expr::leaf_regex(s.to_string(), op, s3.to_string(), regex)
+                                        Expr::leaf_regex(field, op, s3.to_string(), regex)
                                     },
-                                    false => Expr::leaf(s.to_string(), op, s3.to_string())
+                                    false => Expr::leaf(field, op, s3.to_string())
                                 };
                             };
 
-                            if is_datetime_field(s) {
+                            if is_datetime_field(&Field::from_str(s)?) {
                                 match parse_datetime(s3) {
                                     Ok((dt_from, dt_to)) => {
                                         expr.dt_from = Some(dt_from);
                                         expr.dt_to = Some(dt_to);
                                     },
                                     Err(err) => {
-                                        return Err(err);
+                                        return Err(err.to_string());
                                     }
                                 }
                             }
 
                             Ok(Some(Box::new(expr)))
                         },
-                        _ => Err("Error parsing condition, no operand found")
+                        _ => Err("Error parsing condition, no operand found".to_string())
                     }
                 } else {
-                    Err("Error parsing condition, no operator found")
+                    Err("Error parsing condition, no operator found".to_string())
                 }
             },
             Some(Lexem::Open) => {
@@ -569,10 +574,13 @@ fn convert_like_to_pattern(s: &str) -> String {
     format!("^(?i){}$", string)
 }
 
-fn is_datetime_field(s: &str) -> bool {
-    s.to_ascii_lowercase() == "created" ||
-        s.to_ascii_lowercase() == "accessed" ||
-        s.to_ascii_lowercase() == "modified"
+fn is_datetime_field(field: &Field) -> bool {
+    match field {
+        &Field::Created |
+        &Field::Accessed |
+        &Field::Modified => true,
+        _ => false
+    }
 }
 
 fn parse_datetime<'a>(s: &str) -> Result<(DateTime<Local>, DateTime<Local>), &'a str> {
@@ -689,7 +697,7 @@ pub struct Expr {
     pub logical_op: Option<LogicalOp>,
     pub right: Option<Box<Expr>>,
 
-    pub field: Option<String>,
+    pub field: Option<Field>,
     pub op: Option<Op>,
     pub val: Option<String>,
     pub regex: Option<Regex>,
@@ -715,7 +723,7 @@ impl Expr {
         }
     }
 
-    fn leaf(field: String, op: Option<Op>, val: String) -> Expr {
+    fn leaf(field: Field, op: Option<Op>, val: String) -> Expr {
         Expr {
             left: None,
             logical_op: None,
@@ -731,7 +739,7 @@ impl Expr {
         }
     }
 
-    fn leaf_regex(field: String, op: Option<Op>, val: String, regex: Regex) -> Expr {
+    fn leaf_regex(field: Field, op: Option<Op>, val: String, regex: Regex) -> Expr {
         Expr {
             left: None,
             logical_op: None,
@@ -850,18 +858,18 @@ mod tests {
         let expr = Expr::node(
             Some(Box::new(
                 Expr::node(
-                    Some(Box::new(Expr::leaf(String::from("name"), Some(Op::Ne), String::from("123")))),
+                    Some(Box::new(Expr::leaf(Field::Name, Some(Op::Ne), String::from("123")))),
                     Some(LogicalOp::And),
                     Some(Box::new(Expr::node(
-                        Some(Box::new(Expr::leaf(String::from("size"), Some(Op::Gt), String::from("456")))),
+                        Some(Box::new(Expr::leaf(Field::Size, Some(Op::Gt), String::from("456")))),
                         Some(LogicalOp::Or),
-                        Some(Box::new(Expr::leaf(String::from("fsize"), Some(Op::Lte), String::from("758")))),
+                        Some(Box::new(Expr::leaf(Field::FormattedSize, Some(Op::Lte), String::from("758")))),
                     ))),
                 )
             )),
             Some(LogicalOp::Or),
             Some(Box::new(
-                Expr::leaf(String::from("name"), Some(Op::Eq), String::from("xxx"))
+                Expr::leaf(Field::Name, Some(Op::Eq), String::from("xxx"))
             ))
         );
 

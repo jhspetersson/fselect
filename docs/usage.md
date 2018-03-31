@@ -117,13 +117,13 @@ When you put a directory to search at, you can specify some options.
 
 | Specifier | Meaning |
 | --- | --- |
-| `g` or `gb` | gibibytes |
-| `m` or `mb` | mibibytes |
-| `k` or `kb` | kibibytes |
+| `g` or `gb` or `gib` | gibibytes |
+| `m` or `mb` or `mib` | mibibytes |
+| `k` or `kb` or `kib` | kibibytes |
 
     fselect size, path from /home/user/tmp where size gt 2g
-    fselect fsize, path from /home/user/tmp where size = 5m
-    fselect hsize, path from /home/user/tmp where size lt 8k
+    fselect fsize, path from /home/user/tmp where size = 5mib
+    fselect hsize, path from /home/user/tmp where size lt 8kb
 
 ### File extensions
 

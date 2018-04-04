@@ -170,6 +170,11 @@ Find files by owner's uid or gid:
 Or by owner's or group's name:
 
     fselect user, group, path from /home/user where user = mike or group = mike
+
+Find special files:
+
+    fselect path from /tmp where is_pipe = true
+    fselect path from /tmp where is_socket = 1
     
 Finally limit the results:
 

@@ -207,6 +207,50 @@ pub fn mode_other_exec(mode: u32) -> bool {
     mode & S_IXOTH == S_IXOTH
 }
 
+pub fn is_pipe(meta: &Box<Metadata>) -> bool {
+    match get_mode_from_boxed_unix_int(meta) {
+        Some(mode) => mode_is_pipe(mode),
+        None => false
+    }
+}
+
+pub fn mode_is_pipe(mode: u32) -> bool {
+    mode & S_IFMT & S_IFIFO == S_IFMT & S_IFIFO
+}
+
+pub fn is_char_device(meta: &Box<Metadata>) -> bool {
+    match get_mode_from_boxed_unix_int(meta) {
+        Some(mode) => mode_is_char_device(mode),
+        None => false
+    }
+}
+
+pub fn mode_is_char_device(mode: u32) -> bool {
+    mode & S_IFMT & S_IFCHR == S_IFMT & S_IFCHR
+}
+
+pub fn is_block_device(meta: &Box<Metadata>) -> bool {
+    match get_mode_from_boxed_unix_int(meta) {
+        Some(mode) => mode_is_block_device(mode),
+        None => false
+    }
+}
+
+pub fn mode_is_block_device(mode: u32) -> bool {
+    mode & S_IFMT & S_IFBLK == S_IFMT & S_IFBLK
+}
+
+pub fn is_socket(meta: &Box<Metadata>) -> bool {
+    match get_mode_from_boxed_unix_int(meta) {
+        Some(mode) => mode_is_socket(mode),
+        None => false
+    }
+}
+
+pub fn mode_is_socket(mode: u32) -> bool {
+    mode & S_IFMT & S_IFSOCK == S_IFMT & S_IFSOCK
+}
+
 const S_IRUSR: u32 = 400;
 const S_IWUSR: u32 = 200;
 const S_IXUSR: u32 = 100;
@@ -225,6 +269,12 @@ const S_ISUID: u32 = 4000;
 const S_ISGID: u32 = 2000;
 #[allow(unused)]
 const S_ISVTX: u32 = 1000;
+
+const S_IFMT: u32 = 170000;
+const S_IFIFO: u32 = 10000;
+const S_IFCHR: u32 = 20000;
+const S_IFBLK: u32 = 60000;
+const S_IFSOCK: u32 = 140000;
 
 #[cfg(windows)]
 fn get_mode_windows(mode: u32) -> String {

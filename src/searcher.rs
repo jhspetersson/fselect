@@ -318,6 +318,18 @@ impl Searcher {
                     }
                 }
             },
+            Field::IsPipe => {
+                return Self::print_file_mode(&attrs, &mode::is_pipe, &file_info, &mode::mode_is_pipe);
+            },
+            Field::IsCharacterDevice => {
+                return Self::print_file_mode(&attrs, &mode::is_char_device, &file_info, &mode::mode_is_char_device);
+            },
+            Field::IsBlockDevice => {
+                return Self::print_file_mode(&attrs, &mode::is_block_device, &file_info, &mode::mode_is_block_device);
+            },
+            Field::IsSocket => {
+                return Self::print_file_mode(&attrs, &mode::is_socket, &file_info, &mode::mode_is_socket);
+            },
             Field::Mode => {
                 match file_info {
                     &Some(ref file_info) => {
@@ -1087,6 +1099,26 @@ impl Searcher {
                             };
                         }
                     }
+                },
+                Field::IsPipe => {
+                    let (res_, meta_) = confirm_file_mode(&expr.op, &expr.val, &entry, meta, &file_info, follow_symlinks, &mode::mode_is_pipe);
+                    meta = meta_;
+                    result = res_;
+                },
+                Field::IsCharacterDevice => {
+                    let (res_, meta_) = confirm_file_mode(&expr.op, &expr.val, &entry, meta, &file_info, follow_symlinks, &mode::mode_is_char_device);
+                    meta = meta_;
+                    result = res_;
+                },
+                Field::IsBlockDevice => {
+                    let (res_, meta_) = confirm_file_mode(&expr.op, &expr.val, &entry, meta, &file_info, follow_symlinks, &mode::mode_is_block_device);
+                    meta = meta_;
+                    result = res_;
+                },
+                Field::IsSocket => {
+                    let (res_, meta_) = confirm_file_mode(&expr.op, &expr.val, &entry, meta, &file_info, follow_symlinks, &mode::mode_is_socket);
+                    meta = meta_;
+                    result = res_;
                 },
                 Field::Mode => {
                     if let Some(ref val) = expr.val {

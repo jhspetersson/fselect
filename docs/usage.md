@@ -60,6 +60,10 @@ Joins, unions, aggregating functions, and subselects are not supported (yet?).
 * `is_dir`
 * `is_file`
 * `is_symlink`
+* `is_pipe` or `is_fifo`
+* `is_character` or `is_char`
+* `is_block`
+* `is_socket`
 * `mode`
 * `user_read`
 * `user_write`

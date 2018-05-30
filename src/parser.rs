@@ -57,10 +57,12 @@ impl Parser {
         }
 
         let ordering_fields;
+        let numeric_fields;
         let ordering_asc;
         match self.parse_order_by(&fields) {
             Ok((fields, asc)) => {
                 ordering_fields = fields;
+                numeric_fields = Self::get_numeric_fields(&ordering_fields);
                 ordering_asc = asc;
             },
             Err(err) => {
@@ -93,6 +95,7 @@ impl Parser {
             roots,
             expr,
             ordering_fields,
+            numeric_fields: Rc::new(numeric_fields),
             ordering_asc: Rc::new(ordering_asc),
             limit,
             output_format,
@@ -524,6 +527,12 @@ impl Parser {
     fn drop_lexem(&mut self) {
         self.index -= 1;
     }
+
+    fn get_numeric_fields(fields: &Vec<Field>) -> Vec<bool> {
+        fields.iter().map(|ref f| {
+            if f.is_numeric_field() { true } else { false }
+        }).collect()
+    }
 }
 
 fn is_glob(s: &str) -> bool {
@@ -668,6 +677,7 @@ pub struct Query {
     pub roots: Vec<Root>,
     pub expr: Option<Box<Expr>>,
     pub ordering_fields: Vec<Field>,
+    pub numeric_fields: Rc<Vec<bool>>,
     pub ordering_asc: Rc<Vec<bool>>,
     pub limit: u32,
     pub output_format: OutputFormat,

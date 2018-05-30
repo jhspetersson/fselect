@@ -647,7 +647,7 @@ impl Searcher {
         }
 
         if self.is_buffered() {
-            self.output_buffer.insert(Criteria::new(criteria, self.query.ordering_asc.clone()), output_value);
+            self.output_buffer.insert(Criteria::new(criteria, self.query.ordering_asc.clone(), self.query.numeric_fields.clone()), output_value);
         } else {
             print!("{}", output_value);
         }
@@ -1791,78 +1791,6 @@ fn update_mp3_meta(entry: &DirEntry, mp3: Option<MP3Metadata>) -> Option<MP3Meta
             }
         },
         Some(mp3_) => Some(mp3_)
-    }
-}
-
-fn parse_filesize(s: &str) -> Option<u64> {
-    let string = s.to_string().to_ascii_lowercase();
-
-    if string.ends_with("k") {
-        match &string[..(s.len() - 1)].parse::<u64>() {
-            &Ok(size) => return Some(size * 1024),
-            _ => return None
-        }
-    }
-
-    if string.ends_with("kb") {
-        match &string[..(s.len() - 2)].parse::<u64>() {
-            &Ok(size) => return Some(size * 1024),
-            _ => return None
-        }
-    }
-
-    if string.ends_with("kib") {
-        match &string[..(s.len() - 3)].parse::<u64>() {
-            &Ok(size) => return Some(size * 1024),
-            _ => return None
-        }
-    }
-
-    if string.ends_with("m") {
-        match &string[..(s.len() - 1)].parse::<u64>() {
-            &Ok(size) => return Some(size * 1024 * 1024),
-            _ => return None
-        }
-    }
-
-    if string.ends_with("mb") {
-        match &string[..(s.len() - 2)].parse::<u64>() {
-            &Ok(size) => return Some(size * 1024 * 1024),
-            _ => return None
-        }
-    }
-
-    if string.ends_with("mib") {
-        match &string[..(s.len() - 3)].parse::<u64>() {
-            &Ok(size) => return Some(size * 1024 * 1024),
-            _ => return None
-        }
-    }
-
-    if string.ends_with("g") {
-        match &string[..(s.len() - 1)].parse::<u64>() {
-            &Ok(size) => return Some(size * 1024 * 1024 * 1024),
-            _ => return None
-        }
-    }
-
-    if string.ends_with("gb") {
-        match &string[..(s.len() - 2)].parse::<u64>() {
-            &Ok(size) => return Some(size * 1024 * 1024 * 1024),
-            _ => return None
-        }
-    }
-
-    if string.ends_with("gib") {
-        match &string[..(s.len() - 3)].parse::<u64>() {
-            &Ok(size) => return Some(size * 1024 * 1024 * 1024),
-            _ => return None
-        }
-    }
-
-    match string.parse::<u64>() {
-        Ok(size) => return Some(size),
-        _ => return None
     }
 }
 

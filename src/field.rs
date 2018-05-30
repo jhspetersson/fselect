@@ -129,3 +129,15 @@ impl Serialize for Field {
         serializer.serialize_str(&self.to_string())
     }
 }
+
+impl Field {
+    pub fn is_numeric_field(&self) -> bool {
+        match self {
+            &Field::Size | &Field::FormattedSize
+            | &Field::Uid | &Field::Gid
+            | &Field::Width | &Field::Height
+            | &Field::Bitrate | &Field::Freq | &Field::Year => true,
+            _ => false
+        }
+    }
+}

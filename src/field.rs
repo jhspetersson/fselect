@@ -7,7 +7,7 @@ use std::fmt::Display;
 use std::fmt::Formatter;
 use std::fmt::Error;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Hash)]
 pub enum Field {
     Name,
     Path,
@@ -137,6 +137,13 @@ impl Field {
             | &Field::Uid | &Field::Gid
             | &Field::Width | &Field::Height
             | &Field::Bitrate | &Field::Freq | &Field::Year => true,
+            _ => false
+        }
+    }
+
+    pub fn is_datetime_field(&self) -> bool {
+        match self {
+            &Field::Created | &Field::Accessed | &Field::Modified => true,
             _ => false
         }
     }

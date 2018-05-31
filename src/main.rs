@@ -2,6 +2,8 @@ extern crate chrono;
 extern crate csv;
 extern crate humansize;
 extern crate imagesize;
+#[macro_use]
+extern crate lazy_static;
 extern crate mp3_metadata;
 extern crate regex;
 extern crate serde;

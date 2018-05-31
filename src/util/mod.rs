@@ -8,35 +8,49 @@ use std::path::Path;
 use std::rc::Rc;
 use std::string::ToString;
 
+use chrono::DateTime;
+use chrono::Duration;
+use chrono::Local;
+use chrono::LocalResult;
+use chrono::TimeZone;
+use regex::Regex;
 use term;
 use term::StdoutTerminal;
+
+use field::Field;
 
 pub use self::top_n::TopN;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd)]
 pub struct Criteria<T> where T: Display + ToString {
+    fields: Rc<Vec<Field>>,
     /// Values of current row to sort with, placed in order of significance.
     values: Vec<T>,
     /// Shared smart reference to Vector of boolean where each index corresponds to whether the
     /// field at that index should be ordered in ascending order `true` or descending order `false`.
     orderings: Rc<Vec<bool>>,
-    as_numbers: Rc<Vec<bool>>,
 }
 
 impl<T> Criteria<T> where T: Display {
-    pub fn new(values: Vec<T>, orderings: Rc<Vec<bool>>, as_numbers: Rc<Vec<bool>>) -> Criteria<T> {
+    pub fn new(fields: Rc<Vec<Field>>, values: Vec<T>, orderings: Rc<Vec<bool>>) -> Criteria<T> {
+        debug_assert_eq!(fields.len(), values.len());
         debug_assert_eq!(values.len(), orderings.len());
-        debug_assert_eq!(orderings.len(), as_numbers.len());
 
-        Criteria { values, orderings, as_numbers }
+        Criteria { fields, values, orderings }
     }
 
     #[inline]
     fn cmp_at(&self, other: &Self, i: usize) -> Ordering where T: Ord {
-        let comparison = match self.as_numbers[i] {
-            true => self.cmp_at_numbers(other, i),
-            false => self.cmp_at_direct(other, i)
-        };
+        let field = &self.fields[i];
+        let comparison;
+
+        if field.is_numeric_field() {
+            comparison = self.cmp_at_numbers(other, i);
+        } else if field.is_datetime_field() {
+            comparison = self.cmp_at_datetimes(other, i);
+        } else {
+            comparison = self.cmp_at_direct(other, i);
+        }
 
         if self.orderings[i] { comparison } else { comparison.reverse() }
     }
@@ -56,6 +70,21 @@ impl<T> Criteria<T> where T: Display {
     fn cmp_at_numbers(&self, other: &Self, i: usize) -> Ordering where T: Ord {
         let a = parse_filesize(&self.values[i].to_string()).unwrap_or(0);
         let b = parse_filesize(&other.values[i].to_string()).unwrap_or(0);
+
+        if a < b {
+            Ordering::Less
+        } else if a > b {
+            Ordering::Greater
+        } else {
+            Ordering::Equal
+        }
+    }
+
+    #[inline]
+    fn cmp_at_datetimes(&self, other: &Self, i: usize) -> Ordering where T: Ord {
+        let default = Local.ymd(1970, 1, 1).and_hms(0, 0, 0);
+        let a = parse_datetime(&self.values[i].to_string()).unwrap_or((default, default)).0;
+        let b = parse_datetime(&other.values[i].to_string()).unwrap_or((default, default)).0;
 
         if a < b {
             Ordering::Less
@@ -168,15 +197,97 @@ pub fn parse_filesize(s: &str) -> Option<u64> {
     }
 }
 
+lazy_static! {
+    static ref DATE_REGEX: Regex = Regex::new("(\\d{4})-(\\d{1,2})-(\\d{1,2}) ?(\\d{1,2})?:?(\\d{1,2})?:?(\\d{1,2})?").unwrap();
+}
+
+pub fn parse_datetime<'a>(s: &str) -> Result<(DateTime<Local>, DateTime<Local>), &'a str> {
+    if s == "today" {
+        let date = Local::now().date();
+        let start = date.and_hms(0, 0, 0);
+        let finish = date.and_hms(23, 59, 59);
+
+        return Ok((start, finish));
+    }
+
+    if s == "yesterday" {
+        let date = Local::now().date() - Duration::days(1);
+        let start = date.and_hms(0, 0, 0);
+        let finish = date.and_hms(23, 59, 59);
+
+        return Ok((start, finish));
+    }
+
+    match DATE_REGEX.captures(s) {
+        Some(cap) => {
+            let year: i32 = cap[1].parse().unwrap();
+            let month: u32 = cap[2].parse().unwrap();
+            let day: u32 = cap[3].parse().unwrap();
+
+            let hour_start: u32;
+            let hour_finish: u32;
+            match cap.get(4) {
+                Some(val) => {
+                    hour_start = val.as_str().parse().unwrap();
+                    hour_finish = hour_start;
+                },
+                None => {
+                    hour_start = 0;
+                    hour_finish = 23;
+                }
+            }
+
+            let min_start: u32;
+            let min_finish: u32;
+            match cap.get(5) {
+                Some(val) => {
+                    min_start = val.as_str().parse().unwrap();
+                    min_finish = min_start;
+                },
+                None => {
+                    min_start = 0;
+                    min_finish = 23;
+                }
+            }
+
+            let sec_start: u32;
+            let sec_finish: u32;
+            match cap.get(6) {
+                Some(val) => {
+                    sec_start = val.as_str().parse().unwrap();
+                    sec_finish = min_start;
+                },
+                None => {
+                    sec_start = 0;
+                    sec_finish = 23;
+                }
+            }
+
+            match Local.ymd_opt(year, month, day) {
+                LocalResult::Single(date) => {
+                    let start = date.and_hms(hour_start, min_start, sec_start);
+                    let finish = date.and_hms(hour_finish, min_finish, sec_finish);
+
+                    Ok((start, finish))
+                },
+                _ => Err("Error converting date/time to local")
+            }
+        },
+        None => {
+            Err("Error parsing date/time value")
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     fn basic_criteria<T: Ord + Clone + Display>(vals: &[T]) -> Criteria<T> {
+        let fields = Rc::new(vec![Field::Size; vals.len()]);
         let orderings = Rc::new(vec![true; vals.len()]);
-        let as_numbers = Rc::new(vec![true; vals.len()]);
 
-        Criteria::new(vals.to_vec(), orderings, as_numbers)
+        Criteria::new(fields, vals.to_vec(), orderings)
     }
 
     #[test]
@@ -213,22 +324,22 @@ mod tests {
 
     #[test]
     fn test_compare_all_fields_reverse() {
+        let fields = Rc::new(vec![Field::Size; 3]);
         let orderings = Rc::new(vec![false, false, false]);
-        let as_numbers = Rc::new(vec![true, true, true]);
 
-        let c1 = Criteria::new(vec![1, 2, 3], orderings.clone(), as_numbers.clone());
-        let c2 = Criteria::new(vec![1, 3, 1], orderings.clone(), as_numbers.clone());
+        let c1 = Criteria::new(fields.clone(), vec![1, 2, 3], orderings.clone());
+        let c2 = Criteria::new(fields.clone(), vec![1, 3, 1], orderings.clone());
 
         assert_eq!(c1.cmp(&c2), Ordering::Greater);
     }
 
     #[test]
     fn test_compare_some_fields_reverse() {
+        let fields = Rc::new(vec![Field::Size; 3]);
         let orderings = Rc::new(vec![true, false, true]);
-        let as_numbers = Rc::new(vec![true, true, true]);
 
-        let c1 = Criteria::new(vec![1, 2, 3], orderings.clone(), as_numbers.clone());
-        let c2 = Criteria::new(vec![1, 3, 1], orderings.clone(), as_numbers.clone());
+        let c1 = Criteria::new(fields.clone(), vec![1, 2, 3], orderings.clone());
+        let c2 = Criteria::new(fields.clone(), vec![1, 3, 1], orderings.clone());
 
         assert_eq!(c1.cmp(&c2), Ordering::Greater);
     }

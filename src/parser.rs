@@ -5,16 +5,14 @@ use std::rc::Rc;
 use std::str::FromStr;
 
 use chrono::DateTime;
-use chrono::Duration;
 use chrono::Local;
-use chrono::LocalResult;
-use chrono::TimeZone;
 use regex::Captures;
 use regex::Regex;
 
 use lexer::Lexer;
 use lexer::Lexem;
 use field::Field;
+use util::parse_datetime;
 
 pub struct Parser {
     lexems: Vec<Lexem>,
@@ -57,12 +55,10 @@ impl Parser {
         }
 
         let ordering_fields;
-        let numeric_fields;
         let ordering_asc;
         match self.parse_order_by(&fields) {
             Ok((fields, asc)) => {
                 ordering_fields = fields;
-                numeric_fields = Self::get_numeric_fields(&ordering_fields);
                 ordering_asc = asc;
             },
             Err(err) => {
@@ -95,7 +91,6 @@ impl Parser {
             roots,
             expr,
             ordering_fields,
-            numeric_fields: Rc::new(numeric_fields),
             ordering_asc: Rc::new(ordering_asc),
             limit,
             output_format,
@@ -379,7 +374,8 @@ impl Parser {
                                 };
                             };
 
-                            if is_datetime_field(&Field::from_str(s)?) {
+                            let field = &Field::from_str(s)?;
+                            if field.is_datetime_field() {
                                 match parse_datetime(s3) {
                                     Ok((dt_from, dt_to)) => {
                                         expr.dt_from = Some(dt_from);
@@ -527,12 +523,6 @@ impl Parser {
     fn drop_lexem(&mut self) {
         self.index -= 1;
     }
-
-    fn get_numeric_fields(fields: &Vec<Field>) -> Vec<bool> {
-        fields.iter().map(|ref f| {
-            if f.is_numeric_field() { true } else { false }
-        }).collect()
-    }
 }
 
 fn is_glob(s: &str) -> bool {
@@ -583,101 +573,12 @@ fn convert_like_to_pattern(s: &str) -> String {
     format!("^(?i){}$", string)
 }
 
-fn is_datetime_field(field: &Field) -> bool {
-    match field {
-        &Field::Created |
-        &Field::Accessed |
-        &Field::Modified => true,
-        _ => false
-    }
-}
-
-fn parse_datetime<'a>(s: &str) -> Result<(DateTime<Local>, DateTime<Local>), &'a str> {
-    if s == "today" {
-        let date = Local::now().date();
-        let start = date.and_hms(0, 0, 0);
-        let finish = date.and_hms(23, 59, 59);
-
-        return Ok((start, finish));
-    }
-
-    if s == "yesterday" {
-        let date = Local::now().date() - Duration::days(1);
-        let start = date.and_hms(0, 0, 0);
-        let finish = date.and_hms(23, 59, 59);
-
-        return Ok((start, finish));
-    }
-
-    let regex = Regex::new("(\\d{4})-(\\d{1,2})-(\\d{1,2}) ?(\\d{1,2})?:?(\\d{1,2})?:?(\\d{1,2})?").unwrap();
-    match regex.captures(s) {
-        Some(cap) => {
-            let year: i32 = cap[1].parse().unwrap();
-            let month: u32 = cap[2].parse().unwrap();
-            let day: u32 = cap[3].parse().unwrap();
-
-            let hour_start: u32;
-            let hour_finish: u32;
-            match cap.get(4) {
-                Some(val) => {
-                    hour_start = val.as_str().parse().unwrap();
-                    hour_finish = hour_start;
-                },
-                None => {
-                    hour_start = 0;
-                    hour_finish = 23;
-                }
-            }
-
-            let min_start: u32;
-            let min_finish: u32;
-            match cap.get(5) {
-                Some(val) => {
-                    min_start = val.as_str().parse().unwrap();
-                    min_finish = min_start;
-                },
-                None => {
-                    min_start = 0;
-                    min_finish = 23;
-                }
-            }
-
-            let sec_start: u32;
-            let sec_finish: u32;
-            match cap.get(6) {
-                Some(val) => {
-                    sec_start = val.as_str().parse().unwrap();
-                    sec_finish = min_start;
-                },
-                None => {
-                    sec_start = 0;
-                    sec_finish = 23;
-                }
-            }
-
-            match Local.ymd_opt(year, month, day) {
-                LocalResult::Single(date) => {
-                    let start = date.and_hms(hour_start, min_start, sec_start);
-                    let finish = date.and_hms(hour_finish, min_finish, sec_finish);
-
-                    Ok((start, finish))
-                },
-                _ => Err("Error converting date/time to local")
-            }
-        },
-        None => {
-            Err("Error parsing date/time value")
-        }
-    }
-}
-
 #[derive(Debug, Clone)]
 pub struct Query {
     pub fields: Vec<Field>,
     pub roots: Vec<Root>,
     pub expr: Option<Box<Expr>>,
     pub ordering_fields: Vec<Field>,
-    pub numeric_fields: Rc<Vec<bool>>,
     pub ordering_asc: Rc<Vec<bool>>,
     pub limit: u32,
     pub output_format: OutputFormat,

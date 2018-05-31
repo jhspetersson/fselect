@@ -8,6 +8,7 @@ use std::fs::symlink_metadata;
 use std::path::Path;
 use std::io;
 use std::io::Write;
+use std::rc::Rc;
 
 use chrono::DateTime;
 use chrono::Local;
@@ -647,7 +648,7 @@ impl Searcher {
         }
 
         if self.is_buffered() {
-            self.output_buffer.insert(Criteria::new(criteria, self.query.ordering_asc.clone(), self.query.numeric_fields.clone()), output_value);
+            self.output_buffer.insert(Criteria::new(Rc::new(self.query.ordering_fields.clone()), criteria, self.query.ordering_asc.clone()), output_value);
         } else {
             print!("{}", output_value);
         }

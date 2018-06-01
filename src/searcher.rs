@@ -96,20 +96,9 @@ impl Searcher {
     }
 
     pub fn list_search_results(&mut self, t: &mut Box<StdoutTerminal>) -> io::Result<()> {
-        let need_metadata = self.query.fields.iter()
-            .filter(|f| **f != Field::Name).count() > 0;
-
-        let need_dim = self.query.fields.iter()
-            .filter(|f| {
-                **f == Field::Width || **f == Field::Height
-            }).count() > 0;
-
-        let need_mp3 = self.query.fields.iter()
-            .filter(|f| {
-                let s = &**f;
-                s == &Field::Bitrate || s == &Field::Freq || s == &Field::Title || s == &Field::Artist
-                    || s == &Field::Album || s == &Field::Year || s == &Field::Genre
-            }).count() > 0;
+        let need_metadata = self.query.fields.iter().any(|f| f != &Field::Name);
+        let need_dim = self.query.fields.iter().any(|f| f == &Field::Width || f == &Field::Height);
+        let need_mp3 = self.query.fields.iter().any(|f| f.is_mp3_field());
 
         if let OutputFormat::Json = self.query.output_format {
             print!("[");
@@ -598,6 +587,7 @@ impl Searcher {
 
         for field in self.query.fields.iter() {
             let mut record = self.get_field_value(entry, file_info, &mp3_info, &attrs, dimensions, &field, t);
+            file_map.insert(field, record.clone());
 
             match self.query.output_format {
                 OutputFormat::Lines => {
@@ -609,7 +599,7 @@ impl Searcher {
                     output_value.push('\0');
                 },
                 OutputFormat::Json => {
-                    file_map.insert(field, record);
+                    // use file_map later
                 },
                 OutputFormat::Tabs => {
                     output_value.push_str(&record);
@@ -620,9 +610,12 @@ impl Searcher {
                 },
             }
         }
+
         for (idx, field) in self.query.ordering_fields.iter().enumerate() {
-            let mut record = self.get_field_value(entry, file_info, &mp3_info, &attrs, dimensions, &field, t);
-            criteria[idx] = record;
+            criteria[idx] = match file_map.get(field) {
+                Some(record) => record.clone(),
+                None => self.get_field_value(entry, file_info, &mp3_info, &attrs, dimensions, &field, t)
+            }
         }
 
         match self.query.output_format {

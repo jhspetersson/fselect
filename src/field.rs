@@ -147,4 +147,12 @@ impl Field {
             _ => false
         }
     }
+
+    pub fn is_mp3_field(&self) -> bool {
+        match self {
+            &Field::Bitrate | &Field::Freq | &Field::Title
+            | &Field::Artist | &Field::Album | &Field::Year | &Field::Genre => true,
+            _ => false
+        }
+    }
 }

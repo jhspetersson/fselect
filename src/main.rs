@@ -74,5 +74,5 @@ fn usage_info(t: &mut Box<StdoutTerminal>) {
     println!("https://github.com/jhspetersson/fselect");
     t.reset().unwrap();
 
-    println!("Usage: fselect COLUMN[, COLUMN...] [from ROOT[, ROOT...]] [where EXPR] [limit N] [into FORMAT]");
+    println!("Usage: fselect COLUMN[, COLUMN...] [from ROOT[, ROOT...]] [where EXPR] [order by COLUMNS] [limit N] [into FORMAT]");
 }

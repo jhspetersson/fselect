@@ -40,7 +40,7 @@ A statically precompiled [binary](https://github.com/jhspetersson/fselect/releas
 
 ### Usage
 
-    fselect COLUMN[, COLUMN...] [from ROOT[, ROOT...]] [where EXPR] [limit N] [into FORMAT]
+    fselect COLUMN[, COLUMN...] [from ROOT[, ROOT...]] [where EXPR] [order by COLUMNS] [limit N] [into FORMAT]
 
 ### Documentation
 
@@ -175,6 +175,11 @@ Find special files:
 
     fselect path from /tmp where is_pipe = true
     fselect path from /tmp where is_socket = 1
+
+Order results:
+
+    fselect path from /tmp order by size desc, name
+    fselect modified, fsize, path from ~ order by 1 desc, 3
     
 Finally limit the results:
 

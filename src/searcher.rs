@@ -439,13 +439,13 @@ impl Searcher {
                     }
                 }
             },
-            Field::HasXattr => {
+            Field::HasXattrs => {
                 #[cfg(unix)]
                 {
                     if let Ok(file) = File::open(&entry.path()) {
                         if let Ok(xattrs) = file.list_xattr() {
-                            let has_xattr = xattrs.count() > 0;
-                            return format!("{}", has_xattr);
+                            let has_xattrs = xattrs.count() > 0;
+                            return format!("{}", has_xattrs);
                         }
                     }
                 }
@@ -1321,7 +1321,7 @@ impl Searcher {
                         }
                     }
                 },
-                Field::HasXattr => {
+                Field::HasXattrs => {
                     #[cfg(unix)]
                         {
                             if file_info.is_some() {
@@ -1331,22 +1331,22 @@ impl Searcher {
                             if let Some(ref val) = expr.val {
                                 if let Ok(file) = File::open(&entry.path()) {
                                     if let Ok(xattrs) = file.list_xattr() {
-                                        let has_xattr = xattrs.count() > 0;
+                                        let has_xattrs = xattrs.count() > 0;
                                         let bool_val = str_to_bool(val);
 
                                         result = match &expr.op {
                                             &Some(Op::Eq) | &Some(Op::Eeq) => {
                                                 if bool_val {
-                                                    has_xattr
+                                                    has_xattrs
                                                 } else {
-                                                    !has_xattr
+                                                    !has_xattrs
                                                 }
                                             },
                                             &Some(Op::Ne) | &Some(Op::Ene) => {
                                                 if bool_val {
-                                                    !has_xattr
+                                                    !has_xattrs
                                                 } else {
-                                                    has_xattr
+                                                    has_xattrs
                                                 }
                                             },
                                             _ => false

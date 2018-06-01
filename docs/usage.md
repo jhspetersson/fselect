@@ -75,7 +75,7 @@ Joins, unions, aggregating functions, and subselects are not supported (yet?).
 * `other_write`
 * `other_exec`
 * `is_hidden`
-* `has_xattr`
+* `has_xattrs`
 * `width`
 * `height`
 * `bitrate`

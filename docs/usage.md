@@ -4,7 +4,7 @@ Find files with SQL-like queries
 
 ### Basic usage
 
-    fselect COLUMN[, COLUMN...] [from ROOT[, ROOT...]] [where EXPR] [limit N] [into FORMAT]
+    fselect COLUMN[, COLUMN...] [from ROOT[, ROOT...]] [where EXPR] [order by COLUMNS] [limit N] [into FORMAT]
 
 You write SQL-like query, that's it.
 
@@ -18,6 +18,9 @@ Where to search? Specify with `from` keyword. You can list one or more directori
 If you leave the `from`, then current directory will be processed.
 
 What to search? Use `where` with any number of conditions.
+
+Order results like in real SQL with `order by`. All columns are supported for ordering by, 
+as well as `asc`/`desc` parameters and positional numeric shortcuts.
 
 Limiting search results is possible with `limit`. Formatting options are supported with `into` keyword.
 
@@ -75,7 +78,7 @@ Joins, unions, aggregating functions, and subselects are not supported (yet?).
 * `other_write`
 * `other_exec`
 * `is_hidden`
-* `has_xattr`
+* `has_xattrs`
 * `width`
 * `height`
 * `bitrate`

@@ -38,7 +38,7 @@ pub enum Field {
     OtherWrite,
     OtherExec,
     IsHidden,
-    HasXattr,
+    HasXattrs,
     Width,
     Height,
     Bitrate,
@@ -92,7 +92,7 @@ impl FromStr for Field {
             "other_write" => Ok(Field::OtherWrite),
             "other_exec" => Ok(Field::OtherExec),
             "is_hidden" => Ok(Field::IsHidden),
-            "has_xattr" => Ok(Field::HasXattr),
+            "has_xattrs" => Ok(Field::HasXattrs),
             "width" => Ok(Field::Width),
             "height" => Ok(Field::Height),
             "bitrate" => Ok(Field::Bitrate),
@@ -144,6 +144,14 @@ impl Field {
     pub fn is_datetime_field(&self) -> bool {
         match self {
             &Field::Created | &Field::Accessed | &Field::Modified => true,
+            _ => false
+        }
+    }
+
+    pub fn is_mp3_field(&self) -> bool {
+        match self {
+            &Field::Bitrate | &Field::Freq | &Field::Title
+            | &Field::Artist | &Field::Album | &Field::Year | &Field::Genre => true,
             _ => false
         }
     }

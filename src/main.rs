@@ -1,4 +1,5 @@
 extern crate chrono;
+extern crate chrono_english;
 extern crate csv;
 extern crate humansize;
 extern crate imagesize;

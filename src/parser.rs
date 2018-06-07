@@ -382,7 +382,7 @@ impl Parser {
                                         expr.dt_to = Some(dt_to);
                                     },
                                     Err(err) => {
-                                        return Err(err.to_string());
+                                        return Err(err)
                                     }
                                 }
                             }

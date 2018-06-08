@@ -132,6 +132,32 @@ When you put a directory to search at, you can specify some options.
     fselect fsize, path from /home/user/tmp where size = 5mib
     fselect hsize, path from /home/user/tmp where size lt 8kb
 
+### Date and time specifiers
+
+When you specify inexact date and time with `=` or `!=` operator, **fselect** understands it as an interval.
+
+    fselect path from /home/user where modified = 2017-05-01
+    
+`2017-05-01` means all day long from 00:00:00 to 23:59:59.
+
+    fselect path from /home/user where modified = '2017-05-01 15'
+    
+`2017-05-01 15` means one hour from 15:00:00 to 15:59:59.
+
+    fselect path from /home/user where modified ne '2017-05-01 15:10'
+    
+`2017-05-01 15:10` is a 1-minute interval from 15:10:00 to 15:10:59.
+
+Other operators assume exact date and time, which could be specified in a more free way:
+
+    fselect path from /home/user where modified === 'apr 1'
+    fselect path from /home/user where modified gte 'last fri'
+    fselect path from /home/user where modified gte '01/05'
+
+[More about it](https://github.com/stevedonovan/chrono-english)
+
+**fselect** uses *UK* locale, not American style dates.
+
 ### File extensions
 
 | Search field | Extensions |

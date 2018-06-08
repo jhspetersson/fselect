@@ -99,8 +99,10 @@ Find files by date:
     fselect path from /home/user where created = 2017-05-01
     fselect path from /home/user where modified = today
     fselect path from /home/user where accessed = yesterday
+    fselect path from /home/user where modified = 'apr 1'
+    fselect path from /home/user where modified = 'last fri'
     
-Be more specific to match all files created at 3PM:
+Be more specific to match all files created at interval between 3PM and 4PM:
 
     fselect path from /home/user where created = '2017-05-01 15'
     

@@ -90,6 +90,7 @@ Joins, unions, aggregating functions, and subselects are not supported (yet?).
 * `genre`
 * `is_archive`
 * `is_audio`
+* `is_book`
 * `is_doc`
 * `is_image`
 * `is_source`
@@ -138,9 +139,10 @@ When you put a directory to search at, you can specify some options.
 | --- | --- |
 | `is_archive` | .7z, .bzip2, .gz, .gzip, .rar, .tar, .xz, .zip |
 | `is_audio` | .aac, .aiff, .amr, .flac, .gsm, .m4a, .m4b, .m4p, .mp3, .ogg, .wav, .wma |
+| `is_book` | .azw3, .chm, .epub, .fb2, .mobi, .pdf |
 | `is_doc` | .accdb, .doc, .docx, .dot, .dotx, .mdb, .ods, .odt, .pdf, .ppt, .pptx, .rtf, .xls, .xlt, .xlsx, .xps |
 | `is_image` | .bmp, .gif, .jpeg, .jpg, .png, .tiff, .webp |
-| `is_source` | .asm, .c, .cpp, .cs, .java, .js, .h, .hpp, .pas, .php, .pl, .pm, .py, .rb, .rs, .swift |
+| `is_source` | .asm, .c, .cpp, .cs, .java, .js, .jsp, .h, .hpp, .pas, .php, .pl, .pm, .py, .rb, .rs, .swift |
 | `is_video` | .3gp, .avi, .flv, .m4p, .m4v, .mkv, .mov, .mp4, .mpeg, .mpg, .webm, .wmv |
 
     fselect is_archive, path from /home/user

@@ -518,6 +518,10 @@ impl Searcher {
                 let is_audio = is_audio(&entry.file_name().to_string_lossy());
                 return format!("{}", is_audio);
             },
+            Field::IsBook => {
+                let is_book = is_book(&entry.file_name().to_string_lossy());
+                return format!("{}", is_book);
+            },
             Field::IsDoc => {
                 let is_doc = is_doc(&entry.file_name().to_string_lossy());
                 return format!("{}", is_doc);
@@ -1644,6 +1648,9 @@ impl Searcher {
                 Field::IsAudio => {
                     result = confirm_file_ext(&expr.op, &expr.val, &entry, &file_info, &is_audio);
                 },
+                Field::IsBook => {
+                    result = confirm_file_ext(&expr.op, &expr.val, &entry, &file_info, &is_book);
+                },
                 Field::IsDoc => {
                     result = confirm_file_ext(&expr.op, &expr.val, &entry, &file_info, &is_doc);
                 },
@@ -1843,10 +1850,11 @@ def_extension_queries! {
     is_zip_archive          [".zip", ".jar", ".war", ".ear"]
 ;   is_archive              [".7z", ".bzip2", ".gz", ".gzip", ".rar", ".tar", ".xz", ".zip"]
 ;   is_audio                [".aac", ".aiff", ".amr", ".flac", ".gsm", ".m4a", ".m4b", ".m4p", ".mp3", ".ogg", ".wav", ".wma"]
+;   is_book                 [".azw3", ".chm", ".epub", ".fb2", ".mobi", ".pdf"]
 ;   is_doc                  [".accdb", ".doc", ".docx", ".dot", ".dotx", ".mdb", ".ods", ".odt", ".pdf", ".ppt", ".pptx", ".rtf", ".xls", ".xlt", ".xlsx", ".xps"]
 ;   is_image                [".bmp", ".gif", ".jpeg", ".jpg", ".png", ".tiff", ".webp"]
 ;   is_image_dim_readable   [".bmp", ".gif", ".jpeg", ".jpg", ".png", ".webp"]
-;   is_source               [".asm", ".c", ".cpp", ".cs", ".java", ".js", ".h", ".hpp", ".pas", ".php", ".pl", ".pm", ".py", ".rb", ".rs", ".swift"]
+;   is_source               [".asm", ".c", ".cpp", ".cs", ".java", ".js", ".jsp", ".h", ".hpp", ".pas", ".php", ".pl", ".pm", ".py", ".rb", ".rs", ".swift"]
 ;   is_video                [".3gp", ".avi", ".flv", ".m4p", ".m4v", ".mkv", ".mov", ".mp4", ".mpeg", ".mpg", ".webm", ".wmv"]
 }
 

@@ -150,6 +150,7 @@ Shortcuts to common file extensions:
 
     fselect path from /home/user where is_archive = true
     fselect path from /home/user where is_audio = 1
+    fselect path from /home/user where is_book != false
     fselect path from /home/user where is_doc != 1
     fselect path from /home/user where is_image = false
     fselect path from /home/user where is_video != true

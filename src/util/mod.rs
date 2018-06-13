@@ -13,6 +13,7 @@ use chrono::Duration;
 use chrono::Local;
 use chrono::LocalResult;
 use chrono::TimeZone;
+use chrono_english::{parse_date_string,Dialect};
 use regex::Regex;
 use term;
 use term::StdoutTerminal;
@@ -201,7 +202,7 @@ lazy_static! {
     static ref DATE_REGEX: Regex = Regex::new("(\\d{4})-(\\d{1,2})-(\\d{1,2}) ?(\\d{1,2})?:?(\\d{1,2})?:?(\\d{1,2})?").unwrap();
 }
 
-pub fn parse_datetime<'a>(s: &str) -> Result<(DateTime<Local>, DateTime<Local>), &'a str> {
+pub fn parse_datetime(s: &str) -> Result<(DateTime<Local>, DateTime<Local>), String> {
     if s == "today" {
         let date = Local::now().date();
         let start = date.and_hms(0, 0, 0);
@@ -270,11 +271,14 @@ pub fn parse_datetime<'a>(s: &str) -> Result<(DateTime<Local>, DateTime<Local>),
 
                     Ok((start, finish))
                 },
-                _ => Err("Error converting date/time to local")
+                _ => Err("Error converting date/time to local: ".to_string() + s)
             }
         },
         None => {
-            Err("Error parsing date/time value")
+            match parse_date_string(s, Local::now(), Dialect::Uk) {
+                Ok(date_time) => Ok((date_time, date_time)),
+                _ => Err("Error parsing date/time value: ".to_string() + s)
+            }
         }
     }
 }

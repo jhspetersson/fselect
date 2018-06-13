@@ -1252,6 +1252,8 @@ impl Searcher {
                                 let finish = expr.dt_to.unwrap();
 
                                 result = match expr.op {
+                                    Some(Op::Eeq) => dt == start,
+                                    Some(Op::Ene) => dt != start,
                                     Some(Op::Eq) => dt >= start && dt <= finish,
                                     Some(Op::Ne) => dt < start || dt > finish,
                                     Some(Op::Gt) => dt > finish,
@@ -1279,6 +1281,8 @@ impl Searcher {
                                 let finish = expr.dt_to.unwrap();
 
                                 result = match expr.op {
+                                    Some(Op::Eeq) => dt == start,
+                                    Some(Op::Ene) => dt != start,
                                     Some(Op::Eq) => dt >= start && dt <= finish,
                                     Some(Op::Ne) => dt < start || dt > finish,
                                     Some(Op::Gt) => dt > finish,
@@ -1314,6 +1318,8 @@ impl Searcher {
                             let finish = expr.dt_to.unwrap();
 
                             result = match expr.op {
+                                Some(Op::Eeq) => dt == start,
+                                Some(Op::Ene) => dt != start,
                                 Some(Op::Eq) => dt >= start && dt <= finish,
                                 Some(Op::Ne) => dt < start || dt > finish,
                                 Some(Op::Gt) => dt > finish,

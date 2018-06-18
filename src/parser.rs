@@ -173,6 +173,7 @@ impl Parser {
             let mut depth: u32 = 0;
             let mut archives = false;
             let mut symlinks = false;
+            let mut gitignore = false;
 
             loop {
                 let lexem = self.get_lexem();
@@ -193,6 +194,9 @@ impl Parser {
                                             mode = RootParsingMode::Options;
                                         } else if s.to_ascii_lowercase().starts_with("symlink") {
                                             symlinks = true;
+                                            mode = RootParsingMode::Options;
+                                        } else if s.to_ascii_lowercase().starts_with("gitignore") {
+                                            gitignore = true;
                                             mode = RootParsingMode::Options;
                                         } else {
                                             self.drop_lexem();
@@ -217,12 +221,13 @@ impl Parser {
                             },
                             &Lexem::Comma => {
                                 if path.len() > 0 {
-                                    roots.push(Root::new(path, depth, archives, symlinks));
+                                    roots.push(Root::new(path, depth, archives, symlinks, gitignore));
 
                                     path = String::from("");
                                     depth = 0;
                                     archives = false;
                                     symlinks = false;
+                                    gitignore = false;
 
                                     mode = RootParsingMode::Comma;
                                 } else {
@@ -232,7 +237,7 @@ impl Parser {
                             },
                             _ => {
                                 if path.len() > 0 {
-                                    roots.push(Root::new(path, depth, archives, symlinks));
+                                    roots.push(Root::new(path, depth, archives, symlinks, gitignore));
                                 }
 
                                 self.drop_lexem();
@@ -242,7 +247,7 @@ impl Parser {
                     },
                     None => {
                         if path.len() > 0 {
-                            roots.push(Root::new(path, depth, archives, symlinks));
+                            roots.push(Root::new(path, depth, archives, symlinks, gitignore));
                         }
                         break;
                     }
@@ -590,15 +595,16 @@ pub struct Root {
     pub depth: u32,
     pub archives: bool,
     pub symlinks: bool,
+    pub gitignore: bool,
 }
 
 impl Root {
-    fn new(path: String, depth: u32, archives: bool, symlinks: bool) -> Root {
-        Root { path, depth, archives, symlinks }
+    fn new(path: String, depth: u32, archives: bool, symlinks: bool, gitignore: bool) -> Root {
+        Root { path, depth, archives, symlinks, gitignore }
     }
 
     fn default() -> Root {
-        Root { path: String::from("."), depth: 0, archives: false, symlinks: false }
+        Root { path: String::from("."), depth: 0, archives: false, symlinks: false, gitignore: false }
     }
 }
 
@@ -753,17 +759,17 @@ mod tests {
 
     #[test]
     fn query() {
-        let query = "select name, path ,size , fsize from /test depth 2, /test2 archives,/test3 depth 3 archives , /test4 ,'/test5' where name != 123 AND ( size gt 456 or fsize lte 758) or name = 'xxx' order by 2, size desc limit 50";
+        let query = "select name, path ,size , fsize from /test depth 2, /test2 archives,/test3 depth 3 archives , /test4 ,'/test5' gitignore where name != 123 AND ( size gt 456 or fsize lte 758) or name = 'xxx' order by 2, size desc limit 50";
         let mut p = Parser::new();
         let query = p.parse(&query).unwrap();
 
         assert_eq!(query.fields, vec![Field::Name, Field::Path, Field::Size, Field::FormattedSize]);
         assert_eq!(query.roots, vec![
-            Root::new(String::from("/test"), 2, false, false),
-            Root::new(String::from("/test2"), 0, true, false),
-            Root::new(String::from("/test3"), 3, true, false),
-            Root::new(String::from("/test4"), 0, false, false),
-            Root::new(String::from("/test5"), 0, false, false),
+            Root::new(String::from("/test"), 2, false, false, false),
+            Root::new(String::from("/test2"), 0, true, false, false),
+            Root::new(String::from("/test3"), 3, true, false, false),
+            Root::new(String::from("/test4"), 0, false, false, false),
+            Root::new(String::from("/test5"), 0, false, false, true),
         ]);
 
         let expr = Expr::node(

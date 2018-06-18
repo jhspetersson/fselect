@@ -6,6 +6,7 @@ use std::fs::File;
 use std::fs::Metadata;
 use std::fs::symlink_metadata;
 use std::path::Path;
+use std::path::PathBuf;
 use std::io;
 use std::io::Write;
 use std::rc::Rc;
@@ -18,6 +19,7 @@ use humansize::{FileSize, file_size_opts};
 use imagesize;
 use mp3_metadata;
 use mp3_metadata::MP3Metadata;
+use regex::Regex;
 use serde_json;
 use term::StdoutTerminal;
 use time::Tm;
@@ -41,6 +43,7 @@ pub struct Searcher {
     user_cache: UsersCache,
     found: u32,
     output_buffer: TopN<Criteria<String>, String>,
+    gitignore_map: HashMap<PathBuf, Vec<Regex>>,
 }
 
 pub struct WritableBuffer {
@@ -87,7 +90,8 @@ impl Searcher {
             query,
             user_cache: UsersCache::new(),
             found: 0,
-            output_buffer: if limit == 0 { TopN::limitless() } else { TopN::new(limit) }
+            output_buffer: if limit == 0 { TopN::limitless() } else { TopN::new(limit) },
+            gitignore_map: HashMap::new(),
         }
     }
 
@@ -109,6 +113,7 @@ impl Searcher {
             let max_depth = root.depth;
             let search_archives = root.archives;
             let follow_symlinks = root.symlinks;
+            let apply_gitignore = root.gitignore;
             let _result = self.visit_dirs(
                 root_dir,
                 need_metadata,
@@ -118,6 +123,7 @@ impl Searcher {
                 1,
                 search_archives,
                 follow_symlinks,
+                apply_gitignore,
                 t
             );
         }
@@ -152,6 +158,7 @@ impl Searcher {
                   depth: u32,
                   search_archives: bool,
                   follow_symlinks: bool,
+                  apply_gitignore: bool,
                   t: &mut Box<StdoutTerminal>) -> io::Result<()> {
         if max_depth == 0 || (max_depth > 0 && depth <= max_depth) {
             let metadata = match follow_symlinks {
@@ -161,6 +168,18 @@ impl Searcher {
             match metadata {
                 Ok(metadata) => {
                     if metadata.is_dir() {
+                        let mut gitignore_filters = None;;
+
+                        if apply_gitignore {
+                            let gitignore_file = dir.join(".gitignore");
+                            if gitignore_file.exists() {
+                                let regexes = parse_gitignore(&gitignore_file);
+                                self.gitignore_map.insert(dir.to_path_buf(), regexes);
+                            }
+
+                            gitignore_filters = Some(self.get_gitignore_filters(dir));
+                        }
+
                         match fs::read_dir(dir) {
                             Ok(entry_list) => {
                                 for entry in entry_list {
@@ -171,6 +190,10 @@ impl Searcher {
                                     match entry {
                                         Ok(entry) => {
                                             let path = entry.path();
+
+                                            if apply_gitignore && self.matches_gitignore_filter(&gitignore_filters, entry.file_name().to_string_lossy().as_ref()) {
+                                                return Ok(());
+                                            }
 
                                             self.check_file(&entry, &None, need_metadata, need_dim, need_mp3, follow_symlinks, t);
 
@@ -192,7 +215,18 @@ impl Searcher {
                                             }
 
                                             if path.is_dir() {
-                                                let result = self.visit_dirs(&path, need_metadata, need_dim, need_mp3, max_depth, depth + 1, search_archives, follow_symlinks, t);
+                                                let result = self.visit_dirs(
+                                                    &path,
+                                                    need_metadata,
+                                                    need_dim,
+                                                    need_mp3,
+                                                    max_depth,
+                                                    depth + 1,
+                                                    search_archives,
+                                                    follow_symlinks,
+                                                    apply_gitignore,
+                                                    t);
+
                                                 if result.is_err() {
                                                     path_error_message(&path, result.err().unwrap(), t);
                                                 }
@@ -217,6 +251,43 @@ impl Searcher {
         }
 
         Ok(())
+    }
+
+    fn get_gitignore_filters(&self, dir: &Path) -> Vec<Regex> {
+        let mut result = vec![];
+
+        let mut path = dir.clone().to_path_buf();
+
+        loop {
+            let parent_found = path.pop();
+
+            if !parent_found {
+                return result;
+            }
+
+            for (dir_path, regexes) in &self.gitignore_map {
+                if path == *dir_path {
+                    //TODO
+                }
+            }
+        }
+
+        result
+    }
+
+    fn matches_gitignore_filter(&self, gitignore_filters: &Option<Vec<Regex>>, file_name: &str) -> bool {
+        match gitignore_filters {
+            Some(gitignore_filters) => {
+                for regex in gitignore_filters {
+                    if regex.is_match(file_name) {
+                        return true;
+                    }
+                }
+            },
+            _ => { }
+        }
+
+        false
     }
 
     fn get_field_value(&self,
@@ -1895,6 +1966,12 @@ fn to_file_info(zipped_file: &zip::read::ZipFile) -> FileInfo {
 fn to_local_datetime(tm: &Tm) -> DateTime<Local> {
     Local.ymd(tm.tm_year + 1900, (tm.tm_mon + 1) as u32, tm.tm_mday as u32)
         .and_hms(tm.tm_hour as u32, tm.tm_min as u32, tm.tm_sec as u32)
+}
+
+fn parse_gitignore(file: &Path) -> Vec<Regex> {
+    let mut result = vec![];
+
+    result
 }
 
 #[cfg(windows)]

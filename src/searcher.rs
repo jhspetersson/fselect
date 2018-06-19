@@ -173,7 +173,7 @@ impl Searcher {
                         if apply_gitignore {
                             let gitignore_file = dir.join(".gitignore");
                             if gitignore_file.exists() {
-                                let regexes = parse_gitignore(&gitignore_file);
+                                let regexes = Self::parse_gitignore(&gitignore_file);
                                 self.gitignore_map.insert(dir.to_path_buf(), regexes);
                             }
 
@@ -191,23 +191,21 @@ impl Searcher {
                                         Ok(entry) => {
                                             let path = entry.path();
 
-                                            if apply_gitignore && self.matches_gitignore_filter(&gitignore_filters, entry.file_name().to_string_lossy().as_ref()) {
-                                                return Ok(());
-                                            }
+                                            if !apply_gitignore || (apply_gitignore && !self.matches_gitignore_filter(&gitignore_filters, entry.file_name().to_string_lossy().as_ref())) {
+                                                self.check_file(&entry, &None, need_metadata, need_dim, need_mp3, follow_symlinks, t);
 
-                                            self.check_file(&entry, &None, need_metadata, need_dim, need_mp3, follow_symlinks, t);
+                                                if search_archives && is_zip_archive(&path.to_string_lossy()) {
+                                                    if let Ok(file) = fs::File::open(&path) {
+                                                        if let Ok(mut archive) = zip::ZipArchive::new(file) {
+                                                            for i in 0..archive.len() {
+                                                                if self.query.limit > 0 && self.query.limit <= self.found {
+                                                                    break;
+                                                                }
 
-                                            if search_archives && is_zip_archive(&path.to_string_lossy()) {
-                                                if let Ok(file) = fs::File::open(&path) {
-                                                    if let Ok(mut archive) = zip::ZipArchive::new(file) {
-                                                        for i in 0..archive.len() {
-                                                            if self.query.limit > 0 && self.query.limit <= self.found {
-                                                                break;
-                                                            }
-
-                                                            if let Ok(afile) = archive.by_index(i) {
-                                                                let file_info = to_file_info(&afile);
-                                                                self.check_file(&entry, &Some(file_info), need_metadata, need_dim, need_mp3, false, t);
+                                                                if let Ok(afile) = archive.by_index(i) {
+                                                                    let file_info = to_file_info(&afile);
+                                                                    self.check_file(&entry, &Some(file_info), need_metadata, need_dim, need_mp3, false, t);
+                                                                }
                                                             }
                                                         }
                                                     }
@@ -267,12 +265,16 @@ impl Searcher {
 
             for (dir_path, regexes) in &self.gitignore_map {
                 if path == *dir_path {
-                    //TODO
+                    let mut tmp = vec![];
+                    for rx in regexes {
+                        tmp.push(rx.clone());
+                    }
+                    tmp.append(&mut result);
+                    result.clear();
+                    result.append(&mut tmp);
                 }
             }
         }
-
-        result
     }
 
     fn matches_gitignore_filter(&self, gitignore_filters: &Option<Vec<Regex>>, file_name: &str) -> bool {
@@ -288,6 +290,12 @@ impl Searcher {
         }
 
         false
+    }
+
+    fn parse_gitignore(file: &Path) -> Vec<Regex> {
+        let mut result = vec![];
+
+        result
     }
 
     fn get_field_value(&self,
@@ -1966,12 +1974,6 @@ fn to_file_info(zipped_file: &zip::read::ZipFile) -> FileInfo {
 fn to_local_datetime(tm: &Tm) -> DateTime<Local> {
     Local.ymd(tm.tm_year + 1900, (tm.tm_mon + 1) as u32, tm.tm_mday as u32)
         .and_hms(tm.tm_hour as u32, tm.tm_min as u32, tm.tm_sec as u32)
-}
-
-fn parse_gitignore(file: &Path) -> Vec<Regex> {
-    let mut result = vec![];
-
-    result
 }
 
 #[cfg(windows)]

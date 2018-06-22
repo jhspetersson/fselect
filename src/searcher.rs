@@ -9,6 +9,8 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::io;
 use std::io::Write;
+use std::ops::Add;
+use std::ops::Index;
 use std::rc::Rc;
 
 use chrono::DateTime;
@@ -19,6 +21,8 @@ use humansize::{FileSize, file_size_opts};
 use imagesize;
 use mp3_metadata;
 use mp3_metadata::MP3Metadata;
+use regex::Captures;
+use regex::Error;
 use regex::Regex;
 use serde_json;
 use term::StdoutTerminal;
@@ -43,7 +47,22 @@ pub struct Searcher {
     user_cache: UsersCache,
     found: u32,
     output_buffer: TopN<Criteria<String>, String>,
-    gitignore_map: HashMap<PathBuf, Vec<Regex>>,
+    gitignore_map: HashMap<PathBuf, Vec<GitignoreFilter>>,
+}
+
+#[derive(Clone)]
+struct GitignoreFilter {
+    regex: Regex,
+    only_dir: bool,
+    negate: bool,
+}
+
+impl GitignoreFilter {
+    fn new(regex: Regex, only_dir: bool, negate: bool) -> GitignoreFilter {
+        GitignoreFilter {
+            regex, only_dir, negate
+        }
+    }
 }
 
 pub struct WritableBuffer {
@@ -251,7 +270,7 @@ impl Searcher {
         Ok(())
     }
 
-    fn get_gitignore_filters(&self, dir: &Path) -> Vec<Regex> {
+    fn get_gitignore_filters(&self, dir: &Path) -> Vec<GitignoreFilter> {
         let mut result = vec![];
 
         let mut path = dir.clone().to_path_buf();
@@ -266,7 +285,7 @@ impl Searcher {
             for (dir_path, regexes) in &self.gitignore_map {
                 if path == *dir_path {
                     let mut tmp = vec![];
-                    for rx in regexes {
+                    for ref mut rx in regexes {
                         tmp.push(rx.clone());
                     }
                     tmp.append(&mut result);
@@ -277,11 +296,11 @@ impl Searcher {
         }
     }
 
-    fn matches_gitignore_filter(&self, gitignore_filters: &Option<Vec<Regex>>, file_name: &str) -> bool {
+    fn matches_gitignore_filter(&self, gitignore_filters: &Option<Vec<GitignoreFilter>>, file_name: &str) -> bool {
         match gitignore_filters {
             Some(gitignore_filters) => {
-                for regex in gitignore_filters {
-                    if regex.is_match(file_name) {
+                for gitignore_filter in gitignore_filters {
+                    if gitignore_filter.regex.is_match(file_name) {
                         return true;
                     }
                 }
@@ -292,10 +311,80 @@ impl Searcher {
         false
     }
 
-    fn parse_gitignore(file: &Path) -> Vec<Regex> {
+    fn parse_gitignore(file_path: &Path) -> Vec<GitignoreFilter> {
         let mut result = vec![];
 
+        if let Ok(file) = fs::File::open(file_path) {
+            use std::io::BufRead;
+            use std::io::BufReader;
+            let reader = BufReader::new(file);
+            reader.lines()
+                .filter(|line| {
+                    match line {
+                        Ok(line) => !line.trim().is_empty() && !line.starts_with("#"),
+                        _ => false
+                    }
+                })
+                .for_each(|line| {
+                    match line {
+                        Ok(line) => result.append(&mut Self::convert_gitignore_pattern(&line, file_path)),
+                        _ => { }
+                    }
+            });
+        }
+
         result
+    }
+
+    fn convert_gitignore_pattern(pattern: &str, file_path: &Path) -> Vec<GitignoreFilter> {
+        let mut result = vec![];
+
+        let mut pattern = String::from(pattern);
+
+        let mut negate = false;
+        if pattern.starts_with("!") {
+            pattern = pattern.replace("!", "");
+            negate = true;
+        }
+
+        if !pattern.starts_with("**") {
+            pattern = file_path.to_string_lossy().to_string().add("/").add(&pattern);
+        }
+
+        if pattern.ends_with("/") {
+            pattern.pop();
+
+            let regex = Self::convert_gitignore_glob(&pattern);
+            if regex.is_ok() {
+                result.push(GitignoreFilter::new(regex.unwrap(), true, negate));
+            }
+
+            pattern = pattern.add("/**");
+        }
+
+        let regex = Self::convert_gitignore_glob(&pattern);
+        if regex.is_ok() {
+            result.push(GitignoreFilter::new(regex.unwrap(), false, negate))
+        }
+
+        result
+    }
+
+    fn convert_gitignore_glob(glob: &str) -> Result<Regex, Error> {
+        let replace_regex = Regex::new("(\\*\\*|\\?|\\.|\\*|\\[|\\])").unwrap();
+        let pattern = replace_regex.replace_all(&glob, |c: &Captures| {
+            match c.index(0) {
+                "**" => ".*",
+                "." => "\\.",
+                "*" => ".*",
+                "?" => ".",
+                "[" => "\\[",
+                "]" => "\\]",
+                _ => panic!("Error parsing pattern")
+            }.to_string()
+        });
+
+        Regex::new(&pattern)
     }
 
     fn get_field_value(&self,

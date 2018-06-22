@@ -303,7 +303,7 @@ impl Searcher {
                     let is_match = gitignore_filter.regex.is_match(file_name);
                     if (is_match && !gitignore_filter.negate) ||
                         (!is_match && gitignore_filter.negate) {
-                        if gitignore_filter.is_dir && !is_dir {
+                        if gitignore_filter.only_dir && !is_dir {
                             continue;
                         }
 

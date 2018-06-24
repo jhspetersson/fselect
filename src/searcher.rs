@@ -29,6 +29,7 @@ use zip;
 
 use field::Field;
 use gitignore::GitignoreFilter;
+use gitignore::matches_gitignore_filter;
 use gitignore::parse_gitignore;
 use mode;
 use parser::Query;
@@ -154,7 +155,7 @@ impl Searcher {
                                         Ok(entry) => {
                                             let path = entry.path();
 
-                                            if !apply_gitignore || (apply_gitignore && !self.matches_gitignore_filter(&gitignore_filters, entry.file_name().to_string_lossy().as_ref(), path.is_dir())) {
+                                            if !apply_gitignore || (apply_gitignore && !matches_gitignore_filter(&gitignore_filters, entry.file_name().to_string_lossy().as_ref(), path.is_dir())) {
                                                 self.check_file(&entry, &None, need_metadata, need_dim, need_mp3, follow_symlinks, t);
 
                                                 if search_archives && is_zip_archive(&path.to_string_lossy()) {
@@ -238,27 +239,6 @@ impl Searcher {
                 }
             }
         }
-    }
-
-    fn matches_gitignore_filter(&self, gitignore_filters: &Option<Vec<GitignoreFilter>>, file_name: &str, is_dir: bool) -> bool {
-        match gitignore_filters {
-            Some(gitignore_filters) => {
-                for gitignore_filter in gitignore_filters {
-                    let is_match = gitignore_filter.regex.is_match(file_name);
-                    if (is_match && !gitignore_filter.negate) ||
-                        (!is_match && gitignore_filter.negate) {
-                        if gitignore_filter.only_dir && !is_dir {
-                            continue;
-                        }
-
-                        return true;
-                    }
-                }
-            },
-            _ => { }
-        }
-
-        false
     }
 
     fn get_field_value(&self,

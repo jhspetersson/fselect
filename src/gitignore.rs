@@ -22,6 +22,33 @@ impl GitignoreFilter {
     }
 }
 
+pub fn matches_gitignore_filter(gitignore_filters: &Option<Vec<GitignoreFilter>>, file_name: &str, is_dir: bool) -> bool {
+    match gitignore_filters {
+        Some(gitignore_filters) => {
+            let mut matched = false;
+
+            for gitignore_filter in gitignore_filters {
+                if gitignore_filter.only_dir && !is_dir {
+                    continue;
+                }
+
+                let is_match = gitignore_filter.regex.is_match(file_name);
+
+                if is_match && gitignore_filter.negate {
+                    return false;
+                }
+
+                if is_match {
+                    matched = true;
+                }
+            }
+
+            matched
+        },
+        _ => false
+    }
+}
+
 pub fn parse_gitignore(file_path: &Path) -> Vec<GitignoreFilter> {
     let mut result = vec![];
 

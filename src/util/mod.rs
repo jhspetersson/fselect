@@ -1,4 +1,5 @@
 mod top_n;
+mod wbuf;
 
 use std::cmp::Ordering;
 use std::error::Error;
@@ -21,6 +22,7 @@ use term::StdoutTerminal;
 use field::Field;
 
 pub use self::top_n::TopN;
+pub use self::wbuf::WritableBuffer;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd)]
 pub struct Criteria<T> where T: Display + ToString {

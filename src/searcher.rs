@@ -1879,7 +1879,7 @@ def_extension_queries! {
 ;   is_archive              [".7z", ".bzip2", ".gz", ".gzip", ".rar", ".tar", ".xz", ".zip"]
 ;   is_audio                [".aac", ".aiff", ".amr", ".flac", ".gsm", ".m4a", ".m4b", ".m4p", ".mp3", ".ogg", ".wav", ".wma"]
 ;   is_book                 [".azw3", ".chm", ".epub", ".fb2", ".mobi", ".pdf"]
-;   is_doc                  [".accdb", ".doc", ".docx", ".dot", ".dotx", ".mdb", ".ods", ".odt", ".pdf", ".ppt", ".pptx", ".rtf", ".xls", ".xlt", ".xlsx", ".xps"]
+;   is_doc                  [".accdb", ".doc", ".docm", ".docx", ".dot", ".dotm", ".dotx", ".mdb", ".ods", ".odt", ".pdf", ".potm", ".potx", ".ppt", ".pptm", ".pptx", ".rtf", ".xlm", ".xls", ".xlsm", ".xlsx", ".xlt", ".xltm", ".xltx", ".xps"]
 ;   is_image                [".bmp", ".gif", ".jpeg", ".jpg", ".png", ".tiff", ".webp"]
 ;   is_image_dim_readable   [".bmp", ".gif", ".jpeg", ".jpg", ".png", ".webp"]
 ;   is_source               [".asm", ".c", ".cpp", ".cs", ".java", ".js", ".jsp", ".h", ".hpp", ".pas", ".php", ".pl", ".pm", ".py", ".rb", ".rs", ".swift"]

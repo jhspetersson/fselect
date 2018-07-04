@@ -43,76 +43,58 @@ impl<'a> Lexer<'a> {
         let mut mode = LexingMode::Undefined;
 
         for c in self.input.chars().skip(self.index) {
-            let stop = match mode {
-                LexingMode::Undefined => {
-                    self.index += 1;
-
-                    match c {
-                        ' ' => {},
-                        '\'' =>  mode = LexingMode::String,
-                        ',' =>  mode = LexingMode::Comma,
-                        '(' => mode = LexingMode::Open,
-                        ')' => mode = LexingMode::Close,
-                        _ => {
-                            if is_op_char(c) {
-                                mode = LexingMode::Operator;
-                            } else {
-                                mode = LexingMode::RawString;
-                            }
-                            s.push(c);
-                        }
-                    }
-
-                    false
+            match mode {
+                LexingMode::Comma | LexingMode::Open | LexingMode::Close => {
+                    break
                 },
                 LexingMode::String => {
                     self.index += 1;
-
                     if c == '\'' {
-                        true
-                    } else {
-                        mode = LexingMode::String;
-                        s.push(c);
-
-                        false
+                        break
                     }
+                    s.push(c);
                 },
                 LexingMode::Operator => {
                     self.index += 1;
-
-                    if is_op_char(c) {
-                        mode = LexingMode::Operator;
-                        s.push(c);
-
-                        false
-                    } else {
-                        true
+                    if !is_op_char(c) {
+                        break
                     }
+                    s.push(c);
                 },
                 LexingMode::RawString => {
                     if c == ' ' || c == ',' || c == ')' {
-                        true
-                    } else {
-                        self.index += 1;
-                        mode = LexingMode::RawString;
-                        s.push(c);
-
-                        false
+                        break
+                    }
+                    self.index += 1;
+                    s.push(c);
+                },
+                LexingMode::Undefined => {
+                    self.index += 1;
+                    match c {
+                        ' ' => {},
+                        '\'' => mode = LexingMode::String,
+                        ',' => mode = LexingMode::Comma,
+                        '(' => mode = LexingMode::Open,
+                        ')' => mode = LexingMode::Close,
+                        _ => {
+                            mode = if is_op_char(c) {
+                                LexingMode::Operator
+                            } else {
+                                LexingMode::RawString
+                            };
+                            s.push(c);
+                        }
                     }
                 },
-                LexingMode::Comma | LexingMode::Open | LexingMode::Close => {
-                    true
-                },
-            };
-
-            if stop {
-                break;
             }
         }
 
         match mode {
             LexingMode::String => Some(Lexem::String(s)),
             LexingMode::Operator => Some(Lexem::Operator(s)),
+            LexingMode::Comma => Some(Lexem::Comma),
+            LexingMode::Open => Some(Lexem::Open),
+            LexingMode::Close => Some(Lexem::Close),
             LexingMode::RawString => {
                 match s.to_lowercase().as_str() {
                     "from" => Some(Lexem::From),
@@ -125,14 +107,11 @@ impl<'a> Lexer<'a> {
                     "desc" => Some(Lexem::DescendingOrder),
                     "limit" => Some(Lexem::Limit),
                     "into" => Some(Lexem::Into),
-                    "eq" | "ne" | "gt" | "lt" | "ge" | "le" | "gte" | "lte" | 
+                    "eq" | "ne" | "gt" | "lt" | "ge" | "le" | "gte" | "lte" |
                     "regexp" | "rx" | "like" => Some(Lexem::Operator(s)),
                     _ => Some(Lexem::RawString(s)),
                 }
             },
-            LexingMode::Comma => Some(Lexem::Comma),
-            LexingMode::Open => Some(Lexem::Open),
-            LexingMode::Close => Some(Lexem::Close),
             _ => None
         }
     }

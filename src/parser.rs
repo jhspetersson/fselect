@@ -33,58 +33,12 @@ impl Parser {
             self.lexems.push(lexem);
         }
 
-        let fields;
-        match self.parse_fields() {
-            Ok(fields_) => {
-                fields = fields_;
-            },
-            Err(err) => {
-                return Err(err);
-            }
-        }
+        let fields = self.parse_fields()?;
         let roots = self.parse_roots();
-
-        let expr;
-        match self.parse_where() {
-            Ok(expr_) => {
-                expr = expr_;
-            },
-            Err(err) => {
-                return Err(err);
-            }
-        }
-
-        let ordering_fields;
-        let ordering_asc;
-        match self.parse_order_by(&fields) {
-            Ok((fields, asc)) => {
-                ordering_fields = fields;
-                ordering_asc = asc;
-            },
-            Err(err) => {
-                return Err(err.to_string());
-            }
-        }
-
-        let limit;
-        match self.parse_limit() {
-            Ok(limit_) => {
-                limit = limit_;
-            }
-            Err(err) => {
-                return Err(err.to_string());
-            }
-        }
-
-        let output_format;
-        match self.parse_output_format() {
-            Ok(format_) => {
-                output_format = format_;
-            },
-            Err(err) => {
-                return Err(err.to_string());
-            }
-        }
+        let expr = self.parse_where()?;
+        let (ordering_fields, ordering_asc) = self.parse_order_by(&fields)?;
+        let limit = self.parse_limit()?;
+        let output_format = self.parse_output_format()?;
 
         Ok(Query {
             fields,
@@ -104,6 +58,9 @@ impl Parser {
         let lexems = &self.lexems;
         for lexem in lexems {
             match lexem {
+                &Lexem::Comma => {
+                    skip += 1;
+                },
                 &Lexem::RawString(ref s) => {
                     if s.to_ascii_lowercase() != "select" {
                         if s == "*" {
@@ -117,16 +74,10 @@ impl Parser {
                             fields.push(Field::Size);
                             fields.push(Field::Path);
                         } else {
-                            match Field::from_str(s) {
-                                Ok(field) => fields.push(field),
-                                Err(err) => return Err(err)
-                            }
+                            fields.push(Field::from_str(s)?);
                         }
                     }
 
-                    skip += 1;
-                },
-                &Lexem::Comma => {
                     skip += 1;
                 },
                 _ => break

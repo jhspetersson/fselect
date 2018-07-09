@@ -7,7 +7,7 @@ use regex::Captures;
 use regex::Error;
 use regex::Regex;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct GitignoreFilter {
     pub regex: Regex,
     pub only_dir: bool,
@@ -49,7 +49,7 @@ pub fn matches_gitignore_filter(gitignore_filters: &Option<Vec<GitignoreFilter>>
     }
 }
 
-pub fn parse_gitignore(file_path: &Path) -> Vec<GitignoreFilter> {
+pub fn parse_gitignore(file_path: &Path, dir_path: &Path) -> Vec<GitignoreFilter> {
     let mut result = vec![];
 
     if let Ok(file) = File::open(file_path) {
@@ -65,7 +65,7 @@ pub fn parse_gitignore(file_path: &Path) -> Vec<GitignoreFilter> {
             })
             .for_each(|line| {
                 match line {
-                    Ok(line) => result.append(&mut convert_gitignore_pattern(&line, file_path)),
+                    Ok(line) => result.append(&mut convert_gitignore_pattern(&line, dir_path)),
                     _ => { }
                 }
             });

@@ -11,6 +11,7 @@ While it doesn't tend to fully replace traditional `find` and `ls`, **fselect** 
 * complex queries
 * SQL-like (not real SQL, but highly relaxed!) grammar easily understandable by humans
 * search within archives
+* `.gitignore` support (experimental)
 * search by width and height of images
 * search by MP3 info
 * shortcuts to common file types
@@ -138,7 +139,11 @@ Search within archives (currently only zip-archives are supported):
     
 Or in combination:
 
-    fselect size, path from /home/user depth 5 archives symlinks where name = '*.jpg' limit 100    
+    fselect size, path from /home/user depth 5 archives symlinks where name = '*.jpg' limit 100
+
+Enable `.gitignore` support:
+
+    fselect size, path from /home/user/projects gitignore where name = '*.cpp'        
     
 Search by image dimensions:
 

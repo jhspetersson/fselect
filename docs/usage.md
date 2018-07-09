@@ -98,7 +98,7 @@ Joins, unions, aggregating functions, and subselects are not supported (yet?).
 
 ### Search roots
 
-    path [depth N] [symlinks] [archives]
+    path [depth N] [symlinks] [archives] [gitignore]
     
 When you put a directory to search at, you can specify some options.
 
@@ -107,6 +107,7 @@ When you put a directory to search at, you can specify some options.
 | depth N | Maximum search depth. Default is unlimited. Depth 1 means search the mentioned directory only. Depth 2 means search mentioned directory and its subdirectories. |
 | symlinks | If specified, search process will follow symlinks. Default is not to follow. |
 | archives | Search within archives. Only zip archives are supported. Default is not to include archived content into the search results. |
+| gitignore | Search respects `.gitignore` files found |
 
 ### Operators
 

@@ -132,12 +132,12 @@ impl Searcher {
             match metadata {
                 Ok(metadata) => {
                     if metadata.is_dir() {
-                        let mut gitignore_filters = None;;
+                        let mut gitignore_filters = None;
 
                         if apply_gitignore {
                             let gitignore_file = dir.join(".gitignore");
                             if gitignore_file.exists() {
-                                let regexes = parse_gitignore(&gitignore_file);
+                                let regexes = parse_gitignore(&gitignore_file, dir);
                                 self.gitignore_map.insert(dir.to_path_buf(), regexes);
                             }
 
@@ -155,7 +155,7 @@ impl Searcher {
                                         Ok(entry) => {
                                             let path = entry.path();
 
-                                            if !apply_gitignore || (apply_gitignore && !matches_gitignore_filter(&gitignore_filters, entry.file_name().to_string_lossy().as_ref(), path.is_dir())) {
+                                            if !apply_gitignore || (apply_gitignore && !matches_gitignore_filter(&gitignore_filters, entry.path().to_string_lossy().as_ref(), path.is_dir())) {
                                                 self.check_file(&entry, &None, need_metadata, need_dim, need_mp3, follow_symlinks, t);
 
                                                 if search_archives && is_zip_archive(&path.to_string_lossy()) {
@@ -174,23 +174,23 @@ impl Searcher {
                                                         }
                                                     }
                                                 }
-                                            }
 
-                                            if path.is_dir() {
-                                                let result = self.visit_dirs(
-                                                    &path,
-                                                    need_metadata,
-                                                    need_dim,
-                                                    need_mp3,
-                                                    max_depth,
-                                                    depth + 1,
-                                                    search_archives,
-                                                    follow_symlinks,
-                                                    apply_gitignore,
-                                                    t);
+                                                if path.is_dir() {
+                                                    let result = self.visit_dirs(
+                                                        &path,
+                                                        need_metadata,
+                                                        need_dim,
+                                                        need_mp3,
+                                                        max_depth,
+                                                        depth + 1,
+                                                        search_archives,
+                                                        follow_symlinks,
+                                                        apply_gitignore,
+                                                        t);
 
-                                                if result.is_err() {
-                                                    path_error_message(&path, result.err().unwrap(), t);
+                                                    if result.is_err() {
+                                                        path_error_message(&path, result.err().unwrap(), t);
+                                                    }
                                                 }
                                             }
                                         },
@@ -217,6 +217,16 @@ impl Searcher {
 
     fn get_gitignore_filters(&self, dir: &Path) -> Vec<GitignoreFilter> {
         let mut result = vec![];
+
+        for (dir_path, regexes) in &self.gitignore_map {
+            if dir.to_path_buf() == *dir_path {
+                for ref mut rx in regexes {
+                    result.push(rx.clone());
+                }
+
+                return result;
+            }
+        }
 
         let mut path = dir.clone().to_path_buf();
 

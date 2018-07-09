@@ -169,7 +169,7 @@ Other operators assume exact date and time, which could be specified in a more f
 | `is_book` | .azw3, .chm, .epub, .fb2, .mobi, .pdf |
 | `is_doc` | .accdb, .doc, .docm, .docx, .dot, .dotm, .dotx, .mdb, .ods, .odt, .pdf, .potm, .potx, .ppt, .pptm, .pptx, .rtf, .xlm, .xls, .xlsm, .xlsx, .xlt, .xltm, .xltx, .xps |
 | `is_image` | .bmp, .gif, .jpeg, .jpg, .png, .tiff, .webp |
-| `is_source` | .asm, .c, .cpp, .cs, .java, .js, .jsp, .h, .hpp, .pas, .php, .pl, .pm, .py, .rb, .rs, .swift |
+| `is_source` | .asm, .c, .cpp, .cs, .go, .h, .hpp, .java, .js, .jsp, .pas, .php, .pl, .pm, .py, .rb, .rs, .swift |
 | `is_video` | .3gp, .avi, .flv, .m4p, .m4v, .mkv, .mov, .mp4, .mpeg, .mpg, .webm, .wmv |
 
     fselect is_archive, path from /home/user

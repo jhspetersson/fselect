@@ -18,6 +18,7 @@ use chrono_english::{parse_date_string,Dialect};
 use regex::Regex;
 use term;
 use term::StdoutTerminal;
+use time::Tm;
 
 use field::Field;
 
@@ -282,6 +283,24 @@ pub fn parse_datetime(s: &str) -> Result<(DateTime<Local>, DateTime<Local>), Str
                 _ => Err("Error parsing date/time value: ".to_string() + s)
             }
         }
+    }
+}
+
+pub fn to_local_datetime(tm: &Tm) -> DateTime<Local> {
+    Local.ymd(tm.tm_year + 1900, (tm.tm_mon + 1) as u32, tm.tm_mday as u32)
+        .and_hms(tm.tm_hour as u32, tm.tm_min as u32, tm.tm_sec as u32)
+}
+
+pub fn str_to_bool(val: &str) -> bool {
+    let str_val = val.to_ascii_lowercase();
+    str_val.eq("true") || str_val.eq("1")
+}
+
+pub fn parse_unix_filename(s: &str) -> &str {
+    let last_slash = s.rfind('/');
+    match last_slash {
+        Some(idx) => &s[idx..],
+        _ => s
     }
 }
 

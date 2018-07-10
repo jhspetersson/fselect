@@ -22,6 +22,7 @@ use std::env;
 use term::StdoutTerminal;
 
 mod field;
+mod fileinfo;
 mod gitignore;
 mod lexer;
 mod mode;

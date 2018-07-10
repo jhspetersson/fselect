@@ -12,7 +12,6 @@ use std::rc::Rc;
 
 use chrono::DateTime;
 use chrono::Local;
-use chrono::TimeZone;
 use csv;
 use humansize::{FileSize, file_size_opts};
 use imagesize;
@@ -20,7 +19,6 @@ use mp3_metadata;
 use mp3_metadata::MP3Metadata;
 use serde_json;
 use term::StdoutTerminal;
-use time::Tm;
 #[cfg(unix)]
 use users::{Groups, Users, UsersCache};
 #[cfg(unix)]
@@ -28,6 +26,8 @@ use xattr::FileExt;
 use zip;
 
 use field::Field;
+use fileinfo::FileInfo;
+use fileinfo::to_file_info;
 use gitignore::GitignoreFilter;
 use gitignore::matches_gitignore_filter;
 use gitignore::parse_gitignore;
@@ -1833,11 +1833,6 @@ fn update_mp3_meta(entry: &DirEntry, mp3: Option<MP3Metadata>) -> Option<MP3Meta
     }
 }
 
-fn str_to_bool(val: &str) -> bool {
-    let str_val = val.to_ascii_lowercase();
-    str_val.eq("true") || str_val.eq("1")
-}
-
 #[allow(unused)]
 fn is_hidden(file_name: &str, metadata: &Option<Box<Metadata>>, archive_mode: bool) -> bool {
     if archive_mode {
@@ -1863,14 +1858,6 @@ fn is_hidden(file_name: &str, metadata: &Option<Box<Metadata>>, archive_mode: bo
     #[cfg(not(unix))]
     {
         false
-    }
-}
-
-fn parse_unix_filename(s: &str) -> &str {
-    let last_slash = s.rfind('/');
-    match last_slash {
-        Some(idx) => &s[idx..],
-        _ => s
     }
 }
 
@@ -1906,27 +1893,6 @@ fn has_extension(file_name: &str, extensions: &[&str]) -> bool {
     }
 
     false
-}
-
-struct FileInfo {
-    name: String,
-    size: u64,
-    mode: Option<u32>,
-    modified: Tm,
-}
-
-fn to_file_info(zipped_file: &zip::read::ZipFile) -> FileInfo {
-    FileInfo {
-        name: zipped_file.name().to_string(),
-        size: zipped_file.size(),
-        mode: zipped_file.unix_mode(),
-        modified: zipped_file.last_modified()
-    }
-}
-
-fn to_local_datetime(tm: &Tm) -> DateTime<Local> {
-    Local.ymd(tm.tm_year + 1900, (tm.tm_mon + 1) as u32, tm.tm_mday as u32)
-        .and_hms(tm.tm_hour as u32, tm.tm_min as u32, tm.tm_sec as u32)
 }
 
 #[cfg(windows)]

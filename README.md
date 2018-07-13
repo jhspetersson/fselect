@@ -32,7 +32,7 @@ More is under way!
 
 #### Windows 64bit
 
-A statically precompiled [binary](https://github.com/jhspetersson/fselect/releases/download/0.4.1/fselect.zip) is available at Github downloads.
+A statically precompiled [binary](https://github.com/jhspetersson/fselect/releases/download/0.4.3/fselect.zip) is available at Github downloads.
 
 #### Mac
 

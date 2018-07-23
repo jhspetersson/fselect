@@ -55,16 +55,18 @@ impl<'a> Lexer<'a> {
                     s.push(c);
                 },
                 LexingMode::Operator => {
-                    self.index += 1;
                     if !is_op_char(c) {
                         break
                     }
+
+                    self.index += 1;
                     s.push(c);
                 },
                 LexingMode::RawString => {
-                    if c == ' ' || c == ',' || c == ')' {
+                    if c == ' ' || c == ',' || c == ')' || is_op_char(c) {
                         break
                     }
+
                     self.index += 1;
                     s.push(c);
                 },
@@ -187,4 +189,33 @@ mod tests {
         assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("50"))));
     }
 
+    #[test]
+    fn spaces() {
+        let lexer = Lexer::new("path,size from . where size=0");
+        assert_spaces(lexer);
+
+        let lexer = Lexer::new("path,size from . where size =0");
+        assert_spaces(lexer);
+
+        let lexer = Lexer::new("path,size from . where size= 0");
+        assert_spaces(lexer);
+
+        let lexer = Lexer::new("path,size from . where size = 0");
+        assert_spaces(lexer);
+
+        let lexer = Lexer::new("path,size from . where size   =     0");
+        assert_spaces(lexer);
+    }
+
+    fn assert_spaces(mut lexer: Lexer) {
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("path"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::Comma));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("size"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::From));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("."))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::Where));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("size"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::Operator(String::from("="))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("0"))));
+    }
 }

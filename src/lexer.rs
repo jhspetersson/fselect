@@ -8,6 +8,7 @@ pub enum Lexem {
     String(String),
     Open,
     Close,
+    ArithmeticOperator(String),
     And,
     Or,
     Order,
@@ -23,6 +24,7 @@ enum LexingMode {
     RawString,
     Comma,
     Operator,
+    ArithmeticOperator,
     String,
     Open,
     Close,
@@ -62,8 +64,16 @@ impl<'a> Lexer<'a> {
                     self.index += 1;
                     s.push(c);
                 },
+                LexingMode::ArithmeticOperator => {
+                    if !is_arithmetic_op_char(c) {
+                        break
+                    }
+
+                    self.index += 1;
+                    s.push(c);
+                },
                 LexingMode::RawString => {
-                    if c == ' ' || c == ',' || c == ')' || is_op_char(c) {
+                    if c == ' ' || c == ',' || c == '(' || c == ')' || is_op_char(c) || is_arithmetic_op_char(c) {
                         break
                     }
 
@@ -74,6 +84,9 @@ impl<'a> Lexer<'a> {
                     self.index += 1;
                     match c {
                         ' ' => {},
+                        '/' => {
+                            s.push(c);
+                        },
                         '\'' => mode = LexingMode::String,
                         ',' => mode = LexingMode::Comma,
                         '(' => mode = LexingMode::Open,
@@ -81,6 +94,8 @@ impl<'a> Lexer<'a> {
                         _ => {
                             mode = if is_op_char(c) {
                                 LexingMode::Operator
+                            } else if is_arithmetic_op_char(c) {
+                                LexingMode::ArithmeticOperator
                             } else {
                                 LexingMode::RawString
                             };
@@ -94,6 +109,7 @@ impl<'a> Lexer<'a> {
         match mode {
             LexingMode::String => Some(Lexem::String(s)),
             LexingMode::Operator => Some(Lexem::Operator(s)),
+            LexingMode::ArithmeticOperator => Some(Lexem::ArithmeticOperator(s)),
             LexingMode::Comma => Some(Lexem::Comma),
             LexingMode::Open => Some(Lexem::Open),
             LexingMode::Close => Some(Lexem::Close),
@@ -111,6 +127,7 @@ impl<'a> Lexer<'a> {
                     "into" => Some(Lexem::Into),
                     "eq" | "ne" | "gt" | "lt" | "ge" | "le" | "gte" | "lte" |
                     "regexp" | "rx" | "like" => Some(Lexem::Operator(s)),
+                    "mul" | "div" | "plus" | "minus" => Some(Lexem::ArithmeticOperator(s)),
                     _ => Some(Lexem::RawString(s)),
                 }
             },
@@ -126,6 +143,12 @@ fn is_op_char(c: char) -> bool {
     }
 }
 
+fn is_arithmetic_op_char(c: char) -> bool {
+    match c {
+        '+' | '-' | '*' => true,
+        _ => false
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -217,5 +240,53 @@ mod tests {
         assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("size"))));
         assert_eq!(lexer.next_lexem(), Some(Lexem::Operator(String::from("="))));
         assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("0"))));
+    }
+
+    #[test]
+    fn func_calls() {
+        let mut lexer = Lexer::new("COUNT(*), MIN(size), AVG(size), MAX(size) from .");
+
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("COUNT"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::Open));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::ArithmeticOperator(String::from("*"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::Close));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::Comma));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("MIN"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::Open));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("size"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::Close));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::Comma));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("AVG"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::Open));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("size"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::Close));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::Comma));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("MAX"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::Open));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("size"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::Close));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::From));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("."))));
+    }
+
+    #[test]
+    fn arithmetic_operators() {
+        let mut lexer = Lexer::new("width + height, width-height, width mul height, path from .");
+
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("width"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::ArithmeticOperator(String::from("+"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("height"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::Comma));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("width"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::ArithmeticOperator(String::from("-"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("height"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::Comma));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("width"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::ArithmeticOperator(String::from("mul"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("height"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::Comma));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("path"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::From));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("."))));
     }
 }

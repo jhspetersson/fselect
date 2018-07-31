@@ -259,10 +259,10 @@ impl Searcher {
                        dimensions: Option<(usize, usize)>,
                        field: &Field,
                        _t: &mut Box<StdoutTerminal>) -> String {
-        match *field {
+        match field {
             Field::Name => {
                 match file_info {
-                    &Some(ref file_info) => {
+                    Some(ref file_info) => {
                         return format!("[{}] {}", entry.file_name().to_string_lossy(), file_info.name);
                     },
                     _ => {
@@ -272,7 +272,7 @@ impl Searcher {
             },
             Field::Path => {
                 match file_info {
-                    &Some(ref file_info) => {
+                    Some(ref file_info) => {
                         return format!("[{}] {}", entry.path().to_string_lossy(), file_info.name);
                     },
                     _ => {
@@ -282,11 +282,11 @@ impl Searcher {
             },
             Field::Size => {
                 match file_info {
-                    &Some(ref file_info) => {
+                    Some(ref file_info) => {
                         return format!("{}", file_info.size);
                     },
                     _ => {
-                        if let &Some(ref attrs) = attrs {
+                        if let Some(ref attrs) = attrs {
                             return format!("{}", attrs.len());
                         }
                     }
@@ -294,11 +294,11 @@ impl Searcher {
             },
             Field::FormattedSize => {
                 match file_info {
-                    &Some(ref file_info) => {
+                    Some(ref file_info) => {
                         return format!("{}", file_info.size.file_size(file_size_opts::BINARY).unwrap());
                     },
                     _ => {
-                        if let &Some(ref attrs) = attrs {
+                        if let Some(ref attrs) = attrs {
                             return format!("{}", attrs.len().file_size(file_size_opts::BINARY).unwrap());
                         }
                     }
@@ -306,11 +306,11 @@ impl Searcher {
             },
             Field::IsDir => {
                 match file_info {
-                    &Some(ref file_info) => {
+                    Some(ref file_info) => {
                         return format!("{}", file_info.name.ends_with('/'));
                     },
                     _ => {
-                        if let &Some(ref attrs) = attrs {
+                        if let Some(ref attrs) = attrs {
                             return format!("{}", attrs.is_dir());
                         }
                     }
@@ -318,11 +318,11 @@ impl Searcher {
             },
             Field::IsFile => {
                 match file_info {
-                    &Some(ref file_info) => {
+                    Some(ref file_info) => {
                         return format!("{}", !file_info.name.ends_with('/'));
                     },
                     _ => {
-                        if let &Some(ref attrs) = attrs {
+                        if let Some(ref attrs) = attrs {
                             return format!("{}", attrs.is_file());
                         }
                     }
@@ -330,11 +330,11 @@ impl Searcher {
             },
             Field::IsSymlink => {
                 match file_info {
-                    &Some(_) => {
+                    Some(_) => {
                         return format!("{}", false);
                     },
                     _ => {
-                        if let &Some(ref attrs) = attrs {
+                        if let Some(ref attrs) = attrs {
                             return format!("{}", attrs.file_type().is_symlink());
                         }
                     }
@@ -354,13 +354,13 @@ impl Searcher {
             },
             Field::Mode => {
                 match file_info {
-                    &Some(ref file_info) => {
+                    Some(ref file_info) => {
                         if let Some(mode) = file_info.mode {
                             return format!("{}", mode::format_mode(mode));
                         }
                     },
                     _ => {
-                        if let &Some(ref attrs) = attrs {
+                        if let Some(ref attrs) = attrs {
                             return format!("{}", mode::get_mode(attrs));
                         }
                     }
@@ -395,7 +395,7 @@ impl Searcher {
             },
             Field::IsHidden => {
                 match file_info {
-                    &Some(ref file_info) => {
+                    Some(ref file_info) => {
                         return format!("{}", is_hidden(&file_info.name, &None, true));
                     },
                     _ => {
@@ -404,21 +404,21 @@ impl Searcher {
                 }
             },
             Field::Uid => {
-                if let &Some(ref attrs) = attrs {
+                if let Some(ref attrs) = attrs {
                     if let Some(uid) = mode::get_uid(attrs) {
                         return format!("{}", uid);
                     }
                 }
             },
             Field::Gid => {
-                if let &Some(ref attrs) = attrs {
+                if let Some(ref attrs) = attrs {
                     if let Some(gid) = mode::get_gid(attrs) {
                         return format!("{}", gid);
                     }
                 }
             },
             Field::User => {
-                if let &Some(ref attrs) = attrs {
+                if let Some(ref attrs) = attrs {
                     if let Some(uid) = mode::get_uid(attrs) {
                         if let Some(user) = self.user_cache.get_user_by_uid(uid) {
                             return format!("{}", user.name());
@@ -427,7 +427,7 @@ impl Searcher {
                 }
             },
             Field::Group => {
-                if let &Some(ref attrs) = attrs {
+                if let Some(ref attrs) = attrs {
                     if let Some(gid) = mode::get_gid(attrs) {
                         if let Some(group) = self.user_cache.get_group_by_gid(gid) {
                             return format!("{}", group.name());
@@ -436,7 +436,7 @@ impl Searcher {
                 }
             },
             Field::Created => {
-                if let &Some(ref attrs) = attrs {
+                if let Some(ref attrs) = attrs {
                     if let Ok(sdt) = attrs.created() {
                         let dt: DateTime<Local> = DateTime::from(sdt);
                         let format = dt.format("%Y-%m-%d %H:%M:%S");
@@ -445,7 +445,7 @@ impl Searcher {
                 }
             },
             Field::Accessed => {
-                if let &Some(ref attrs) = attrs {
+                if let Some(ref attrs) = attrs {
                     if let Ok(sdt) = attrs.accessed() {
                         let dt: DateTime<Local> = DateTime::from(sdt);
                         let format = dt.format("%Y-%m-%d %H:%M:%S");
@@ -455,13 +455,13 @@ impl Searcher {
             },
             Field::Modified => {
                 match file_info {
-                    &Some(ref file_info) => {
+                    Some(ref file_info) => {
                         let dt: DateTime<Local> = to_local_datetime(&file_info.modified);
                         let format = dt.format("%Y-%m-%d %H:%M:%S");
                         return format!("{}", format);
                     },
                     _ => {
-                        if let &Some(ref attrs) = attrs {
+                        if let Some(ref attrs) = attrs {
                             if let Ok(sdt) = attrs.modified() {
                                 let dt: DateTime<Local> = DateTime::from(sdt);
                                 let format = dt.format("%Y-%m-%d %H:%M:%S");
@@ -498,45 +498,45 @@ impl Searcher {
                 }
             },
             Field::Bitrate => {
-                if let &Some(ref mp3_info) = mp3_info {
+                if let Some(ref mp3_info) = mp3_info {
                     return format!("{}", mp3_info.frames[0].bitrate);
                 }
             },
             Field::Freq => {
-                if let &Some(ref mp3_info) = mp3_info {
+                if let Some(ref mp3_info) = mp3_info {
                     return format!("{}", mp3_info.frames[0].sampling_freq);
                 }
             },
             Field::Title => {
-                if let &Some(ref mp3_info) = mp3_info {
+                if let Some(ref mp3_info) = mp3_info {
                     if let Some(ref mp3_tag) = mp3_info.tag {
                         return format!("{}", mp3_tag.title);
                     }
                 }
             },
             Field::Artist => {
-                if let &Some(ref mp3_info) = mp3_info {
+                if let Some(ref mp3_info) = mp3_info {
                     if let Some(ref mp3_tag) = mp3_info.tag {
                         return format!("{}", mp3_tag.artist);
                     }
                 }
             },
             Field::Album => {
-                if let &Some(ref mp3_info) = mp3_info {
+                if let Some(ref mp3_info) = mp3_info {
                     if let Some(ref mp3_tag) = mp3_info.tag {
                         return format!("{}", mp3_tag.album);
                     }
                 }
             },
             Field::Year => {
-                if let &Some(ref mp3_info) = mp3_info {
+                if let Some(ref mp3_info) = mp3_info {
                     if let Some(ref mp3_tag) = mp3_info.tag {
                         return format!("{}", mp3_tag.year);
                     }
                 }
             },
             Field::Genre => {
-                if let &Some(ref mp3_info) = mp3_info {
+                if let Some(ref mp3_info) = mp3_info {
                     if let Some(ref mp3_tag) = mp3_info.tag {
                         return format!("{:?}", mp3_tag.genre);
                     }
@@ -688,13 +688,13 @@ impl Searcher {
                        file_info: &Option<FileInfo>,
                        mode_func_i32: &Fn(u32) -> bool) -> String {
         match file_info {
-            &Some(ref file_info) => {
+            Some(ref file_info) => {
                 if let Some(mode) = file_info.mode {
                     return format!("{}", mode_func_i32(mode));
                 }
             },
             _ => {
-                if let &Some(ref attrs) = attrs {
+                if let Some(ref attrs) = attrs {
                     return format!("{}", mode_func_boxed(attrs));
                 }
             }
@@ -729,7 +729,7 @@ impl Searcher {
             }
 
             match logical_op {
-                &LogicalOp::And => {
+                LogicalOp::And => {
                     if !left_result {
                         result = false;
                     } else {
@@ -744,7 +744,7 @@ impl Searcher {
                         result = left_result && right_result;
                     }
                 },
-                &LogicalOp::Or => {
+                LogicalOp::Or => {
                     if left_result {
                         result = true;
                     } else {
@@ -763,11 +763,11 @@ impl Searcher {
         }
 
         if let Some(ref field) = expr.field {
-            match *field {
+            match field {
                 Field::Name => {
                     if let Some(ref val) = expr.val {
                         let file_name = match file_info {
-                            &Some(ref file_info) => file_info.name.clone(),
+                            Some(ref file_info) => file_info.name.clone(),
                             _ => entry.file_name().to_string_lossy().to_string()
                         };
 
@@ -803,7 +803,7 @@ impl Searcher {
                 Field::Path => {
                     if let Some(ref val) = expr.val {
                         let file_path = match file_info {
-                            &Some(ref file_info) => file_info.name.clone(),
+                            Some(ref file_info) => file_info.name.clone(),
                             _ => String::from(entry.path().to_string_lossy())
                         };
 
@@ -839,7 +839,7 @@ impl Searcher {
                 Field::Size | Field::FormattedSize => {
                     if let Some(ref val) = expr.val {
                         let file_size = match file_info {
-                            &Some(ref file_info) => {
+                            Some(ref file_info) => {
                                 Some(file_info.size)
                             },
                             _ => {
@@ -1016,7 +1016,7 @@ impl Searcher {
                 Field::IsDir => {
                     if let Some(ref val) = expr.val {
                         let is_dir = match file_info {
-                            &Some(ref file_info) => Some(file_info.name.ends_with('/')),
+                            Some(ref file_info) => Some(file_info.name.ends_with('/')),
                             _ => {
                                 meta = update_meta(entry, meta, follow_symlinks);
 
@@ -1055,7 +1055,7 @@ impl Searcher {
                 Field::IsFile => {
                     if let Some(ref val) = expr.val {
                         let is_file = match file_info {
-                            &Some(ref file_info) => Some(!file_info.name.ends_with('/')),
+                            Some(ref file_info) => Some(!file_info.name.ends_with('/')),
                             _ => {
                                 meta = update_meta(entry, meta, follow_symlinks);
 
@@ -1094,7 +1094,7 @@ impl Searcher {
                 Field::IsSymlink => {
                     if let Some(ref val) = expr.val {
                         let is_symlink = match file_info {
-                            &Some(_) => Some(false),
+                            Some(_) => Some(false),
                             _ => {
                                 meta = update_meta(entry, meta, follow_symlinks);
 
@@ -1153,7 +1153,7 @@ impl Searcher {
                 Field::Mode => {
                     if let Some(ref val) = expr.val {
                         let mode = match file_info {
-                            &Some(ref file_info) => {
+                            Some(ref file_info) => {
                                 match file_info.mode {
                                     Some(mode) => Some(mode::format_mode(mode)),
                                     _ => None
@@ -1244,7 +1244,7 @@ impl Searcher {
                 Field::IsHidden => {
                     if let Some(ref val) = expr.val {
                         let is_hidden = match file_info {
-                            &Some(ref file_info) => is_hidden(&file_info.name, &None, true),
+                            Some(ref file_info) => is_hidden(&file_info.name, &None, true),
                             _ => is_hidden(&entry.file_name().to_string_lossy(), &meta, false)
                         };
 
@@ -1330,7 +1330,7 @@ impl Searcher {
                 Field::Modified => {
                     if let Some(ref _val) = expr.val {
                         let dt = match file_info {
-                            &Some(ref file_info) => Some(to_local_datetime(&file_info.modified)),
+                            Some(ref file_info) => Some(to_local_datetime(&file_info.modified)),
                             _ => {
                                 meta = update_meta(entry, meta, follow_symlinks);
                                 match meta {
@@ -1377,14 +1377,14 @@ impl Searcher {
                                         let bool_val = str_to_bool(val);
 
                                         result = match &expr.op {
-                                            &Some(Op::Eq) | &Some(Op::Eeq) => {
+                                            Some(Op::Eq) | Some(Op::Eeq) => {
                                                 if bool_val {
                                                     has_xattrs
                                                 } else {
                                                     !has_xattrs
                                                 }
                                             },
-                                            &Some(Op::Ne) | &Some(Op::Ene) => {
+                                            Some(Op::Ne) | Some(Op::Ene) => {
                                                 if bool_val {
                                                     !has_xattrs
                                                 } else {
@@ -1718,9 +1718,9 @@ fn confirm_file_mode(expr_op: &Option<Op>,
     let mut result = false;
     let mut meta = meta;
 
-    if let &Some(ref val) = expr_val {
+    if let Some(ref val) = expr_val {
         let mode = match file_info {
-            &Some(ref file_info) => file_info.mode,
+            Some(ref file_info) => file_info.mode,
             _ => {
                 meta = update_meta(entry, meta, follow_symlinks);
 
@@ -1735,14 +1735,14 @@ fn confirm_file_mode(expr_op: &Option<Op>,
             let bool_val = str_to_bool(val);
 
             result = match expr_op {
-                &Some(Op::Eq) => {
+                Some(Op::Eq) => {
                     if bool_val {
                         mode_func(mode)
                     } else {
                         !mode_func(mode)
                     }
                 },
-                &Some(Op::Ne) => {
+                Some(Op::Ne) => {
                     if bool_val {
                         !mode_func(mode)
                     } else {
@@ -1764,23 +1764,23 @@ fn confirm_file_ext(expr_op: &Option<Op>,
                     file_ext_func: &Fn(&str) -> bool) -> bool {
     let mut result = false;
 
-    if let &Some(ref val) = expr_val {
+    if let Some(ref val) = expr_val {
         let file_name = match file_info {
-            &Some(ref file_info) => file_info.name.clone(),
+            Some(ref file_info) => file_info.name.clone(),
             _ => String::from(entry.file_name().to_string_lossy())
         };
 
         let bool_val = str_to_bool(val);
 
         result = match expr_op {
-            &Some(Op::Eq) | &Some(Op::Eeq) => {
+            Some(Op::Eq) | Some(Op::Eeq) => {
                 if bool_val {
                     file_ext_func(&file_name)
                 } else {
                     !file_ext_func(&file_name)
                 }
             },
-            &Some(Op::Ne) | &Some(Op::Ene) => {
+            Some(Op::Ne) | Some(Op::Ene) => {
                 if bool_val {
                     !file_ext_func(&file_name)
                 } else {
@@ -1850,7 +1850,7 @@ fn is_hidden(file_name: &str, metadata: &Option<Box<Metadata>>, archive_mode: bo
 
     #[cfg(windows)]
     {
-        if let &Some(ref metadata) = metadata {
+        if let Some(ref metadata) = metadata {
             return mode::get_mode(metadata).contains("Hidden");
         }
     }

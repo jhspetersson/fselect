@@ -134,63 +134,63 @@ pub fn parse_filesize(s: &str) -> Option<u64> {
 
     if string.ends_with("k") {
         match &string[..(s.len() - 1)].parse::<u64>() {
-            &Ok(size) => return Some(size * 1024),
+            Ok(size) => return Some(size * 1024),
             _ => return None
         }
     }
 
     if string.ends_with("kb") {
         match &string[..(s.len() - 2)].parse::<u64>() {
-            &Ok(size) => return Some(size * 1024),
+            Ok(size) => return Some(size * 1024),
             _ => return None
         }
     }
 
     if string.ends_with("kib") {
         match &string[..(s.len() - 3)].parse::<u64>() {
-            &Ok(size) => return Some(size * 1024),
+            Ok(size) => return Some(size * 1024),
             _ => return None
         }
     }
 
     if string.ends_with("m") {
         match &string[..(s.len() - 1)].parse::<u64>() {
-            &Ok(size) => return Some(size * 1024 * 1024),
+            Ok(size) => return Some(size * 1024 * 1024),
             _ => return None
         }
     }
 
     if string.ends_with("mb") {
         match &string[..(s.len() - 2)].parse::<u64>() {
-            &Ok(size) => return Some(size * 1024 * 1024),
+            Ok(size) => return Some(size * 1024 * 1024),
             _ => return None
         }
     }
 
     if string.ends_with("mib") {
         match &string[..(s.len() - 3)].parse::<u64>() {
-            &Ok(size) => return Some(size * 1024 * 1024),
+            Ok(size) => return Some(size * 1024 * 1024),
             _ => return None
         }
     }
 
     if string.ends_with("g") {
         match &string[..(s.len() - 1)].parse::<u64>() {
-            &Ok(size) => return Some(size * 1024 * 1024 * 1024),
+            Ok(size) => return Some(size * 1024 * 1024 * 1024),
             _ => return None
         }
     }
 
     if string.ends_with("gb") {
         match &string[..(s.len() - 2)].parse::<u64>() {
-            &Ok(size) => return Some(size * 1024 * 1024 * 1024),
+            Ok(size) => return Some(size * 1024 * 1024 * 1024),
             _ => return None
         }
     }
 
     if string.ends_with("gib") {
         match &string[..(s.len() - 3)].parse::<u64>() {
-            &Ok(size) => return Some(size * 1024 * 1024 * 1024),
+            Ok(size) => return Some(size * 1024 * 1024 * 1024),
             _ => return None
         }
     }

@@ -135,25 +135,25 @@ impl Serialize for Field {
 impl Field {
     pub fn is_numeric_field(&self) -> bool {
         match self {
-            &Field::Size | &Field::FormattedSize
-            | &Field::Uid | &Field::Gid
-            | &Field::Width | &Field::Height
-            | &Field::Bitrate | &Field::Freq | &Field::Year => true,
+            Field::Size | Field::FormattedSize
+            | Field::Uid | Field::Gid
+            | Field::Width | Field::Height
+            | Field::Bitrate | Field::Freq | Field::Year => true,
             _ => false
         }
     }
 
     pub fn is_datetime_field(&self) -> bool {
         match self {
-            &Field::Created | &Field::Accessed | &Field::Modified => true,
+            Field::Created | Field::Accessed | Field::Modified => true,
             _ => false
         }
     }
 
     pub fn is_mp3_field(&self) -> bool {
         match self {
-            &Field::Bitrate | &Field::Freq | &Field::Title
-            | &Field::Artist | &Field::Album | &Field::Year | &Field::Genre => true,
+            Field::Bitrate | Field::Freq | Field::Title
+            | Field::Artist | Field::Album | Field::Year | Field::Genre => true,
             _ => false
         }
     }

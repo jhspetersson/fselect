@@ -8,6 +8,8 @@ extern crate lazy_static;
 extern crate mp3_metadata;
 extern crate regex;
 extern crate serde;
+#[macro_use]
+extern crate serde_derive;
 extern crate serde_json;
 extern crate term;
 extern crate time;

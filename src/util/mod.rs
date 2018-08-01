@@ -20,14 +20,13 @@ use term;
 use term::StdoutTerminal;
 use time::Tm;
 
-use field::Field;
-
 pub use self::top_n::TopN;
 pub use self::wbuf::WritableBuffer;
+use parser::ColumnExpr;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd)]
 pub struct Criteria<T> where T: Display + ToString {
-    fields: Rc<Vec<Field>>,
+    fields: Rc<Vec<ColumnExpr>>,
     /// Values of current row to sort with, placed in order of significance.
     values: Vec<T>,
     /// Shared smart reference to Vector of boolean where each index corresponds to whether the
@@ -36,7 +35,7 @@ pub struct Criteria<T> where T: Display + ToString {
 }
 
 impl<T> Criteria<T> where T: Display {
-    pub fn new(fields: Rc<Vec<Field>>, values: Vec<T>, orderings: Rc<Vec<bool>>) -> Criteria<T> {
+    pub fn new(fields: Rc<Vec<ColumnExpr>>, values: Vec<T>, orderings: Rc<Vec<bool>>) -> Criteria<T> {
         debug_assert_eq!(fields.len(), values.len());
         debug_assert_eq!(values.len(), orderings.len());
 
@@ -46,15 +45,18 @@ impl<T> Criteria<T> where T: Display {
     #[inline]
     fn cmp_at(&self, other: &Self, i: usize) -> Ordering where T: Ord {
         let field = &self.fields[i];
-        let comparison;
-
-        if field.is_numeric_field() {
-            comparison = self.cmp_at_numbers(other, i);
-        } else if field.is_datetime_field() {
-            comparison = self.cmp_at_datetimes(other, i);
-        } else {
-            comparison = self.cmp_at_direct(other, i);
-        }
+        let comparison = match &field.field {
+            Some(field) => {
+                if field.is_numeric_field() {
+                    return self.cmp_at_numbers(other, i);
+                } else if field.is_datetime_field() {
+                    return self.cmp_at_datetimes(other, i);
+                } else {
+                    return self.cmp_at_direct(other, i);
+                }
+            },
+            _ => self.cmp_at_direct(other, i)
+        };
 
         if self.orderings[i] { comparison } else { comparison.reverse() }
     }

@@ -64,9 +64,9 @@ impl Searcher {
     }
 
     pub fn list_search_results(&mut self, t: &mut Box<StdoutTerminal>) -> io::Result<()> {
-        let need_metadata = self.query.fields.iter().any(|f| f != &Field::Name);
-        let need_dim = self.query.fields.iter().any(|f| f == &Field::Width || f == &Field::Height);
-        let need_mp3 = self.query.fields.iter().any(|f| f.is_mp3_field());
+        let need_metadata = self.query.fields.iter().any(|f| f.field.is_some() && f.field.clone().unwrap() != Field::Name);
+        let need_dim = self.query.fields.iter().any(|f| f.field.is_some() && (f.field.clone().unwrap() == Field::Width || f.field.clone().unwrap() == Field::Height));
+        let need_mp3 = self.query.fields.iter().any(|f| f.field.is_some() && f.field.clone().unwrap().is_mp3_field());
 
         if let OutputFormat::Json = self.query.output_format {
             print!("[");
@@ -257,320 +257,326 @@ impl Searcher {
                        mp3_info: &Option<MP3Metadata>,
                        attrs: &Option<Box<Metadata>>,
                        dimensions: Option<(usize, usize)>,
-                       field: &Field,
+                       column_expr: &ColumnExpr,
                        _t: &mut Box<StdoutTerminal>) -> String {
-        match field {
-            Field::Name => {
-                match file_info {
-                    Some(ref file_info) => {
-                        return format!("[{}] {}", entry.file_name().to_string_lossy(), file_info.name);
-                    },
-                    _ => {
-                        return format!("{}", entry.file_name().to_string_lossy());
-                    }
-                }
-            },
-            Field::Path => {
-                match file_info {
-                    Some(ref file_info) => {
-                        return format!("[{}] {}", entry.path().to_string_lossy(), file_info.name);
-                    },
-                    _ => {
-                        return format!("{}", entry.path().to_string_lossy());
-                    }
-                }
-            },
-            Field::Size => {
-                match file_info {
-                    Some(ref file_info) => {
-                        return format!("{}", file_info.size);
-                    },
-                    _ => {
-                        if let Some(ref attrs) = attrs {
-                            return format!("{}", attrs.len());
+        if let Some(ref field) = column_expr.field {
+            match field {
+                Field::Name => {
+                    match file_info {
+                        Some(ref file_info) => {
+                            return format!("[{}] {}", entry.file_name().to_string_lossy(), file_info.name);
+                        },
+                        _ => {
+                            return format!("{}", entry.file_name().to_string_lossy());
                         }
                     }
-                }
-            },
-            Field::FormattedSize => {
-                match file_info {
-                    Some(ref file_info) => {
-                        return format!("{}", file_info.size.file_size(file_size_opts::BINARY).unwrap());
-                    },
-                    _ => {
-                        if let Some(ref attrs) = attrs {
-                            return format!("{}", attrs.len().file_size(file_size_opts::BINARY).unwrap());
+                },
+                Field::Path => {
+                    match file_info {
+                        Some(ref file_info) => {
+                            return format!("[{}] {}", entry.path().to_string_lossy(), file_info.name);
+                        },
+                        _ => {
+                            return format!("{}", entry.path().to_string_lossy());
                         }
                     }
-                }
-            },
-            Field::IsDir => {
-                match file_info {
-                    Some(ref file_info) => {
-                        return format!("{}", file_info.name.ends_with('/'));
-                    },
-                    _ => {
-                        if let Some(ref attrs) = attrs {
-                            return format!("{}", attrs.is_dir());
-                        }
-                    }
-                }
-            },
-            Field::IsFile => {
-                match file_info {
-                    Some(ref file_info) => {
-                        return format!("{}", !file_info.name.ends_with('/'));
-                    },
-                    _ => {
-                        if let Some(ref attrs) = attrs {
-                            return format!("{}", attrs.is_file());
-                        }
-                    }
-                }
-            },
-            Field::IsSymlink => {
-                match file_info {
-                    Some(_) => {
-                        return format!("{}", false);
-                    },
-                    _ => {
-                        if let Some(ref attrs) = attrs {
-                            return format!("{}", attrs.file_type().is_symlink());
-                        }
-                    }
-                }
-            },
-            Field::IsPipe => {
-                return Self::print_file_mode(&attrs, &mode::is_pipe, &file_info, &mode::mode_is_pipe);
-            },
-            Field::IsCharacterDevice => {
-                return Self::print_file_mode(&attrs, &mode::is_char_device, &file_info, &mode::mode_is_char_device);
-            },
-            Field::IsBlockDevice => {
-                return Self::print_file_mode(&attrs, &mode::is_block_device, &file_info, &mode::mode_is_block_device);
-            },
-            Field::IsSocket => {
-                return Self::print_file_mode(&attrs, &mode::is_socket, &file_info, &mode::mode_is_socket);
-            },
-            Field::Mode => {
-                match file_info {
-                    Some(ref file_info) => {
-                        if let Some(mode) = file_info.mode {
-                            return format!("{}", mode::format_mode(mode));
-                        }
-                    },
-                    _ => {
-                        if let Some(ref attrs) = attrs {
-                            return format!("{}", mode::get_mode(attrs));
-                        }
-                    }
-                }
-            },
-            Field::UserRead => {
-                return Self::print_file_mode(&attrs, &mode::user_read, &file_info, &mode::mode_user_read);
-            },
-            Field::UserWrite => {
-                return Self::print_file_mode(&attrs, &mode::user_write, &file_info, &mode::mode_user_write);
-            },
-            Field::UserExec => {
-                return Self::print_file_mode(&attrs, &mode::user_exec, &file_info, &mode::mode_user_exec);
-            },
-            Field::GroupRead => {
-                return Self::print_file_mode(&attrs, &mode::group_read, &file_info, &mode::mode_group_read);
-            },
-            Field::GroupWrite => {
-                return Self::print_file_mode(&attrs, &mode::group_write, &file_info, &mode::mode_group_write);
-            },
-            Field::GroupExec => {
-                return Self::print_file_mode(&attrs, &mode::group_exec, &file_info, &mode::mode_group_exec);
-            },
-            Field::OtherRead => {
-                return Self::print_file_mode(&attrs, &mode::other_read, &file_info, &mode::mode_other_read);
-            },
-            Field::OtherWrite => {
-                return Self::print_file_mode(&attrs, &mode::other_write, &file_info, &mode::mode_other_write);
-            },
-            Field::OtherExec => {
-                return Self::print_file_mode(&attrs, &mode::other_exec, &file_info, &mode::mode_other_exec);
-            },
-            Field::IsHidden => {
-                match file_info {
-                    Some(ref file_info) => {
-                        return format!("{}", is_hidden(&file_info.name, &None, true));
-                    },
-                    _ => {
-                        return format!("{}", is_hidden(&entry.file_name().to_string_lossy(), &attrs, false));
-                    }
-                }
-            },
-            Field::Uid => {
-                if let Some(ref attrs) = attrs {
-                    if let Some(uid) = mode::get_uid(attrs) {
-                        return format!("{}", uid);
-                    }
-                }
-            },
-            Field::Gid => {
-                if let Some(ref attrs) = attrs {
-                    if let Some(gid) = mode::get_gid(attrs) {
-                        return format!("{}", gid);
-                    }
-                }
-            },
-            Field::User => {
-                if let Some(ref attrs) = attrs {
-                    if let Some(uid) = mode::get_uid(attrs) {
-                        if let Some(user) = self.user_cache.get_user_by_uid(uid) {
-                            return format!("{}", user.name());
-                        }
-                    }
-                }
-            },
-            Field::Group => {
-                if let Some(ref attrs) = attrs {
-                    if let Some(gid) = mode::get_gid(attrs) {
-                        if let Some(group) = self.user_cache.get_group_by_gid(gid) {
-                            return format!("{}", group.name());
-                        }
-                    }
-                }
-            },
-            Field::Created => {
-                if let Some(ref attrs) = attrs {
-                    if let Ok(sdt) = attrs.created() {
-                        let dt: DateTime<Local> = DateTime::from(sdt);
-                        let format = dt.format("%Y-%m-%d %H:%M:%S");
-                        return format!("{}", format);
-                    }
-                }
-            },
-            Field::Accessed => {
-                if let Some(ref attrs) = attrs {
-                    if let Ok(sdt) = attrs.accessed() {
-                        let dt: DateTime<Local> = DateTime::from(sdt);
-                        let format = dt.format("%Y-%m-%d %H:%M:%S");
-                        return format!("{}", format);
-                    }
-                }
-            },
-            Field::Modified => {
-                match file_info {
-                    Some(ref file_info) => {
-                        let dt: DateTime<Local> = to_local_datetime(&file_info.modified);
-                        let format = dt.format("%Y-%m-%d %H:%M:%S");
-                        return format!("{}", format);
-                    },
-                    _ => {
-                        if let Some(ref attrs) = attrs {
-                            if let Ok(sdt) = attrs.modified() {
-                                let dt: DateTime<Local> = DateTime::from(sdt);
-                                let format = dt.format("%Y-%m-%d %H:%M:%S");
-                                return format!("{}", format);
+                },
+                Field::Size => {
+                    match file_info {
+                        Some(ref file_info) => {
+                            return format!("{}", file_info.size);
+                        },
+                        _ => {
+                            if let Some(ref attrs) = attrs {
+                                return format!("{}", attrs.len());
                             }
                         }
                     }
-                }
-            },
-            Field::HasXattrs => {
-                #[cfg(unix)]
-                {
-                    if let Ok(file) = File::open(&entry.path()) {
-                        if let Ok(xattrs) = file.list_xattr() {
-                            let has_xattrs = xattrs.count() > 0;
-                            return format!("{}", has_xattrs);
+                },
+                Field::FormattedSize => {
+                    match file_info {
+                        Some(ref file_info) => {
+                            return format!("{}", file_info.size.file_size(file_size_opts::BINARY).unwrap());
+                        },
+                        _ => {
+                            if let Some(ref attrs) = attrs {
+                                return format!("{}", attrs.len().file_size(file_size_opts::BINARY).unwrap());
+                            }
                         }
                     }
-                }
+                },
+                Field::IsDir => {
+                    match file_info {
+                        Some(ref file_info) => {
+                            return format!("{}", file_info.name.ends_with('/'));
+                        },
+                        _ => {
+                            if let Some(ref attrs) = attrs {
+                                return format!("{}", attrs.is_dir());
+                            }
+                        }
+                    }
+                },
+                Field::IsFile => {
+                    match file_info {
+                        Some(ref file_info) => {
+                            return format!("{}", !file_info.name.ends_with('/'));
+                        },
+                        _ => {
+                            if let Some(ref attrs) = attrs {
+                                return format!("{}", attrs.is_file());
+                            }
+                        }
+                    }
+                },
+                Field::IsSymlink => {
+                    match file_info {
+                        Some(_) => {
+                            return format!("{}", false);
+                        },
+                        _ => {
+                            if let Some(ref attrs) = attrs {
+                                return format!("{}", attrs.file_type().is_symlink());
+                            }
+                        }
+                    }
+                },
+                Field::IsPipe => {
+                    return Self::print_file_mode(&attrs, &mode::is_pipe, &file_info, &mode::mode_is_pipe);
+                },
+                Field::IsCharacterDevice => {
+                    return Self::print_file_mode(&attrs, &mode::is_char_device, &file_info, &mode::mode_is_char_device);
+                },
+                Field::IsBlockDevice => {
+                    return Self::print_file_mode(&attrs, &mode::is_block_device, &file_info, &mode::mode_is_block_device);
+                },
+                Field::IsSocket => {
+                    return Self::print_file_mode(&attrs, &mode::is_socket, &file_info, &mode::mode_is_socket);
+                },
+                Field::Mode => {
+                    match file_info {
+                        Some(ref file_info) => {
+                            if let Some(mode) = file_info.mode {
+                                return format!("{}", mode::format_mode(mode));
+                            }
+                        },
+                        _ => {
+                            if let Some(ref attrs) = attrs {
+                                return format!("{}", mode::get_mode(attrs));
+                            }
+                        }
+                    }
+                },
+                Field::UserRead => {
+                    return Self::print_file_mode(&attrs, &mode::user_read, &file_info, &mode::mode_user_read);
+                },
+                Field::UserWrite => {
+                    return Self::print_file_mode(&attrs, &mode::user_write, &file_info, &mode::mode_user_write);
+                },
+                Field::UserExec => {
+                    return Self::print_file_mode(&attrs, &mode::user_exec, &file_info, &mode::mode_user_exec);
+                },
+                Field::GroupRead => {
+                    return Self::print_file_mode(&attrs, &mode::group_read, &file_info, &mode::mode_group_read);
+                },
+                Field::GroupWrite => {
+                    return Self::print_file_mode(&attrs, &mode::group_write, &file_info, &mode::mode_group_write);
+                },
+                Field::GroupExec => {
+                    return Self::print_file_mode(&attrs, &mode::group_exec, &file_info, &mode::mode_group_exec);
+                },
+                Field::OtherRead => {
+                    return Self::print_file_mode(&attrs, &mode::other_read, &file_info, &mode::mode_other_read);
+                },
+                Field::OtherWrite => {
+                    return Self::print_file_mode(&attrs, &mode::other_write, &file_info, &mode::mode_other_write);
+                },
+                Field::OtherExec => {
+                    return Self::print_file_mode(&attrs, &mode::other_exec, &file_info, &mode::mode_other_exec);
+                },
+                Field::IsHidden => {
+                    match file_info {
+                        Some(ref file_info) => {
+                            return format!("{}", is_hidden(&file_info.name, &None, true));
+                        },
+                        _ => {
+                            return format!("{}", is_hidden(&entry.file_name().to_string_lossy(), &attrs, false));
+                        }
+                    }
+                },
+                Field::Uid => {
+                    if let Some(ref attrs) = attrs {
+                        if let Some(uid) = mode::get_uid(attrs) {
+                            return format!("{}", uid);
+                        }
+                    }
+                },
+                Field::Gid => {
+                    if let Some(ref attrs) = attrs {
+                        if let Some(gid) = mode::get_gid(attrs) {
+                            return format!("{}", gid);
+                        }
+                    }
+                },
+                Field::User => {
+                    if let Some(ref attrs) = attrs {
+                        if let Some(uid) = mode::get_uid(attrs) {
+                            if let Some(user) = self.user_cache.get_user_by_uid(uid) {
+                                return format!("{}", user.name());
+                            }
+                        }
+                    }
+                },
+                Field::Group => {
+                    if let Some(ref attrs) = attrs {
+                        if let Some(gid) = mode::get_gid(attrs) {
+                            if let Some(group) = self.user_cache.get_group_by_gid(gid) {
+                                return format!("{}", group.name());
+                            }
+                        }
+                    }
+                },
+                Field::Created => {
+                    if let Some(ref attrs) = attrs {
+                        if let Ok(sdt) = attrs.created() {
+                            let dt: DateTime<Local> = DateTime::from(sdt);
+                            let format = dt.format("%Y-%m-%d %H:%M:%S");
+                            return format!("{}", format);
+                        }
+                    }
+                },
+                Field::Accessed => {
+                    if let Some(ref attrs) = attrs {
+                        if let Ok(sdt) = attrs.accessed() {
+                            let dt: DateTime<Local> = DateTime::from(sdt);
+                            let format = dt.format("%Y-%m-%d %H:%M:%S");
+                            return format!("{}", format);
+                        }
+                    }
+                },
+                Field::Modified => {
+                    match file_info {
+                        Some(ref file_info) => {
+                            let dt: DateTime<Local> = to_local_datetime(&file_info.modified);
+                            let format = dt.format("%Y-%m-%d %H:%M:%S");
+                            return format!("{}", format);
+                        },
+                        _ => {
+                            if let Some(ref attrs) = attrs {
+                                if let Ok(sdt) = attrs.modified() {
+                                    let dt: DateTime<Local> = DateTime::from(sdt);
+                                    let format = dt.format("%Y-%m-%d %H:%M:%S");
+                                    return format!("{}", format);
+                                }
+                            }
+                        }
+                    }
+                },
+                Field::HasXattrs => {
+                    #[cfg(unix)]
+                        {
+                            if let Ok(file) = File::open(&entry.path()) {
+                                if let Ok(xattrs) = file.list_xattr() {
+                                    let has_xattrs = xattrs.count() > 0;
+                                    return format!("{}", has_xattrs);
+                                }
+                            }
+                        }
 
-                #[cfg(not(unix))]
-                {
-                    return format!("{}", false);
+                    #[cfg(not(unix))]
+                        {
+                            return format!("{}", false);
+                        }
                 }
-            }
-            Field::Width => {
-                if let Some(ref dimensions) = dimensions {
-                    return format!("{}", dimensions.0);
-                }
-            },
-            Field::Height => {
-                if let Some(ref dimensions) = dimensions {
-                    return format!("{}", dimensions.1);
-                }
-            },
-            Field::Bitrate => {
-                if let Some(ref mp3_info) = mp3_info {
-                    return format!("{}", mp3_info.frames[0].bitrate);
-                }
-            },
-            Field::Freq => {
-                if let Some(ref mp3_info) = mp3_info {
-                    return format!("{}", mp3_info.frames[0].sampling_freq);
-                }
-            },
-            Field::Title => {
-                if let Some(ref mp3_info) = mp3_info {
-                    if let Some(ref mp3_tag) = mp3_info.tag {
-                        return format!("{}", mp3_tag.title);
+                Field::Width => {
+                    if let Some(ref dimensions) = dimensions {
+                        return format!("{}", dimensions.0);
                     }
-                }
-            },
-            Field::Artist => {
-                if let Some(ref mp3_info) = mp3_info {
-                    if let Some(ref mp3_tag) = mp3_info.tag {
-                        return format!("{}", mp3_tag.artist);
+                },
+                Field::Height => {
+                    if let Some(ref dimensions) = dimensions {
+                        return format!("{}", dimensions.1);
                     }
-                }
-            },
-            Field::Album => {
-                if let Some(ref mp3_info) = mp3_info {
-                    if let Some(ref mp3_tag) = mp3_info.tag {
-                        return format!("{}", mp3_tag.album);
+                },
+                Field::Bitrate => {
+                    if let Some(ref mp3_info) = mp3_info {
+                        return format!("{}", mp3_info.frames[0].bitrate);
                     }
-                }
-            },
-            Field::Year => {
-                if let Some(ref mp3_info) = mp3_info {
-                    if let Some(ref mp3_tag) = mp3_info.tag {
-                        return format!("{}", mp3_tag.year);
+                },
+                Field::Freq => {
+                    if let Some(ref mp3_info) = mp3_info {
+                        return format!("{}", mp3_info.frames[0].sampling_freq);
                     }
-                }
-            },
-            Field::Genre => {
-                if let Some(ref mp3_info) = mp3_info {
-                    if let Some(ref mp3_tag) = mp3_info.tag {
-                        return format!("{:?}", mp3_tag.genre);
+                },
+                Field::Title => {
+                    if let Some(ref mp3_info) = mp3_info {
+                        if let Some(ref mp3_tag) = mp3_info.tag {
+                            return format!("{}", mp3_tag.title);
+                        }
                     }
+                },
+                Field::Artist => {
+                    if let Some(ref mp3_info) = mp3_info {
+                        if let Some(ref mp3_tag) = mp3_info.tag {
+                            return format!("{}", mp3_tag.artist);
+                        }
+                    }
+                },
+                Field::Album => {
+                    if let Some(ref mp3_info) = mp3_info {
+                        if let Some(ref mp3_tag) = mp3_info.tag {
+                            return format!("{}", mp3_tag.album);
+                        }
+                    }
+                },
+                Field::Year => {
+                    if let Some(ref mp3_info) = mp3_info {
+                        if let Some(ref mp3_tag) = mp3_info.tag {
+                            return format!("{}", mp3_tag.year);
+                        }
+                    }
+                },
+                Field::Genre => {
+                    if let Some(ref mp3_info) = mp3_info {
+                        if let Some(ref mp3_tag) = mp3_info.tag {
+                            return format!("{:?}", mp3_tag.genre);
+                        }
+                    }
+                },
+                Field::IsArchive => {
+                    let is_archive = is_archive(&entry.file_name().to_string_lossy());
+                    return format!("{}", is_archive);
+                },
+                Field::IsAudio => {
+                    let is_audio = is_audio(&entry.file_name().to_string_lossy());
+                    return format!("{}", is_audio);
+                },
+                Field::IsBook => {
+                    let is_book = is_book(&entry.file_name().to_string_lossy());
+                    return format!("{}", is_book);
+                },
+                Field::IsDoc => {
+                    let is_doc = is_doc(&entry.file_name().to_string_lossy());
+                    return format!("{}", is_doc);
+                },
+                Field::IsImage => {
+                    let is_image = is_image(&entry.file_name().to_string_lossy());
+                    return format!("{}", is_image);
+                },
+                Field::IsSource => {
+                    let is_source = is_source(&entry.file_name().to_string_lossy());
+                    return format!("{}", is_source);
+                },
+                Field::IsVideo => {
+                    let is_video = is_video(&entry.file_name().to_string_lossy());
+                    return format!("{}", is_video);
                 }
-            },
-            Field::IsArchive => {
-                let is_archive = is_archive(&entry.file_name().to_string_lossy());
-                return format!("{}", is_archive);
-            },
-            Field::IsAudio => {
-                let is_audio = is_audio(&entry.file_name().to_string_lossy());
-                return format!("{}", is_audio);
-            },
-            Field::IsBook => {
-                let is_book = is_book(&entry.file_name().to_string_lossy());
-                return format!("{}", is_book);
-            },
-            Field::IsDoc => {
-                let is_doc = is_doc(&entry.file_name().to_string_lossy());
-                return format!("{}", is_doc);
-            },
-            Field::IsImage => {
-                let is_image = is_image(&entry.file_name().to_string_lossy());
-                return format!("{}", is_image);
-            },
-            Field::IsSource => {
-                let is_source = is_source(&entry.file_name().to_string_lossy());
-                return format!("{}", is_source);
-            },
-            Field::IsVideo => {
-                let is_video = is_video(&entry.file_name().to_string_lossy());
-                return format!("{}", is_video);
-            }
-        };
+            };
+        }
+
+        if let Some(ref val) = column_expr.val {
+            return val.to_string();
+        }
 
         return String::new();
     }
@@ -1898,6 +1904,7 @@ fn has_extension(file_name: &str, extensions: &[&str]) -> bool {
 
 #[cfg(windows)]
 use std;
+use parser::ColumnExpr;
 
 #[cfg(windows)]
 struct UsersCache;

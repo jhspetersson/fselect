@@ -1,4 +1,5 @@
 extern crate regex;
+extern crate serde;
 
 use std::ops::Index;
 use std::rc::Rc;
@@ -51,30 +52,34 @@ impl Parser {
         })
     }
 
-    fn parse_fields(&mut self) -> Result<Vec<Field>, String> {
+    fn parse_fields(&mut self) -> Result<Vec<ColumnExpr>, String> {
         let mut fields = vec![];
         let mut skip = 0;
 
         let lexems = &self.lexems;
         for lexem in lexems {
             match lexem {
-                &Lexem::Comma => {
+                Lexem::Comma => {
                     skip += 1;
                 },
-                &Lexem::RawString(ref s) => {
+                Lexem::String(ref s) | Lexem::RawString(ref s) => {
                     if s.to_ascii_lowercase() != "select" {
                         if s == "*" {
                             #[cfg(unix)]
                             {
-                                fields.push(Field::Mode);
-                                fields.push(Field::User);
-                                fields.push(Field::Group);
+                                fields.push(ColumnExpr::field(Field::Mode));
+                                fields.push(ColumnExpr::field(Field::User));
+                                fields.push(ColumnExpr::field(Field::Group));
                             }
 
-                            fields.push(Field::Size);
-                            fields.push(Field::Path);
+                            fields.push(ColumnExpr::field(Field::Size));
+                            fields.push(ColumnExpr::field(Field::Path));
                         } else {
-                            fields.push(Field::from_str(s)?);
+                            let field = match Field::from_str(s) {
+                                Ok(field) => ColumnExpr::field(field),
+                                _ => ColumnExpr::value(s.to_string())
+                            };
+                            fields.push(field);
                         }
                     }
 
@@ -364,8 +369,8 @@ impl Parser {
         }
     }
 
-    fn parse_order_by(&mut self, fields: &Vec<Field>) -> Result<(Vec<Field>, Vec<bool>), String> {
-        let mut order_by_fields: Vec<Field> = vec![];
+    fn parse_order_by(&mut self, fields: &Vec<ColumnExpr>) -> Result<(Vec<ColumnExpr>, Vec<bool>), String> {
+        let mut order_by_fields: Vec<ColumnExpr> = vec![];
         let mut order_by_directions: Vec<bool> = vec![];
 
         if let Some(Lexem::Order) = self.get_lexem() {
@@ -377,7 +382,7 @@ impl Parser {
                         Some(Lexem::RawString(ref ordering_field)) => {
                             let actual_field = match ordering_field.parse::<usize>() {
                                 Ok(idx) => fields[idx - 1].clone(),
-                                _ => Field::from_str(ordering_field)?,
+                                _ => ColumnExpr::field(Field::from_str(ordering_field)?),
                             };
                             order_by_fields.push(actual_field.clone());
                             order_by_directions.push(true);
@@ -531,10 +536,10 @@ fn convert_like_to_pattern(s: &str) -> String {
 
 #[derive(Debug, Clone)]
 pub struct Query {
-    pub fields: Vec<Field>,
+    pub fields: Vec<ColumnExpr>,
     pub roots: Vec<Root>,
     pub expr: Option<Box<Expr>>,
-    pub ordering_fields: Vec<Field>,
+    pub ordering_fields: Vec<ColumnExpr>,
     pub ordering_asc: Rc<Vec<bool>>,
     pub limit: u32,
     pub output_format: OutputFormat,
@@ -559,7 +564,7 @@ impl Root {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialOrd, PartialEq, Eq, Hash, Serialize)]
 pub struct ColumnExpr {
     pub left: Option<Box<ColumnExpr>>,
     pub arithmetic_op: Option<ArithmeticOp>,
@@ -576,6 +581,16 @@ impl ColumnExpr {
             right: None,
             field: Some(field),
             val: None,
+        }
+    }
+
+    fn value(value: String) -> ColumnExpr {
+        ColumnExpr {
+            left: None,
+            arithmetic_op: None,
+            right: None,
+            field: None,
+            val: Some(value),
         }
     }
 }
@@ -683,7 +698,7 @@ pub enum LogicalOp {
     Or,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialOrd, PartialEq, Eq, Hash, Serialize)]
 pub enum ArithmeticOp {
     Add,
     Subtract,

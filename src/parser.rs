@@ -559,13 +559,34 @@ impl Root {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct ColumnExpr {
+    pub left: Option<Box<ColumnExpr>>,
+    pub arithmetic_op: Option<ArithmeticOp>,
+    pub right: Option<Box<ColumnExpr>>,
+    pub field: Option<Field>,
+    pub val: Option<String>,
+}
+
+impl ColumnExpr {
+    fn field(field: Field) -> ColumnExpr {
+        ColumnExpr {
+            left: None,
+            arithmetic_op: None,
+            right: None,
+            field: Some(field),
+            val: None,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Expr {
     pub left: Option<Box<Expr>>,
     pub logical_op: Option<LogicalOp>,
     pub right: Option<Box<Expr>>,
 
-    pub field: Option<Field>,
+    pub field: Option<ColumnExpr>,
     pub op: Option<Op>,
     pub val: Option<String>,
     pub regex: Option<Regex>,
@@ -597,7 +618,7 @@ impl Expr {
             logical_op: None,
             right: None,
 
-            field: Some(field),
+            field: Some(ColumnExpr::field(field)),
             op,
             val: Some(val),
             regex: None,
@@ -613,7 +634,7 @@ impl Expr {
             logical_op: None,
             right: None,
 
-            field: Some(field),
+            field: Some(ColumnExpr::field(field)),
             op,
             val: Some(val),
             regex: Some(regex),
@@ -660,6 +681,26 @@ impl Op {
 pub enum LogicalOp {
     And,
     Or,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ArithmeticOp {
+    Add,
+    Subtract,
+    Divide,
+    Multiply,
+}
+
+impl ArithmeticOp {
+    fn from(text: String) -> Option<ArithmeticOp> {
+        match text.to_lowercase().as_str() {
+            "+" | "plus" => Some(ArithmeticOp::Add),
+            "-" | "minus"  => Some(ArithmeticOp::Subtract),
+            "mul" => Some(ArithmeticOp::Divide),
+            "div" => Some(ArithmeticOp::Multiply),
+            _ => None
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]

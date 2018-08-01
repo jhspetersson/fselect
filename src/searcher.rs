@@ -763,6 +763,7 @@ impl Searcher {
         }
 
         if let Some(ref field) = expr.field {
+            let field = field.field.clone().unwrap();
             match field {
                 Field::Name => {
                     if let Some(ref val) = expr.val {

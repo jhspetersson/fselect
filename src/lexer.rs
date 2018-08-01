@@ -145,7 +145,7 @@ fn is_op_char(c: char) -> bool {
 
 fn is_arithmetic_op_char(c: char) -> bool {
     match c {
-        '+' | '-' | '*' => true,
+        '+' | '-' => true,
         _ => false
     }
 }
@@ -248,7 +248,7 @@ mod tests {
 
         assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("COUNT"))));
         assert_eq!(lexer.next_lexem(), Some(Lexem::Open));
-        assert_eq!(lexer.next_lexem(), Some(Lexem::ArithmeticOperator(String::from("*"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("*"))));
         assert_eq!(lexer.next_lexem(), Some(Lexem::Close));
         assert_eq!(lexer.next_lexem(), Some(Lexem::Comma));
         assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("MIN"))));

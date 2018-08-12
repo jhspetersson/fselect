@@ -30,9 +30,13 @@ More is under way!
 
 [AUR package](https://aur.archlinux.org/packages/fselect/), thanks to [@asm0dey](https://github.com/asm0dey)
 
+#### Other Linux
+
+[Static build with musl](https://github.com/jhspetersson/fselect/releases/download/0.4.3/fselect-x86_64-linux-musl.gz).
+
 #### Windows 64bit
 
-A statically precompiled [binary](https://github.com/jhspetersson/fselect/releases/download/0.4.3/fselect.zip) is available at Github downloads.
+A statically precompiled [binary](https://github.com/jhspetersson/fselect/releases/download/0.4.3/fselect-x86_64-win.zip) is available at Github downloads.
 
 #### Mac
 

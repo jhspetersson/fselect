@@ -574,7 +574,7 @@ pub struct ColumnExpr {
 }
 
 impl ColumnExpr {
-    fn field(field: Field) -> ColumnExpr {
+    pub fn field(field: Field) -> ColumnExpr {
         ColumnExpr {
             left: None,
             arithmetic_op: None,
@@ -770,7 +770,7 @@ mod tests {
         let mut p = Parser::new();
         let query = p.parse(&query).unwrap();
 
-        assert_eq!(query.fields, vec![Field::Name, Field::Path, Field::Size, Field::FormattedSize]);
+        assert_eq!(query.fields, vec![ColumnExpr::field(Field::Name), ColumnExpr::field(Field::Path), ColumnExpr::field(Field::Size), ColumnExpr::field(Field::FormattedSize)]);
         assert_eq!(query.roots, vec![
             Root::new(String::from("/test"), 2, false, false, false),
             Root::new(String::from("/test2"), 0, true, false, false),
@@ -798,7 +798,7 @@ mod tests {
         );
 
         assert_eq!(query.expr, Some(Box::new(expr)));
-        assert_eq!(query.ordering_fields, vec![Field::Path, Field::Size]);
+        assert_eq!(query.ordering_fields, vec![ColumnExpr::field(Field::Path), ColumnExpr::field(Field::Size)]);
         assert_eq!(query.ordering_asc, Rc::new(vec![true, false]));
         assert_eq!(query.limit, 50);
     }

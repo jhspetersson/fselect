@@ -48,11 +48,11 @@ impl<T> Criteria<T> where T: Display {
         let comparison = match &field.field {
             Some(field) => {
                 if field.is_numeric_field() {
-                    return self.cmp_at_numbers(other, i);
+                    self.cmp_at_numbers(other, i)
                 } else if field.is_datetime_field() {
-                    return self.cmp_at_datetimes(other, i);
+                    self.cmp_at_datetimes(other, i)
                 } else {
-                    return self.cmp_at_direct(other, i);
+                    self.cmp_at_direct(other, i)
                 }
             },
             _ => self.cmp_at_direct(other, i)
@@ -309,9 +309,10 @@ pub fn parse_unix_filename(s: &str) -> &str {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use field::Field;
 
     fn basic_criteria<T: Ord + Clone + Display>(vals: &[T]) -> Criteria<T> {
-        let fields = Rc::new(vec![Field::Size; vals.len()]);
+        let fields = Rc::new(vec![ColumnExpr::field(Field::Size); vals.len()]);
         let orderings = Rc::new(vec![true; vals.len()]);
 
         Criteria::new(fields, vals.to_vec(), orderings)
@@ -351,7 +352,7 @@ mod tests {
 
     #[test]
     fn test_compare_all_fields_reverse() {
-        let fields = Rc::new(vec![Field::Size; 3]);
+        let fields = Rc::new(vec![ColumnExpr::field(Field::Size); 3]);
         let orderings = Rc::new(vec![false, false, false]);
 
         let c1 = Criteria::new(fields.clone(), vec![1, 2, 3], orderings.clone());
@@ -362,7 +363,7 @@ mod tests {
 
     #[test]
     fn test_compare_some_fields_reverse() {
-        let fields = Rc::new(vec![Field::Size; 3]);
+        let fields = Rc::new(vec![ColumnExpr::field(Field::Size); 3]);
         let orderings = Rc::new(vec![true, false, true]);
 
         let c1 = Criteria::new(fields.clone(), vec![1, 2, 3], orderings.clone());
@@ -370,5 +371,4 @@ mod tests {
 
         assert_eq!(c1.cmp(&c2), Ordering::Greater);
     }
-
 }

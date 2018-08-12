@@ -32,7 +32,7 @@ More is under way!
 
 #### Windows 64bit
 
-A statically precompiled [binary](https://github.com/jhspetersson/fselect/releases/download/0.4.2/fselect.zip) is available at Github downloads.
+A statically precompiled [binary](https://github.com/jhspetersson/fselect/releases/download/0.4.3/fselect.zip) is available at Github downloads.
 
 #### Mac
 
@@ -183,6 +183,10 @@ Find special files:
 
     fselect path from /tmp where is_pipe = true
     fselect path from /tmp where is_socket = 1
+    
+Include arbitrary text as columns:
+
+    fselect name, ' has size of ', size, ' bytes'
 
 Order results:
 

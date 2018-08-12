@@ -68,9 +68,11 @@ fn main() {
 }
 
 fn usage_info(t: &mut Box<StdoutTerminal>) {
-    print!("FSelect utility v");
+    const VERSION: &'static str = env!("CARGO_PKG_VERSION");
+
+    print!("FSelect utility");
     t.fg(term::color::BRIGHT_YELLOW).unwrap();
-    println!("0.4.2");
+    println!(" {}", VERSION);
     t.reset().unwrap();
 
     println!("Find files with SQL-like queries.");

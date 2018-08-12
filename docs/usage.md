@@ -12,7 +12,7 @@ You write SQL-like query, that's it.
 But if you'll put one more `select` behind occasionally, that's not a problem.
 
 Next you put columns you are interested in. It could be file name or path, size, modification date, etc.
-See full list of possible columns.
+See full list of possible columns. You can add columns with arbitrary text (put in quotes if it contains spaces).
 
 Where to search? Specify with `from` keyword. You can list one or more directories separated with comma.
 If you leave the `from`, then current directory will be processed.

@@ -629,7 +629,7 @@ impl Searcher {
 
         for field in self.query.fields.iter() {
             let mut record = self.get_field_value(entry, file_info, &mp3_info, &attrs, dimensions, &field, t);
-            file_map.insert(field, record.clone());
+            file_map.insert(field.to_string().to_lowercase(), record.clone());
 
             match self.query.output_format {
                 OutputFormat::Lines => {
@@ -654,7 +654,7 @@ impl Searcher {
         }
 
         for (idx, field) in self.query.ordering_fields.iter().enumerate() {
-            criteria[idx] = match file_map.get(field) {
+            criteria[idx] = match file_map.get(&field.to_string()) {
                 Some(record) => record.clone(),
                 None => self.get_field_value(entry, file_info, &mp3_info, &attrs, dimensions, &field, t)
             }

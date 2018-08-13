@@ -1,6 +1,9 @@
 extern crate regex;
 extern crate serde;
 
+use std::fmt;
+use std::fmt::Display;
+use std::fmt::Formatter;
 use std::ops::Index;
 use std::rc::Rc;
 use std::str::FromStr;
@@ -592,6 +595,16 @@ impl ColumnExpr {
             field: None,
             val: Some(value),
         }
+    }
+}
+
+impl Display for ColumnExpr {
+    fn fmt(&self, fmt: &mut Formatter) -> fmt::Result {
+        if let Some(ref field) = self.field {
+            fmt.write_str(&field.to_string())?;
+        }
+
+        Ok(())
     }
 }
 

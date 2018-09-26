@@ -52,6 +52,8 @@ pub fn matches_gitignore_filter(gitignore_filters: &Option<Vec<GitignoreFilter>>
 pub fn parse_gitignore(file_path: &Path, dir_path: &Path) -> Vec<GitignoreFilter> {
     let mut result = vec![];
 
+    result.append(&mut convert_gitignore_pattern(".git/", dir_path));
+
     if let Ok(file) = File::open(file_path) {
         use std::io::BufRead;
         use std::io::BufReader;

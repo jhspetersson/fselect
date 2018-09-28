@@ -1,13 +1,14 @@
 use std::collections::HashMap;
 use std::fs;
 use std::fs::DirEntry;
-#[cfg(unix)]
 use std::fs::File;
 use std::fs::Metadata;
 use std::fs::symlink_metadata;
 use std::path::Path;
 use std::path::PathBuf;
 use std::io;
+use std::io::BufReader;
+use std::io::Read;
 use std::rc::Rc;
 
 use chrono::DateTime;
@@ -487,7 +488,10 @@ impl Searcher {
                         {
                             return format!("{}", false);
                         }
-                }
+                },
+                Field::IsShebang => {
+                    return format!("{}", is_shebang(&entry.path()));
+                },
                 Field::Width => {
                     if let Some(ref dimensions) = dimensions {
                         return format!("{}", dimensions.0);
@@ -1405,6 +1409,13 @@ impl Searcher {
                             }
                         }
                 },
+                Field::IsShebang => {
+                    if file_info.is_some() {
+                        return (false, meta, dim, mp3)
+                    }
+
+                    result = is_shebang(&entry.path())
+                },
                 Field::Width => {
                     if file_info.is_some() {
                         return (false, meta, dim, mp3)
@@ -1838,6 +1849,18 @@ fn update_mp3_meta(entry: &DirEntry, mp3: Option<MP3Metadata>) -> Option<MP3Meta
         },
         Some(mp3_) => Some(mp3_)
     }
+}
+
+fn is_shebang(path: &PathBuf) -> bool {
+    if let Ok(file) = File::open(path) {
+        let mut buf_reader = BufReader::new(file);
+        let mut buf = vec![0; 2];
+        if buf_reader.read_exact(&mut buf).is_ok() {
+            return buf[0] == 0x23 && buf[1] == 0x21
+        }
+    }
+
+    false
 }
 
 #[allow(unused)]

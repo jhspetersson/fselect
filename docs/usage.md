@@ -79,6 +79,7 @@ Joins, unions, aggregating functions, and subselects are not supported (yet?).
 * `other_exec`
 * `is_hidden`
 * `has_xattrs`
+* `is_shebang`
 * `width`
 * `height`
 * `bitrate`

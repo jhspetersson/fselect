@@ -38,6 +38,7 @@ use parser::Expr;
 use parser::LogicalOp;
 use parser::Op;
 use parser::OutputFormat;
+use lexer::Operation;
 use util::*;
 
 pub struct Searcher {
@@ -109,6 +110,17 @@ impl Searcher {
 
         if let OutputFormat::Json = self.query.output_format {
             print!("]");
+        }
+
+        //Tack on the count at the end of the output
+        match self.query.operation_mode {
+            Operation::Select => {},
+            Operation::Count => {
+                println!("Count: {}", self.found);
+            },
+            Operation::SelectCount => {
+                println!("Count: {}", self.found);
+            },
         }
 
         Ok(())
@@ -609,7 +621,6 @@ impl Searcher {
         }
 
         self.found += 1;
-
         let attrs = match need_metadata {
             true => update_meta(entry, meta, follow_symlinks),
             false => None
@@ -689,7 +700,16 @@ impl Searcher {
         if self.is_buffered() {
             self.output_buffer.insert(Criteria::new(Rc::new(self.query.ordering_fields.clone()), criteria, self.query.ordering_asc.clone()), output_value);
         } else {
-            print!("{}", output_value);
+            //Stream out the data if the operation mode involves selecting items while counting should not print anything out
+            match self.query.operation_mode {
+                Operation::Select => {
+                    print!("{}", output_value);
+                },
+                Operation::Count => {},
+                Operation::SelectCount => {
+                    print!("{}", output_value);
+                },
+            }
         }
     }
 

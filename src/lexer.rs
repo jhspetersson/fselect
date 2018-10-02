@@ -1,6 +1,8 @@
 #[derive(Clone, PartialEq, Debug)]
 pub enum Lexem {
     RawString(String),
+    Select,
+    Count,
     Comma,
     From,
     Where,
@@ -16,6 +18,13 @@ pub enum Lexem {
     DescendingOrder,
     Limit,
     Into,
+}
+
+#[derive(Debug, Hash, Eq, PartialEq, Clone)]
+pub enum Operation {
+    Select,
+    Count,
+    SelectCount,
 }
 
 #[derive(Debug)]
@@ -125,6 +134,8 @@ impl<'a> Lexer<'a> {
             LexingMode::Close => Some(Lexem::Close),
             LexingMode::RawString => {
                 match s.to_lowercase().as_str() {
+                    "select" => Some(Lexem::Select),
+                    "count" => Some(Lexem::Count),
                     "from" => Some(Lexem::From),
                     "where" => Some(Lexem::Where),
                     "or" => Some(Lexem::Or),

@@ -179,7 +179,7 @@ mod tests {
     fn lexems() {
         let mut lexer = Lexer::new("select name, path ,size , fsize from /test depth 2, /test2 archives,/test3 depth 3 archives , /test4 ,'/test5' where name != 123 AND ( size gt 456 or fsize lte 758) or name = 'xxx' order by 1 ,3 desc , path asc limit 50");
 
-        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("select"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::Select));
         assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("name"))));
         assert_eq!(lexer.next_lexem(), Some(Lexem::Comma));
         assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("path"))));
@@ -267,7 +267,7 @@ mod tests {
     fn func_calls() {
         let mut lexer = Lexer::new("COUNT(*), MIN(size), AVG(size), MAX(size) from .");
 
-        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("COUNT"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::Count));
         assert_eq!(lexer.next_lexem(), Some(Lexem::Open));
         assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("*"))));
         assert_eq!(lexer.next_lexem(), Some(Lexem::Close));

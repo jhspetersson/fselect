@@ -107,14 +107,14 @@ Column Options:
         is_dir                          Returns a boolean signifying whether the file path is a directory
         is_file                         Returns a boolean signifying whether the file path is a file
         is_symlink                      Returns a boolean signifying whether the file path is a symlink
-        is_pipe | is_fifo               Returns a boolean signifying whether the file path is a FIFO or pile file
+        is_pipe | is_fifo               Returns a boolean signifying whether the file path is a FIFO or pipe file
         is_char | is_character          Returns a boolean signifying whether the file path is a character device or character special file
         is_block                        Returns a boolean signifying whether the file path is a block or block special file
         is_socket                       Returns a boolean signifying whether the file path is a socket file
-        is_hidden                       Returns a boolean signifying whether the file is a hidden file
+        is_hidden                       Returns a boolean signifying whether the file is a hidden file(files that start with a .)
         has_xattrs                      Returns a boolean signifying whether the file has extended attributes
 
-        mode                            Returns the permissions of the owner, group, and everybody, similar to the first field in ls -la
+        mode                            Returns the permissions of the owner, group, and everybody(similar to the first field in `ls -la`)
 
         user                            Returns the name of the owner for this file
         user_read                       Returns a boolean signifying whether the file can be read by the owner
@@ -122,9 +122,9 @@ Column Options:
         user_exec                       Returns a boolean signifying whether the file can be executed by the owner
 
         group                           Returns the name of the owner's group for this file
-        group_read                      Returns a boolean signifying whether the file can be read by the owner's grou
-        group_write                     Returns a boolean signifying whether the file can be written by the owner's grou
-        group_exec                      Returns a boolean signifying whether the file can be executed by the owner's grou
+        group_read                      Returns a boolean signifying whether the file can be read by the owner's group
+        group_write                     Returns a boolean signifying whether the file can be written by the owner's group
+        group_exec                      Returns a boolean signifying whether the file can be executed by the owner's group
 
         other_read                      Returns a boolean signifying whether the file can be read by others
         other_write                     Returns a boolean signifying whether the file can be written by others
@@ -136,12 +136,12 @@ Column Options:
         genre                           Returns the genre of the audio file taken from the file's metadata
         year                            Returns the year of the audio file taken from the file's metadata
 
-        freq                            Returns the sampling rate of audio or video files
+        freq                            Returns the sampling rate of audio or video file
         bitrate                         Returns the bitrate of the audio file in kbps
         width                           Returns the number of pixels along the width of the photo
         height                          Returns the number of pixels along the height of the photo
 
-        is_shebang                      Returns a boolean signifying whether the file has a shebang(#!) at the beginning
+        is_shebang                      Returns a boolean signifying whether the file starts with a shebang(#!)
         is_archive                      Returns a boolean signifying whether the file is an archival file
         is_audio                        Returns a boolean signifying whether the file is an audio file
         is_book                         Returns a boolean signifying whether the file is a book
@@ -152,10 +152,10 @@ Column Options:
 
 Expressions:
     Operators:
-        = | == | eq                     Used to check for equality between the column name and value
-        ===                             Used to check for strict equality between column name and value irregardless of any special regex characters
-        != | <> | ne                    Used to check for inequality between column name and value
-        !==                             Used to check for inequality between column name and value irregardless of any special regex characters
+        = | == | eq                     Used to check for equality between the column field and value
+        ===                             Used to check for strict equality between column field and value irregardless of any special regex characters
+        != | <> | ne                    Used to check for inequality between column field and value
+        !==                             Used to check for inequality between column field and value irregardless of any special regex characters
         < | lt                          Used to check whether the column value is less than the value
         <= | lte                        Used to check whether the column value is less than or equal to the value
         > | gt                          Used to check whether the column value is greater than the value

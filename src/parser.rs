@@ -7,6 +7,7 @@ use std::fmt::Formatter;
 use std::ops::Index;
 use std::rc::Rc;
 use std::str::FromStr;
+use std::collections::HashSet;
 
 use chrono::DateTime;
 use chrono::Local;
@@ -15,6 +16,7 @@ use regex::Regex;
 
 use lexer::Lexer;
 use lexer::Lexem;
+use lexer::Operation;
 use field::Field;
 use util::parse_datetime;
 
@@ -37,6 +39,7 @@ impl Parser {
             self.lexems.push(lexem);
         }
 
+        let operation_mode = self.parse_operation_mode();
         let fields = self.parse_fields()?;
         let roots = self.parse_roots();
         let expr = self.parse_where()?;
@@ -45,6 +48,7 @@ impl Parser {
         let output_format = self.parse_output_format()?;
 
         Ok(Query {
+            operation_mode,
             fields,
             roots,
             expr,
@@ -55,45 +59,89 @@ impl Parser {
         })
     }
 
-    fn parse_fields(&mut self) -> Result<Vec<ColumnExpr>, String> {
-        let mut fields = vec![];
-        let mut skip = 0;
-
-        let lexems = &self.lexems;
-        for lexem in lexems {
+    fn parse_operation_mode(&mut self) -> Operation {
+        let mut operations: HashSet<Operation> = HashSet::new();
+        //Move through all the lexems until a non-operational mode lexem is found
+        for _ in 0..self.lexems.len() {
+            let lexem = self.get_lexem();
             match lexem {
-                Lexem::Comma => {
-                    skip += 1;
-                },
-                Lexem::String(ref s) | Lexem::RawString(ref s) => {
-                    if s.to_ascii_lowercase() != "select" {
-                        if s == "*" {
-                            #[cfg(unix)]
-                            {
-                                fields.push(ColumnExpr::field(Field::Mode));
-                                fields.push(ColumnExpr::field(Field::User));
-                                fields.push(ColumnExpr::field(Field::Group));
-                            }
-
-                            fields.push(ColumnExpr::field(Field::Size));
-                            fields.push(ColumnExpr::field(Field::Path));
-                        } else {
-                            let field = match Field::from_str(s) {
-                                Ok(field) => ColumnExpr::field(field),
-                                _ => ColumnExpr::value(s.to_string())
-                            };
-                            fields.push(field);
+                None => {break;},
+                Some(l) => {
+                    match l {
+                        Lexem::Comma => {}
+                        Lexem::Select => {
+                            operations.insert(Operation::Select);
+                        },
+                        Lexem::Count => {
+                            operations.insert(Operation::Count);
+                        },
+                        _ => {
+                            //a field or other lexem was just read ... push pointer back so it can be parsed later
+                            self.index -= 1;
+                            break;
                         }
                     }
-
-                    skip += 1;
                 },
-                _ => break
             }
         }
 
-        self.index = skip;
+        if !operations.is_empty() {
+            let select = operations.contains(&Operation::Select);
+            let count = operations.contains(&Operation::Count);
 
+            if count && select {
+                return Operation::SelectCount;
+            }
+            if select {
+                return Operation::Select;
+            }
+            if count {
+                return Operation::Count;
+            }
+        }
+
+        //Simply default to a select
+        return Operation::Select;
+    }
+
+    fn parse_fields(&mut self) -> Result<Vec<ColumnExpr>, String> {
+        let mut fields = vec![];
+
+        for _ in 0..self.lexems.len() {
+            let lexem = self.get_lexem();
+            match lexem {
+                None => {break;},
+                Some(l) => {
+                    match l {
+                        Lexem::Comma => {},
+                        Lexem::String(ref s) | Lexem::RawString(ref s) => {
+                            if s == "*" {
+                                #[cfg(unix)]
+                                    {
+                                        fields.push(ColumnExpr::field(Field::Mode));
+                                        fields.push(ColumnExpr::field(Field::User));
+                                        fields.push(ColumnExpr::field(Field::Group));
+                                    }
+
+                                fields.push(ColumnExpr::field(Field::Size));
+                                fields.push(ColumnExpr::field(Field::Path));
+                            } else {
+                                let field = match Field::from_str(s) {
+                                    Ok(field) => ColumnExpr::field(field),
+                                    _ => ColumnExpr::value(s.to_string())
+                                };
+                                fields.push(field);
+                            }
+                        },
+                        _ => {
+                            //A FROM lexem has just been read. Push the pointer back so root parser can start at the FROM lexem.
+                            self.index -= 1;
+                            break;
+                        }
+                    }
+                },
+            }
+        }
         if fields.is_empty() {
             return Err(String::from("Error parsing fields, no selector found"))
         }
@@ -539,6 +587,7 @@ fn convert_like_to_pattern(s: &str) -> String {
 
 #[derive(Debug, Clone)]
 pub struct Query {
+    pub operation_mode: Operation,
     pub fields: Vec<ColumnExpr>,
     pub roots: Vec<Root>,
     pub expr: Option<Box<Expr>>,

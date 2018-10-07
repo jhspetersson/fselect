@@ -100,9 +100,9 @@ Column Options:
         uid                             Returns the UID of the owner
         gid                             Returns the GID of the owner's group
 
-        accessed                        Returns the time the file was last accessed(YYYY-MM-DD HH:MM:SS)
-        created                         Returns the file creation date(YYYY-MM-DD HH:MM:SS)
-        modified                        Returns the time the file was last modified(YYYY-MM-DD HH:MM:SS)
+        accessed                        Returns the time the file was last accessed (YYYY-MM-DD HH:MM:SS)
+        created                         Returns the file creation date (YYYY-MM-DD HH:MM:SS)
+        modified                        Returns the time the file was last modified (YYYY-MM-DD HH:MM:SS)
 
         is_dir                          Returns a boolean signifying whether the file path is a directory
         is_file                         Returns a boolean signifying whether the file path is a file
@@ -111,10 +111,10 @@ Column Options:
         is_char | is_character          Returns a boolean signifying whether the file path is a character device or character special file
         is_block                        Returns a boolean signifying whether the file path is a block or block special file
         is_socket                       Returns a boolean signifying whether the file path is a socket file
-        is_hidden                       Returns a boolean signifying whether the file is a hidden file(files that start with a .)
+        is_hidden                       Returns a boolean signifying whether the file is a hidden file (files that start with a dot)
         has_xattrs                      Returns a boolean signifying whether the file has extended attributes
 
-        mode                            Returns the permissions of the owner, group, and everybody(similar to the first field in `ls -la`)
+        mode                            Returns the permissions of the owner, group, and everybody (similar to the first field in `ls -la`)
 
         user                            Returns the name of the owner for this file
         user_read                       Returns a boolean signifying whether the file can be read by the owner
@@ -141,7 +141,7 @@ Column Options:
         width                           Returns the number of pixels along the width of the photo
         height                          Returns the number of pixels along the height of the photo
 
-        is_shebang                      Returns a boolean signifying whether the file starts with a shebang(#!)
+        is_shebang                      Returns a boolean signifying whether the file starts with a shebang (#!)
         is_archive                      Returns a boolean signifying whether the file is an archival file
         is_audio                        Returns a boolean signifying whether the file is an audio file
         is_book                         Returns a boolean signifying whether the file is a book
@@ -167,9 +167,9 @@ Expressions:
         or                              Used as an OR operator for two conditions made with the above operators
 
 Format:
-        tabs(default)                   Outputs each file with its column value(s) on a line with each column value delimited by a tab
+        tabs (default)                  Outputs each file with its column value(s) on a line with each column value delimited by a tab
         lines                           Outputs each column value on a new line
-        list                            Outputs entire output onto a single line
+        list                            Outputs entire output onto a single line for xargs
         csv                             Outputs each file with its column value(s) on a line with each column value delimited by a comma
         json                            Outputs a JSON array with JSON objects holding the column value(s) of each file
     ");

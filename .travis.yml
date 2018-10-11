@@ -13,6 +13,7 @@ matrix:
 os:
   - linux
   - osx
+  - windows
 
 script:
   - cargo build --verbose --all

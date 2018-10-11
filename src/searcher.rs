@@ -423,7 +423,7 @@ impl Searcher {
                     if let Some(ref attrs) = attrs {
                         if let Some(uid) = mode::get_uid(attrs) {
                             if let Some(user) = self.user_cache.get_user_by_uid(uid) {
-                                return format!("{}", user.name());
+                                return format!("{}", user.name().to_string_lossy());
                             }
                         }
                     }
@@ -432,7 +432,7 @@ impl Searcher {
                     if let Some(ref attrs) = attrs {
                         if let Some(gid) = mode::get_gid(attrs) {
                             if let Some(group) = self.user_cache.get_group_by_gid(gid) {
-                                return format!("{}", group.name());
+                                return format!("{}", group.name().to_string_lossy());
                             }
                         }
                     }
@@ -919,31 +919,31 @@ impl Searcher {
                             let file_uid = mode::get_uid(metadata);
                             if let Some(file_uid) = file_uid {
                                 if let Some(user) = self.user_cache.get_user_by_uid(file_uid) {
-                                    let user_name = user.name();
+                                    let user_name = user.name().to_string_lossy().to_string();
                                     result = match expr.op {
                                         Some(Op::Eq) => {
                                             match expr.regex {
-                                                Some(ref regex) => regex.is_match(user_name),
-                                                None => val.eq(user_name)
+                                                Some(ref regex) => regex.is_match(&user_name),
+                                                None => val.eq(&user_name)
                                             }
                                         },
                                         Some(Op::Ne) => {
                                             match expr.regex {
-                                                Some(ref regex) => !regex.is_match(user_name),
-                                                None => val.ne(user_name)
+                                                Some(ref regex) => !regex.is_match(&user_name),
+                                                None => val.ne(&user_name)
                                             }
                                         },
                                         Some(Op::Rx) | Some(Op::Like) => {
                                             match expr.regex {
-                                                Some(ref regex) => regex.is_match(user_name),
+                                                Some(ref regex) => regex.is_match(&user_name),
                                                 None => false
                                             }
                                         },
                                         Some(Op::Eeq) => {
-                                            val.eq(user_name)
+                                            val.eq(&user_name)
                                         },
                                         Some(Op::Ene) => {
-                                            val.ne(user_name)
+                                            val.ne(&user_name)
                                         },
                                         _ => false
                                     };
@@ -991,31 +991,31 @@ impl Searcher {
                             let file_gid = mode::get_gid(metadata);
                             if let Some(file_gid) = file_gid {
                                 if let Some(group) = self.user_cache.get_group_by_gid(file_gid) {
-                                    let group_name = group.name();
+                                    let group_name = group.name().to_string_lossy().to_string();
                                     result = match expr.op {
                                         Some(Op::Eq) => {
                                             match expr.regex {
-                                                Some(ref regex) => regex.is_match(group_name),
-                                                None => val.eq(group_name)
+                                                Some(ref regex) => regex.is_match(&group_name),
+                                                None => val.eq(&group_name)
                                             }
                                         },
                                         Some(Op::Ne) => {
                                             match expr.regex {
-                                                Some(ref regex) => !regex.is_match(group_name),
-                                                None => val.ne(group_name)
+                                                Some(ref regex) => !regex.is_match(&group_name),
+                                                None => val.ne(&group_name)
                                             }
                                         },
                                         Some(Op::Rx) | Some(Op::Like) => {
                                             match expr.regex {
-                                                Some(ref regex) => regex.is_match(group_name),
+                                                Some(ref regex) => regex.is_match(&group_name),
                                                 None => false
                                             }
                                         },
                                         Some(Op::Eeq) => {
-                                            val.eq(group_name)
+                                            val.eq(&group_name)
                                         },
                                         Some(Op::Ene) => {
-                                            val.ne(group_name)
+                                            val.ne(&group_name)
                                         },
                                         _ => false
                                     };

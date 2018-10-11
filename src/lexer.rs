@@ -43,7 +43,7 @@ impl<'a> Lexer<'a> {
     pub fn next_lexem(&mut self) -> Option<Lexem> {
         let mut s = String::new();
         let mut mode = LexingMode::Undefined;
-        let mut escapeNext = false;
+        let mut escape_next = false;
 
         for c in self.input.chars().skip(self.index) {
             match mode {
@@ -74,10 +74,10 @@ impl<'a> Lexer<'a> {
                     s.push(c);
                 },
                 LexingMode::RawString => {
-                    if !escapeNext {
+                    if !escape_next {
                         //Detect the escape character ... ignore it ... push pointer over and continue
                         if c == '\\' {
-                            escapeNext = true;
+                            escape_next = true;
                             self.index += 1;
                             continue;
                         }
@@ -88,7 +88,7 @@ impl<'a> Lexer<'a> {
 
                     self.index += 1;
                     s.push(c);
-                    escapeNext = false;
+                    escape_next = false;
                 },
                 LexingMode::Undefined => {
                     self.index += 1;

@@ -12,7 +12,7 @@ While it doesn't tend to fully replace traditional `find` and `ls`, **fselect** 
 * SQL-like (not real SQL, but highly relaxed!) grammar easily understandable by humans
 * search within archives
 * `.gitignore` support (experimental)
-* search by width and height of images
+* search by width and height of images and videos
 * search by MP3 info
 * shortcuts to common file types
 * various output formatting (CSV, JSON, and others)

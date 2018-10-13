@@ -1928,6 +1928,7 @@ fn has_extension(file_name: &str, extensions: &[&str]) -> bool {
 #[cfg(windows)]
 use std;
 use parser::ColumnExpr;
+use std::ffi::OsStr;
 
 #[cfg(windows)]
 struct UsersCache;
@@ -1952,8 +1953,8 @@ struct User;
 
 #[cfg(windows)]
 impl User {
-    fn name(&self) -> &str {
-        ""
+    fn name(&self) -> &OsStr {
+        "".as_ref()
     }
 }
 
@@ -1962,7 +1963,7 @@ struct Group;
 
 #[cfg(windows)]
 impl Group {
-    fn name(&self) -> &str {
-        ""
+    fn name(&self) -> &OsStr {
+        "".as_ref()
     }
 }

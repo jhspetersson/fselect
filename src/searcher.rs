@@ -137,7 +137,7 @@ impl Searcher {
 
                         if apply_gitignore {
                             let gitignore_file = dir.join(".gitignore");
-                            if gitignore_file.exists() {
+                            if gitignore_file.is_file() {
                                 let regexes = parse_gitignore(&gitignore_file, dir);
                                 self.gitignore_map.insert(dir.to_path_buf(), regexes);
                             }

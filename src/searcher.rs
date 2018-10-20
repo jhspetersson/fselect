@@ -29,6 +29,7 @@ use zip;
 use field::Field;
 use fileinfo::FileInfo;
 use fileinfo::to_file_info;
+use function::Function;
 use gitignore::GitignoreFilter;
 use gitignore::matches_gitignore_filter;
 use gitignore::parse_gitignore;
@@ -250,6 +251,61 @@ impl Searcher {
                 }
             }
         }
+    }
+
+    fn get_column_expr_value(&self,
+                             entry: &DirEntry,
+                             file_info: &Option<FileInfo>,
+                             mp3_info: &Option<MP3Metadata>,
+                             attrs: &Option<Box<Metadata>>,
+                             dimensions: Option<(usize, usize)>,
+                             column_expr: &ColumnExpr,
+                             _t: &mut Box<StdoutTerminal>) -> String {
+        if let Some(ref _function) = column_expr.function {
+            return self.get_function_value(entry, file_info, mp3_info, attrs, dimensions, column_expr, _t);
+        }
+
+        if let Some(ref _field) = column_expr.field {
+            return self.get_field_value(entry, file_info, mp3_info, attrs, dimensions, column_expr, _t);
+        }
+
+        String::new()
+    }
+
+    fn get_function_value(&self,
+                          entry: &DirEntry,
+                          file_info: &Option<FileInfo>,
+                          mp3_info: &Option<MP3Metadata>,
+                          attrs: &Option<Box<Metadata>>,
+                          dimensions: Option<(usize, usize)>,
+                          column_expr: &ColumnExpr,
+                          _t: &mut Box<StdoutTerminal>) -> String {
+        if let Some(ref left_expr) = column_expr.left {
+            let function_arg = self.get_column_expr_value(entry,
+                                                          file_info,
+                                                          mp3_info,
+                                                          attrs,
+                                                          dimensions,
+                                                          left_expr,
+                                                          _t);
+
+            match column_expr.function {
+                Some(Function::Lower) => {
+                    return function_arg.to_lowercase();
+                },
+                Some(Function::Upper) => {
+                    return function_arg.to_uppercase();
+                },
+                Some(Function::Length) => {
+                    return format!("{}", function_arg.chars().count());
+                },
+                _ => {
+                    panic!("Unknown function")
+                }
+            }
+        }
+
+        String::new()
     }
 
     fn get_field_value(&self,
@@ -632,7 +688,7 @@ impl Searcher {
         let mut criteria = vec!["".to_string(); self.query.ordering_fields.len()];
 
         for field in self.query.fields.iter() {
-            let mut record = self.get_field_value(entry, file_info, &mp3_info, &attrs, dimensions, &field, t);
+            let mut record = self.get_column_expr_value(entry, file_info, &mp3_info, &attrs, dimensions, &field, t);
             file_map.insert(field.to_string().to_lowercase(), record.clone());
 
             match self.query.output_format {

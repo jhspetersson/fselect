@@ -11,6 +11,7 @@ use serde::ser::{Serialize, Serializer};
 pub enum Function {
     Lower,
     Upper,
+    Length,
 
     Min,
     Max,
@@ -28,6 +29,7 @@ impl FromStr for Function {
         match function.as_str() {
             "lower" => Ok(Function::Lower),
             "upper" => Ok(Function::Upper),
+            "length" => Ok(Function::Length),
 
             "min" => Ok(Function::Min),
             "max" => Ok(Function::Max),

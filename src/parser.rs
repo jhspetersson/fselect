@@ -16,6 +16,7 @@ use regex::Regex;
 use lexer::Lexer;
 use lexer::Lexem;
 use field::Field;
+use function::Function;
 use util::parse_datetime;
 
 pub struct Parser {
@@ -57,48 +58,59 @@ impl Parser {
 
     fn parse_fields(&mut self) -> Result<Vec<ColumnExpr>, String> {
         let mut fields = vec![];
-        let mut skip = 0;
 
-        let lexems = &self.lexems;
-        for lexem in lexems {
+        loop {
+            let lexem = self.get_lexem();
             match lexem {
-                Lexem::Comma => {
-                    skip += 1;
+                Some(Lexem::Comma) => {
+                    // skip
                 },
-                Lexem::String(ref s) | Lexem::RawString(ref s) => {
+                Some(Lexem::String(ref s)) | Some(Lexem::RawString(ref s)) => {
                     if s.to_ascii_lowercase() != "select" {
                         if s == "*" {
                             #[cfg(unix)]
-                            {
-                                fields.push(ColumnExpr::field(Field::Mode));
-                                fields.push(ColumnExpr::field(Field::User));
-                                fields.push(ColumnExpr::field(Field::Group));
-                            }
+                                {
+                                    fields.push(ColumnExpr::field(Field::Mode));
+                                    fields.push(ColumnExpr::field(Field::User));
+                                    fields.push(ColumnExpr::field(Field::Group));
+                                }
 
                             fields.push(ColumnExpr::field(Field::Size));
                             fields.push(ColumnExpr::field(Field::Path));
                         } else {
-                            let field = match Field::from_str(s) {
-                                Ok(field) => ColumnExpr::field(field),
-                                _ => ColumnExpr::value(s.to_string())
-                            };
+                            let field = self.parse_column_expr(s);
                             fields.push(field);
                         }
                     }
-
-                    skip += 1;
                 },
-                _ => break
+                _ => {
+                    self.drop_lexem();
+                    break;
+                }
             }
         }
-
-        self.index = skip;
 
         if fields.is_empty() {
             return Err(String::from("Error parsing fields, no selector found"))
         }
 
         Ok(fields)
+    }
+
+    fn parse_column_expr(&mut self, s: &str) -> ColumnExpr {
+        if let Ok(field) = Field::from_str(s) {
+            return ColumnExpr::field(field);
+        }
+
+        if let Ok(function) = Function::from_str(s) {
+            return self.parse_function(function);
+        }
+
+        ColumnExpr::value(s.to_string())
+    }
+
+    fn parse_function(&mut self, function: Function) -> ColumnExpr {
+        ColumnExpr::function(function)
     }
 
     fn parse_roots(&mut self) -> Vec<Root> {
@@ -573,6 +585,7 @@ pub struct ColumnExpr {
     pub arithmetic_op: Option<ArithmeticOp>,
     pub right: Option<Box<ColumnExpr>>,
     pub field: Option<Field>,
+    pub function: Option<Function>,
     pub val: Option<String>,
 }
 
@@ -583,6 +596,18 @@ impl ColumnExpr {
             arithmetic_op: None,
             right: None,
             field: Some(field),
+            function: None,
+            val: None,
+        }
+    }
+
+    pub fn function(function: Function) -> ColumnExpr {
+        ColumnExpr {
+            left: None,
+            arithmetic_op: None,
+            right: None,
+            field: None,
+            function: Some(function),
             val: None,
         }
     }
@@ -593,6 +618,7 @@ impl ColumnExpr {
             arithmetic_op: None,
             right: None,
             field: None,
+            function: None,
             val: Some(value),
         }
     }

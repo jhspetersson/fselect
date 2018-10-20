@@ -25,6 +25,7 @@ use term::StdoutTerminal;
 
 mod field;
 mod fileinfo;
+mod function;
 mod gitignore;
 mod lexer;
 mod mode;

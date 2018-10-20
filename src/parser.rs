@@ -78,8 +78,10 @@ impl Parser {
                             fields.push(ColumnExpr::field(Field::Size));
                             fields.push(ColumnExpr::field(Field::Path));
                         } else {
-                            let field = self.parse_column_expr(s);
-                            fields.push(field);
+                            self.drop_lexem();
+                            if let Some(field) = self.parse_column_expr() {
+                                fields.push(field);
+                            }
                         }
                     }
                 },
@@ -97,20 +99,45 @@ impl Parser {
         Ok(fields)
     }
 
-    fn parse_column_expr(&mut self, s: &str) -> ColumnExpr {
-        if let Ok(field) = Field::from_str(s) {
-            return ColumnExpr::field(field);
-        }
+    fn parse_column_expr(&mut self) -> Option<ColumnExpr> {
+        let lexem = self.get_lexem();
+        match lexem {
+            Some(Lexem::String(ref s)) | Some(Lexem::RawString(ref s)) => {
+                if let Ok(field) = Field::from_str(s) {
+                    return Some(ColumnExpr::field(field));
+                }
 
-        if let Ok(function) = Function::from_str(s) {
-            return self.parse_function(function);
-        }
+                if let Ok(function) = Function::from_str(s) {
+                    return Some(self.parse_function(function));
+                }
 
-        ColumnExpr::value(s.to_string())
+                Some(ColumnExpr::value(s.to_string()))
+            },
+
+            _ => None
+        }
     }
 
     fn parse_function(&mut self, function: Function) -> ColumnExpr {
-        ColumnExpr::function(function)
+        let mut function_expr = ColumnExpr::function(function);
+
+        if let Some(lexem) = self.get_lexem() {
+            if lexem != Lexem::Open {
+                panic!("Error in function expression");
+            }
+        }
+
+        if let Some(function_arg) = self.parse_column_expr() {
+            function_expr.left = Some(Box::from(function_arg));
+        }
+
+        if let Some(lexem) = self.get_lexem() {
+            if lexem != Lexem::Close {
+                panic!("Error in function expression");
+            }
+        }
+
+        function_expr
     }
 
     fn parse_roots(&mut self) -> Vec<Root> {

@@ -86,7 +86,7 @@ fn usage_info(t: &mut Box<StdoutTerminal>) {
 Usage: fselect COLUMN[, COLUMN...] [from PATH[, PATH...]] [where EXPR] [order by COLUMN (asc|desc), ...] [limit N] [into FORMAT]
 
 Files Detected as Audio: .aac, .aiff, .amr, .flac, .gsm, .m4a, .m4b, .m4p, .mp3, .ogg, .wav, .wma
-Files Detected as Archives: .7z, .bzip2, .gz, .gzip, .rar, .tar, .xz, .zip
+Files Detected as Archives: .7z, .bz2, .bzip2, .gz, .gzip, .rar, .tar, .xz, .zip
 Files Detected as Book: .azw3, .chm, .epub, .fb2, .mobi, .pdf
 Files Detected as Document: .accdb, .doc, .docm, .docx, .dot, .dotm, .dotx, .mdb, .ods, .odt, .pdf, .potm, .potx, .ppt, .pptm, .pptx, .rtf, .xlm, .xls, .xlsm, .xlsx, .xlt, .xltm, .xltx, .xps
 Files Detected as Image: .bmp, .gif, .jpeg, .jpg, .png, .webp

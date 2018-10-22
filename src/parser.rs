@@ -1,6 +1,7 @@
 extern crate regex;
 extern crate serde;
 
+use std::collections::HashSet;
 use std::fmt;
 use std::fmt::Display;
 use std::fmt::Formatter;
@@ -587,6 +588,18 @@ pub struct Query {
     pub output_format: OutputFormat,
 }
 
+impl Query {
+    pub fn get_all_fields(&self) -> HashSet<Field> {
+        let mut result = HashSet::new();
+
+        for column_expr in &self.fields {
+            result.extend(column_expr.get_required_fields());
+        }
+
+        result
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Root {
     pub path: String,
@@ -649,10 +662,60 @@ impl ColumnExpr {
             val: Some(value),
         }
     }
+
+    pub fn has_aggregate_function(&self) -> bool {
+        if let Some(ref left) = self.left {
+            if left.has_aggregate_function() {
+                return true;
+            }
+        }
+
+        if let Some(ref right) = self.right {
+            if right.has_aggregate_function() {
+                return true;
+            }
+        }
+
+        if let Some(ref function) = self.function {
+            if function.is_aggregate_function() {
+                return true;
+            }
+        }
+
+        false
+    }
+
+    pub fn get_required_fields(&self) -> HashSet<Field> {
+        let mut result = HashSet::new();
+
+        if let Some(ref left) = self.left {
+            result.extend(left.get_required_fields());
+        }
+
+        if let Some(ref right) = self.right {
+            result.extend(right.get_required_fields());
+        }
+
+        if let Some(ref field) = self.field {
+            result.insert(field.clone());
+        }
+
+        result
+    }
 }
 
 impl Display for ColumnExpr {
     fn fmt(&self, fmt: &mut Formatter) -> fmt::Result {
+        use std::fmt::Write;
+        if let Some(ref function) = self.function {
+            fmt.write_str(&function.to_string())?;
+            fmt.write_char('(')?;
+            if let Some(ref left) = self.left {
+                fmt.write_str(&left.to_string())?;
+            }
+            fmt.write_char(')')?;
+        }
+
         if let Some(ref field) = self.field {
             fmt.write_str(&field.to_string())?;
         }

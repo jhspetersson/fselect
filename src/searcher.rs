@@ -295,7 +295,7 @@ impl Searcher {
             }
         }
 
-        let mut path = dir.clone().to_path_buf();
+        let mut path = dir.to_path_buf();
 
         loop {
             let parent_found = path.pop();

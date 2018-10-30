@@ -8,8 +8,9 @@ Find files with SQL-like queries
 
 While it doesn't tend to fully replace traditional `find` and `ls`, **fselect** has these nice features:
 
-* complex queries
 * SQL-like (not real SQL, but highly relaxed!) grammar easily understandable by humans
+* complex queries
+* aggregate functions
 * search within archives
 * `.gitignore` support (experimental)
 * search by width and height of images and videos
@@ -82,6 +83,14 @@ Specify file size and add it to the results:
 More complex query:
 
     fselect "name from /tmp where (name = *.tmp and size = 0) or (name = *.cfg and size > 1000000)"
+    
+Aggregate functions:
+
+    fselect "MIN(size), MAX(size), AVG(size), SUM(size), COUNT(*) from /home/user/Downloads"
+    
+Formatting functions:
+
+    fselect "LOWER(name), UPPER(name), LENGTH(name) from /home/user/Downloads"
     
 Use single quotes if you need to address files with spaces:
 

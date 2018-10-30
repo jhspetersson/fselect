@@ -2118,6 +2118,7 @@ fn has_extension(file_name: &str, extensions: &[&str]) -> bool {
 
 #[cfg(windows)]
 use std;
+#[cfg(windows)]
 use std::ffi::OsStr;
 
 #[cfg(windows)]

@@ -82,13 +82,13 @@ Joins, unions, aggregating functions, and subselects are not supported (yet?).
 * `is_shebang`
 * `width`
 * `height`
-* `bitrate`
-* `freq`
-* `title`
-* `artist`
-* `album`
-* `year`
-* `genre`
+* `mp3_bitrate` or `bitrate`
+* `mp3_freq` or `freq`
+* `mp3_title` or `title`
+* `mp3_artist` or `artist`
+* `mp3_album` or `album`
+* `mp3_genre` or `genre`
+* `mp3_year`
 * `is_archive`
 * `is_audio`
 * `is_book`
@@ -110,6 +110,16 @@ Queries using these functions return only one result row.
 | MAX | Maximum value | `select max(size) from /home/user/Downloads` |
 | MIN | Minimum value | `select min(size) from /home/user where size gt 0` |
 | SUM | Sum of all values | `select sum(size) from /home/user/Downloads` |
+
+#### Date functions
+
+Used mostly for formatting results.
+
+| Function | Meaning | Example |
+| --- | --- | --- |
+| DAY | Extract day of the month | `select day(modified) from /home/user/Downloads` |
+| MONTH | Extract month of the year | `select month(name) from /home/user/Downloads` |
+| YEAR | Extract year of the date | `select year(name) from /home/user/Downloads` |
 
 #### Other functions
 
@@ -211,7 +221,7 @@ title of the track, artist's name, album, genre, and year.
 [List of supported genres](https://docs.rs/mp3-metadata/0.3.0/mp3_metadata/enum.Genre.html)
 
     fselect bitrate, path from /home/user/music
-    fselect year, album, title from /home/user/music where artist like %Vampire% and bitrate gte 320
+    fselect mp3_year, album, title from /home/user/music where artist like %Vampire% and bitrate gte 320
     fselect bitrate, freq, path from /home/user/music where genre = Rap or genre = HipHop
 
 ### Output formats

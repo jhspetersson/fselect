@@ -18,6 +18,10 @@ pub enum Function {
     Avg,
     Sum,
     Count,
+
+    Day,
+    Month,
+    Year,
 }
 
 impl FromStr for Function {
@@ -30,6 +34,10 @@ impl FromStr for Function {
             "lower" => Ok(Function::Lower),
             "upper" => Ok(Function::Upper),
             "length" => Ok(Function::Length),
+
+            "day" => Ok(Function::Day),
+            "month" => Ok(Function::Month),
+            "year" => Ok(Function::Year),
 
             "min" => Ok(Function::Min),
             "max" => Ok(Function::Max),

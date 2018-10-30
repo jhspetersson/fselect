@@ -10,7 +10,7 @@ While it doesn't tend to fully replace traditional `find` and `ls`, **fselect** 
 
 * SQL-like (not real SQL, but highly relaxed!) grammar easily understandable by humans
 * complex queries
-* aggregate functions
+* aggregate, date, and other functions
 * search within archives
 * `.gitignore` support (experimental)
 * search by width and height of images and videos
@@ -90,7 +90,7 @@ Aggregate functions:
     
 Formatting functions:
 
-    fselect "LOWER(name), UPPER(name), LENGTH(name) from /home/user/Downloads"
+    fselect "LOWER(name), UPPER(name), LENGTH(name), YEAR(modified) from /home/user/Downloads"
     
 Use single quotes if you need to address files with spaces:
 

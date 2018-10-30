@@ -131,14 +131,14 @@ Column Options:
         other_write                     Returns a boolean signifying whether the file can be written by others
         other_exec                      Returns a boolean signifying whether the file can be executed by others
 
-        title                           Returns the title of the audio file taken from the file's metadata
-        album                           Returns the album name of the audio file taken from the file's metadata
-        artist                          Returns the artist of the audio file taken from the file's metadata
-        genre                           Returns the genre of the audio file taken from the file's metadata
-        year                            Returns the year of the audio file taken from the file's metadata
+        mp3_title | title               Returns the title of the audio file taken from the file's metadata
+        mp3_album | album               Returns the album name of the audio file taken from the file's metadata
+        mp3_artist | artist             Returns the artist of the audio file taken from the file's metadata
+        mp3_genre | genre               Returns the genre of the audio file taken from the file's metadata
+        mp3_year                        Returns the year of the audio file taken from the file's metadata
+        mp3_freq | freq                 Returns the sampling rate of audio or video file
+        mp3_bitrate | bitrate           Returns the bitrate of the audio file in kbps
 
-        freq                            Returns the sampling rate of audio or video file
-        bitrate                         Returns the bitrate of the audio file in kbps
         width                           Returns the number of pixels along the width of the photo
         height                          Returns the number of pixels along the height of the photo
 
@@ -158,6 +158,10 @@ Functions:
         MAX                             Returns maximum value
         MIN                             Returns minimum value
         SUM                             Returns sum of all values
+    Date:
+        DAY                             Returns day of the month
+        MONTH                           Returns month of the year
+        YEAR                            Returns year of the date
     Other:
         LENGTH                          Returns length of string value
         LOWER                           Returns lowercase value

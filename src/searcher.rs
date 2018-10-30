@@ -11,8 +11,7 @@ use std::io::BufReader;
 use std::io::Read;
 use std::rc::Rc;
 
-use chrono::DateTime;
-use chrono::Local;
+use chrono::{Datelike, DateTime, Local};
 use csv;
 use humansize::{FileSize, file_size_opts};
 use imagesize;
@@ -392,6 +391,36 @@ impl Searcher {
                 },
                 Some(Function::Length) => {
                     return format!("{}", function_arg.chars().count());
+                },
+                Some(Function::Year) => {
+                    match parse_datetime(&function_arg) {
+                        Ok(date) => {
+                            return date.0.year().to_string();
+                        },
+                        _ => {
+                            return String::new();
+                        }
+                    }
+                },
+                Some(Function::Month) => {
+                    match parse_datetime(&function_arg) {
+                        Ok(date) => {
+                            return date.0.month().to_string();
+                        },
+                        _ => {
+                            return String::new();
+                        }
+                    }
+                },
+                Some(Function::Day) => {
+                    match parse_datetime(&function_arg) {
+                        Ok(date) => {
+                            return date.0.day().to_string();
+                        },
+                        _ => {
+                            return String::new();
+                        }
+                    }
                 },
                 _ => {
                     return String::new();

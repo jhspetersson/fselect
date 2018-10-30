@@ -76,14 +76,80 @@ impl Searcher {
         self.query.fields.iter().any(|ref f| f.has_aggregate_function())
     }
 
+    fn print_results_start(&self) {
+        if let OutputFormat::Json = self.query.output_format {
+            print!("[");
+        }
+    }
+
+    fn format_results_row(&self, record: String,
+                          mut output_value: String,
+                          records: &mut Vec<String>) -> String {
+        match self.query.output_format {
+            OutputFormat::Lines => {
+                output_value.push_str(&record);
+                output_value.push('\n');
+            },
+            OutputFormat::List => {
+                output_value.push_str(&record);
+                output_value.push('\0');
+            },
+            OutputFormat::Json => {
+                // use file_map later
+            },
+            OutputFormat::Tabs => {
+                output_value.push_str(&record);
+                output_value.push('\t');
+            },
+            OutputFormat::Csv => {
+                records.push(record);
+            },
+        }
+
+        output_value
+    }
+
+    fn format_results_row_end(&self,
+                              mut output_value: String,
+                              records: &Vec<String>,
+                              file_map: &HashMap<String, String>) -> String {
+        match self.query.output_format {
+            OutputFormat::Lines | OutputFormat::List => {},
+            OutputFormat::Tabs => {
+                output_value.push('\n');
+            },
+            OutputFormat::Csv => {
+                let mut csv_output = WritableBuffer::new();
+                {
+                    let mut csv_writer = csv::Writer::from_writer(&mut csv_output);
+                    let _ = csv_writer.write_record(records);
+                }
+                let result: String = csv_output.into();
+                output_value.push_str(result.as_ref());
+            },
+            OutputFormat::Json => {
+                if !self.is_buffered() && self.found > 1 {
+                    output_value.push(',');
+                }
+                output_value.push_str(&serde_json::to_string(&file_map).unwrap());
+            },
+        }
+
+        output_value
+    }
+
+    fn print_results_end(&self) {
+        if let OutputFormat::Json = self.query.output_format {
+            print!("]");
+        }
+    }
+
     pub fn list_search_results(&mut self, t: &mut Box<StdoutTerminal>) -> io::Result<()> {
         let need_metadata = self.query.get_all_fields().iter().any(|f| f != &Field::Name);
         let need_dim = self.query.get_all_fields().iter().any(|f| f == &Field::Width || f == &Field::Height);
         let need_mp3 = self.query.get_all_fields().iter().any(|f| f.is_mp3_field());
 
-        if let OutputFormat::Json = self.query.output_format {
-            print!("[");
-        }
+        self.print_results_start();
 
         for root in &self.query.clone().roots {
             let root_dir = Path::new(&root.path);
@@ -114,49 +180,10 @@ impl Searcher {
                 let record = format!("{}", self.get_aggregate_function_value(column_expr));
                 file_map.insert(column_expr.to_string().to_lowercase(), record.clone());
 
-                match self.query.output_format {
-                    OutputFormat::Lines => {
-                        output_value.push_str(&record);
-                        output_value.push('\n');
-                    },
-                    OutputFormat::List => {
-                        output_value.push_str(&record);
-                        output_value.push('\0');
-                    },
-                    OutputFormat::Json => {
-                        // use file_map later
-                    },
-                    OutputFormat::Tabs => {
-                        output_value.push_str(&record);
-                        output_value.push('\t');
-                    },
-                    OutputFormat::Csv => {
-                        records.push(record);
-                    },
-                }
+                output_value = self.format_results_row(record, output_value, &mut records);
             }
 
-            match self.query.output_format {
-                OutputFormat::Lines | OutputFormat::List => {},
-                OutputFormat::Tabs => {
-                    output_value.push('\n');
-                },
-                OutputFormat::Csv => {
-                    let mut csv_output = WritableBuffer::new();
-                    {
-                        let mut csv_writer = csv::Writer::from_writer(&mut csv_output);
-                        let _ = csv_writer.write_record(records);
-                    }
-                    let result: String = csv_output.into();
-                    output_value.push_str(result.as_ref());
-                },
-                OutputFormat::Json => {
-                    if !self.is_buffered() && self.found > 1 {
-                        output_value.push(',');
-                    }
-                    output_value.push_str(&serde_json::to_string(&file_map).unwrap());
-                },
-            }
+            output_value = self.format_results_row_end(output_value, &records, &file_map);
 
             print!("{}", output_value);
         } else if self.is_buffered() {
@@ -173,9 +200,7 @@ impl Searcher {
             }
         }
 
-        if let OutputFormat::Json = self.query.output_format {
-            print!("]");
-        }
+        self.print_results_end();
 
         Ok(())
     }
@@ -833,26 +858,7 @@ impl Searcher {
             let mut record = self.get_column_expr_value(entry, file_info, &mp3_info, &attrs, dimensions, &field, t);
             file_map.insert(field.to_string().to_lowercase(), record.clone());
 
-            match self.query.output_format {
-                OutputFormat::Lines => {
-                    output_value.push_str(&record);
-                    output_value.push('\n');
-                },
-                OutputFormat::List => {
-                    output_value.push_str(&record);
-                    output_value.push('\0');
-                },
-                OutputFormat::Json => {
-                    // use file_map later
-                },
-                OutputFormat::Tabs => {
-                    output_value.push_str(&record);
-                    output_value.push('\t');
-                },
-                OutputFormat::Csv => {
-                    records.push(record);
-                },
-            }
+            output_value = self.format_results_row(record, output_value, &mut records);
         }
 
         for (idx, field) in self.query.ordering_fields.iter().enumerate() {
@@ -862,27 +868,7 @@ impl Searcher {
             }
         }
 
-        match self.query.output_format {
-            OutputFormat::Lines | OutputFormat::List => {},
-            OutputFormat::Tabs => {
-                output_value.push('\n');
-            },
-            OutputFormat::Csv => {
-                let mut csv_output = WritableBuffer::new();
-                {
-                    let mut csv_writer = csv::Writer::from_writer(&mut csv_output);
-                    let _ = csv_writer.write_record(records);
-                }
-                let result: String = csv_output.into();
-                output_value.push_str(result.as_ref());
-            },
-            OutputFormat::Json => {
-                if !self.is_buffered() && self.found > 1 {
-                    output_value.push(',');
-                }
-                output_value.push_str(&serde_json::to_string(&file_map).unwrap());
-            },
-        }
+        output_value = self.format_results_row_end(output_value, &records, &file_map);
 
         if self.is_buffered() {
             self.output_buffer.insert(Criteria::new(Rc::new(self.query.ordering_fields.clone()), criteria, self.query.ordering_asc.clone()), output_value);

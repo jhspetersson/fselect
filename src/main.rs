@@ -41,7 +41,8 @@ fn main() {
     let mut t = term::stdout().unwrap();
 
     if env::args().len() == 1 {
-        usage_info(&mut t);
+        short_usage_info(&mut t);
+        help_hint();
         return;
     }
 
@@ -68,7 +69,7 @@ fn main() {
     }
 }
 
-fn usage_info(t: &mut Box<StdoutTerminal>) {
+fn short_usage_info(t: &mut Box<StdoutTerminal>) {
     const VERSION: &'static str = env!("CARGO_PKG_VERSION");
 
     print!("FSelect utility");
@@ -82,8 +83,18 @@ fn usage_info(t: &mut Box<StdoutTerminal>) {
     println!("https://github.com/jhspetersson/fselect");
     t.reset().unwrap();
 
+    println!("Usage: fselect COLUMN[, COLUMN...] [from PATH[, PATH...]] [where EXPR] [order by COLUMN (asc|desc), ...] [limit N] [into FORMAT]");
+}
+
+fn help_hint() {
     println!("
-Usage: fselect COLUMN[, COLUMN...] [from PATH[, PATH...]] [where EXPR] [order by COLUMN (asc|desc), ...] [limit N] [into FORMAT]
+For more detailed instructions please refer to the URL above or run fselect --help");
+}
+
+fn usage_info(t: &mut Box<StdoutTerminal>) {
+    short_usage_info(t);
+
+    println!("
 
 Files Detected as Audio: .aac, .aiff, .amr, .flac, .gsm, .m4a, .m4b, .m4p, .mp3, .ogg, .wav, .wma
 Files Detected as Archives: .7z, .bz2, .bzip2, .gz, .gzip, .rar, .tar, .xz, .zip

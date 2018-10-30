@@ -97,6 +97,30 @@ Joins, unions, aggregating functions, and subselects are not supported (yet?).
 * `is_source`
 * `is_video`
 
+### Functions
+
+#### Aggregate functions
+
+Queries using these functions return only one result row.
+
+| Function | Meaning | Example |
+| --- | --- | --- |
+| AVG | Average of all values | `select avg(size) from /home/user/Downloads` |
+| COUNT | Number of all values | `select count(*) from /home/user/Downloads` |
+| MAX | Maximum value | `select max(size) from /home/user/Downloads` |
+| MIN | Minimum value | `select min(size) from /home/user where size gt 0` |
+| SUM | Sum of all values | `select sum(size) from /home/user/Downloads` |
+
+#### Other functions
+
+Used mostly for formatting results.
+
+| Function | Meaning | Example |
+| --- | --- | --- |
+| LENGTH | Length of string value | `select length(name) from /home/user/Downloads order by 1 desc limit 10` |
+| LOWER | Convert value to lowercase | `select lower(name) from /home/user/Downloads` |
+| UPPER | Convert value to uppercase | `select upper(name) from /home/user/Downloads` |
+
 ### Search roots
 
     path [depth N] [symlinks] [archives] [gitignore]

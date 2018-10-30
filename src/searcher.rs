@@ -472,7 +472,10 @@ impl Searcher {
                 return self.raw_output_buffer.len().to_string();
             },
             _ => {
-                return String::new();
+                match &column_expr.val {
+                    Some(val) => return val.clone(),
+                    _ => return String::new()
+                }
             }
         }
     }

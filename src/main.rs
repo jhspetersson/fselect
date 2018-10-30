@@ -151,6 +151,18 @@ Column Options:
         is_source                       Returns a boolean signifying whether the file is source code
         is_video                        Returns a boolean signifying whether the file is a video file
 
+Functions:
+    Aggregate:
+        AVG                             Returns average of all values
+        COUNT                           Returns number of all values
+        MAX                             Returns maximum value
+        MIN                             Returns minimum value
+        SUM                             Returns sum of all values
+    Other:
+        LENGTH                          Returns length of string value
+        LOWER                           Returns lowercase value
+        UPPER                           Returns uppercase value
+
 Expressions:
     Operators:
         = | == | eq                     Used to check for equality between the column field and value

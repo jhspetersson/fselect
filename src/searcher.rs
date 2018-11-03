@@ -152,7 +152,8 @@ impl Searcher {
 
         for root in &self.query.clone().roots {
             let root_dir = Path::new(&root.path);
-            let max_depth = root.depth;
+            let min_depth = root.min_depth;
+            let max_depth = root.max_depth;
             let search_archives = root.archives;
             let follow_symlinks = root.symlinks;
             let apply_gitignore = root.gitignore;
@@ -161,6 +162,7 @@ impl Searcher {
                 need_metadata,
                 need_dim,
                 need_mp3,
+                min_depth,
                 max_depth,
                 1,
                 search_archives,
@@ -209,13 +211,14 @@ impl Searcher {
                   need_metadata: bool,
                   need_dim: bool,
                   need_mp3: bool,
+                  min_depth: u32,
                   max_depth: u32,
                   depth: u32,
                   search_archives: bool,
                   follow_symlinks: bool,
                   apply_gitignore: bool,
                   t: &mut Box<StdoutTerminal>) -> io::Result<()> {
-        if max_depth == 0 || (max_depth > 0 && depth <= max_depth) {
+        if (min_depth == 0 || (min_depth > 0 && depth >= min_depth)) && (max_depth == 0 || (max_depth > 0 && depth <= max_depth)) {
             let metadata = match follow_symlinks {
                 true => dir.metadata(),
                 false => symlink_metadata(dir)
@@ -272,6 +275,7 @@ impl Searcher {
                                                         need_metadata,
                                                         need_dim,
                                                         need_mp3,
+                                                        min_depth,
                                                         max_depth,
                                                         depth + 1,
                                                         search_archives,

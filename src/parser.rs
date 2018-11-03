@@ -143,7 +143,7 @@ impl Parser {
 
     fn parse_roots(&mut self) -> Vec<Root> {
         enum RootParsingMode {
-            Unknown, From, Root, Depth, Options, Comma
+            Unknown, From, Root, MinDepth, Depth, Options, Comma
         }
 
         let mut roots: Vec<Root> = Vec::new();
@@ -169,6 +169,7 @@ impl Parser {
 
         if let RootParsingMode::From = mode {
             let mut path: String = String::from("");
+            let mut min_depth: u32 = 0;
             let mut depth: u32 = 0;
             let mut archives = false;
             let mut symlinks = false;
@@ -186,20 +187,36 @@ impl Parser {
                                         mode = RootParsingMode::Root;
                                     },
                                     RootParsingMode::Root | RootParsingMode::Options => {
-                                        if s.to_ascii_lowercase() == "depth" {
+                                        let s = s.to_ascii_lowercase();
+                                        if s == "mindepth" {
+                                            mode = RootParsingMode::MinDepth;
+                                        } else if s == "maxdepth" || s == "depth" {
                                             mode = RootParsingMode::Depth;
-                                        } else if s.to_ascii_lowercase().starts_with("arc") {
+                                        } else if s.starts_with("arc") {
                                             archives = true;
                                             mode = RootParsingMode::Options;
-                                        } else if s.to_ascii_lowercase().starts_with("symlink") {
+                                        } else if s.starts_with("sym") {
                                             symlinks = true;
                                             mode = RootParsingMode::Options;
-                                        } else if s.to_ascii_lowercase().starts_with("gitignore") {
+                                        } else if s.starts_with("git") {
                                             gitignore = true;
                                             mode = RootParsingMode::Options;
                                         } else {
                                             self.drop_lexem();
                                             break;
+                                        }
+                                    },
+                                    RootParsingMode::MinDepth => {
+                                        let d: Result<u32, _> = s.parse();
+                                        match d {
+                                            Ok(d) => {
+                                                min_depth = d;
+                                                mode = RootParsingMode::Options;
+                                            },
+                                            _ => {
+                                                self.drop_lexem();
+                                                break;
+                                            }
                                         }
                                     },
                                     RootParsingMode::Depth => {
@@ -220,7 +237,7 @@ impl Parser {
                             },
                             &Lexem::Comma => {
                                 if path.len() > 0 {
-                                    roots.push(Root::new(path, depth, archives, symlinks, gitignore));
+                                    roots.push(Root::new(path, min_depth, depth, archives, symlinks, gitignore));
 
                                     path = String::from("");
                                     depth = 0;
@@ -236,7 +253,7 @@ impl Parser {
                             },
                             _ => {
                                 if path.len() > 0 {
-                                    roots.push(Root::new(path, depth, archives, symlinks, gitignore));
+                                    roots.push(Root::new(path, min_depth, depth, archives, symlinks, gitignore));
                                 }
 
                                 self.drop_lexem();
@@ -246,7 +263,7 @@ impl Parser {
                     },
                     None => {
                         if path.len() > 0 {
-                            roots.push(Root::new(path, depth, archives, symlinks, gitignore));
+                            roots.push(Root::new(path, min_depth, depth, archives, symlinks, gitignore));
                         }
                         break;
                     }
@@ -603,19 +620,20 @@ impl Query {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Root {
     pub path: String,
-    pub depth: u32,
+    pub min_depth: u32,
+    pub max_depth: u32,
     pub archives: bool,
     pub symlinks: bool,
     pub gitignore: bool,
 }
 
 impl Root {
-    fn new(path: String, depth: u32, archives: bool, symlinks: bool, gitignore: bool) -> Root {
-        Root { path, depth, archives, symlinks, gitignore }
+    fn new(path: String, min_depth: u32, max_depth: u32, archives: bool, symlinks: bool, gitignore: bool) -> Root {
+        Root { path, min_depth, max_depth, archives, symlinks, gitignore }
     }
 
     fn default() -> Root {
-        Root { path: String::from("."), depth: 0, archives: false, symlinks: false, gitignore: false }
+        Root { path: String::from("."), min_depth: 0, max_depth: 0, archives: false, symlinks: false, gitignore: false }
     }
 }
 
@@ -895,17 +913,18 @@ mod tests {
 
     #[test]
     fn query() {
-        let query = "select name, path ,size , fsize from /test depth 2, /test2 archives,/test3 depth 3 archives , /test4 ,'/test5' gitignore where name != 123 AND ( size gt 456 or fsize lte 758) or name = 'xxx' order by 2, size desc limit 50";
+        let query = "select name, path ,size , fsize from /test depth 2, /test2 archives,/test3 depth 3 archives , /test4 ,'/test5' gitignore , /test6 mindepth 3 where name != 123 AND ( size gt 456 or fsize lte 758) or name = 'xxx' order by 2, size desc limit 50";
         let mut p = Parser::new();
         let query = p.parse(&query).unwrap();
 
         assert_eq!(query.fields, vec![ColumnExpr::field(Field::Name), ColumnExpr::field(Field::Path), ColumnExpr::field(Field::Size), ColumnExpr::field(Field::FormattedSize)]);
         assert_eq!(query.roots, vec![
-            Root::new(String::from("/test"), 2, false, false, false),
-            Root::new(String::from("/test2"), 0, true, false, false),
-            Root::new(String::from("/test3"), 3, true, false, false),
-            Root::new(String::from("/test4"), 0, false, false, false),
-            Root::new(String::from("/test5"), 0, false, false, true),
+            Root::new(String::from("/test"), 0, 2, false, false, false),
+            Root::new(String::from("/test2"), 0, 0, true, false, false),
+            Root::new(String::from("/test3"), 0, 3, true, false, false),
+            Root::new(String::from("/test4"), 0, 0, false, false, false),
+            Root::new(String::from("/test5"), 0, 0, false, false, true),
+            Root::new(String::from("/test6"), 3, 0, false, false, false),
         ]);
 
         let expr = Expr::node(

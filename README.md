@@ -141,10 +141,10 @@ Search within multiple locations:
 
     fselect path from /home/user/oldstuff, /home/user/newstuff where name = '*.jpg'
     
-With maximum depth specified:
+With minimum and/or maximum depth specified (`depth` is a synonym for `maxdepth`):
 
     fselect path from /home/user/oldstuff depth 5 where name = '*.jpg'
-    fselect path from /home/user/oldstuff depth 5, /home/user/newstuff depth 10 where name = '*.jpg'
+    fselect path from /home/user/oldstuff mindepth 2 maxdepth 5, /home/user/newstuff depth 10 where name = '*.jpg'
 
 Optionally follow symlinks:
 

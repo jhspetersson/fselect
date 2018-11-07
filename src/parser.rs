@@ -771,6 +771,11 @@ impl ColumnExpr {
 impl Display for ColumnExpr {
     fn fmt(&self, fmt: &mut Formatter) -> fmt::Result {
         use std::fmt::Write;
+
+        if let Some(ref left) = self.left {
+            fmt.write_str(&left.to_string());
+        }
+
         if let Some(ref function) = self.function {
             fmt.write_str(&function.to_string())?;
             fmt.write_char('(')?;

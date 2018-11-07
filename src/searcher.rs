@@ -366,6 +366,10 @@ impl Searcher {
             return value.clone();
         }
 
+        if let Some(ref left) = column_expr.left {
+            return self.get_column_expr_value(entry, file_info, mp3_info, attrs, dimensions, left, _t);
+        }
+
         String::new()
     }
 

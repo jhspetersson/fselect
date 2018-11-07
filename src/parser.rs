@@ -101,6 +101,26 @@ impl Parser {
     }
 
     fn parse_column_expr(&mut self) -> Option<ColumnExpr> {
+        let mut column_expr = ColumnExpr::new();
+
+        if let Some(left) = self.parse_expr() {
+            column_expr.left = Some(Box::new(left));
+        }
+
+        if let Some(Lexem::ArithmeticOperator(op)) = self.get_lexem() {
+            column_expr.arithmetic_op = ArithmeticOp::from(op);
+
+            if let Some(right) = self.parse_expr() {
+                column_expr.right = Some(Box::new(right));
+            }
+        } else {
+            self.drop_lexem();
+        }
+
+        Some(column_expr)
+    }
+
+    fn parse_expr(&mut self) -> Option<ColumnExpr> {
         let lexem = self.get_lexem();
         match lexem {
             Some(Lexem::String(ref s)) | Some(Lexem::RawString(ref s)) => {
@@ -115,7 +135,11 @@ impl Parser {
                 Some(ColumnExpr::value(s.to_string()))
             },
 
-            _ => None
+            _ => {
+                self.drop_lexem();
+
+                None
+            }
         }
     }
 
@@ -648,6 +672,28 @@ pub struct ColumnExpr {
 }
 
 impl ColumnExpr {
+    pub fn new() -> ColumnExpr {
+        ColumnExpr {
+            left: None,
+            arithmetic_op: None,
+            right: None,
+            field: None,
+            function: None,
+            val: None,
+        }
+    }
+
+    pub fn left(left: ColumnExpr) -> ColumnExpr {
+        ColumnExpr {
+            left: Some(Box::new(left)),
+            arithmetic_op: None,
+            right: None,
+            field: None,
+            function: None,
+            val: None,
+        }
+    }
+
     pub fn field(field: Field) -> ColumnExpr {
         ColumnExpr {
             left: None,
@@ -912,12 +958,30 @@ mod tests {
     use super::*;
 
     #[test]
+    fn simple_query() {
+        let query = "select name, path ,size , fsize from /";
+        let mut p = Parser::new();
+        let query = p.parse(&query).unwrap();
+
+        assert_eq!(query.fields, vec![ColumnExpr::left(ColumnExpr::field(Field::Name)),
+                                      ColumnExpr::left(ColumnExpr::field(Field::Path)),
+                                      ColumnExpr::left(ColumnExpr::field(Field::Size)),
+                                      ColumnExpr::left(ColumnExpr::field(Field::FormattedSize)),
+        ]);
+    }
+
+    #[test]
     fn query() {
         let query = "select name, path ,size , fsize from /test depth 2, /test2 archives,/test3 depth 3 archives , /test4 ,'/test5' gitignore , /test6 mindepth 3 where name != 123 AND ( size gt 456 or fsize lte 758) or name = 'xxx' order by 2, size desc limit 50";
         let mut p = Parser::new();
         let query = p.parse(&query).unwrap();
 
-        assert_eq!(query.fields, vec![ColumnExpr::field(Field::Name), ColumnExpr::field(Field::Path), ColumnExpr::field(Field::Size), ColumnExpr::field(Field::FormattedSize)]);
+        assert_eq!(query.fields, vec![ColumnExpr::left(ColumnExpr::field(Field::Name)),
+                                      ColumnExpr::left(ColumnExpr::field(Field::Path)),
+                                      ColumnExpr::left(ColumnExpr::field(Field::Size)),
+                                      ColumnExpr::left(ColumnExpr::field(Field::FormattedSize))
+        ]);
+
         assert_eq!(query.roots, vec![
             Root::new(String::from("/test"), 0, 2, false, false, false),
             Root::new(String::from("/test2"), 0, 0, true, false, false),
@@ -946,7 +1010,7 @@ mod tests {
         );
 
         assert_eq!(query.expr, Some(Box::new(expr)));
-        assert_eq!(query.ordering_fields, vec![ColumnExpr::field(Field::Path), ColumnExpr::field(Field::Size)]);
+        assert_eq!(query.ordering_fields, vec![ColumnExpr::left(ColumnExpr::field(Field::Path)), ColumnExpr::field(Field::Size)]);
         assert_eq!(query.ordering_asc, Rc::new(vec![true, false]));
         assert_eq!(query.limit, 50);
     }

@@ -18,7 +18,7 @@ pub enum Lexem {
     Into,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 enum LexingMode {
     Undefined,
     RawString,
@@ -32,12 +32,14 @@ enum LexingMode {
 
 pub struct Lexer<'a> {
     input: &'a str,
-    index: usize
+    index: usize,
+    before_from: bool,
+    after_open: bool,
 }
 
 impl<'a> Lexer<'a> {
     pub fn new(input: &str) -> Lexer {
-        return Lexer { input, index: 0 }
+        return Lexer { input, index: 0, before_from: true, after_open: false }
     }
 
     pub fn next_lexem(&mut self) -> Option<Lexem> {
@@ -66,12 +68,7 @@ impl<'a> Lexer<'a> {
                     s.push(c);
                 },
                 LexingMode::ArithmeticOperator => {
-                    if !is_arithmetic_op_char(c) {
-                        break
-                    }
-
-                    self.index += 1;
-                    s.push(c);
+                    break;
                 },
                 LexingMode::RawString => {
                     if !escape_next {
@@ -81,7 +78,7 @@ impl<'a> Lexer<'a> {
                             self.index += 1;
                             continue;
                         }
-                        if c == ' ' || c == ',' || c == '(' || c == ')' || is_op_char(c) || is_arithmetic_op_char(c) {
+                        if c == ' ' || c == ',' || c == '(' || c == ')' || is_op_char(c) || self.is_arithmetic_op_char(c) {
                             break
                         }
                     }
@@ -94,9 +91,6 @@ impl<'a> Lexer<'a> {
                     self.index += 1;
                     match c {
                         ' ' => {},
-                        '/' => {
-                            s.push(c);
-                        },
                         '\'' => mode = LexingMode::String,
                         ',' => mode = LexingMode::Comma,
                         '(' => mode = LexingMode::Open,
@@ -104,13 +98,19 @@ impl<'a> Lexer<'a> {
                         _ => {
                             mode = if is_op_char(c) {
                                 LexingMode::Operator
-                            } else if is_arithmetic_op_char(c) {
+                            } else if self.is_arithmetic_op_char(c) {
                                 LexingMode::ArithmeticOperator
                             } else {
                                 LexingMode::RawString
                             };
                             s.push(c);
                         }
+                    }
+
+                    if mode == LexingMode::Open {
+                        self.after_open = true;
+                    } else {
+                        self.after_open = false;
                     }
                 },
             }
@@ -125,7 +125,7 @@ impl<'a> Lexer<'a> {
             LexingMode::Close => Some(Lexem::Close),
             LexingMode::RawString => {
                 match s.to_lowercase().as_str() {
-                    "from" => Some(Lexem::From),
+                    "from" => { self.before_from = false; Some(Lexem::From) },
                     "where" => Some(Lexem::Where),
                     "or" => Some(Lexem::Or),
                     "and" => Some(Lexem::And),
@@ -144,18 +144,19 @@ impl<'a> Lexer<'a> {
             _ => None
         }
     }
+
+    fn is_arithmetic_op_char(&self, c: char) -> bool {
+        match c {
+            '+' | '-' => true,
+            '*' | '/' => self.before_from && !self.after_open,
+            _ => false
+        }
+    }
 }
 
 fn is_op_char(c: char) -> bool {
     match c {
         '=' | '!' | '<' | '>' | '~' => true,
-        _ => false
-    }
-}
-
-fn is_arithmetic_op_char(c: char) -> bool {
-    match c {
-        '+' | '-' => true,
         _ => false
     }
 }
@@ -258,7 +259,7 @@ mod tests {
 
         assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("COUNT"))));
         assert_eq!(lexer.next_lexem(), Some(Lexem::Open));
-        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("*"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::ArithmeticOperator(String::from("*"))));
         assert_eq!(lexer.next_lexem(), Some(Lexem::Close));
         assert_eq!(lexer.next_lexem(), Some(Lexem::Comma));
         assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("MIN"))));

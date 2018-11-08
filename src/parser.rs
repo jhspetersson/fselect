@@ -66,9 +66,9 @@ impl Parser {
                 Some(Lexem::Comma) => {
                     // skip
                 },
-                Some(Lexem::String(ref s)) | Some(Lexem::RawString(ref s)) => {
+                Some(Lexem::String(ref s)) | Some(Lexem::RawString(ref s)) | Some(Lexem::ArithmeticOperator(ref s)) => {
                     if s.to_ascii_lowercase() != "select" {
-                        if s == "*" {
+                        if s == "*" && fields.is_empty() {
                             #[cfg(unix)]
                                 {
                                     fields.push(ColumnExpr::field(Field::Mode));
@@ -101,23 +101,83 @@ impl Parser {
     }
 
     fn parse_column_expr(&mut self) -> Option<ColumnExpr> {
-        let mut column_expr = ColumnExpr::new();
+        self.parse_add_sub()
+    }
 
-        if let Some(left) = self.parse_expr() {
-            column_expr.left = Some(Box::new(left));
-        }
+    fn parse_add_sub(&mut self) -> Option<ColumnExpr> {
+        let node = self.parse_mul_div();
 
-        if let Some(Lexem::ArithmeticOperator(op)) = self.get_lexem() {
-            column_expr.arithmetic_op = ArithmeticOp::from(op);
+        match node {
+            Some(mut node) => {
+                loop {
+                    match self.get_lexem() {
+                        Some(Lexem::ArithmeticOperator(ref op)) if op == "+" || op == "-" => {
+                            match self.parse_mul_div() {
+                                Some(right) => {
+                                    let op = ArithmeticOp::from(op.to_string())?;
+                                    node = ColumnExpr::arithmetic_op(node, op, right);
+                                },
+                                _ => {
+                                    return None;
+                                }
+                            }
+                        },
+                        _ => {
+                            self.drop_lexem();
+                            break;
+                        }
+                    }
+                }
 
-            if let Some(right) = self.parse_expr() {
-                column_expr.right = Some(Box::new(right));
+                return Some(node);
+            },
+            _ => {
+                return None;
             }
-        } else {
-            self.drop_lexem();
-        }
+        };
+    }
 
-        Some(column_expr)
+    fn parse_mul_div(&mut self) -> Option<ColumnExpr> {
+        let node = self.parse_expr();
+        match node {
+            Some(mut node) => {
+                loop {
+                    match self.get_lexem() {
+                        Some(Lexem::ArithmeticOperator(ref op)) if op == "mul" || op == "div" => {
+                            match self.parse_expr() {
+                                Some(right) => {
+                                    let op = ArithmeticOp::from(op.to_string())?;
+                                    node = ColumnExpr::arithmetic_op(node, op, right);
+                                },
+                                _ => {
+                                    return None;
+                                }
+                            }
+                        },
+                        Some(Lexem::ArithmeticOperator(ref s)) if s == "*" || s == "/" => {
+                            match self.parse_expr() {
+                                Some(right) => {
+                                    let op = ArithmeticOp::from(s.clone())?;
+                                    node = ColumnExpr::arithmetic_op(node, op, right);
+                                },
+                                _ => {
+                                    return None;
+                                }
+                            }
+                        },
+                        _ => {
+                            self.drop_lexem();
+                            break;
+                        }
+                    }
+                }
+
+                return Some(node);
+            },
+            _ => {
+                return None;
+            }
+        };
     }
 
     fn parse_expr(&mut self) -> Option<ColumnExpr> {
@@ -134,7 +194,15 @@ impl Parser {
 
                 Some(ColumnExpr::value(s.to_string()))
             },
+            Some(Lexem::Open) => {
+                let expr_result = self.parse_add_sub();
+                let closing_lexem = self.get_lexem();
 
+                match closing_lexem {
+                    Some(Lexem::Close) => return expr_result,
+                    _ => return None
+                }
+            },
             _ => {
                 self.drop_lexem();
 
@@ -672,22 +740,11 @@ pub struct ColumnExpr {
 }
 
 impl ColumnExpr {
-    pub fn new() -> ColumnExpr {
-        ColumnExpr {
-            left: None,
-            arithmetic_op: None,
-            right: None,
-            field: None,
-            function: None,
-            val: None,
-        }
-    }
-
-    pub fn left(left: ColumnExpr) -> ColumnExpr {
+    pub fn arithmetic_op(left: ColumnExpr, arithmetic_op: ArithmeticOp, right: ColumnExpr) -> ColumnExpr {
         ColumnExpr {
             left: Some(Box::new(left)),
-            arithmetic_op: None,
-            right: None,
+            arithmetic_op: Some(arithmetic_op),
+            right: Some(Box::new(right)),
             field: None,
             function: None,
             val: None,
@@ -909,8 +966,8 @@ impl ArithmeticOp {
         match text.to_lowercase().as_str() {
             "+" | "plus" => Some(ArithmeticOp::Add),
             "-" | "minus"  => Some(ArithmeticOp::Subtract),
-            "mul" => Some(ArithmeticOp::Divide),
-            "div" => Some(ArithmeticOp::Multiply),
+            "*" | "mul" => Some(ArithmeticOp::Multiply),
+            "/" | "div" => Some(ArithmeticOp::Divide),
             _ => None
         }
     }
@@ -985,10 +1042,10 @@ mod tests {
         let mut p = Parser::new();
         let query = p.parse(&query).unwrap();
 
-        assert_eq!(query.fields, vec![ColumnExpr::left(ColumnExpr::field(Field::Name)),
-                                      ColumnExpr::left(ColumnExpr::field(Field::Path)),
-                                      ColumnExpr::left(ColumnExpr::field(Field::Size)),
-                                      ColumnExpr::left(ColumnExpr::field(Field::FormattedSize)),
+        assert_eq!(query.fields, vec![ColumnExpr::field(Field::Name),
+                                      ColumnExpr::field(Field::Path),
+                                      ColumnExpr::field(Field::Size),
+                                      ColumnExpr::field(Field::FormattedSize),
         ]);
     }
 
@@ -998,10 +1055,10 @@ mod tests {
         let mut p = Parser::new();
         let query = p.parse(&query).unwrap();
 
-        assert_eq!(query.fields, vec![ColumnExpr::left(ColumnExpr::field(Field::Name)),
-                                      ColumnExpr::left(ColumnExpr::field(Field::Path)),
-                                      ColumnExpr::left(ColumnExpr::field(Field::Size)),
-                                      ColumnExpr::left(ColumnExpr::field(Field::FormattedSize))
+        assert_eq!(query.fields, vec![ColumnExpr::field(Field::Name),
+                                      ColumnExpr::field(Field::Path),
+                                      ColumnExpr::field(Field::Size),
+                                      ColumnExpr::field(Field::FormattedSize)
         ]);
 
         assert_eq!(query.roots, vec![
@@ -1032,7 +1089,7 @@ mod tests {
         );
 
         assert_eq!(query.expr, Some(Box::new(expr)));
-        assert_eq!(query.ordering_fields, vec![ColumnExpr::left(ColumnExpr::field(Field::Path)), ColumnExpr::field(Field::Size)]);
+        assert_eq!(query.ordering_fields, vec![ColumnExpr::field(Field::Path), ColumnExpr::field(Field::Size)]);
         assert_eq!(query.ordering_asc, Rc::new(vec![true, false]));
         assert_eq!(query.limit, 50);
     }

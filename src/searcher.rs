@@ -150,6 +150,11 @@ impl Searcher {
 
         self.print_results_start();
 
+
+        let ce = ColumnExpr::left(ColumnExpr::field(Field::Size));
+        println!("{}", ce);
+
+
         for root in &self.query.clone().roots {
             let root_dir = Path::new(&root.path);
             let min_depth = root.min_depth;
@@ -904,7 +909,7 @@ impl Searcher {
         for (idx, field) in self.query.ordering_fields.iter().enumerate() {
             criteria[idx] = match file_map.get(&field.to_string().to_lowercase()) {
                 Some(record) => record.clone(),
-                None => self.get_field_value(entry, file_info, &mp3_info, &attrs, dimensions, &field.clone().field.unwrap(), t)
+                None => self.get_column_expr_value(entry, file_info, &mp3_info, &attrs, dimensions, &field, t)
             }
         }
 

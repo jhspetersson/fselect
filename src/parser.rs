@@ -914,6 +914,23 @@ impl ArithmeticOp {
             _ => None
         }
     }
+
+    pub fn calc(&self, left: &str, right: &str) -> String {
+        if let Ok(left) = left.parse::<i64>() {
+            if let Ok(right) = right.parse::<i64>() {
+                let result = match &self {
+                    ArithmeticOp::Add => left + right,
+                    ArithmeticOp::Subtract => left - right,
+                    ArithmeticOp::Multiply => left * right,
+                    ArithmeticOp::Divide => left / right,
+                };
+
+                return result.to_string();
+            }
+        }
+
+        String::from("0")
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]

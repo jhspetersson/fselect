@@ -150,11 +150,6 @@ impl Searcher {
 
         self.print_results_start();
 
-
-        let ce = ColumnExpr::left(ColumnExpr::field(Field::Size));
-        println!("{}", ce);
-
-
         for root in &self.query.clone().roots {
             let root_dir = Path::new(&root.path);
             let min_depth = root.min_depth;
@@ -371,11 +366,22 @@ impl Searcher {
             return value.clone();
         }
 
+        let mut result = String::new();
+
         if let Some(ref left) = column_expr.left {
-            return self.get_column_expr_value(entry, file_info, mp3_info, attrs, dimensions, left, _t);
+            let left_result = self.get_column_expr_value(entry, file_info, mp3_info, attrs, dimensions, left, _t);
+
+            if let Some(ref op) = column_expr.arithmetic_op {
+                if let Some(ref right) = column_expr.right {
+                    let right_result = self.get_column_expr_value(entry, file_info, mp3_info, attrs, dimensions, right, _t);
+                    result = op.calc(&left_result, &right_result);
+                }
+            } else {
+                result = left_result;
+            }
         }
 
-        String::new()
+        result
     }
 
     fn get_function_value(&self,

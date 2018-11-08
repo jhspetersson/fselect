@@ -259,7 +259,7 @@ mod tests {
 
         assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("COUNT"))));
         assert_eq!(lexer.next_lexem(), Some(Lexem::Open));
-        assert_eq!(lexer.next_lexem(), Some(Lexem::ArithmeticOperator(String::from("*"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("*"))));
         assert_eq!(lexer.next_lexem(), Some(Lexem::Close));
         assert_eq!(lexer.next_lexem(), Some(Lexem::Comma));
         assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("MIN"))));

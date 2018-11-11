@@ -19,7 +19,7 @@ use mp3_metadata;
 use mp3_metadata::MP3Metadata;
 use serde_json;
 use term::StdoutTerminal;
-#[cfg(unix)]
+#[cfg(all(unix, feature = "users"))]
 use users::{Groups, Users, UsersCache};
 #[cfg(unix)]
 use xattr::FileExt;
@@ -2164,15 +2164,15 @@ fn has_extension(file_name: &str, extensions: &[&str]) -> bool {
     false
 }
 
-#[cfg(windows)]
+#[cfg(any(windows, not(feature = "users")))]
 use std;
-#[cfg(windows)]
+#[cfg(any(windows, not(feature = "users")))]
 use std::ffi::OsStr;
 
-#[cfg(windows)]
+#[cfg(any(windows, not(feature = "users")))]
 struct UsersCache;
 
-#[cfg(windows)]
+#[cfg(any(windows, not(feature = "users")))]
 impl UsersCache {
     fn new() -> Self {
         UsersCache { }
@@ -2187,20 +2187,20 @@ impl UsersCache {
     }
 }
 
-#[cfg(windows)]
+#[cfg(any(windows, not(feature = "users")))]
 struct User;
 
-#[cfg(windows)]
+#[cfg(any(windows, not(feature = "users")))]
 impl User {
     fn name(&self) -> &OsStr {
         "".as_ref()
     }
 }
 
-#[cfg(windows)]
+#[cfg(any(windows, not(feature = "users")))]
 struct Group;
 
-#[cfg(windows)]
+#[cfg(any(windows, not(feature = "users")))]
 impl Group {
     fn name(&self) -> &OsStr {
         "".as_ref()

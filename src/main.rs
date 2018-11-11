@@ -13,7 +13,7 @@ extern crate serde_derive;
 extern crate serde_json;
 extern crate term;
 extern crate time;
-#[cfg(unix)]
+#[cfg(all(unix, feature = "users"))]
 extern crate users;
 #[cfg(unix)]
 extern crate xattr;

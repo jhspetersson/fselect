@@ -101,7 +101,7 @@ Files Detected as Archives: .7z, .bz2, .bzip2, .gz, .gzip, .rar, .tar, .xz, .zip
 Files Detected as Book: .azw3, .chm, .epub, .fb2, .mobi, .pdf
 Files Detected as Document: .accdb, .doc, .docm, .docx, .dot, .dotm, .dotx, .mdb, .ods, .odt, .pdf, .potm, .potx, .ppt, .pptm, .pptx, .rtf, .xlm, .xls, .xlsm, .xlsx, .xlt, .xltm, .xltx, .xps
 Files Detected as Image: .bmp, .gif, .jpeg, .jpg, .png, .webp
-Files Detected as Source Code: .asm, .c, .ceylon, .clj, .cpp, .cs, .dart, .elm, .erl, .go, .groovy, .h, .hpp, .java, .js, .jsp, .kt, .lua, .nim, .pas, .php, .pl, .pm, .py, .rb, .rs, .scala, .swift, .tcl, .vala
+Files Detected as Source Code: .asm, .c, .cc, .ceylon, .clj, .cpp, .cs, .dart, .elm, .erl, .go, .groovy, .h, .hpp, .java, .js, .jsp, .kt, .lua, .nim, .pas, .php, .pl, .pm, .py, .rb, .rs, .scala, .swift, .tcl, .vala
 Files Detected as Video: .3gp, .avi, .flv, .m4p, .m4v, .mkv, .mov, .mp4, .mpeg, .mpg, .webm, .wmv
 
 Column Options:

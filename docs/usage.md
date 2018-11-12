@@ -12,7 +12,7 @@ You write SQL-like query, that's it.
 But if you'll put one more `select` behind occasionally, that's not a problem.
 
 Next you put columns you are interested in. It could be file name or path, size, modification date, etc.
-See full list of possible columns. You can add columns with arbitrary text (put in quotes if it contains spaces).
+See full list of possible columns. You can add columns with arbitrary text (put in quotes if it contains spaces). Few functions (aggregating and formatting) are there for your service. You can use arithmetic expressions when it makes sense.
 
 Where to search? Specify with `from` keyword. You can list one or more directories separated with comma.
 If you leave the `from`, then current directory will be processed.
@@ -45,7 +45,7 @@ Commas for column separation aren't needed as well.
 
 `into` keyword specifies output format, not output table.
 
-Joins, unions, aggregating functions, and subselects are not supported (yet?).
+Functions are usable only in column list, not inside `where` predicates. Joins, unions, and subselects are not supported (yet?).
 
 ### Columns and fields
 

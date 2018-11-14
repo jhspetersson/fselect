@@ -1649,7 +1649,7 @@ impl Searcher {
                     #[cfg(unix)]
                         {
                             if file_info.is_some() {
-                                return (false, meta, dim, mp3)
+                                return (false, meta, dim, mp3, exif)
                             }
 
                             if let Some(ref val) = expr.val {

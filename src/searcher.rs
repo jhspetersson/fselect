@@ -13,6 +13,7 @@ use std::rc::Rc;
 
 use chrono::{Datelike, DateTime, Local};
 use csv;
+use exif;
 use humansize::{FileSize, file_size_opts};
 use imagesize;
 use mp3_metadata;
@@ -147,6 +148,7 @@ impl Searcher {
         let need_metadata = self.query.get_all_fields().iter().any(|f| f != &Field::Name);
         let need_dim = self.query.get_all_fields().iter().any(|f| f == &Field::Width || f == &Field::Height);
         let need_mp3 = self.query.get_all_fields().iter().any(|f| f.is_mp3_field());
+        let need_exif = self.query.get_all_fields().iter().any(|f| f.is_exif_field());
 
         self.print_results_start();
 
@@ -162,6 +164,7 @@ impl Searcher {
                 need_metadata,
                 need_dim,
                 need_mp3,
+                need_exif,
                 min_depth,
                 max_depth,
                 1,
@@ -211,6 +214,7 @@ impl Searcher {
                   need_metadata: bool,
                   need_dim: bool,
                   need_mp3: bool,
+                  need_exif: bool,
                   min_depth: u32,
                   max_depth: u32,
                   depth: u32,
@@ -250,7 +254,7 @@ impl Searcher {
                                             let path = entry.path();
 
                                             if !apply_gitignore || (apply_gitignore && !matches_gitignore_filter(&gitignore_filters, entry.path().to_string_lossy().as_ref(), path.is_dir())) {
-                                                self.check_file(&entry, &None, need_metadata, need_dim, need_mp3, follow_symlinks, t);
+                                                self.check_file(&entry, &None, need_metadata, need_dim, need_mp3, need_exif, follow_symlinks, t);
 
                                                 if search_archives && is_zip_archive(&path.to_string_lossy()) {
                                                     if let Ok(file) = fs::File::open(&path) {
@@ -262,7 +266,7 @@ impl Searcher {
 
                                                                 if let Ok(afile) = archive.by_index(i) {
                                                                     let file_info = to_file_info(&afile);
-                                                                    self.check_file(&entry, &Some(file_info), need_metadata, need_dim, need_mp3, false, t);
+                                                                    self.check_file(&entry, &Some(file_info), need_metadata, need_dim, need_mp3, need_exif, false, t);
                                                                 }
                                                             }
                                                         }
@@ -275,6 +279,7 @@ impl Searcher {
                                                         need_metadata,
                                                         need_dim,
                                                         need_mp3,
+                                                        need_exif,
                                                         min_depth,
                                                         max_depth,
                                                         depth + 1,
@@ -350,16 +355,17 @@ impl Searcher {
                              entry: &DirEntry,
                              file_info: &Option<FileInfo>,
                              mp3_info: &Option<MP3Metadata>,
+                             exif_info: &Option<HashMap<String, String>>,
                              attrs: &Option<Box<Metadata>>,
                              dimensions: Option<(usize, usize)>,
                              column_expr: &ColumnExpr,
                              _t: &mut Box<StdoutTerminal>) -> String {
         if let Some(ref _function) = column_expr.function {
-            return self.get_function_value(entry, file_info, mp3_info, attrs, dimensions, column_expr, _t);
+            return self.get_function_value(entry, file_info, mp3_info, exif_info, attrs, dimensions, column_expr, _t);
         }
 
         if let Some(ref field) = column_expr.field {
-            return self.get_field_value(entry, file_info, mp3_info, attrs, dimensions, field, _t);
+            return self.get_field_value(entry, file_info, mp3_info,  exif_info, attrs, dimensions, field, _t);
         }
 
         if let Some(ref value) = column_expr.val {
@@ -369,11 +375,11 @@ impl Searcher {
         let mut result = String::new();
 
         if let Some(ref left) = column_expr.left {
-            let left_result = self.get_column_expr_value(entry, file_info, mp3_info, attrs, dimensions, left, _t);
+            let left_result = self.get_column_expr_value(entry, file_info, mp3_info, exif_info, attrs, dimensions, left, _t);
 
             if let Some(ref op) = column_expr.arithmetic_op {
                 if let Some(ref right) = column_expr.right {
-                    let right_result = self.get_column_expr_value(entry, file_info, mp3_info, attrs, dimensions, right, _t);
+                    let right_result = self.get_column_expr_value(entry, file_info, mp3_info, exif_info, attrs, dimensions, right, _t);
                     result = op.calc(&left_result, &right_result);
                 }
             } else {
@@ -388,6 +394,7 @@ impl Searcher {
                           entry: &DirEntry,
                           file_info: &Option<FileInfo>,
                           mp3_info: &Option<MP3Metadata>,
+                          exif_info: &Option<HashMap<String, String>>,
                           attrs: &Option<Box<Metadata>>,
                           dimensions: Option<(usize, usize)>,
                           column_expr: &ColumnExpr,
@@ -396,6 +403,7 @@ impl Searcher {
             let function_arg = self.get_column_expr_value(entry,
                                                           file_info,
                                                           mp3_info,
+                                                          exif_info,
                                                           attrs,
                                                           dimensions,
                                                           left_expr,
@@ -532,6 +540,7 @@ impl Searcher {
                        entry: &DirEntry,
                        file_info: &Option<FileInfo>,
                        mp3_info: &Option<MP3Metadata>,
+                       exif_info: &Option<HashMap<String, String>>,
                        attrs: &Option<Box<Metadata>>,
                        dimensions: Option<(usize, usize)>,
                        field: &Field,
@@ -822,6 +831,16 @@ impl Searcher {
                     }
                 }
             },
+            Field::ExifMake => {
+                if let Some(ref exif_info) = exif_info {
+                    return exif_info["Make"].clone();
+                }
+            },
+            Field::ExifModel => {
+                if let Some(ref exif_info) = exif_info {
+                    return exif_info["Model"].clone();
+                }
+            },
             Field::IsArchive => {
                 let is_archive = is_archive(&entry.file_name().to_string_lossy());
                 return format!("{}", is_archive);
@@ -861,14 +880,16 @@ impl Searcher {
                   need_metadata: bool,
                   need_dim: bool,
                   need_mp3: bool,
+                  need_exif: bool,
                   follow_symlinks: bool,
                   t: &mut Box<StdoutTerminal>) {
         let mut meta = None;
         let mut dim = None;
         let mut mp3 = None;
+        let mut exif = None;
 
         if let Some(ref expr) = self.query.expr.clone() {
-            let (result, entry_meta, entry_dim, entry_mp3) = self.conforms(entry, file_info, expr, None, None, None, follow_symlinks);
+            let (result, entry_meta, entry_dim, entry_mp3, entry_exif) = self.conforms(entry, file_info, expr, None, None, None, None, follow_symlinks);
             if !result {
                 return
             }
@@ -876,6 +897,7 @@ impl Searcher {
             meta = entry_meta;
             dim = entry_dim;
             mp3 = entry_mp3;
+            exif = entry_exif;
         }
 
         self.found += 1;
@@ -895,6 +917,11 @@ impl Searcher {
             false => None
         };
 
+        let exif_info = match need_exif {
+            true => update_exif_meta(&entry, exif),
+            false => None
+        };
+
         let mut records = vec![];
         let mut file_map = HashMap::new();
 
@@ -902,11 +929,11 @@ impl Searcher {
         let mut criteria = vec!["".to_string(); self.query.ordering_fields.len()];
 
         for field in self.query.get_all_fields() {
-            file_map.insert(field.to_string().to_lowercase(), self.get_field_value(entry, file_info, &mp3_info, &attrs, dimensions, &field, t));
+            file_map.insert(field.to_string().to_lowercase(), self.get_field_value(entry, file_info, &mp3_info, &exif_info, &attrs, dimensions, &field, t));
         }
 
         for field in self.query.fields.iter() {
-            let mut record = self.get_column_expr_value(entry, file_info, &mp3_info, &attrs, dimensions, &field, t);
+            let mut record = self.get_column_expr_value(entry, file_info, &mp3_info, &exif_info, &attrs, dimensions, &field, t);
             file_map.insert(field.to_string().to_lowercase(), record.clone());
 
             output_value = self.format_results_row(record, output_value, &mut records);
@@ -915,7 +942,7 @@ impl Searcher {
         for (idx, field) in self.query.ordering_fields.iter().enumerate() {
             criteria[idx] = match file_map.get(&field.to_string().to_lowercase()) {
                 Some(record) => record.clone(),
-                None => self.get_column_expr_value(entry, file_info, &mp3_info, &attrs, dimensions, &field, t)
+                None => self.get_column_expr_value(entry, file_info, &mp3_info, &exif_info, &attrs, dimensions, &field, t)
             }
         }
 
@@ -959,22 +986,25 @@ impl Searcher {
                 entry_meta: Option<Box<fs::Metadata>>,
                 entry_dim: Option<(usize, usize)>,
                 entry_mp3: Option<MP3Metadata>,
-                follow_symlinks: bool) -> (bool, Option<Box<fs::Metadata>>, Option<(usize, usize)>, Option<MP3Metadata>) {
+                entry_exif: Option<HashMap<String, String>>,
+                follow_symlinks: bool) -> (bool, Option<Box<fs::Metadata>>, Option<(usize, usize)>, Option<MP3Metadata>, Option<HashMap<String, String>>) {
         let mut result = false;
         let mut meta = entry_meta;
         let mut dim = entry_dim;
         let mut mp3 = entry_mp3;
+        let mut exif = entry_exif;
 
         if let Some(ref logical_op) = expr.logical_op {
             let mut left_result = false;
             let mut right_result = false;
 
             if let Some(ref left) = expr.left {
-                let (left_res, left_meta, left_dim, left_mp3) = self.conforms(entry, file_info, &left, meta, dim, mp3, follow_symlinks);
+                let (left_res, left_meta, left_dim, left_mp3, left_exif) = self.conforms(entry, file_info, &left, meta, dim, mp3, exif, follow_symlinks);
                 left_result = left_res;
                 meta = left_meta;
                 dim = left_dim;
                 mp3 = left_mp3;
+                exif = left_exif;
             }
 
             match logical_op {
@@ -983,11 +1013,12 @@ impl Searcher {
                         result = false;
                     } else {
                         if let Some(ref right) = expr.right {
-                            let (right_res, right_meta, right_dim, right_mp3) = self.conforms(entry, file_info, &right, meta, dim, mp3, follow_symlinks);
+                            let (right_res, right_meta, right_dim, right_mp3, right_exif) = self.conforms(entry, file_info, &right, meta, dim, mp3, exif,  follow_symlinks);
                             right_result = right_res;
                             meta = right_meta;
                             dim = right_dim;
                             mp3 = right_mp3;
+                            exif = right_exif;
                         }
 
                         result = left_result && right_result;
@@ -998,11 +1029,12 @@ impl Searcher {
                         result = true;
                     } else {
                         if let Some(ref right) = expr.right {
-                            let (right_res, right_meta, right_dim, right_mp3) = self.conforms(entry, file_info, &right, meta, dim, mp3, follow_symlinks);
+                            let (right_res, right_meta, right_dim, right_mp3, right_exif) = self.conforms(entry, file_info, &right, meta, dim, mp3, exif,  follow_symlinks);
                             right_result = right_res;
                             meta = right_meta;
                             dim = right_dim;
                             mp3 = right_mp3;
+                            exif = right_exif;
                         }
 
                         result = left_result || right_result
@@ -1121,7 +1153,7 @@ impl Searcher {
                 },
                 Field::Uid => {
                     if file_info.is_some() {
-                        return (false, meta, dim, mp3)
+                        return (false, meta, dim, mp3, exif)
                     }
 
                     if let Some(ref val) = expr.val {
@@ -1148,7 +1180,7 @@ impl Searcher {
                 },
                 Field::User => {
                     if file_info.is_some() {
-                        return (false, meta, dim, mp3)
+                        return (false, meta, dim, mp3, exif)
                     }
 
                     if let Some(ref val) = expr.val {
@@ -1193,7 +1225,7 @@ impl Searcher {
                 },
                 Field::Gid => {
                     if file_info.is_some() {
-                        return (false, meta, dim, mp3)
+                        return (false, meta, dim, mp3, exif)
                     }
 
                     if let Some(ref val) = expr.val {
@@ -1220,7 +1252,7 @@ impl Searcher {
                 },
                 Field::Group => {
                     if file_info.is_some() {
-                        return (false, meta, dim, mp3)
+                        return (false, meta, dim, mp3, exif)
                     }
 
                     if let Some(ref val) = expr.val {
@@ -1521,7 +1553,7 @@ impl Searcher {
                 },
                 Field::Created => {
                     if file_info.is_some() {
-                        return (false, meta, dim, mp3)
+                        return (false, meta, dim, mp3, exif)
                     }
 
                     if let Some(ref _val) = expr.val {
@@ -1550,7 +1582,7 @@ impl Searcher {
                 },
                 Field::Accessed => {
                     if file_info.is_some() {
-                        return (false, meta, dim, mp3)
+                        return (false, meta, dim, mp3, exif)
                     }
 
                     if let Some(ref _val) = expr.val {
@@ -1650,18 +1682,18 @@ impl Searcher {
                 },
                 Field::IsShebang => {
                     if file_info.is_some() {
-                        return (false, meta, dim, mp3)
+                        return (false, meta, dim, mp3, exif)
                     }
 
                     result = is_shebang(&entry.path())
                 },
                 Field::Width => {
                     if file_info.is_some() {
-                        return (false, meta, dim, mp3)
+                        return (false, meta, dim, mp3, exif)
                     }
 
                     if !is_image_dim_readable(&entry.file_name().to_string_lossy()) {
-                        return (false, meta, dim, mp3)
+                        return (false, meta, dim, mp3, exif)
                     }
 
                     if let Some(ref val) = expr.val {
@@ -1685,11 +1717,11 @@ impl Searcher {
                 },
                 Field::Height => {
                     if file_info.is_some() {
-                        return (false, meta, dim, mp3)
+                        return (false, meta, dim, mp3, exif)
                     }
 
                     if !is_image_dim_readable(&entry.file_name().to_string_lossy()) {
-                        return (false, meta, dim, mp3)
+                        return (false, meta, dim, mp3, exif)
                     }
 
                     if let Some(ref val) = expr.val {
@@ -1713,7 +1745,7 @@ impl Searcher {
                 },
                 Field::Bitrate => {
                     if file_info.is_some() {
-                        return (false, meta, dim, mp3)
+                        return (false, meta, dim, mp3, exif)
                     }
 
                     if let Some(ref val) = expr.val {
@@ -1738,7 +1770,7 @@ impl Searcher {
                 },
                 Field::Freq => {
                     if file_info.is_some() {
-                        return (false, meta, dim, mp3)
+                        return (false, meta, dim, mp3, exif)
                     }
 
                     if let Some(ref val) = expr.val {
@@ -1763,7 +1795,7 @@ impl Searcher {
                 },
                 Field::Title => {
                     if file_info.is_some() {
-                        return (false, meta, dim, mp3)
+                        return (false, meta, dim, mp3, exif)
                     }
 
                     if let Some(ref val) = expr.val {
@@ -1799,7 +1831,7 @@ impl Searcher {
                 },
                 Field::Artist => {
                     if file_info.is_some() {
-                        return (false, meta, dim, mp3)
+                        return (false, meta, dim, mp3, exif)
                     }
 
                     if let Some(ref val) = expr.val {
@@ -1836,7 +1868,7 @@ impl Searcher {
                 },
                 Field::Album => {
                     if file_info.is_some() {
-                        return (false, meta, dim, mp3)
+                        return (false, meta, dim, mp3, exif)
                     }
 
                     if let Some(ref val) = expr.val {
@@ -1873,7 +1905,7 @@ impl Searcher {
                 },
                 Field::Year => {
                     if file_info.is_some() {
-                        return (false, meta, dim, mp3)
+                        return (false, meta, dim, mp3, exif)
                     }
 
                     if let Some(ref val) = expr.val {
@@ -1902,7 +1934,7 @@ impl Searcher {
                 },
                 Field::Genre => {
                     if file_info.is_some() {
-                        return (false, meta, dim, mp3)
+                        return (false, meta, dim, mp3, exif)
                     }
 
                     if let Some(ref val) = expr.val {
@@ -1937,6 +1969,76 @@ impl Searcher {
                         }
                     }
                 },
+                Field::ExifMake => {
+                    if file_info.is_some() {
+                        return (false, meta, dim, mp3, exif)
+                    }
+
+                    if let Some(ref val) = expr.val {
+                        exif = update_exif_meta(&entry, exif);
+
+                        if let Some(ref exif_meta) = exif {
+                            let value = &exif_meta["Make"];
+
+                            result = match expr.op {
+                                Some(Op::Eq) | Some(Op::Eeq) => {
+                                    match expr.regex {
+                                        Some(ref regex) => regex.is_match(value),
+                                        None => val.eq(value)
+                                    }
+                                },
+                                Some(Op::Ne) | Some(Op::Ene) => {
+                                    match expr.regex {
+                                        Some(ref regex) => !regex.is_match(value),
+                                        None => val.ne(value)
+                                    }
+                                },
+                                Some(Op::Rx) | Some(Op::Like) => {
+                                    match expr.regex {
+                                        Some(ref regex) => regex.is_match(value),
+                                        None => false
+                                    }
+                                },
+                                _ => false
+                            };
+                        }
+                    }
+                },
+                Field::ExifModel => {
+                    if file_info.is_some() {
+                        return (false, meta, dim, mp3, exif)
+                    }
+
+                    if let Some(ref val) = expr.val {
+                        exif = update_exif_meta(&entry, exif);
+
+                        if let Some(ref exif_meta) = exif {
+                            let value = &exif_meta["Model"];
+
+                            result = match expr.op {
+                                Some(Op::Eq) | Some(Op::Eeq) => {
+                                    match expr.regex {
+                                        Some(ref regex) => regex.is_match(value),
+                                        None => val.eq(value)
+                                    }
+                                },
+                                Some(Op::Ne) | Some(Op::Ene) => {
+                                    match expr.regex {
+                                        Some(ref regex) => !regex.is_match(value),
+                                        None => val.ne(value)
+                                    }
+                                },
+                                Some(Op::Rx) | Some(Op::Like) => {
+                                    match expr.regex {
+                                        Some(ref regex) => regex.is_match(value),
+                                        None => false
+                                    }
+                                },
+                                _ => false
+                            };
+                        }
+                    }
+                },
                 Field::IsArchive => {
                     result = confirm_file_ext(&expr.op, &expr.val, &entry, &file_info, &is_archive);
                 },
@@ -1961,7 +2063,7 @@ impl Searcher {
             }
         }
 
-        (result, meta, dim, mp3)
+        (result, meta, dim, mp3, exif)
     }
 }
 
@@ -2087,6 +2189,33 @@ fn update_mp3_meta(entry: &DirEntry, mp3: Option<MP3Metadata>) -> Option<MP3Meta
             }
         },
         Some(mp3_) => Some(mp3_)
+    }
+}
+
+fn update_exif_meta(entry: &DirEntry, exif: Option<HashMap<String, String>>) -> Option<HashMap<String, String>> {
+    match exif {
+        None => {
+            if let Ok(file) = File::open(entry.path()) {
+                if let Ok(reader) = exif::Reader::new(&mut BufReader::new(&file)) {
+                    let mut exif_info = HashMap::new();
+
+                    for field in reader.fields().iter() {
+                        let field_value = match field.value {
+                            exif::Value::Rational(ref vec) if !vec.is_empty() => vec[0].to_string(),
+                            exif::Value::Ascii(ref vec) if !vec.is_empty() => std::str::from_utf8(vec[0]).unwrap().to_string(),
+                            _ => field.value.display_as(field.tag).to_string()
+                        };
+
+                        exif_info.insert(format!("{}", field.tag), field_value);
+                    }
+
+                    return Some(exif_info);
+                }
+            }
+
+            None
+        },
+        Some(exif_) => Some(exif_)
     }
 }
 

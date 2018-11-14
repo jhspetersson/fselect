@@ -1,6 +1,7 @@
 extern crate chrono;
 extern crate chrono_english;
 extern crate csv;
+extern crate exif;
 extern crate humansize;
 extern crate imagesize;
 #[macro_use]

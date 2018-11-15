@@ -49,8 +49,10 @@ pub enum Field {
     Album,
     Year,
     Genre,
+    ExifDateTime,
     ExifMake,
     ExifModel,
+    ExifSoftware,
     IsArchive,
     IsAudio,
     IsBook,
@@ -107,8 +109,10 @@ impl FromStr for Field {
             "mp3_album" | "album" => Ok(Field::Album),
             "mp3_year" => Ok(Field::Year),
             "mp3_genre" | "genre" => Ok(Field::Genre),
+            "exif_datetime" => Ok(Field::ExifDateTime),
             "exif_make" => Ok(Field::ExifMake),
             "exif_model" => Ok(Field::ExifModel),
+            "exif_software" => Ok(Field::ExifSoftware),
             "is_archive" => Ok(Field::IsArchive),
             "is_audio" => Ok(Field::IsAudio),
             "is_book" => Ok(Field::IsBook),
@@ -151,7 +155,8 @@ impl Field {
 
     pub fn is_datetime_field(&self) -> bool {
         match self {
-            Field::Created | Field::Accessed | Field::Modified => true,
+            Field::Created | Field::Accessed | Field::Modified
+            | Field::ExifDateTime => true,
             _ => false
         }
     }
@@ -166,7 +171,10 @@ impl Field {
 
     pub fn is_exif_field(&self) -> bool {
         match self {
-            Field::ExifMake | Field::ExifModel => true,
+            Field::ExifDateTime
+            | Field::ExifMake
+            | Field::ExifModel
+            | Field::ExifSoftware => true,
             _ => false
         }
     }

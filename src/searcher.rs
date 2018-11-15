@@ -831,6 +831,17 @@ impl Searcher {
                     }
                 }
             },
+            Field::ExifDateTime => {
+                if let Some(ref exif_info) = exif_info {
+                    if let Some(exif_value) = exif_info.get("DateTime") {
+                        if let Ok(exif_datetime) = parse_datetime(&exif_value) {
+                            let dt = exif_datetime.0;
+                            let format = dt.format("%Y-%m-%d %H:%M:%S");
+                            return format!("{}", format);
+                        }
+                    }
+                }
+            },
             Field::ExifMake => {
                 if let Some(ref exif_info) = exif_info {
                     return exif_info["Make"].clone();
@@ -839,6 +850,11 @@ impl Searcher {
             Field::ExifModel => {
                 if let Some(ref exif_info) = exif_info {
                     return exif_info["Model"].clone();
+                }
+            },
+            Field::ExifSoftware => {
+                if let Some(ref exif_info) = exif_info {
+                    return exif_info["Software"].clone();
                 }
             },
             Field::IsArchive => {
@@ -1969,75 +1985,25 @@ impl Searcher {
                         }
                     }
                 },
+                Field::ExifDateTime => {
+                    let (exif_result, exif_exif) = confirm_exif_datetime(&expr, &entry, &file_info, exif, "DateTime");
+                    result = exif_result;
+                    exif = exif_exif;
+                },
                 Field::ExifMake => {
-                    if file_info.is_some() {
-                        return (false, meta, dim, mp3, exif)
-                    }
-
-                    if let Some(ref val) = expr.val {
-                        exif = update_exif_meta(&entry, exif);
-
-                        if let Some(ref exif_meta) = exif {
-                            let value = &exif_meta["Make"];
-
-                            result = match expr.op {
-                                Some(Op::Eq) | Some(Op::Eeq) => {
-                                    match expr.regex {
-                                        Some(ref regex) => regex.is_match(value),
-                                        None => val.eq(value)
-                                    }
-                                },
-                                Some(Op::Ne) | Some(Op::Ene) => {
-                                    match expr.regex {
-                                        Some(ref regex) => !regex.is_match(value),
-                                        None => val.ne(value)
-                                    }
-                                },
-                                Some(Op::Rx) | Some(Op::Like) => {
-                                    match expr.regex {
-                                        Some(ref regex) => regex.is_match(value),
-                                        None => false
-                                    }
-                                },
-                                _ => false
-                            };
-                        }
-                    }
+                    let (exif_result, exif_exif) = confirm_exif_string(&expr, &entry, &file_info, exif, "Make");
+                    result = exif_result;
+                    exif = exif_exif;
                 },
                 Field::ExifModel => {
-                    if file_info.is_some() {
-                        return (false, meta, dim, mp3, exif)
-                    }
-
-                    if let Some(ref val) = expr.val {
-                        exif = update_exif_meta(&entry, exif);
-
-                        if let Some(ref exif_meta) = exif {
-                            let value = &exif_meta["Model"];
-
-                            result = match expr.op {
-                                Some(Op::Eq) | Some(Op::Eeq) => {
-                                    match expr.regex {
-                                        Some(ref regex) => regex.is_match(value),
-                                        None => val.eq(value)
-                                    }
-                                },
-                                Some(Op::Ne) | Some(Op::Ene) => {
-                                    match expr.regex {
-                                        Some(ref regex) => !regex.is_match(value),
-                                        None => val.ne(value)
-                                    }
-                                },
-                                Some(Op::Rx) | Some(Op::Like) => {
-                                    match expr.regex {
-                                        Some(ref regex) => regex.is_match(value),
-                                        None => false
-                                    }
-                                },
-                                _ => false
-                            };
-                        }
-                    }
+                    let (exif_result, exif_exif) = confirm_exif_string(&expr, &entry, &file_info, exif,  "Model");
+                    result = exif_result;
+                    exif = exif_exif;
+                },
+                Field::ExifSoftware => {
+                    let (exif_result, exif_exif) = confirm_exif_string(&expr, &entry, &file_info, exif, "Software");
+                    result = exif_result;
+                    exif = exif_exif;
                 },
                 Field::IsArchive => {
                     result = confirm_file_ext(&expr.op, &expr.val, &entry, &file_info, &is_archive);
@@ -2151,6 +2117,94 @@ fn confirm_file_ext(expr_op: &Option<Op>,
     }
 
     result
+}
+
+fn confirm_exif_string(expr: &Expr,
+                       entry: &DirEntry,
+                       file_info: &Option<FileInfo>,
+                       exif_meta: Option<HashMap<String, String>>,
+                       exif_key: &str) -> (bool, Option<HashMap<String, String>>) {
+    let mut result = false;
+    let mut exif = exif_meta;
+
+    if file_info.is_some() {
+        return (false, exif)
+    }
+
+    if let Some(ref val) = expr.val {
+        exif = update_exif_meta(&entry, exif);
+
+        if let Some(ref exif_meta) = exif {
+            let value = &exif_meta[exif_key];
+
+            result = match expr.op {
+                Some(Op::Eq) | Some(Op::Eeq) => {
+                    match expr.regex {
+                        Some(ref regex) => regex.is_match(value),
+                        None => val.eq(value)
+                    }
+                },
+                Some(Op::Ne) | Some(Op::Ene) => {
+                    match expr.regex {
+                        Some(ref regex) => !regex.is_match(value),
+                        None => val.ne(value)
+                    }
+                },
+                Some(Op::Rx) | Some(Op::Like) => {
+                    match expr.regex {
+                        Some(ref regex) => regex.is_match(value),
+                        None => false
+                    }
+                },
+                _ => false
+            };
+        }
+    }
+
+    (result, exif)
+}
+
+fn confirm_exif_datetime(expr: &Expr,
+                       entry: &DirEntry,
+                       file_info: &Option<FileInfo>,
+                       exif_meta: Option<HashMap<String, String>>,
+                       exif_key: &str) -> (bool, Option<HashMap<String, String>>) {
+    let mut result = false;
+    let mut exif = exif_meta;
+
+    if file_info.is_some() {
+        return (false, exif)
+    }
+
+    if let Some(ref _val) = expr.val {
+        exif = update_exif_meta(&entry, exif);
+
+        if let Some(ref exif_metadata) = exif {
+            if let Some(exif_value) = exif_metadata.get(exif_key) {
+                if let Ok(parsed_datetime) = parse_datetime(&exif_value) {
+                    let dt = parsed_datetime.0;
+                    if expr.dt_from.is_some() && expr.dt_to.is_some() {
+                        let start = expr.dt_from.unwrap();
+                        let finish = expr.dt_to.unwrap();
+
+                        result = match expr.op {
+                            Some(Op::Eeq) => dt == start,
+                            Some(Op::Ene) => dt != start,
+                            Some(Op::Eq) => dt >= start && dt <= finish,
+                            Some(Op::Ne) => dt < start || dt > finish,
+                            Some(Op::Gt) => dt > finish,
+                            Some(Op::Gte) => dt >= start,
+                            Some(Op::Lt) => dt < start,
+                            Some(Op::Lte) => dt <= finish,
+                            _ => false
+                        };
+                    }
+                }
+            }
+        }
+    }
+
+    (result, exif)
 }
 
 fn update_meta(entry: &DirEntry, meta: Option<Box<Metadata>>, follow_symlinks: bool) -> Option<Box<Metadata>> {

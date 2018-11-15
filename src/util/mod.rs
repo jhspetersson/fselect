@@ -204,7 +204,7 @@ pub fn parse_filesize(s: &str) -> Option<u64> {
 }
 
 lazy_static! {
-    static ref DATE_REGEX: Regex = Regex::new("(\\d{4})-(\\d{1,2})-(\\d{1,2}) ?(\\d{1,2})?:?(\\d{1,2})?:?(\\d{1,2})?").unwrap();
+    static ref DATE_REGEX: Regex = Regex::new("(\\d{4})(-|:)(\\d{1,2})(-|:)(\\d{1,2}) ?(\\d{1,2})?:?(\\d{1,2})?:?(\\d{1,2})?").unwrap();
 }
 
 pub fn parse_datetime(s: &str) -> Result<(DateTime<Local>, DateTime<Local>), String> {
@@ -227,12 +227,12 @@ pub fn parse_datetime(s: &str) -> Result<(DateTime<Local>, DateTime<Local>), Str
     match DATE_REGEX.captures(s) {
         Some(cap) => {
             let year: i32 = cap[1].parse().unwrap();
-            let month: u32 = cap[2].parse().unwrap();
-            let day: u32 = cap[3].parse().unwrap();
+            let month: u32 = cap[3].parse().unwrap();
+            let day: u32 = cap[5].parse().unwrap();
 
             let hour_start: u32;
             let hour_finish: u32;
-            match cap.get(4) {
+            match cap.get(6) {
                 Some(val) => {
                     hour_start = val.as_str().parse().unwrap();
                     hour_finish = hour_start;
@@ -245,7 +245,7 @@ pub fn parse_datetime(s: &str) -> Result<(DateTime<Local>, DateTime<Local>), Str
 
             let min_start: u32;
             let min_finish: u32;
-            match cap.get(5) {
+            match cap.get(7) {
                 Some(val) => {
                     min_start = val.as_str().parse().unwrap();
                     min_finish = min_start;
@@ -258,7 +258,7 @@ pub fn parse_datetime(s: &str) -> Result<(DateTime<Local>, DateTime<Local>), Str
 
             let sec_start: u32;
             let sec_finish: u32;
-            match cap.get(6) {
+            match cap.get(8) {
                 Some(val) => {
                     sec_start = val.as_str().parse().unwrap();
                     sec_finish = min_start;

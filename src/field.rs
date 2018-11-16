@@ -53,6 +53,7 @@ pub enum Field {
     ExifMake,
     ExifModel,
     ExifSoftware,
+    ExifVersion,
     IsArchive,
     IsAudio,
     IsBook,
@@ -113,6 +114,7 @@ impl FromStr for Field {
             "exif_make" => Ok(Field::ExifMake),
             "exif_model" => Ok(Field::ExifModel),
             "exif_software" => Ok(Field::ExifSoftware),
+            "exif_version" => Ok(Field::ExifVersion),
             "is_archive" => Ok(Field::IsArchive),
             "is_audio" => Ok(Field::IsAudio),
             "is_book" => Ok(Field::IsBook),
@@ -171,10 +173,12 @@ impl Field {
 
     pub fn is_exif_field(&self) -> bool {
         match self {
-            Field::ExifDateTime
+            | Field::ExifDateTime
             | Field::ExifMake
             | Field::ExifModel
-            | Field::ExifSoftware => true,
+            | Field::ExifSoftware
+            | Field::ExifVersion
+            => true,
             _ => false
         }
     }

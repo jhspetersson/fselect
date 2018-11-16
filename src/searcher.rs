@@ -844,17 +844,30 @@ impl Searcher {
             },
             Field::ExifMake => {
                 if let Some(ref exif_info) = exif_info {
-                    return exif_info["Make"].clone();
+                    if let Some(exif_value) = exif_info.get("Make") {
+                        return exif_value.clone();
+                    }
                 }
             },
             Field::ExifModel => {
                 if let Some(ref exif_info) = exif_info {
-                    return exif_info["Model"].clone();
+                    if let Some(exif_value) = exif_info.get("Model") {
+                        return exif_value.clone();
+                    }
                 }
             },
             Field::ExifSoftware => {
                 if let Some(ref exif_info) = exif_info {
-                    return exif_info["Software"].clone();
+                    if let Some(exif_value) = exif_info.get("Software") {
+                        return exif_value.clone();
+                    }
+                }
+            },
+            Field::ExifVersion => {
+                if let Some(ref exif_info) = exif_info {
+                    if let Some(exif_value) = exif_info.get("ExifVersion") {
+                        return exif_value.clone();
+                    }
                 }
             },
             Field::IsArchive => {
@@ -2002,6 +2015,11 @@ impl Searcher {
                 },
                 Field::ExifSoftware => {
                     let (exif_result, exif_exif) = confirm_exif_string(&expr, &entry, &file_info, exif, "Software");
+                    result = exif_result;
+                    exif = exif_exif;
+                },
+                Field::ExifVersion => {
+                    let (exif_result, exif_exif) = confirm_exif_string(&expr, &entry, &file_info, exif, "ExifVersion");
                     result = exif_result;
                     exif = exif_exif;
                 },

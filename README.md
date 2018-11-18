@@ -15,6 +15,7 @@ While it doesn't tend to fully replace traditional `find` and `ls`, **fselect** 
 * `.gitignore` support (experimental)
 * search by width and height of images and videos
 * search by MP3 info
+* search by EXIF metadata
 * shortcuts to common file types
 * various output formatting (CSV, JSON, and others)
 

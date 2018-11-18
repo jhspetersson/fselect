@@ -143,6 +143,18 @@ Column Options:
         other_write                     Returns a boolean signifying whether the file can be written by others
         other_exec                      Returns a boolean signifying whether the file can be executed by others
 
+        width                           Returns the number of pixels along the width of the photo
+        height                          Returns the number of pixels along the height of the photo
+
+        exif_datetime                   Returns date and time of taken photo
+        exif_altitude | exif_alt        Returns GPS altitude of taken photo
+        exif_latitude | exif_lat        Returns GPS latitude of taken photo
+        exif_longitude | exif_lng       Returns GPS longitude of taken photo
+        exif_make                       Returns name of the camera manufacturer
+        exif_model                      Returns camera model
+        exif_software                   Returns software name with which the photo was taken
+        exif_version                    Returns the version of EXIF metadata
+
         mp3_title | title               Returns the title of the audio file taken from the file's metadata
         mp3_album | album               Returns the album name of the audio file taken from the file's metadata
         mp3_artist | artist             Returns the artist of the audio file taken from the file's metadata
@@ -150,9 +162,6 @@ Column Options:
         mp3_year                        Returns the year of the audio file taken from the file's metadata
         mp3_freq | freq                 Returns the sampling rate of audio or video file
         mp3_bitrate | bitrate           Returns the bitrate of the audio file in kbps
-
-        width                           Returns the number of pixels along the width of the photo
-        height                          Returns the number of pixels along the height of the photo
 
         is_shebang                      Returns a boolean signifying whether the file starts with a shebang (#!)
         is_archive                      Returns a boolean signifying whether the file is an archival file

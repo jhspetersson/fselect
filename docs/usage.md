@@ -89,6 +89,14 @@ Functions are usable only in column list, not inside `where` predicates. Joins, 
 * `mp3_album` or `album`
 * `mp3_genre` or `genre`
 * `mp3_year`
+* `exif_datetime`
+* `exif_altitude` or `exif_alt`
+* `exif_latitude` or `exif_lat`
+* `exif_longitude` or `exif_lng` or `exif_lon`
+* `exif_make`
+* `exif_model`
+* `exif_software`
+* `exif_version`
 * `is_archive`
 * `is_audio`
 * `is_book`

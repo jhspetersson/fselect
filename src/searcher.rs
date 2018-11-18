@@ -842,6 +842,27 @@ impl Searcher {
                     }
                 }
             },
+            Field::ExifGpsAltitude => {
+                if let Some(ref exif_info) = exif_info {
+                    if let Some(exif_value) = exif_info.get("GPSAltitude") {
+                        return exif_value.clone();
+                    }
+                }
+            },
+            Field::ExifGpsLatitude => {
+                if let Some(ref exif_info) = exif_info {
+                    if let Some(exif_value) = exif_info.get("GPSLatitude") {
+                        return exif_value.clone();
+                    }
+                }
+            },
+            Field::ExifGpsLongitude => {
+                if let Some(ref exif_info) = exif_info {
+                    if let Some(exif_value) = exif_info.get("GPSLongitude") {
+                        return exif_value.clone();
+                    }
+                }
+            },
             Field::ExifMake => {
                 if let Some(ref exif_info) = exif_info {
                     if let Some(exif_value) = exif_info.get("Make") {
@@ -2003,6 +2024,21 @@ impl Searcher {
                     result = exif_result;
                     exif = exif_exif;
                 },
+                Field::ExifGpsAltitude => {
+                    let (exif_result, exif_exif) = confirm_exif_int(&expr, &entry, &file_info, exif, "GPSAltitude");
+                    result = exif_result;
+                    exif = exif_exif;
+                },
+                Field::ExifGpsLatitude => {
+                    let (exif_result, exif_exif) = confirm_exif_string(&expr, &entry, &file_info, exif, "GPSLatitude");
+                    result = exif_result;
+                    exif = exif_exif;
+                },
+                Field::ExifGpsLongitude => {
+                    let (exif_result, exif_exif) = confirm_exif_string(&expr, &entry, &file_info, exif, "GPSLongitude");
+                    result = exif_result;
+                    exif = exif_exif;
+                },
                 Field::ExifMake => {
                     let (exif_result, exif_exif) = confirm_exif_string(&expr, &entry, &file_info, exif, "Make");
                     result = exif_result;
@@ -2153,29 +2189,68 @@ fn confirm_exif_string(expr: &Expr,
         exif = update_exif_meta(&entry, exif);
 
         if let Some(ref exif_meta) = exif {
-            let value = &exif_meta[exif_key];
+            if let Some(value) = exif_meta.get(exif_key) {
+                result = match expr.op {
+                    Some(Op::Eq) | Some(Op::Eeq) => {
+                        match expr.regex {
+                            Some(ref regex) => regex.is_match(value),
+                            None => val.eq(value)
+                        }
+                    },
+                    Some(Op::Ne) | Some(Op::Ene) => {
+                        match expr.regex {
+                            Some(ref regex) => !regex.is_match(value),
+                            None => val.ne(value)
+                        }
+                    },
+                    Some(Op::Rx) | Some(Op::Like) => {
+                        match expr.regex {
+                            Some(ref regex) => regex.is_match(value),
+                            None => false
+                        }
+                    },
+                    _ => false
+                };
+            }
+        }
+    }
 
-            result = match expr.op {
-                Some(Op::Eq) | Some(Op::Eeq) => {
-                    match expr.regex {
-                        Some(ref regex) => regex.is_match(value),
-                        None => val.eq(value)
+    (result, exif)
+}
+
+fn confirm_exif_int(expr: &Expr,
+                       entry: &DirEntry,
+                       file_info: &Option<FileInfo>,
+                       exif_meta: Option<HashMap<String, String>>,
+                       exif_key: &str) -> (bool, Option<HashMap<String, String>>) {
+    let mut result = false;
+    let mut exif = exif_meta;
+
+    if file_info.is_some() {
+        return (false, exif)
+    }
+
+    if let Some(ref val) = expr.val {
+        exif = update_exif_meta(&entry, exif);
+
+        if let Some(ref exif_meta) = exif {
+            let val = val.parse::<usize>();
+            if let Ok(val) = val {
+                if let Some(exif_value) = exif_meta.get(exif_key) {
+                    let exif_value = exif_value.parse::<usize>();
+                    if let Ok(exif_value) = exif_value {
+                        result = match expr.op {
+                            Some(Op::Eq) | Some(Op::Eeq) => exif_value == val,
+                            Some(Op::Ne) | Some(Op::Ene) => exif_value != val,
+                            Some(Op::Gt) => exif_value > val,
+                            Some(Op::Gte) => exif_value >= val,
+                            Some(Op::Lt) => exif_value < val,
+                            Some(Op::Lte) => exif_value <= val,
+                            _ => false
+                        };
                     }
-                },
-                Some(Op::Ne) | Some(Op::Ene) => {
-                    match expr.regex {
-                        Some(ref regex) => !regex.is_match(value),
-                        None => val.ne(value)
-                    }
-                },
-                Some(Op::Rx) | Some(Op::Like) => {
-                    match expr.regex {
-                        Some(ref regex) => regex.is_match(value),
-                        None => false
-                    }
-                },
-                _ => false
-            };
+                }
+            }
         }
     }
 
@@ -2197,8 +2272,8 @@ fn confirm_exif_datetime(expr: &Expr,
     if let Some(ref _val) = expr.val {
         exif = update_exif_meta(&entry, exif);
 
-        if let Some(ref exif_metadata) = exif {
-            if let Some(exif_value) = exif_metadata.get(exif_key) {
+        if let Some(ref exif_meta) = exif {
+            if let Some(exif_value) = exif_meta.get(exif_key) {
                 if let Ok(parsed_datetime) = parse_datetime(&exif_value) {
                     let dt = parsed_datetime.0;
                     if expr.dt_from.is_some() && expr.dt_to.is_some() {
@@ -2273,7 +2348,6 @@ fn update_exif_meta(entry: &DirEntry, exif: Option<HashMap<String, String>>) -> 
 
                     for field in reader.fields().iter() {
                         let field_value = match field.value {
-                            exif::Value::Rational(ref vec) if !vec.is_empty() => vec[0].to_string(),
                             exif::Value::Ascii(ref vec) if !vec.is_empty() => std::str::from_utf8(vec[0]).unwrap().to_string(),
                             _ => field.value.display_as(field.tag).to_string()
                         };

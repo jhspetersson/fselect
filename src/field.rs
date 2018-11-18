@@ -50,6 +50,9 @@ pub enum Field {
     Year,
     Genre,
     ExifDateTime,
+    ExifGpsAltitude,
+    ExifGpsLatitude,
+    ExifGpsLongitude,
     ExifMake,
     ExifModel,
     ExifSoftware,
@@ -110,7 +113,10 @@ impl FromStr for Field {
             "mp3_album" | "album" => Ok(Field::Album),
             "mp3_year" => Ok(Field::Year),
             "mp3_genre" | "genre" => Ok(Field::Genre),
+            "exif_altitude" | "exif_alt" => Ok(Field::ExifGpsAltitude),
             "exif_datetime" => Ok(Field::ExifDateTime),
+            "exif_latitude" | "exif_lat" => Ok(Field::ExifGpsLatitude),
+            "exif_longitude" | "exif_lon" | "exif_lng" => Ok(Field::ExifGpsLongitude),
             "exif_make" => Ok(Field::ExifMake),
             "exif_model" => Ok(Field::ExifModel),
             "exif_software" => Ok(Field::ExifSoftware),
@@ -174,6 +180,9 @@ impl Field {
     pub fn is_exif_field(&self) -> bool {
         match self {
             | Field::ExifDateTime
+            | Field::ExifGpsAltitude
+            | Field::ExifGpsLatitude
+            | Field::ExifGpsLongitude
             | Field::ExifMake
             | Field::ExifModel
             | Field::ExifSoftware

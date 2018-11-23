@@ -11,7 +11,7 @@ use std::io::BufReader;
 use std::io::Read;
 use std::rc::Rc;
 
-use chrono::{Datelike, DateTime, Local};
+use chrono::{DateTime, Local};
 use csv;
 use exif;
 use humansize::{FileSize, file_size_opts};
@@ -29,7 +29,7 @@ use zip;
 use field::Field;
 use fileinfo::FileInfo;
 use fileinfo::to_file_info;
-use function::Function;
+use function;
 use gitignore::GitignoreFilter;
 use gitignore::matches_gitignore_filter;
 use gitignore::parse_gitignore;
@@ -409,50 +409,7 @@ impl Searcher {
                                                           left_expr,
                                                           _t);
 
-            match column_expr.function {
-                Some(Function::Lower) => {
-                    return function_arg.to_lowercase();
-                },
-                Some(Function::Upper) => {
-                    return function_arg.to_uppercase();
-                },
-                Some(Function::Length) => {
-                    return format!("{}", function_arg.chars().count());
-                },
-                Some(Function::Year) => {
-                    match parse_datetime(&function_arg) {
-                        Ok(date) => {
-                            return date.0.year().to_string();
-                        },
-                        _ => {
-                            return String::new();
-                        }
-                    }
-                },
-                Some(Function::Month) => {
-                    match parse_datetime(&function_arg) {
-                        Ok(date) => {
-                            return date.0.month().to_string();
-                        },
-                        _ => {
-                            return String::new();
-                        }
-                    }
-                },
-                Some(Function::Day) => {
-                    match parse_datetime(&function_arg) {
-                        Ok(date) => {
-                            return date.0.day().to_string();
-                        },
-                        _ => {
-                            return String::new();
-                        }
-                    }
-                },
-                _ => {
-                    return String::new();
-                }
-            }
+            return function::get_value(&column_expr.function, function_arg);
         }
 
         String::new()
@@ -470,70 +427,10 @@ impl Searcher {
             }
         }
 
-        let field = field_value.to_lowercase();
-        match column_expr.function {
-            Some(Function::Min) => {
-                let mut min = -1;
-                for value in &self.raw_output_buffer {
-                    if let Some(value) = value.get(&field) {
-                        if let Ok(value) = value.parse::<i64>() {
-                            if value < min || min == -1 {
-                                min = value;
-                            }
-                        }
-                    }
-                }
-
-                return min.to_string();
-            },
-            Some(Function::Max) => {
-                let mut max = 0;
-                for value in &self.raw_output_buffer {
-                    if let Some(value) = value.get(&field) {
-                        if let Ok(value) = value.parse::<usize>() {
-                            if value > max {
-                                max = value;
-                            }
-                        }
-                    }
-                }
-
-                return max.to_string();
-            },
-            Some(Function::Avg) => {
-                let mut sum = 0;
-                for value in &self.raw_output_buffer {
-                    if let Some(value) = value.get(&field) {
-                        if let Ok(value) = value.parse::<usize>() {
-                            sum += value;
-                        }
-                    }
-                }
-
-                return (sum / self.raw_output_buffer.len()).to_string();
-            },
-            Some(Function::Sum) => {
-                let mut sum = 0;
-                for value in &self.raw_output_buffer {
-                    if let Some(value) = value.get(&field) {
-                        if let Ok(value) = value.parse::<usize>() {
-                            sum += value;
-                        }
-                    }
-                }
-
-                return sum.to_string();
-            },
-            Some(Function::Count) => {
-                return self.raw_output_buffer.len().to_string();
-            },
-            _ => {
-                match &column_expr.val {
-                    Some(val) => return val.clone(),
-                    _ => return String::new()
-                }
-            }
-        }
+        return function::get_aggregate_value(&column_expr.function,
+                                             &self.raw_output_buffer,
+                                             field_value.to_lowercase(),
+                                             &column_expr.val);
     }
 
     fn get_field_value(&self,

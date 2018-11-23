@@ -145,8 +145,8 @@ impl Searcher {
     }
 
     pub fn list_search_results(&mut self, t: &mut Box<StdoutTerminal>) -> io::Result<()> {
-        let need_metadata = self.query.get_all_fields().iter().any(|f| f != &Field::Name);
-        let need_dim = self.query.get_all_fields().iter().any(|f| f == &Field::Width || f == &Field::Height);
+        let need_metadata = self.query.get_all_fields().iter().any(|f| f.needs_metadata());
+        let need_dim = self.query.get_all_fields().iter().any(|f| f.is_img_field());
         let need_mp3 = self.query.get_all_fields().iter().any(|f| f.is_mp3_field());
         let need_exif = self.query.get_all_fields().iter().any(|f| f.is_exif_field());
 

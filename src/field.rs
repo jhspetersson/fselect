@@ -151,6 +151,26 @@ impl Serialize for Field {
 }
 
 impl Field {
+    pub fn needs_metadata(&self) -> bool {
+        if self.is_img_field() || self.is_exif_field() || self.is_mp3_field() {
+            return false;
+        }
+
+        match self {
+            Field::Name
+            | Field::Path
+            | Field::IsArchive
+            | Field::IsAudio
+            | Field::IsBook
+            | Field::IsDoc
+            | Field::IsImage
+            | Field::IsSource
+            | Field::IsVideo
+            => false,
+            _ => true
+        }
+    }
+
     pub fn is_numeric_field(&self) -> bool {
         match self {
             Field::Size | Field::FormattedSize
@@ -165,6 +185,13 @@ impl Field {
         match self {
             Field::Created | Field::Accessed | Field::Modified
             | Field::ExifDateTime => true,
+            _ => false
+        }
+    }
+
+    pub fn is_img_field(&self) -> bool {
+        match self {
+            Field::Width | Field::Height => true,
             _ => false
         }
     }

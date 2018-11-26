@@ -1,3 +1,5 @@
+use regex::Regex;
+
 #[derive(Clone, PartialEq, Debug)]
 pub enum Lexem {
     RawString(String),
@@ -78,8 +80,12 @@ impl<'a> Lexer<'a> {
                             self.index += 1;
                             continue;
                         }
-                        if c == ' ' || c == ',' || c == '(' || c == ')' || is_op_char(c) || self.is_arithmetic_op_char(c) {
-                            break
+
+                        let is_date = c == '-' && looks_like_date(&s);
+                        if !is_date {
+                            if c == ' ' || c == ',' || c == '(' || c == ')' || is_op_char(c) || self.is_arithmetic_op_char(c) {
+                                break
+                            }
                         }
                     }
 
@@ -157,6 +163,40 @@ impl<'a> Lexer<'a> {
 fn is_op_char(c: char) -> bool {
     match c {
         '=' | '!' | '<' | '>' | '~' => true,
+        _ => false
+    }
+}
+
+lazy_static! {
+    static ref DATE_ALIKE_REGEX: Regex = Regex::new("(\\d{4})-?(\\d{2})?").unwrap();
+}
+
+fn looks_like_date(s: &str) -> bool {
+    match DATE_ALIKE_REGEX.captures(s) {
+        Some(cap) => {
+            let year = cap[1].parse::<i32>();
+            let year_ok = match year {
+                Ok(year) => year >= 1970 && year < 3000, // optimistic assumption
+                _ => false
+            };
+
+            if !year_ok {
+                return false;
+            }
+
+            match cap.get(2) {
+                Some(month) => {
+                    let month = month.as_str().parse::<i32>();
+                    let month_ok = match month {
+                        Ok(month) => month >= 1 && month <= 12,
+                        _ => false
+                    };
+
+                    month_ok
+                },
+                _ => true
+            }
+        },
         _ => false
     }
 }
@@ -299,5 +339,29 @@ mod tests {
         assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("path"))));
         assert_eq!(lexer.next_lexem(), Some(Lexem::From));
         assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("."))));
+    }
+
+    #[test]
+    fn context_sensitive_date_string() {
+        let mut lexer = Lexer::new("size,modified,path from . where modified gt 2018-08-01 and name='*.txt' order by modified");
+
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("size"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::Comma));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("modified"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::Comma));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("path"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::From));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("."))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::Where));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("modified"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::Operator(String::from("gt"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("2018-08-01"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::And));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("name"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::Operator(String::from("="))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::String(String::from("*.txt"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::Order));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::By));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("modified"))));
     }
 }

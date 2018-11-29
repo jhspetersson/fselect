@@ -207,6 +207,28 @@ pub fn mode_other_exec(mode: u32) -> bool {
     mode & S_IXOTH == S_IXOTH
 }
 
+pub fn suid_bit_set(meta: &Box<Metadata>) -> bool {
+    match get_mode_from_boxed_unix_int(meta) {
+        Some(mode) => mode_suid(mode),
+        None => false
+    }
+}
+
+pub fn mode_suid(mode: u32) -> bool {
+    mode & S_IFMT & S_ISUID == S_IFMT & S_ISUID
+}
+
+pub fn sgid_bit_set(meta: &Box<Metadata>) -> bool {
+    match get_mode_from_boxed_unix_int(meta) {
+        Some(mode) => mode_sgid(mode),
+        None => false
+    }
+}
+
+pub fn mode_sgid(mode: u32) -> bool {
+    mode & S_IFMT & S_ISGID == S_IFMT & S_ISGID
+}
+
 pub fn is_pipe(meta: &Box<Metadata>) -> bool {
     match get_mode_from_boxed_unix_int(meta) {
         Some(mode) => mode_is_pipe(mode),
@@ -263,9 +285,7 @@ const S_IROTH: u32 = 4;
 const S_IWOTH: u32 = 2;
 const S_IXOTH: u32 = 1;
 
-#[allow(unused)]
 const S_ISUID: u32 = 4000;
-#[allow(unused)]
 const S_ISGID: u32 = 2000;
 #[allow(unused)]
 const S_ISVTX: u32 = 1000;

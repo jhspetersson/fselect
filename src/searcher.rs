@@ -576,6 +576,12 @@ impl Searcher {
             Field::OtherExec => {
                 return Self::print_file_mode(&attrs, &mode::other_exec, &file_info, &mode::mode_other_exec);
             },
+            Field::Suid => {
+                return Self::print_file_mode(&attrs, &mode::suid_bit_set, &file_info, &mode::mode_suid);
+            },
+            Field::Sgid => {
+                return Self::print_file_mode(&attrs, &mode::sgid_bit_set, &file_info, &mode::mode_sgid);
+            },
             Field::IsHidden => {
                 match file_info {
                     Some(ref file_info) => {
@@ -1467,6 +1473,16 @@ impl Searcher {
                 },
                 Field::OtherExec => {
                     let (res_, meta_) = confirm_file_mode(&expr.op, &expr.val, &entry, meta, &file_info, follow_symlinks, &mode::mode_other_exec);
+                    meta = meta_;
+                    result = res_;
+                },
+                Field::Suid => {
+                    let (res_, meta_) = confirm_file_mode(&expr.op, &expr.val, &entry, meta, &file_info, follow_symlinks, &mode::mode_suid);
+                    meta = meta_;
+                    result = res_;
+                },
+                Field::Sgid => {
+                    let (res_, meta_) = confirm_file_mode(&expr.op, &expr.val, &entry, meta, &file_info, follow_symlinks, &mode::mode_sgid);
                     meta = meta_;
                     result = res_;
                 },

@@ -199,6 +199,7 @@ Or by owner's or group's name:
 
 Find special files:
 
+    fselect name from /usr/bin where suid = true
     fselect path from /tmp where is_pipe = true
     fselect path from /tmp where is_socket = 1
     

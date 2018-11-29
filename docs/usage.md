@@ -77,6 +77,8 @@ Functions are usable only in column list, not inside `where` predicates. Joins, 
 * `other_read`
 * `other_write`
 * `other_exec`
+* `suid`
+* `sgid`
 * `is_hidden`
 * `has_xattrs`
 * `is_shebang`

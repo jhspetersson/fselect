@@ -26,21 +26,21 @@ use users::{Groups, Users, UsersCache};
 use xattr::FileExt;
 use zip;
 
-use field::Field;
-use fileinfo::FileInfo;
-use fileinfo::to_file_info;
-use function;
-use gitignore::GitignoreFilter;
-use gitignore::matches_gitignore_filter;
-use gitignore::parse_gitignore;
-use mode;
-use parser::ColumnExpr;
-use parser::Query;
-use parser::Expr;
-use parser::LogicalOp;
-use parser::Op;
-use parser::OutputFormat;
-use util::*;
+use crate::field::Field;
+use crate::fileinfo::FileInfo;
+use crate::fileinfo::to_file_info;
+use crate::function;
+use crate::gitignore::GitignoreFilter;
+use crate::gitignore::matches_gitignore_filter;
+use crate::gitignore::parse_gitignore;
+use crate::mode;
+use crate::parser::ColumnExpr;
+use crate::parser::Query;
+use crate::parser::Expr;
+use crate::parser::LogicalOp;
+use crate::parser::Op;
+use crate::parser::OutputFormat;
+use crate::util::*;
 
 pub struct Searcher {
     query: Query,
@@ -886,7 +886,7 @@ impl Searcher {
         }
 
         for field in self.query.fields.iter() {
-            let mut record = self.get_column_expr_value(entry, file_info, &mp3_info, &exif_info, &attrs, dimensions, &field, t);
+            let record = self.get_column_expr_value(entry, file_info, &mp3_info, &exif_info, &attrs, dimensions, &field, t);
             file_map.insert(field.to_string().to_lowercase(), record.clone());
 
             output_value = self.format_results_row(record, output_value, &mut records);

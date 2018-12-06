@@ -22,7 +22,7 @@ use time::Tm;
 
 pub use self::top_n::TopN;
 pub use self::wbuf::WritableBuffer;
-use parser::ColumnExpr;
+use crate::parser::ColumnExpr;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd)]
 pub struct Criteria<T> where T: Display + ToString {
@@ -309,7 +309,7 @@ pub fn parse_unix_filename(s: &str) -> &str {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use field::Field;
+    use crate::field::Field;
 
     fn basic_criteria<T: Ord + Clone + Display>(vals: &[T]) -> Criteria<T> {
         let fields = Rc::new(vec![ColumnExpr::field(Field::Size); vals.len()]);

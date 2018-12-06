@@ -1,5 +1,5 @@
-extern crate regex;
-extern crate serde;
+//extern crate regex;
+//extern crate serde;
 
 use std::collections::HashSet;
 use std::fmt;
@@ -14,11 +14,11 @@ use chrono::Local;
 use regex::Captures;
 use regex::Regex;
 
-use lexer::Lexer;
-use lexer::Lexem;
-use field::Field;
-use function::Function;
-use util::parse_datetime;
+use crate::lexer::Lexer;
+use crate::lexer::Lexem;
+use crate::field::Field;
+use crate::function::Function;
+use crate::util::parse_datetime;
 
 pub struct Parser {
     lexems: Vec<Lexem>,

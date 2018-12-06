@@ -1,5 +1,3 @@
-extern crate serde;
-
 use std::str::FromStr;
 
 use serde::ser::{Serialize, Serializer};

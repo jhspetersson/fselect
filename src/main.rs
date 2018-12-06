@@ -1,24 +1,11 @@
-extern crate chrono;
-extern crate chrono_english;
-extern crate csv;
-extern crate exif;
-extern crate humansize;
-extern crate imagesize;
 #[macro_use]
 extern crate lazy_static;
-extern crate mp3_metadata;
-extern crate regex;
-extern crate serde;
 #[macro_use]
 extern crate serde_derive;
-extern crate serde_json;
-extern crate term;
-extern crate time;
 #[cfg(all(unix, feature = "users"))]
 extern crate users;
 #[cfg(unix)]
 extern crate xattr;
-extern crate zip;
 
 use std::env;
 
@@ -34,9 +21,9 @@ mod parser;
 mod searcher;
 mod util;
 
-use parser::Parser;
-use searcher::Searcher;
-use util::error_message;
+use crate::parser::Parser;
+use crate::searcher::Searcher;
+use crate::util::error_message;
 
 fn main() {
     let mut t = term::stdout().unwrap();

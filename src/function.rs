@@ -1,4 +1,4 @@
-extern crate serde;
+//extern crate serde;
 
 use std::collections::HashMap;
 use std::fmt::Display;
@@ -9,7 +9,7 @@ use std::str::FromStr;
 use chrono::Datelike;
 use serde::ser::{Serialize, Serializer};
 
-use util::parse_datetime;
+use crate::util::parse_datetime;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Hash)]
 pub enum Function {

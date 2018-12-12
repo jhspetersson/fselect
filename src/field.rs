@@ -9,6 +9,7 @@ use std::fmt::Error;
 pub enum Field {
     Name,
     Path,
+    AbsPath,
     Size,
     FormattedSize,
     Uid,
@@ -76,6 +77,7 @@ impl FromStr for Field {
         match field.as_str() {
             "name" => Ok(Field::Name),
             "path" => Ok(Field::Path),
+            "abspath" => Ok(Field::AbsPath),
             "size" => Ok(Field::Size),
             "fsize" | "hsize" => Ok(Field::FormattedSize),
             "uid" => Ok(Field::Uid),
@@ -163,6 +165,7 @@ impl Field {
         match self {
             Field::Name
             | Field::Path
+            | Field::AbsPath
             | Field::IsArchive
             | Field::IsAudio
             | Field::IsBook

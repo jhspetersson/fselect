@@ -75,11 +75,12 @@ Find files (just names) with any content (size > 0):
 
     fselect name from /home/user/tmp where size gt 0
 
-Specify file size and add it to the results:
+Specify file size, get absolute path, and add it to the results:
 
-    fselect size, path from /home/user/tmp where size gt 2g
-    fselect fsize, path from /home/user/tmp where size = 5m
-    fselect hsize, path from /home/user/tmp where size lt 8k
+    cd /home/user
+    fselect size, abspath from ./tmp where size gt 2g
+    fselect fsize, abspath from ./tmp where size = 5m
+    fselect hsize, abspath from ./tmp where size lt 8k
     
 More complex query:
 

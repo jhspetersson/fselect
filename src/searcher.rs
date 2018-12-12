@@ -463,6 +463,18 @@ impl Searcher {
                     }
                 }
             },
+            Field::AbsPath => {
+                match file_info {
+                    Some(ref file_info) => {
+                        return format!("[{}] {}", entry.path().to_string_lossy(), file_info.name);
+                    },
+                    _ => {
+                        if let Ok(path) = fs::canonicalize(entry.path()) {
+                            return format!("{}", path.to_string_lossy());
+                        }
+                    }
+                }
+            },
             Field::Size => {
                 match file_info {
                     Some(ref file_info) => {
@@ -1043,6 +1055,48 @@ impl Searcher {
                         let file_path = match file_info {
                             Some(ref file_info) => file_info.name.clone(),
                             _ => String::from(entry.path().to_string_lossy())
+                        };
+
+                        result = match expr.op {
+                            Some(Op::Eq) => {
+                                match expr.regex {
+                                    Some(ref regex) => regex.is_match(&file_path),
+                                    None => val.eq(&file_path)
+                                }
+                            },
+                            Some(Op::Ne) => {
+                                match expr.regex {
+                                    Some(ref regex) => !regex.is_match(&file_path),
+                                    None => val.ne(&file_path)
+                                }
+                            },
+                            Some(Op::Rx) | Some(Op::Like) => {
+                                match expr.regex {
+                                    Some(ref regex) => regex.is_match(&file_path),
+                                    None => false
+                                }
+                            },
+                            Some(Op::Eeq) => {
+                                val.eq(&file_path)
+                            },
+                            Some(Op::Ene) => {
+                                val.ne(&file_path)
+                            },
+                            _ => false
+                        };
+                    }
+                },
+                Field::AbsPath => {
+                    if let Some(ref val) = expr.val {
+                        let file_path = match file_info {
+                            Some(ref file_info) => file_info.name.clone(),
+                            _ => {
+                                if let Ok(path) = fs::canonicalize(entry.path()) {
+                                    String::from(path.to_string_lossy())
+                                } else {
+                                    String::new()
+                                }
+                            }
                         };
 
                         result = match expr.op {

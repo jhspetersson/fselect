@@ -49,8 +49,9 @@ Functions are usable only in column list, not inside `where` predicates. Joins, 
 
 ### Columns and fields
 
-* `path`
 * `name`
+* `path`
+* `abspath`
 * `size`
 * `hsize` or `fsize`
 * `uid`

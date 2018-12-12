@@ -95,6 +95,7 @@ Files Detected as Video: .3gp, .avi, .flv, .m4p, .m4v, .mkv, .mov, .mp4, .mpeg, 
 Column Options:
         name                            Returns the name of the file
         path                            Returns the path of the file
+        abspath                         Returns the absolute path of the file
         size                            Returns the size of the file in bytes
         fsize                           Returns the size of the file accompanied with the unit
         uid                             Returns the UID of the owner

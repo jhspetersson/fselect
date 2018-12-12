@@ -470,7 +470,7 @@ impl Searcher {
                     },
                     _ => {
                         if let Ok(path) = fs::canonicalize(entry.path()) {
-                            return format!("{}", path.to_string_lossy());
+                            return crate::util::format_absolute_path(&path);
                         }
                     }
                 }
@@ -1092,7 +1092,7 @@ impl Searcher {
                             Some(ref file_info) => file_info.name.clone(),
                             _ => {
                                 if let Ok(path) = fs::canonicalize(entry.path()) {
-                                    String::from(path.to_string_lossy())
+                                    crate::util::format_absolute_path(&path)
                                 } else {
                                     String::new()
                                 }

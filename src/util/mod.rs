@@ -7,6 +7,7 @@ use std::fmt::Display;
 use std::fs::{DirEntry, File};
 use std::io;
 use std::path::Path;
+use std::path::PathBuf;
 use std::rc::Rc;
 use std::string::ToString;
 
@@ -306,6 +307,15 @@ pub fn parse_unix_filename(s: &str) -> &str {
         Some(idx) => &s[idx..],
         _ => s
     }
+}
+
+pub fn format_absolute_path(path_buf: &PathBuf) -> String {
+    let path = format!("{}", path_buf.to_string_lossy());
+
+    #[cfg(windows)]
+    let path = path.replace("\\\\?\\", "");
+
+    path
 }
 
 pub fn get_sha1_file_hash(entry: &DirEntry) -> String {

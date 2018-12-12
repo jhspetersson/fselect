@@ -4,6 +4,7 @@ mod wbuf;
 use std::cmp::Ordering;
 use std::error::Error;
 use std::fmt::Display;
+use std::fs::{DirEntry, File};
 use std::io;
 use std::path::Path;
 use std::rc::Rc;
@@ -16,6 +17,7 @@ use chrono::LocalResult;
 use chrono::TimeZone;
 use chrono_english::{parse_date_string,Dialect};
 use regex::Regex;
+use sha1::Digest;
 use term;
 use term::StdoutTerminal;
 use time::Tm;
@@ -304,6 +306,18 @@ pub fn parse_unix_filename(s: &str) -> &str {
         Some(idx) => &s[idx..],
         _ => s
     }
+}
+
+pub fn get_sha1_file_hash(entry: &DirEntry) -> String {
+    if let Ok(mut file) = File::open(&entry.path()) {
+        let mut hasher = sha1::Sha1::new();
+        if io::copy(&mut file, &mut hasher).is_ok() {
+            let hash = hasher.result();
+            return format!("{:x}", hash);
+        }
+    }
+
+    String::new()
 }
 
 #[cfg(test)]

@@ -821,6 +821,9 @@ impl Searcher {
             Field::IsVideo => {
                 let is_video = is_video(&entry.file_name().to_string_lossy());
                 return format!("{}", is_video);
+            },
+            Field::Sha1 => {
+                return crate::util::get_sha1_file_hash(&entry);
             }
         };
 
@@ -1992,6 +1995,37 @@ impl Searcher {
                 },
                 Field::IsVideo => {
                     result = confirm_file_ext(&expr.op, &expr.val, &entry, &file_info, &is_video);
+                },
+                Field::Sha1 => {
+                    if file_info.is_some() {
+                        return (false, meta, dim, mp3, exif)
+                    }
+
+                    if let Some(ref val) = expr.val {
+                        let hash = &crate::util::get_sha1_file_hash(&entry);
+
+                        result = match expr.op {
+                            Some(Op::Eq) | Some(Op::Eeq) => {
+                                match expr.regex {
+                                    Some(ref regex) => regex.is_match(hash),
+                                    None => val.eq(hash)
+                                }
+                            },
+                            Some(Op::Ne) | Some(Op::Ene) => {
+                                match expr.regex {
+                                    Some(ref regex) => !regex.is_match(hash),
+                                    None => val.ne(hash)
+                                }
+                            },
+                            Some(Op::Rx) | Some(Op::Like) => {
+                                match expr.regex {
+                                    Some(ref regex) => regex.is_match(hash),
+                                    None => false
+                                }
+                            },
+                            _ => false
+                        };
+                    }
                 }
             }
         }

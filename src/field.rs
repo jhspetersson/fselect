@@ -64,6 +64,7 @@ pub enum Field {
     IsImage,
     IsSource,
     IsVideo,
+    Sha1,
 }
 
 impl FromStr for Field {
@@ -130,6 +131,7 @@ impl FromStr for Field {
             "is_image" => Ok(Field::IsImage),
             "is_source" => Ok(Field::IsSource),
             "is_video" => Ok(Field::IsVideo),
+            "sha1" => Ok(Field::Sha1),
             _ => {
                 let err = String::from("Unknown field ") + &field;
                 Err(err)

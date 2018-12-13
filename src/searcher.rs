@@ -836,6 +836,12 @@ impl Searcher {
             },
             Field::Sha1 => {
                 return crate::util::get_sha1_file_hash(&entry);
+            },
+            Field::Sha256 => {
+                return crate::util::get_sha256_file_hash(&entry);
+            },
+            Field::Sha512 => {
+                return crate::util::get_sha512_file_hash(&entry);
             }
         };
 
@@ -2057,6 +2063,68 @@ impl Searcher {
 
                     if let Some(ref val) = expr.val {
                         let hash = &crate::util::get_sha1_file_hash(&entry);
+
+                        result = match expr.op {
+                            Some(Op::Eq) | Some(Op::Eeq) => {
+                                match expr.regex {
+                                    Some(ref regex) => regex.is_match(hash),
+                                    None => val.eq(hash)
+                                }
+                            },
+                            Some(Op::Ne) | Some(Op::Ene) => {
+                                match expr.regex {
+                                    Some(ref regex) => !regex.is_match(hash),
+                                    None => val.ne(hash)
+                                }
+                            },
+                            Some(Op::Rx) | Some(Op::Like) => {
+                                match expr.regex {
+                                    Some(ref regex) => regex.is_match(hash),
+                                    None => false
+                                }
+                            },
+                            _ => false
+                        };
+                    }
+                },
+                Field::Sha256 => {
+                    if file_info.is_some() {
+                        return (false, meta, dim, mp3, exif)
+                    }
+
+                    if let Some(ref val) = expr.val {
+                        let hash = &crate::util::get_sha256_file_hash(&entry);
+
+                        result = match expr.op {
+                            Some(Op::Eq) | Some(Op::Eeq) => {
+                                match expr.regex {
+                                    Some(ref regex) => regex.is_match(hash),
+                                    None => val.eq(hash)
+                                }
+                            },
+                            Some(Op::Ne) | Some(Op::Ene) => {
+                                match expr.regex {
+                                    Some(ref regex) => !regex.is_match(hash),
+                                    None => val.ne(hash)
+                                }
+                            },
+                            Some(Op::Rx) | Some(Op::Like) => {
+                                match expr.regex {
+                                    Some(ref regex) => regex.is_match(hash),
+                                    None => false
+                                }
+                            },
+                            _ => false
+                        };
+                    }
+                },
+                Field::Sha512 => {
+                    if file_info.is_some() {
+                        return (false, meta, dim, mp3, exif)
+                    }
+
+                    if let Some(ref val) = expr.val {
+                        let hash = &crate::util::get_sha512_file_hash(&entry);
 
                         result = match expr.op {
                             Some(Op::Eq) | Some(Op::Eeq) => {

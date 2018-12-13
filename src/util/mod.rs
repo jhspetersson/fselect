@@ -330,6 +330,30 @@ pub fn get_sha1_file_hash(entry: &DirEntry) -> String {
     String::new()
 }
 
+pub fn get_sha256_file_hash(entry: &DirEntry) -> String {
+    if let Ok(mut file) = File::open(&entry.path()) {
+        let mut hasher = sha2::Sha256::new();
+        if io::copy(&mut file, &mut hasher).is_ok() {
+            let hash = hasher.result();
+            return format!("{:x}", hash);
+        }
+    }
+
+    String::new()
+}
+
+pub fn get_sha512_file_hash(entry: &DirEntry) -> String {
+    if let Ok(mut file) = File::open(&entry.path()) {
+        let mut hasher = sha2::Sha512::new();
+        if io::copy(&mut file, &mut hasher).is_ok() {
+            let hash = hasher.result();
+            return format!("{:x}", hash);
+        }
+    }
+
+    String::new()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

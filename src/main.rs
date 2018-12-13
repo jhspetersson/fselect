@@ -160,6 +160,10 @@ Column Options:
         is_source                       Returns a boolean signifying whether the file is source code
         is_video                        Returns a boolean signifying whether the file is a video file
 
+        sha1                            Returns SHA-1 digest of a file
+        sha256                          Returns SHA2-256 digest of a file
+        sha512                          Returns SHA2-512 digest of a file
+
 Functions:
     Aggregate:
         AVG                             Returns average of all values

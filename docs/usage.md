@@ -107,6 +107,9 @@ Functions are usable only in column list, not inside `where` predicates. Joins, 
 * `is_image`
 * `is_source`
 * `is_video`
+* `sha1`
+* `sha256`
+* `sha512`
 
 ### Functions
 
@@ -235,6 +238,17 @@ title of the track, artist's name, album, genre, and year.
     fselect bitrate, path from /home/user/music
     fselect mp3_year, album, title from /home/user/music where artist like %Vampire% and bitrate gte 320
     fselect bitrate, freq, path from /home/user/music where genre = Rap or genre = HipHop
+
+### File hashes
+
+| Column | Meaning |
+| --- | --- |
+| `sha1` | SHA-1 digest of a file|
+| `sha256` | SHA2-256 digest of a file |
+| `sha512` | SHA2-512 digest of a file |
+
+    fselect path, sha256, 256 from /home/user/archive limit 5
+    fselect path from /home/user/Download where sha1 like cb23ef45% 
 
 ### Output formats
 

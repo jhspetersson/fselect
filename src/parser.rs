@@ -1,6 +1,3 @@
-//extern crate regex;
-//extern crate serde;
-
 use std::collections::HashSet;
 use std::fmt;
 use std::fmt::Display;

@@ -600,6 +600,8 @@ impl Parser {
                             return Ok(OutputFormat::Json);
                         } else if s == "tabs" {
                             return Ok(OutputFormat::Tabs);
+                        } else if s == "html" {
+                            return Ok(OutputFormat::Html);
                         } else {
                             return Err("Unknown output format");
                         }
@@ -987,7 +989,7 @@ impl ArithmeticOp {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum OutputFormat {
-    Tabs, Lines, List, Csv, Json
+    Tabs, Lines, List, Csv, Json, Html
 }
 
 #[cfg(test)]

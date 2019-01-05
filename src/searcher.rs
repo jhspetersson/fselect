@@ -77,8 +77,10 @@ impl Searcher {
     }
 
     fn print_results_start(&self) {
-        if let OutputFormat::Json = self.query.output_format {
-            print!("[");
+        match self.query.output_format {
+            OutputFormat::Json => print!("["),
+            OutputFormat::Html => print!("<html><body><table>"),
+            _ => ()
         }
     }
 
@@ -104,6 +106,25 @@ impl Searcher {
             OutputFormat::Csv => {
                 records.push(record);
             },
+            OutputFormat::Html => {
+                output_value.push_str("<td>");
+                output_value.push_str(&record);
+                output_value.push_str("</td>");
+            }
+        }
+
+        output_value
+    }
+
+    fn format_results_row_begin(&self,
+                              mut output_value: String,
+                              _records: &Vec<String>,
+                              _file_map: &HashMap<String, String>) -> String {
+        match self.query.output_format {
+            OutputFormat::Html => {
+                output_value.push_str("<tr>");
+            },
+            _ => {}
         }
 
         output_value
@@ -133,14 +154,19 @@ impl Searcher {
                 }
                 output_value.push_str(&serde_json::to_string(&file_map).unwrap());
             },
+            OutputFormat::Html => {
+                output_value.push_str("</tr>");
+            }
         }
 
         output_value
     }
 
     fn print_results_end(&self) {
-        if let OutputFormat::Json = self.query.output_format {
-            print!("]");
+        match self.query.output_format {
+            OutputFormat::Json => print!("]"),
+            OutputFormat::Html => print!("</table></body></html>"),
+            _ => ()
         }
     }
 
@@ -179,6 +205,8 @@ impl Searcher {
             let mut records = vec![];
             let mut file_map = HashMap::new();
             let mut output_value = String::new();
+
+            output_value = self.format_results_row_begin(output_value, &records, &file_map);
 
             for column_expr in &self.query.fields {
                 let record = format!("{}", self.get_aggregate_function_value(column_expr));
@@ -905,6 +933,8 @@ impl Searcher {
         for field in self.query.get_all_fields() {
             file_map.insert(field.to_string().to_lowercase(), self.get_field_value(entry, file_info, &mp3_info, &exif_info, &attrs, dimensions, &field, t));
         }
+
+        output_value = self.format_results_row_begin(output_value, &records, &file_map);
 
         for field in self.query.fields.iter() {
             let record = self.get_column_expr_value(entry, file_info, &mp3_info, &exif_info, &attrs, dimensions, &field, t);

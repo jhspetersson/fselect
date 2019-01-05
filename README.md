@@ -222,6 +222,7 @@ Format output:
 
     fselect size, path from /home/user limit 5 into json
     fselect size, path from /home/user limit 5 into csv
+    fselect size, path from /home/user limit 5 into html
 
 ### License
 

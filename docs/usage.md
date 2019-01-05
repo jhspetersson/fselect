@@ -260,7 +260,9 @@ title of the track, artist's name, album, genre, and year.
 | `lines` | each column goes at a separate line |
 | `list` | columns are separated with NULL symbol, similar to `-print0` argument of `find` |
 | `csv` | comma-separated columns |
-| `json` | array of resulting objects with requested columns | 
+| `json` | array of resulting objects with requested columns |
+| `html` | HTML document with table | 
 
     fselect size, path from /home/user limit 5 into json
     fselect size, path from /home/user limit 5 into csv
+    fselect size, path from /home/user limit 5 into html

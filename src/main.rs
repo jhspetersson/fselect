@@ -202,5 +202,6 @@ Format:
         list                            Outputs entire output onto a single line for xargs
         csv                             Outputs each file with its column value(s) on a line with each column value delimited by a comma
         json                            Outputs a JSON array with JSON objects holding the column value(s) of each file
+        html                            Outputs HTML document with table
     ");
 }

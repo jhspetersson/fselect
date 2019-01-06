@@ -210,6 +210,10 @@ Other operators assume exact date and time, which could be specified in a more f
 
 **fselect** uses *UK* locale, not American style dates.
 
+### Regular expressions ###
+
+[Rust flavor regular expressions](https://docs.rs/regex/1.1.0/regex/#syntax) are used.
+
 ### File extensions
 
 | Search field | Extensions |

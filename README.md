@@ -99,7 +99,7 @@ Use single quotes if you need to address files with spaces:
 
     fselect path from '/home/user/Misc stuff' where name != 'Some file'
     
-Regular expressions supported:
+Regular expressions of [Rust flavor](https://docs.rs/regex/1.1.0/regex/#syntax) are supported:
 
     fselect name from /home/user where path =~ '.*Rust.*'
     

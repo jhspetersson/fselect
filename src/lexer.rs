@@ -37,11 +37,12 @@ pub struct Lexer<'a> {
     index: usize,
     before_from: bool,
     after_open: bool,
+    after_where: bool,
 }
 
 impl<'a> Lexer<'a> {
     pub fn new(input: &str) -> Lexer {
-        return Lexer { input, index: 0, before_from: true, after_open: false }
+        return Lexer { input, index: 0, before_from: true, after_open: false, after_where: false }
     }
 
     pub fn next_lexem(&mut self) -> Option<Lexem> {
@@ -132,7 +133,7 @@ impl<'a> Lexer<'a> {
             LexingMode::RawString => {
                 match s.to_lowercase().as_str() {
                     "from" => { self.before_from = false; Some(Lexem::From) },
-                    "where" => Some(Lexem::Where),
+                    "where" => { self.after_where = true; Some(Lexem::Where) },
                     "or" => Some(Lexem::Or),
                     "and" => Some(Lexem::And),
                     "order" => Some(Lexem::Order),
@@ -153,8 +154,8 @@ impl<'a> Lexer<'a> {
 
     fn is_arithmetic_op_char(&self, c: char) -> bool {
         match c {
-            '+' | '-' => true,
-            '*' | '/' => self.before_from && !self.after_open,
+            '+' | '-' => self.before_from || self.after_where,
+            '*' | '/' => (self.before_from || self.after_where) && !self.after_open,
             _ => false
         }
     }
@@ -363,5 +364,14 @@ mod tests {
         assert_eq!(lexer.next_lexem(), Some(Lexem::Order));
         assert_eq!(lexer.next_lexem(), Some(Lexem::By));
         assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("modified"))));
+    }
+
+    #[test]
+    fn root_with_dashes() {
+        let mut lexer = Lexer::new("path from ./foo-bar");
+
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("path"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::From));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("./foo-bar"))));
     }
 }

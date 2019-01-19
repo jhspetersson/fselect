@@ -187,7 +187,7 @@ impl Searcher {
             let search_archives = root.archives;
             let follow_symlinks = root.symlinks;
             let apply_gitignore = root.gitignore;
-            let _result = self.visit_dirs(
+            let _result = self.visit_dir(
                 root_dir,
                 need_metadata,
                 need_dim,
@@ -239,19 +239,19 @@ impl Searcher {
         Ok(())
     }
 
-    fn visit_dirs(&mut self,
-                  dir: &Path,
-                  need_metadata: bool,
-                  need_dim: bool,
-                  need_mp3: bool,
-                  need_exif: bool,
-                  min_depth: u32,
-                  max_depth: u32,
-                  depth: u32,
-                  search_archives: bool,
-                  follow_symlinks: bool,
-                  apply_gitignore: bool,
-                  t: &mut Box<StdoutTerminal>) -> io::Result<()> {
+    fn visit_dir(&mut self,
+                 dir: &Path,
+                 need_metadata: bool,
+                 need_dim: bool,
+                 need_mp3: bool,
+                 need_exif: bool,
+                 min_depth: u32,
+                 max_depth: u32,
+                 depth: u32,
+                 search_archives: bool,
+                 follow_symlinks: bool,
+                 apply_gitignore: bool,
+                 t: &mut Box<StdoutTerminal>) -> io::Result<()> {
         if (min_depth == 0 || (min_depth > 0 && depth >= min_depth)) && (max_depth == 0 || (max_depth > 0 && depth <= max_depth)) {
             let metadata = match follow_symlinks {
                 true => dir.metadata(),
@@ -312,7 +312,7 @@ impl Searcher {
                                                 }
 
                                                 if path.is_dir() {
-                                                    let result = self.visit_dirs(
+                                                    let result = self.visit_dir(
                                                         &path,
                                                         need_metadata,
                                                         need_dim,

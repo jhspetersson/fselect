@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::fs::DirEntry;
 use std::fs::File;
@@ -49,6 +49,7 @@ pub struct Searcher {
     raw_output_buffer: Vec<HashMap<String, String>>,
     output_buffer: TopN<Criteria<String>, String>,
     gitignore_map: HashMap<PathBuf, Vec<GitignoreFilter>>,
+    visited_dirs: HashSet<PathBuf>,
 }
 
 impl Searcher {
@@ -61,6 +62,7 @@ impl Searcher {
             raw_output_buffer: vec![],
             output_buffer: if limit == 0 { TopN::limitless() } else { TopN::new(limit) },
             gitignore_map: HashMap::new(),
+            visited_dirs: HashSet::new(),
         }
     }
 
@@ -258,6 +260,14 @@ impl Searcher {
             match metadata {
                 Ok(metadata) => {
                     if metadata.is_dir() {
+                        if follow_symlinks {
+                            if self.visited_dirs.contains(&dir.to_path_buf()) {
+                                return Ok(());
+                            } else {
+                                self.visited_dirs.insert(dir.to_path_buf());
+                            }
+                        }
+
                         let mut gitignore_filters = None;
 
                         if apply_gitignore {

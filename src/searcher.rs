@@ -44,6 +44,7 @@ use crate::util::*;
 
 pub struct Searcher {
     query: Query,
+    #[cfg(all(unix, feature = "users"))]
     user_cache: UsersCache,
     found: u32,
     raw_output_buffer: Vec<HashMap<String, String>>,
@@ -57,6 +58,7 @@ impl Searcher {
         let limit = query.limit;
         Searcher {
             query,
+            #[cfg(all(unix, feature = "users"))]
             user_cache: UsersCache::new(),
             found: 0,
             raw_output_buffer: vec![],
@@ -657,19 +659,25 @@ impl Searcher {
                 }
             },
             Field::User => {
-                if let Some(ref attrs) = attrs {
-                    if let Some(uid) = mode::get_uid(attrs) {
-                        if let Some(user) = self.user_cache.get_user_by_uid(uid) {
-                            return format!("{}", user.name().to_string_lossy());
+                #[cfg(all(unix, feature = "users"))]
+                {
+                    if let Some(ref attrs) = attrs {
+                        if let Some(uid) = mode::get_uid(attrs) {
+                            if let Some(user) = self.user_cache.get_user_by_uid(uid) {
+                                return format!("{}", user.name().to_string_lossy());
+                            }
                         }
                     }
                 }
             },
             Field::Group => {
-                if let Some(ref attrs) = attrs {
-                    if let Some(gid) = mode::get_gid(attrs) {
-                        if let Some(group) = self.user_cache.get_group_by_gid(gid) {
-                            return format!("{}", group.name().to_string_lossy());
+                #[cfg(all(unix, feature = "users"))]
+                {
+                    if let Some(ref attrs) = attrs {
+                        if let Some(gid) = mode::get_gid(attrs) {
+                            if let Some(group) = self.user_cache.get_group_by_gid(gid) {
+                                return format!("{}", group.name().to_string_lossy());
+                            }
                         }
                     }
                 }
@@ -1235,45 +1243,48 @@ impl Searcher {
                     }
                 },
                 Field::User => {
-                    if file_info.is_some() {
-                        return (false, meta, dim, mp3, exif)
-                    }
+                    #[cfg(all(unix, feature = "users"))]
+                    {
+                        if file_info.is_some() {
+                            return (false, meta, dim, mp3, exif)
+                        }
 
-                    if let Some(ref val) = expr.val {
-                        meta = update_meta(entry, meta, follow_symlinks);
+                        if let Some(ref val) = expr.val {
+                            meta = update_meta(entry, meta, follow_symlinks);
 
-                        if let Some(ref metadata) = meta {
-                            let file_uid = mode::get_uid(metadata);
-                            if let Some(file_uid) = file_uid {
-                                if let Some(user) = self.user_cache.get_user_by_uid(file_uid) {
-                                    let user_name = user.name().to_string_lossy().to_string();
-                                    result = match expr.op {
-                                        Some(Op::Eq) => {
-                                            match expr.regex {
-                                                Some(ref regex) => regex.is_match(&user_name),
-                                                None => val.eq(&user_name)
-                                            }
-                                        },
-                                        Some(Op::Ne) => {
-                                            match expr.regex {
-                                                Some(ref regex) => !regex.is_match(&user_name),
-                                                None => val.ne(&user_name)
-                                            }
-                                        },
-                                        Some(Op::Rx) | Some(Op::Like) => {
-                                            match expr.regex {
-                                                Some(ref regex) => regex.is_match(&user_name),
-                                                None => false
-                                            }
-                                        },
-                                        Some(Op::Eeq) => {
-                                            val.eq(&user_name)
-                                        },
-                                        Some(Op::Ene) => {
-                                            val.ne(&user_name)
-                                        },
-                                        _ => false
-                                    };
+                            if let Some(ref metadata) = meta {
+                                let file_uid = mode::get_uid(metadata);
+                                if let Some(file_uid) = file_uid {
+                                    if let Some(user) = self.user_cache.get_user_by_uid(file_uid) {
+                                        let user_name = user.name().to_string_lossy().to_string();
+                                        result = match expr.op {
+                                            Some(Op::Eq) => {
+                                                match expr.regex {
+                                                    Some(ref regex) => regex.is_match(&user_name),
+                                                    None => val.eq(&user_name)
+                                                }
+                                            },
+                                            Some(Op::Ne) => {
+                                                match expr.regex {
+                                                    Some(ref regex) => !regex.is_match(&user_name),
+                                                    None => val.ne(&user_name)
+                                                }
+                                            },
+                                            Some(Op::Rx) | Some(Op::Like) => {
+                                                match expr.regex {
+                                                    Some(ref regex) => regex.is_match(&user_name),
+                                                    None => false
+                                                }
+                                            },
+                                            Some(Op::Eeq) => {
+                                                val.eq(&user_name)
+                                            },
+                                            Some(Op::Ene) => {
+                                                val.ne(&user_name)
+                                            },
+                                            _ => false
+                                        };
+                                    }
                                 }
                             }
                         }
@@ -1307,45 +1318,48 @@ impl Searcher {
                     }
                 },
                 Field::Group => {
-                    if file_info.is_some() {
-                        return (false, meta, dim, mp3, exif)
-                    }
+                    #[cfg(all(unix, feature = "users"))]
+                    {
+                        if file_info.is_some() {
+                            return (false, meta, dim, mp3, exif)
+                        }
 
-                    if let Some(ref val) = expr.val {
-                        meta = update_meta(entry, meta, follow_symlinks);
+                        if let Some(ref val) = expr.val {
+                            meta = update_meta(entry, meta, follow_symlinks);
 
-                        if let Some(ref metadata) = meta {
-                            let file_gid = mode::get_gid(metadata);
-                            if let Some(file_gid) = file_gid {
-                                if let Some(group) = self.user_cache.get_group_by_gid(file_gid) {
-                                    let group_name = group.name().to_string_lossy().to_string();
-                                    result = match expr.op {
-                                        Some(Op::Eq) => {
-                                            match expr.regex {
-                                                Some(ref regex) => regex.is_match(&group_name),
-                                                None => val.eq(&group_name)
-                                            }
-                                        },
-                                        Some(Op::Ne) => {
-                                            match expr.regex {
-                                                Some(ref regex) => !regex.is_match(&group_name),
-                                                None => val.ne(&group_name)
-                                            }
-                                        },
-                                        Some(Op::Rx) | Some(Op::Like) => {
-                                            match expr.regex {
-                                                Some(ref regex) => regex.is_match(&group_name),
-                                                None => false
-                                            }
-                                        },
-                                        Some(Op::Eeq) => {
-                                            val.eq(&group_name)
-                                        },
-                                        Some(Op::Ene) => {
-                                            val.ne(&group_name)
-                                        },
-                                        _ => false
-                                    };
+                            if let Some(ref metadata) = meta {
+                                let file_gid = mode::get_gid(metadata);
+                                if let Some(file_gid) = file_gid {
+                                    if let Some(group) = self.user_cache.get_group_by_gid(file_gid) {
+                                        let group_name = group.name().to_string_lossy().to_string();
+                                        result = match expr.op {
+                                            Some(Op::Eq) => {
+                                                match expr.regex {
+                                                    Some(ref regex) => regex.is_match(&group_name),
+                                                    None => val.eq(&group_name)
+                                                }
+                                            },
+                                            Some(Op::Ne) => {
+                                                match expr.regex {
+                                                    Some(ref regex) => !regex.is_match(&group_name),
+                                                    None => val.ne(&group_name)
+                                                }
+                                            },
+                                            Some(Op::Rx) | Some(Op::Like) => {
+                                                match expr.regex {
+                                                    Some(ref regex) => regex.is_match(&group_name),
+                                                    None => false
+                                                }
+                                            },
+                                            Some(Op::Eeq) => {
+                                                val.eq(&group_name)
+                                            },
+                                            Some(Op::Ene) => {
+                                                val.ne(&group_name)
+                                            },
+                                            _ => false
+                                        };
+                                    }
                                 }
                             }
                         }
@@ -2546,47 +2560,4 @@ fn has_extension(file_name: &str, extensions: &[&str]) -> bool {
     }
 
     false
-}
-
-#[cfg(any(windows, not(feature = "users")))]
-use std;
-#[cfg(any(windows, not(feature = "users")))]
-use std::ffi::OsStr;
-
-#[cfg(any(windows, not(feature = "users")))]
-struct UsersCache;
-
-#[cfg(any(windows, not(feature = "users")))]
-impl UsersCache {
-    fn new() -> Self {
-        UsersCache { }
-    }
-
-    fn get_user_by_uid(&self, _: u32) -> Option< std::sync::Arc<User>> {
-        None
-    }
-
-    fn get_group_by_gid(&self, _: u32) -> Option< std::sync::Arc<Group>> {
-        None
-    }
-}
-
-#[cfg(any(windows, not(feature = "users")))]
-struct User;
-
-#[cfg(any(windows, not(feature = "users")))]
-impl User {
-    fn name(&self) -> &OsStr {
-        "".as_ref()
-    }
-}
-
-#[cfg(any(windows, not(feature = "users")))]
-struct Group;
-
-#[cfg(any(windows, not(feature = "users")))]
-impl Group {
-    fn name(&self) -> &OsStr {
-        "".as_ref()
-    }
 }

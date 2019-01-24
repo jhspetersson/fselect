@@ -88,9 +88,9 @@ impl Searcher {
         }
     }
 
-    fn format_results_row(&self, record: String,
-                          mut output_value: String,
-                          records: &mut Vec<String>) -> String {
+    fn format_results_item(&self, record: String,
+                           mut output_value: String,
+                           records: &mut Vec<String>) -> String {
         match self.query.output_format {
             OutputFormat::Lines => {
                 output_value.push_str(&record);
@@ -141,6 +141,7 @@ impl Searcher {
         match self.query.output_format {
             OutputFormat::Lines | OutputFormat::List => {},
             OutputFormat::Tabs => {
+                output_value.pop();
                 output_value.push('\n');
             },
             OutputFormat::Csv => {
@@ -216,7 +217,7 @@ impl Searcher {
                 let record = format!("{}", self.get_aggregate_function_value(column_expr));
                 file_map.insert(column_expr.to_string().to_lowercase(), record.clone());
 
-                output_value = self.format_results_row(record, output_value, &mut records);
+                output_value = self.format_results_item(record, output_value, &mut records);
             }
 
             output_value = self.format_results_row_end(output_value, &records, &file_map);
@@ -958,7 +959,7 @@ impl Searcher {
             let record = self.get_column_expr_value(entry, file_info, &mp3_info, &exif_info, &attrs, dimensions, &field, t);
             file_map.insert(field.to_string().to_lowercase(), record.clone());
 
-            output_value = self.format_results_row(record, output_value, &mut records);
+            output_value = self.format_results_item(record, output_value, &mut records);
         }
 
         for (idx, field) in self.query.ordering_fields.iter().enumerate() {

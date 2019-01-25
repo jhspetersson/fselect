@@ -450,7 +450,7 @@ impl Searcher {
                                                           left_expr,
                                                           _t);
 
-            return function::get_value(&column_expr.function, function_arg);
+            return function::get_value(&column_expr.function, function_arg, entry, file_info);
         }
 
         String::new()

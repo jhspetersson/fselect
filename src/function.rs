@@ -2,11 +2,15 @@ use std::collections::HashMap;
 use std::fmt::Display;
 use std::fmt::Formatter;
 use std::fmt::Error;
+use std::fs::DirEntry;
+use std::fs::File;
+use std::io::prelude::*;
 use std::str::FromStr;
 
 use chrono::Datelike;
 use serde::ser::{Serialize, Serializer};
 
+use crate::fileinfo::FileInfo;
 use crate::util::parse_datetime;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Hash)]
@@ -24,6 +28,8 @@ pub enum Function {
     Day,
     Month,
     Year,
+
+    Contains,
 }
 
 impl FromStr for Function {
@@ -46,6 +52,8 @@ impl FromStr for Function {
             "avg" => Ok(Function::Avg),
             "sum" => Ok(Function::Sum),
             "count" => Ok(Function::Count),
+
+            "contains" => Ok(Function::Contains),
 
             _ => {
                 let err = String::from("Unknown function ") + &function;
@@ -80,7 +88,10 @@ impl Function {
     }
 }
 
-pub fn get_value(function: &Option<Function>, function_arg: String) -> String {
+pub fn get_value(function: &Option<Function>,
+                 function_arg: String,
+                 entry: &DirEntry,
+                 file_info: &Option<FileInfo>) -> String {
     match function {
         Some(Function::Lower) => {
             return function_arg.to_lowercase();
@@ -120,6 +131,24 @@ pub fn get_value(function: &Option<Function>, function_arg: String) -> String {
                     return String::new();
                 }
             }
+        },
+        Some(Function::Contains) => {
+            if file_info.is_some() {
+                return String::new();
+            }
+
+            if let Ok(mut f) = File::open(entry.path()) {
+                let mut contents = String::new();
+                if let Ok(_) = f.read_to_string(&mut contents) {
+                    if contents.contains(&function_arg) {
+                        return String::from("true");
+                    } else {
+                        return String::from("false");
+                    }
+                }
+            }
+
+            return String::new();
         },
         _ => {
             return String::new();

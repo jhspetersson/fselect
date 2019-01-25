@@ -179,6 +179,7 @@ Functions:
         LENGTH                          Returns length of string value
         LOWER                           Returns lowercase value
         UPPER                           Returns uppercase value
+        CONTAINS                        Returns true, if file contains string, false if not
 
 Expressions:
     Operators:

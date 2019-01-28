@@ -399,14 +399,13 @@ impl Searcher {
                              exif_info: &Option<HashMap<String, String>>,
                              attrs: &Option<Box<Metadata>>,
                              dimensions: Option<(usize, usize)>,
-                             column_expr: &ColumnExpr,
-                             _t: &mut Box<StdoutTerminal>) -> String {
+                             column_expr: &ColumnExpr) -> String {
         if let Some(ref _function) = column_expr.function {
-            return self.get_function_value(entry, file_info, mp3_info, exif_info, attrs, dimensions, column_expr, _t);
+            return self.get_function_value(entry, file_info, mp3_info, exif_info, attrs, dimensions, column_expr);
         }
 
         if let Some(ref field) = column_expr.field {
-            return self.get_field_value(entry, file_info, mp3_info,  exif_info, attrs, dimensions, field, _t);
+            return self.get_field_value(entry, file_info, mp3_info,  exif_info, attrs, dimensions, field);
         }
 
         if let Some(ref value) = column_expr.val {
@@ -416,11 +415,11 @@ impl Searcher {
         let mut result = String::new();
 
         if let Some(ref left) = column_expr.left {
-            let left_result = self.get_column_expr_value(entry, file_info, mp3_info, exif_info, attrs, dimensions, left, _t);
+            let left_result = self.get_column_expr_value(entry, file_info, mp3_info, exif_info, attrs, dimensions, left);
 
             if let Some(ref op) = column_expr.arithmetic_op {
                 if let Some(ref right) = column_expr.right {
-                    let right_result = self.get_column_expr_value(entry, file_info, mp3_info, exif_info, attrs, dimensions, right, _t);
+                    let right_result = self.get_column_expr_value(entry, file_info, mp3_info, exif_info, attrs, dimensions, right);
                     result = op.calc(&left_result, &right_result);
                 }
             } else {
@@ -438,8 +437,7 @@ impl Searcher {
                           exif_info: &Option<HashMap<String, String>>,
                           attrs: &Option<Box<Metadata>>,
                           dimensions: Option<(usize, usize)>,
-                          column_expr: &ColumnExpr,
-                          _t: &mut Box<StdoutTerminal>) -> String {
+                          column_expr: &ColumnExpr) -> String {
         if let Some(ref left_expr) = column_expr.left {
             let function_arg = self.get_column_expr_value(entry,
                                                           file_info,
@@ -447,8 +445,7 @@ impl Searcher {
                                                           exif_info,
                                                           attrs,
                                                           dimensions,
-                                                          left_expr,
-                                                          _t);
+                                                          left_expr);
 
             return function::get_value(&column_expr.function, function_arg, entry, file_info);
         }
@@ -481,8 +478,7 @@ impl Searcher {
                        exif_info: &Option<HashMap<String, String>>,
                        attrs: &Option<Box<Metadata>>,
                        dimensions: Option<(usize, usize)>,
-                       field: &Field,
-                       _t: &mut Box<StdoutTerminal>) -> String {
+                       field: &Field) -> String {
         match field {
             Field::Name => {
                 match file_info {
@@ -903,7 +899,7 @@ impl Searcher {
                   need_mp3: bool,
                   need_exif: bool,
                   follow_symlinks: bool,
-                  t: &mut Box<StdoutTerminal>) {
+                  _t: &mut Box<StdoutTerminal>) {
         let mut meta = None;
         let mut dim = None;
         let mut mp3 = None;
@@ -950,13 +946,13 @@ impl Searcher {
         let mut criteria = vec!["".to_string(); self.query.ordering_fields.len()];
 
         for field in self.query.get_all_fields() {
-            file_map.insert(field.to_string().to_lowercase(), self.get_field_value(entry, file_info, &mp3_info, &exif_info, &attrs, dimensions, &field, t));
+            file_map.insert(field.to_string().to_lowercase(), self.get_field_value(entry, file_info, &mp3_info, &exif_info, &attrs, dimensions, &field));
         }
 
         output_value = self.format_results_row_begin(output_value, &records, &file_map);
 
         for field in self.query.fields.iter() {
-            let record = self.get_column_expr_value(entry, file_info, &mp3_info, &exif_info, &attrs, dimensions, &field, t);
+            let record = self.get_column_expr_value(entry, file_info, &mp3_info, &exif_info, &attrs, dimensions, &field);
             file_map.insert(field.to_string().to_lowercase(), record.clone());
 
             output_value = self.format_results_item(record, output_value, &mut records);
@@ -965,7 +961,7 @@ impl Searcher {
         for (idx, field) in self.query.ordering_fields.iter().enumerate() {
             criteria[idx] = match file_map.get(&field.to_string().to_lowercase()) {
                 Some(record) => record.clone(),
-                None => self.get_column_expr_value(entry, file_info, &mp3_info, &exif_info, &attrs, dimensions, &field, t)
+                None => self.get_column_expr_value(entry, file_info, &mp3_info, &exif_info, &attrs, dimensions, &field)
             }
         }
 

@@ -190,6 +190,11 @@ impl Searcher {
             let search_archives = root.archives;
             let follow_symlinks = root.symlinks;
             let apply_gitignore = root.gitignore;
+
+            if apply_gitignore {
+                self.search_upstream_gitignore(&root_dir);
+            }
+
             let _result = self.visit_dir(
                 root_dir,
                 need_metadata,
@@ -242,6 +247,66 @@ impl Searcher {
         Ok(())
     }
 
+    fn search_upstream_gitignore(&mut self, dir: &Path) {
+        if let Ok(canonical_path) = crate::util::canonical_path(&dir.to_path_buf()) {
+            let mut path = PathBuf::from(canonical_path);
+
+            loop {
+                let parent_found = path.pop();
+
+                if !parent_found {
+                    return;
+                }
+
+                self.update_gitignore_map(&mut path);
+            }
+        }
+    }
+
+    fn update_gitignore_map(&mut self, path: &Path) {
+        let gitignore_file = path.join(".gitignore");
+        if gitignore_file.is_file() {
+            let regexes = parse_gitignore(&gitignore_file, &path);
+            self.gitignore_map.insert(path.to_path_buf(), regexes);
+        }
+    }
+
+    fn get_gitignore_filters(&self, dir: &Path) -> Vec<GitignoreFilter> {
+        let mut result = vec![];
+
+        for (dir_path, regexes) in &self.gitignore_map {
+            if dir.to_path_buf() == *dir_path {
+                for ref mut rx in regexes {
+                    result.push(rx.clone());
+                }
+
+                return result;
+            }
+        }
+
+        let mut path = dir.to_path_buf();
+
+        loop {
+            let parent_found = path.pop();
+
+            if !parent_found {
+                return result;
+            }
+
+            for (dir_path, regexes) in &self.gitignore_map {
+                if path == *dir_path {
+                    let mut tmp = vec![];
+                    for ref mut rx in regexes {
+                        tmp.push(rx.clone());
+                    }
+                    tmp.append(&mut result);
+                    result.clear();
+                    result.append(&mut tmp);
+                }
+            }
+        }
+    }
+
     fn visit_dir(&mut self,
                  dir: &Path,
                  need_metadata: bool,
@@ -274,13 +339,11 @@ impl Searcher {
                         let mut gitignore_filters = None;
 
                         if apply_gitignore {
-                            let gitignore_file = dir.join(".gitignore");
-                            if gitignore_file.is_file() {
-                                let regexes = parse_gitignore(&gitignore_file, dir);
-                                self.gitignore_map.insert(dir.to_path_buf(), regexes);
+                            if let Ok(canonical_path) = crate::util::canonical_path(&dir.to_path_buf()) {
+                                let canonical_path = PathBuf::from(canonical_path);
+                                self.update_gitignore_map(&canonical_path);
+                                gitignore_filters = Some(self.get_gitignore_filters(&canonical_path));
                             }
-
-                            gitignore_filters = Some(self.get_gitignore_filters(dir));
                         }
 
                         match fs::read_dir(dir) {
@@ -293,8 +356,15 @@ impl Searcher {
                                     match entry {
                                         Ok(entry) => {
                                             let path = entry.path();
+                                            let mut canonical_path = path.clone();
 
-                                            if !apply_gitignore || (apply_gitignore && !matches_gitignore_filter(&gitignore_filters, entry.path().to_string_lossy().as_ref(), path.is_dir())) {
+                                            if apply_gitignore {
+                                                if let Ok(canonicalized) = crate::util::canonical_path(&path.clone()) {
+                                                    canonical_path = PathBuf::from(canonicalized);
+                                                }
+                                            }
+
+                                            if !apply_gitignore || (apply_gitignore && !matches_gitignore_filter(&gitignore_filters, canonical_path.to_string_lossy().as_ref(), path.is_dir())) {
                                                 self.check_file(&entry, &None, need_metadata, need_dim, need_mp3, need_exif, follow_symlinks, t);
 
                                                 if search_archives && is_zip_archive(&path.to_string_lossy()) {
@@ -354,42 +424,6 @@ impl Searcher {
         }
 
         Ok(())
-    }
-
-    fn get_gitignore_filters(&self, dir: &Path) -> Vec<GitignoreFilter> {
-        let mut result = vec![];
-
-        for (dir_path, regexes) in &self.gitignore_map {
-            if dir.to_path_buf() == *dir_path {
-                for ref mut rx in regexes {
-                    result.push(rx.clone());
-                }
-
-                return result;
-            }
-        }
-
-        let mut path = dir.to_path_buf();
-
-        loop {
-            let parent_found = path.pop();
-
-            if !parent_found {
-                return result;
-            }
-
-            for (dir_path, regexes) in &self.gitignore_map {
-                if path == *dir_path {
-                    let mut tmp = vec![];
-                    for ref mut rx in regexes {
-                        tmp.push(rx.clone());
-                    }
-                    tmp.append(&mut result);
-                    result.clear();
-                    result.append(&mut tmp);
-                }
-            }
-        }
     }
 
     fn get_column_expr_value(&self,
@@ -506,8 +540,8 @@ impl Searcher {
                         return format!("[{}] {}", entry.path().to_string_lossy(), file_info.name);
                     },
                     _ => {
-                        if let Ok(path) = fs::canonicalize(entry.path()) {
-                            return crate::util::format_absolute_path(&path);
+                        if let Ok(path) = crate::util::canonical_path(&entry.path()) {
+                            return path;
                         }
                     }
                 }
@@ -1142,8 +1176,8 @@ impl Searcher {
                         let file_path = match file_info {
                             Some(ref file_info) => file_info.name.clone(),
                             _ => {
-                                if let Ok(path) = fs::canonicalize(entry.path()) {
-                                    crate::util::format_absolute_path(&path)
+                                if let Ok(path) = crate::util::canonical_path(&entry.path()) {
+                                    path
                                 } else {
                                     String::new()
                                 }

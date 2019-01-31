@@ -4,7 +4,7 @@ mod wbuf;
 use std::cmp::Ordering;
 use std::error::Error;
 use std::fmt::Display;
-use std::fs::{DirEntry, File};
+use std::fs::{canonicalize, DirEntry, File};
 use std::io;
 use std::path::Path;
 use std::path::PathBuf;
@@ -307,6 +307,14 @@ pub fn parse_unix_filename(s: &str) -> &str {
         Some(idx) => &s[idx..],
         _ => s
     }
+}
+
+pub fn canonical_path(path_buf: &PathBuf) -> Result<String, ()> {
+    if let Ok(path) = canonicalize(path_buf) {
+        return Ok(format_absolute_path(&path));
+    }
+
+    Err(())
 }
 
 pub fn format_absolute_path(path_buf: &PathBuf) -> String {

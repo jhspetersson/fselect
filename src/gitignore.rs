@@ -172,6 +172,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[cfg(not(windows))]
     fn test_simple_pattern() {
         let file_path = Path::new("/home/user/projects/testprj");
         let glob = "foo";
@@ -188,6 +189,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(not(windows))]
     fn test_dir_pattern() {
         let file_path = Path::new("/home/user/projects/testprj");
         let glob = "foo/";
@@ -210,6 +212,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(not(windows))]
     fn test_negate_pattern() {
         let file_path = Path::new("/home/user/projects/testprj");
         let glob = "!foo";

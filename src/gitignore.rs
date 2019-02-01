@@ -114,7 +114,15 @@ fn convert_gitignore_pattern(pattern: &str, file_path: &Path) -> Vec<GitignoreFi
             result.push(GitignoreFilter::new(regex.unwrap(), true, negate));
         }
 
-        pattern = pattern.add("/**");
+        #[cfg(not(windows))]
+        {
+            pattern = pattern.add("/**");
+        }
+
+        #[cfg(windows)]
+        {
+            pattern = pattern.add("\\\\**");
+        }
     }
 
     let regex = convert_gitignore_glob(&pattern, file_path);
@@ -171,6 +179,8 @@ fn convert_gitignore_glob(glob: &str, file_path: &Path) -> Result<Regex, Error> 
 mod tests {
     use super::*;
 
+    // *nix
+
     #[test]
     #[cfg(not(windows))]
     fn test_simple_pattern() {
@@ -224,6 +234,65 @@ mod tests {
         let filter = &result[0];
 
         assert_eq!(filter.regex.as_str(), "/home/user/projects/testprj/([^/]+/)*foo");
+        assert_eq!(filter.only_dir, false);
+        assert_eq!(filter.negate, true);
+    }
+
+    // Windows
+
+    #[test]
+    #[cfg(windows)]
+    fn test_simple_pattern() {
+        let file_path = Path::new("C:\\Projects\\testprj");
+        let glob = "foo";
+
+        let result = convert_gitignore_pattern(glob, file_path);
+
+        assert_eq!(result.len(), 1);
+
+        let filter = &result[0];
+
+        assert_eq!(filter.regex.as_str(), "C:\\\\Projects\\\\testprj\\\\([^\\\\]+\\\\)*foo");
+        assert_eq!(filter.only_dir, false);
+        assert_eq!(filter.negate, false);
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn test_dir_pattern() {
+        let file_path = Path::new("C:\\Projects\\testprj");
+        let glob = "foo/";
+
+        let result = convert_gitignore_pattern(glob, file_path);
+
+        assert_eq!(result.len(), 2);
+
+        let filter = &result[0];
+
+        assert_eq!(filter.regex.as_str(), "C:\\\\Projects\\\\testprj\\\\([^\\\\]+\\\\)*foo");
+        assert_eq!(filter.only_dir, true);
+        assert_eq!(filter.negate, false);
+
+        let filter = &result[1];
+
+        assert_eq!(filter.regex.as_str(), "C:\\\\Projects\\\\testprj\\\\([^\\\\]+\\\\)*foo\\\\.*");
+        assert_eq!(filter.only_dir, false);
+        assert_eq!(filter.negate, false);
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn test_negate_pattern() {
+        let file_path = Path::new("C:\\Projects\\testprj");
+        let glob = "!foo";
+
+        let result = convert_gitignore_pattern(glob, file_path);
+
+        assert_eq!(result.len(), 1);
+
+        let filter = &result[0];
+
+        assert_eq!(filter.regex.as_str(), "C:\\\\Projects\\\\testprj\\\\([^\\\\]+\\\\)*foo");
         assert_eq!(filter.only_dir, false);
         assert_eq!(filter.negate, true);
     }

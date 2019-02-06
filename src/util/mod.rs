@@ -255,7 +255,7 @@ pub fn parse_datetime(s: &str) -> Result<(DateTime<Local>, DateTime<Local>), Str
                 },
                 None => {
                     min_start = 0;
-                    min_finish = 23;
+                    min_finish = 59;
                 }
             }
 
@@ -268,7 +268,7 @@ pub fn parse_datetime(s: &str) -> Result<(DateTime<Local>, DateTime<Local>), Str
                 },
                 None => {
                     sec_start = 0;
-                    sec_finish = 23;
+                    sec_finish = 59;
                 }
             }
 

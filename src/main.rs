@@ -11,13 +11,16 @@ use std::env;
 
 use term::StdoutTerminal;
 
+mod expr;
 mod field;
 mod fileinfo;
 mod function;
 mod gitignore;
 mod lexer;
 mod mode;
+mod operators;
 mod parser;
+mod query;
 mod searcher;
 mod util;
 

@@ -4,7 +4,7 @@ use std::os::unix::fs::MetadataExt;
 #[cfg(windows)]
 use std::os::windows::fs::MetadataExt;
 
-pub fn get_mode(meta: &Box<Metadata>) -> String {
+pub fn get_mode(meta: &Metadata) -> String {
     #[cfg(unix)]
     {
         format_mode(meta.mode())
@@ -96,7 +96,7 @@ fn get_mode_unix(mode: u32) -> String {
 }
 
 #[allow(unused)]
-pub fn get_mode_from_boxed_unix_int(meta: &Box<Metadata>) -> Option<u32> {
+pub fn get_mode_from_boxed_unix_int(meta: &Metadata) -> Option<u32> {
     #[cfg(unix)]
     {
         Some(meta.mode())
@@ -108,7 +108,7 @@ pub fn get_mode_from_boxed_unix_int(meta: &Box<Metadata>) -> Option<u32> {
     }
 }
 
-pub fn user_read(meta: &Box<Metadata>) -> bool {
+pub fn user_read(meta: &Metadata) -> bool {
     match get_mode_from_boxed_unix_int(meta) {
         Some(mode) => mode_user_read(mode),
         None => false
@@ -119,7 +119,7 @@ pub fn mode_user_read(mode: u32) -> bool {
     mode & S_IRUSR == S_IRUSR
 }
 
-pub fn user_write(meta: &Box<Metadata>) -> bool {
+pub fn user_write(meta: &Metadata) -> bool {
     match get_mode_from_boxed_unix_int(meta) {
         Some(mode) => mode_user_write(mode),
         None => false
@@ -130,7 +130,7 @@ pub fn mode_user_write(mode: u32) -> bool {
     mode & S_IWUSR == S_IWUSR
 }
 
-pub fn user_exec(meta: &Box<Metadata>) -> bool {
+pub fn user_exec(meta: &Metadata) -> bool {
     match get_mode_from_boxed_unix_int(meta) {
         Some(mode) => mode_user_exec(mode),
         None => false
@@ -141,7 +141,7 @@ pub fn mode_user_exec(mode: u32) -> bool {
     mode & S_IXUSR == S_IXUSR
 }
 
-pub fn group_read(meta: &Box<Metadata>) -> bool {
+pub fn group_read(meta: &Metadata) -> bool {
     match get_mode_from_boxed_unix_int(meta) {
         Some(mode) => mode_group_read(mode),
         None => false
@@ -152,7 +152,7 @@ pub fn mode_group_read(mode: u32) -> bool {
     mode & S_IRGRP == S_IRGRP
 }
 
-pub fn group_write(meta: &Box<Metadata>) -> bool {
+pub fn group_write(meta: &Metadata) -> bool {
     match get_mode_from_boxed_unix_int(meta) {
         Some(mode) => mode_group_write(mode),
         None => false
@@ -163,7 +163,7 @@ pub fn mode_group_write(mode: u32) -> bool {
     mode & S_IWGRP == S_IWGRP
 }
 
-pub fn group_exec(meta: &Box<Metadata>) -> bool {
+pub fn group_exec(meta: &Metadata) -> bool {
     match get_mode_from_boxed_unix_int(meta) {
         Some(mode) => mode_group_exec(mode),
         None => false
@@ -174,7 +174,7 @@ pub fn mode_group_exec(mode: u32) -> bool {
     mode & S_IXGRP == S_IXGRP
 }
 
-pub fn other_read(meta: &Box<Metadata>) -> bool {
+pub fn other_read(meta: &Metadata) -> bool {
     match get_mode_from_boxed_unix_int(meta) {
         Some(mode) => mode_other_read(mode),
         None => false
@@ -185,7 +185,7 @@ pub fn mode_other_read(mode: u32) -> bool {
     mode & S_IROTH == S_IROTH
 }
 
-pub fn other_write(meta: &Box<Metadata>) -> bool {
+pub fn other_write(meta: &Metadata) -> bool {
     match get_mode_from_boxed_unix_int(meta) {
         Some(mode) => mode_other_write(mode),
         None => false
@@ -196,7 +196,7 @@ pub fn mode_other_write(mode: u32) -> bool {
     mode & S_IWOTH == S_IWOTH
 }
 
-pub fn other_exec(meta: &Box<Metadata>) -> bool {
+pub fn other_exec(meta: &Metadata) -> bool {
     match get_mode_from_boxed_unix_int(meta) {
         Some(mode) => mode_other_exec(mode),
         None => false
@@ -207,7 +207,7 @@ pub fn mode_other_exec(mode: u32) -> bool {
     mode & S_IXOTH == S_IXOTH
 }
 
-pub fn suid_bit_set(meta: &Box<Metadata>) -> bool {
+pub fn suid_bit_set(meta: &Metadata) -> bool {
     match get_mode_from_boxed_unix_int(meta) {
         Some(mode) => mode_suid(mode),
         None => false
@@ -218,7 +218,7 @@ pub fn mode_suid(mode: u32) -> bool {
     mode & S_IFMT & S_ISUID == S_IFMT & S_ISUID
 }
 
-pub fn sgid_bit_set(meta: &Box<Metadata>) -> bool {
+pub fn sgid_bit_set(meta: &Metadata) -> bool {
     match get_mode_from_boxed_unix_int(meta) {
         Some(mode) => mode_sgid(mode),
         None => false
@@ -229,7 +229,7 @@ pub fn mode_sgid(mode: u32) -> bool {
     mode & S_IFMT & S_ISGID == S_IFMT & S_ISGID
 }
 
-pub fn is_pipe(meta: &Box<Metadata>) -> bool {
+pub fn is_pipe(meta: &Metadata) -> bool {
     match get_mode_from_boxed_unix_int(meta) {
         Some(mode) => mode_is_pipe(mode),
         None => false
@@ -240,7 +240,7 @@ pub fn mode_is_pipe(mode: u32) -> bool {
     mode & S_IFMT & S_IFIFO == S_IFMT & S_IFIFO
 }
 
-pub fn is_char_device(meta: &Box<Metadata>) -> bool {
+pub fn is_char_device(meta: &Metadata) -> bool {
     match get_mode_from_boxed_unix_int(meta) {
         Some(mode) => mode_is_char_device(mode),
         None => false
@@ -251,7 +251,7 @@ pub fn mode_is_char_device(mode: u32) -> bool {
     mode & S_IFMT & S_IFCHR == S_IFMT & S_IFCHR
 }
 
-pub fn is_block_device(meta: &Box<Metadata>) -> bool {
+pub fn is_block_device(meta: &Metadata) -> bool {
     match get_mode_from_boxed_unix_int(meta) {
         Some(mode) => mode_is_block_device(mode),
         None => false
@@ -262,7 +262,7 @@ pub fn mode_is_block_device(mode: u32) -> bool {
     mode & S_IFMT & S_IFBLK == S_IFMT & S_IFBLK
 }
 
-pub fn is_socket(meta: &Box<Metadata>) -> bool {
+pub fn is_socket(meta: &Metadata) -> bool {
     match get_mode_from_boxed_unix_int(meta) {
         Some(mode) => mode_is_socket(mode),
         None => false
@@ -400,7 +400,7 @@ fn get_mode_windows(mode: u32) -> String {
 }
 
 #[allow(unused)]
-pub fn get_uid(meta: &Box<Metadata>) -> Option<u32> {
+pub fn get_uid(meta: &Metadata) -> Option<u32> {
     #[cfg(unix)]
     {
         Some(meta.uid())
@@ -413,7 +413,7 @@ pub fn get_uid(meta: &Box<Metadata>) -> Option<u32> {
 }
 
 #[allow(unused)]
-pub fn get_gid(meta: &Box<Metadata>) -> Option<u32> {
+pub fn get_gid(meta: &Metadata) -> Option<u32> {
     #[cfg(unix)]
     {
         Some(meta.gid())

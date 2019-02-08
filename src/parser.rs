@@ -1,21 +1,17 @@
-use std::collections::HashSet;
-use std::fmt;
-use std::fmt::Display;
-use std::fmt::Formatter;
-use std::ops::Index;
 use std::rc::Rc;
 use std::str::FromStr;
 
-use chrono::DateTime;
-use chrono::Local;
-use regex::Captures;
-use regex::Regex;
-
+use crate::expr::Expr;
 use crate::lexer::Lexer;
 use crate::lexer::Lexem;
 use crate::field::Field;
 use crate::function::Function;
-use crate::util::parse_datetime;
+use crate::operators::ArithmeticOp;
+use crate::operators::LogicalOp;
+use crate::operators::Op;
+use crate::query::OutputFormat;
+use crate::query::Query;
+use crate::query::Root;
 
 pub struct Parser {
     lexems: Vec<Lexem>,
@@ -54,7 +50,7 @@ impl Parser {
         })
     }
 
-    fn parse_fields(&mut self) -> Result<Vec<ColumnExpr>, String> {
+    fn parse_fields(&mut self) -> Result<Vec<Expr>, String> {
         let mut fields = vec![];
 
         loop {
@@ -68,16 +64,16 @@ impl Parser {
                         if s == "*" && fields.is_empty() {
                             #[cfg(unix)]
                                 {
-                                    fields.push(ColumnExpr::field(Field::Mode));
-                                    fields.push(ColumnExpr::field(Field::User));
-                                    fields.push(ColumnExpr::field(Field::Group));
+                                    fields.push(Expr::field(Field::Mode));
+                                    fields.push(Expr::field(Field::User));
+                                    fields.push(Expr::field(Field::Group));
                                 }
 
-                            fields.push(ColumnExpr::field(Field::Size));
-                            fields.push(ColumnExpr::field(Field::Path));
+                            fields.push(Expr::field(Field::Size));
+                            fields.push(Expr::field(Field::Path));
                         } else {
                             self.drop_lexem();
-                            if let Some(field) = self.parse_column_expr() {
+                            if let Ok(Some(field)) = self.parse_expr() {
                                 fields.push(field);
                             }
                         }
@@ -95,139 +91,6 @@ impl Parser {
         }
 
         Ok(fields)
-    }
-
-    fn parse_column_expr(&mut self) -> Option<ColumnExpr> {
-        self.parse_add_sub()
-    }
-
-    fn parse_add_sub(&mut self) -> Option<ColumnExpr> {
-        let node = self.parse_mul_div();
-
-        match node {
-            Some(mut node) => {
-                loop {
-                    match self.get_lexem() {
-                        Some(Lexem::ArithmeticOperator(ref op)) if op == "+" || op == "-" => {
-                            match self.parse_mul_div() {
-                                Some(right) => {
-                                    let op = ArithmeticOp::from(op.to_string())?;
-                                    node = ColumnExpr::arithmetic_op(node, op, right);
-                                },
-                                _ => {
-                                    return None;
-                                }
-                            }
-                        },
-                        _ => {
-                            self.drop_lexem();
-                            break;
-                        }
-                    }
-                }
-
-                return Some(node);
-            },
-            _ => {
-                return None;
-            }
-        };
-    }
-
-    fn parse_mul_div(&mut self) -> Option<ColumnExpr> {
-        let node = self.parse_expr();
-        match node {
-            Some(mut node) => {
-                loop {
-                    match self.get_lexem() {
-                        Some(Lexem::ArithmeticOperator(ref op)) if op == "mul" || op == "div" => {
-                            match self.parse_expr() {
-                                Some(right) => {
-                                    let op = ArithmeticOp::from(op.to_string())?;
-                                    node = ColumnExpr::arithmetic_op(node, op, right);
-                                },
-                                _ => {
-                                    return None;
-                                }
-                            }
-                        },
-                        Some(Lexem::ArithmeticOperator(ref s)) if s == "*" || s == "/" => {
-                            match self.parse_expr() {
-                                Some(right) => {
-                                    let op = ArithmeticOp::from(s.clone())?;
-                                    node = ColumnExpr::arithmetic_op(node, op, right);
-                                },
-                                _ => {
-                                    return None;
-                                }
-                            }
-                        },
-                        _ => {
-                            self.drop_lexem();
-                            break;
-                        }
-                    }
-                }
-
-                return Some(node);
-            },
-            _ => {
-                return None;
-            }
-        };
-    }
-
-    fn parse_expr(&mut self) -> Option<ColumnExpr> {
-        let lexem = self.get_lexem();
-        match lexem {
-            Some(Lexem::String(ref s)) | Some(Lexem::RawString(ref s)) => {
-                if let Ok(field) = Field::from_str(s) {
-                    return Some(ColumnExpr::field(field));
-                }
-
-                if let Ok(function) = Function::from_str(s) {
-                    return Some(self.parse_function(function));
-                }
-
-                Some(ColumnExpr::value(s.to_string()))
-            },
-            Some(Lexem::Open) => {
-                let expr_result = self.parse_add_sub();
-                let closing_lexem = self.get_lexem();
-
-                match closing_lexem {
-                    Some(Lexem::Close) => return expr_result,
-                    _ => return None
-                }
-            },
-            _ => {
-                self.drop_lexem();
-
-                None
-            }
-        }
-    }
-
-    fn parse_function(&mut self, function: Function) -> ColumnExpr {
-        let mut function_expr = ColumnExpr::function(function);
-
-        if let Some(lexem) = self.get_lexem() {
-            if lexem != Lexem::Open {
-                panic!("Error in function expression");
-            }
-        }
-
-        if let Some(function_arg) = self.parse_column_expr() {
-            function_expr.left = Some(Box::from(function_arg));
-        }
-
-        if let Some(lexem) = self.get_lexem() {
-            if lexem != Lexem::Close {
-                panic!("Error in function expression");
-            }
-        }
-
-        function_expr
     }
 
     fn parse_roots(&mut self) -> Vec<Root> {
@@ -269,7 +132,7 @@ impl Parser {
                 match lexem {
                     Some(ref lexem) => {
                         match lexem {
-                            &Lexem::String(ref s) | &Lexem::RawString(ref s) => {
+                            Lexem::String(ref s) | Lexem::RawString(ref s) => {
                                 match mode {
                                     RootParsingMode::From | RootParsingMode::Comma => {
                                         path = s.to_string();
@@ -324,7 +187,7 @@ impl Parser {
                                     _ => { }
                                 }
                             },
-                            &Lexem::Comma => {
+                            Lexem::Comma => {
                                 if path.len() > 0 {
                                     roots.push(Root::new(path, min_depth, depth, archives, symlinks, gitignore));
 
@@ -363,12 +226,22 @@ impl Parser {
         roots
     }
 
-    fn parse_where(&mut self) -> Result<Option<Box<Expr>>, String> {
-        let lexem = self.get_lexem();
+    /*
 
-        match lexem {
+    expr        := and (OR and)*
+    and         := cond (AND cond)*
+    cond        := add_sub (OP add_sub)*
+    add_sub     := mul_div (PLUS mul_div)* | mul_div (MINUS mul_div)*
+    mul_div     := paren (MUL paren)* | paren (DIV paren)*
+    paren       := ( expr ) | func_scalar
+    func_scalar := function paren | field | scalar
+
+    */
+
+    fn parse_where(&mut self) -> Result<Option<Expr>, String> {
+        match self.get_lexem() {
             Some(Lexem::Where) => {
-                self.parse_or()
+                self.parse_expr()
             },
             _ => {
                 self.drop_lexem();
@@ -377,147 +250,212 @@ impl Parser {
         }
     }
 
-    fn parse_or(&mut self) -> Result<Option<Box<Expr>>, String> {
-        let node = self.parse_and();
-        match node {
-            Ok(mut node) => {
-                loop {
-                    let lexem = self.get_lexem();
-                    if let Some(Lexem::Or) = lexem {
-                        match self.parse_and() {
-                            Ok(and) => {
-                                node = Some(Box::new(Expr::node(node, Some(LogicalOp::Or), and)));
-                            },
-                            Err(err) => {
-                                return Err(err);
-                            }
-                        }
-                    } else {
-                        self.drop_lexem();
-                        break;
+    fn parse_expr(&mut self) -> Result<Option<Expr>, String> {
+        let left = self.parse_and()?;
+
+        let mut right: Option<Expr> = None;
+        loop {
+            let lexem = self.get_lexem();
+            match lexem {
+                Some(Lexem::Or) => {
+                    let expr = self.parse_and()?;
+                    right = match right {
+                        Some(right) => Some(Expr::logical_op(right, LogicalOp::Or, expr.clone().unwrap())),
+                        None => expr
+                    };
+                },
+                _ => {
+                    self.drop_lexem();
+
+                    return match right {
+                        Some(right) => Ok(Some(Expr::logical_op(left.unwrap(), LogicalOp::Or, right))),
+                        None => Ok(left)
                     }
                 }
-
-                Ok(node)
-            },
-            Err(err) => Err(err)
+            }
         }
     }
 
-    fn parse_and(&mut self) -> Result<Option<Box<Expr>>, String> {
-        let node = self.parse_cond();
-        match node {
-            Ok(mut node) => {
-                loop {
-                    let lexem = self.get_lexem();
-                    if let Some(Lexem::And) = lexem {
-                        match self.parse_cond() {
-                            Ok(cond) => {
-                                node = Some(Box::new(Expr::node(node, Some(LogicalOp::And), cond)));
-                            },
-                            Err(err) => {
-                                return Err(err);
-                            }
-                        }
-                    } else {
-                        self.drop_lexem();
-                        break;
+    fn parse_and(&mut self) -> Result<Option<Expr>, String> {
+        let left = self.parse_cond()?;
+
+        let mut right: Option<Expr> = None;
+        loop {
+            let lexem = self.get_lexem();
+            match lexem {
+                Some(Lexem::And) => {
+                    let expr = self.parse_cond()?;
+                    right = match right {
+                        Some(right) => Some(Expr::logical_op(right, LogicalOp::And, expr.clone().unwrap())),
+                        None => expr
+                    };
+                },
+                _ => {
+                    self.drop_lexem();
+
+                    return match right {
+                        Some(right) => Ok(Some(Expr::logical_op(left.unwrap(), LogicalOp::And, right))),
+                        None => Ok(left)
                     }
                 }
-
-                Ok(node)
-            },
-            Err(err) => Err(err)
+            }
         }
     }
 
-    fn parse_cond(&mut self) -> Result<Option<Box<Expr>>, String> {
+    fn parse_cond(&mut self) -> Result<Option<Expr>, String> {
+        let left = self.parse_add_sub()?;
+
         let lexem = self.get_lexem();
-
         match lexem {
-            Some(Lexem::RawString(ref s)) => {
-
-                let lexem2 = self.get_lexem();
-
-                if let Some(Lexem::Operator(ref s2)) = lexem2 {
-
-                    let lexem3 = self.get_lexem();
-
-                    match lexem3 {
-                        Some(Lexem::String(ref s3)) | Some(Lexem::RawString(ref s3)) => {
-                            let op = Op::from(s2.to_string());
-                            let mut expr: Expr;
-                            let field;
-                            match Field::from_str(s) {
-                                Ok(field_) => field = field_,
-                                Err(err) => return Err(err)
-                            }
-                            if let Some(Op::Rx) = op {
-                                let regex;
-                                match Regex::new(&s3) {
-                                    Ok(regex_) => regex = regex_,
-                                    _ => return Err("Error parsing regular expression".to_string())
-                                }
-                                expr = Expr::leaf_regex(field, op, s3.to_string(), regex);
-                            } else if let Some(Op::Like) = op {
-                                let pattern = convert_like_to_pattern(s3);
-                                let regex;
-                                match Regex::new(&pattern) {
-                                    Ok(regex_) => regex = regex_,
-                                    _ => return Err("Error parsing LIKE expression".to_string())
-                                }
-
-                                expr = Expr::leaf_regex(field, op, s3.to_string(), regex);
-                            } else {
-                                expr = match is_glob(s3) {
-                                    true => {
-                                        let pattern = convert_glob_to_pattern(s3);
-                                        let regex;
-                                        match Regex::new(&pattern) {
-                                            Ok(regex_) => regex = regex_,
-                                            _ => return Err("Error parsing glob pattern".to_string())
-                                        }
-
-                                        Expr::leaf_regex(field, op, s3.to_string(), regex)
-                                    },
-                                    false => Expr::leaf(field, op, s3.to_string())
-                                };
-                            };
-
-                            let field = &Field::from_str(s)?;
-                            if field.is_datetime_field() {
-                                match parse_datetime(s3) {
-                                    Ok((dt_from, dt_to)) => {
-                                        expr.dt_from = Some(dt_from);
-                                        expr.dt_to = Some(dt_to);
-                                    },
-                                    Err(_err) => { }
-                                }
-                            }
-
-                            Ok(Some(Box::new(expr)))
-                        },
-                        _ => Err("Error parsing condition, no operand found".to_string())
-                    }
-                } else {
-                    Err("Error parsing condition, no operator found".to_string())
-                }
+            Some(Lexem::Operator(s)) => {
+                let right = self.parse_add_sub()?;
+                let op = Op::from(s);
+                Ok(Some(Expr::op(left.unwrap(), op.unwrap(), right.unwrap())))
             },
-            Some(Lexem::Open) => {
-                let expr_result = self.parse_or();
-                let lexem4 = self.get_lexem();
-
-                match lexem4 {
-                    Some(Lexem::Close) => expr_result,
-                    _ => Ok(None)
-                }
-            },
-            _ => Ok(None)
+            _ => {
+                self.drop_lexem();
+                Ok(left)
+            }
         }
     }
 
-    fn parse_order_by(&mut self, fields: &Vec<ColumnExpr>) -> Result<(Vec<ColumnExpr>, Vec<bool>), String> {
-        let mut order_by_fields: Vec<ColumnExpr> = vec![];
+    fn parse_add_sub(&mut self) -> Result<Option<Expr>, String> {
+        let left = self.parse_mul_div()?;
+
+        let mut right: Option<Expr> = None;
+        let mut op = None;
+        loop {
+            let lexem = self.get_lexem();
+            if let Some(Lexem::ArithmeticOperator(s)) = lexem {
+                let new_op = ArithmeticOp::from(s);
+                match new_op {
+                    Some(ArithmeticOp::Add) | Some(ArithmeticOp::Subtract) => {
+                        let expr = self.parse_mul_div()?;
+                        op = new_op.clone();
+                        right = match right {
+                            Some(right) => Some(Expr::arithmetic_op(right, new_op.unwrap(), expr.clone().unwrap())),
+                            None => expr
+                        };
+                    },
+                    _ => {
+                        self.drop_lexem();
+
+                        return match right {
+                            Some(right) => Ok(Some(Expr::arithmetic_op(left.unwrap(), op.unwrap(), right))),
+                            None => Ok(left)
+                        }
+                    }
+                }
+            } else {
+                self.drop_lexem();
+
+                return match right {
+                    Some(right) => Ok(Some(Expr::arithmetic_op(left.unwrap(), op.unwrap(), right))),
+                    None => Ok(left)
+                }
+            }
+        }
+    }
+
+    fn parse_mul_div(&mut self) -> Result<Option<Expr>, String> {
+        let left = self.parse_paren()?;
+
+        let mut right: Option<Expr> = None;
+        let mut op = None;
+        loop {
+            let lexem = self.get_lexem();
+            if let Some(Lexem::ArithmeticOperator(s)) = lexem {
+                let new_op = ArithmeticOp::from(s);
+                match new_op {
+                    Some(ArithmeticOp::Multiply) | Some(ArithmeticOp::Divide) => {
+                        let expr = self.parse_paren()?;
+                        op = new_op.clone();
+                        right = match right {
+                            Some(right) => Some(Expr::arithmetic_op(right, new_op.unwrap(), expr.clone().unwrap())),
+                            None => expr
+                        };
+                    },
+                    _ => {
+                        self.drop_lexem();
+
+                        return match right {
+                            Some(right) => Ok(Some(Expr::arithmetic_op(left.unwrap(), op.unwrap(), right))),
+                            None => Ok(left)
+                        }
+                    }
+                }
+            } else {
+                self.drop_lexem();
+
+                return match right {
+                    Some(right) => Ok(Some(Expr::arithmetic_op(left.unwrap(), op.unwrap(), right))),
+                    None => Ok(left)
+                }
+            }
+        }
+    }
+
+    fn parse_paren(&mut self) -> Result<Option<Expr>, String> {
+        if let Some(Lexem::Open) = self.get_lexem() {
+            let result = self.parse_expr();
+            if let Some(Lexem::Close) = self.get_lexem() {
+                result
+            } else {
+                Err("Unmatched parenthesis".to_string())
+            }
+        } else {
+            self.drop_lexem();
+            self.parse_func_scalar()
+        }
+    }
+
+    fn parse_func_scalar(&mut self) -> Result<Option<Expr>, String> {
+        let lexem = self.get_lexem();
+        match lexem {
+            Some(Lexem::String(ref s)) | Some(Lexem::RawString(ref s)) => {
+                if let Ok(field) = Field::from_str(s) {
+                    return Ok(Some(Expr::field(field)));
+                }
+
+                if let Ok(function) = Function::from_str(s) {
+                    match self.parse_function(function) {
+                        Ok(expr) => return Ok(Some(expr)),
+                        Err(err) => return Err(err)
+                    }
+                }
+
+                Ok(Some(Expr::value(s.to_string())))
+            }
+            _ => {
+                Err("Error parsing expression, expecting string".to_string())
+            }
+        }
+    }
+
+    fn parse_function(&mut self, function: Function) -> Result<Expr, String> {
+        let mut function_expr = Expr::function(function);
+
+        if let Some(lexem) = self.get_lexem() {
+            if lexem != Lexem::Open {
+                return Err("Error in function expression".to_string());
+            }
+        }
+
+        if let Ok(Some(function_arg)) = self.parse_expr() {
+            function_expr.left = Some(Box::from(function_arg));
+        }
+
+        if let Some(lexem) = self.get_lexem() {
+            if lexem != Lexem::Close {
+                return Err("Error in function expression".to_string());
+            }
+        }
+
+        Ok(function_expr)
+    }
+
+    fn parse_order_by(&mut self, fields: &Vec<Expr>) -> Result<(Vec<Expr>, Vec<bool>), String> {
+        let mut order_by_fields: Vec<Expr> = vec![];
         let mut order_by_directions: Vec<bool> = vec![];
 
         if let Some(Lexem::Order) = self.get_lexem() {
@@ -529,7 +467,7 @@ impl Parser {
                         Some(Lexem::RawString(ref ordering_field)) => {
                             let actual_field = match ordering_field.parse::<usize>() {
                                 Ok(idx) => fields[idx - 1].clone(),
-                                _ => ColumnExpr::field(Field::from_str(ordering_field)?),
+                                _ => Expr::field(Field::from_str(ordering_field)?),
                             };
                             order_by_fields.push(actual_field.clone());
                             order_by_directions.push(true);
@@ -555,7 +493,7 @@ impl Parser {
     }
 
 
-    fn parse_limit<'a>(&mut self) -> Result<u32, &'a str> {
+    fn parse_limit(&mut self) -> Result<u32, &str> {
         let lexem = self.get_lexem();
         match lexem {
             Some(Lexem::Limit) => {
@@ -582,7 +520,7 @@ impl Parser {
         Ok(0)
     }
 
-    fn parse_output_format<'a>(&mut self) -> Result<OutputFormat, &'a str>{
+    fn parse_output_format(&mut self) -> Result<OutputFormat, &str>{
         let lexem = self.get_lexem();
         match lexem {
             Some(Lexem::Into) => {
@@ -635,400 +573,6 @@ impl Parser {
     }
 }
 
-fn is_glob(s: &str) -> bool {
-    s.contains("*") || s.contains('?')
-}
-
-fn convert_glob_to_pattern(s: &str) -> String {
-    let string = s.to_string();
-    let regex = Regex::new("(\\?|\\.|\\*|\\[|\\]|\\(|\\)|\\^|\\$)").unwrap();
-    let string = regex.replace_all(&string, |c: &Captures| {
-        match c.index(0) {
-            "." => "\\.",
-            "*" => ".*",
-            "?" => ".",
-            "[" => "\\[",
-            "]" => "\\]",
-            "(" => "\\(",
-            ")" => "\\)",
-            "^" => "\\^",
-            "$" => "\\$",
-            _ => panic!("Error parsing glob")
-        }.to_string()
-    });
-
-    format!("^(?i){}$", string)
-}
-
-fn convert_like_to_pattern(s: &str) -> String {
-    let string = s.to_string();
-    let regex = Regex::new("(%|_|\\?|\\.|\\*|\\[|\\]|\\(|\\)|\\^|\\$)").unwrap();
-    let string = regex.replace_all(&string, |c: &Captures| {
-        match c.index(0) {
-            "%" => ".*",
-            "_" => ".",
-            "?" => ".?",
-            "." => "\\.",
-            "*" => "\\*",
-            "[" => "\\[",
-            "]" => "\\]",
-            "(" => "\\(",
-            ")" => "\\)",
-            "^" => "\\^",
-            "$" => "\\$",
-            _ => panic!("Error parsing like expression")
-        }.to_string()
-    });
-
-    format!("^(?i){}$", string)
-}
-
-#[derive(Debug, Clone)]
-pub struct Query {
-    pub fields: Vec<ColumnExpr>,
-    pub roots: Vec<Root>,
-    pub expr: Option<Box<Expr>>,
-    pub ordering_fields: Vec<ColumnExpr>,
-    pub ordering_asc: Rc<Vec<bool>>,
-    pub limit: u32,
-    pub output_format: OutputFormat,
-}
-
-impl Query {
-    pub fn get_all_fields(&self) -> HashSet<Field> {
-        let mut result = HashSet::new();
-
-        for column_expr in &self.fields {
-            result.extend(column_expr.get_required_fields());
-        }
-
-        result
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct Root {
-    pub path: String,
-    pub min_depth: u32,
-    pub max_depth: u32,
-    pub archives: bool,
-    pub symlinks: bool,
-    pub gitignore: bool,
-}
-
-impl Root {
-    fn new(path: String, min_depth: u32, max_depth: u32, archives: bool, symlinks: bool, gitignore: bool) -> Root {
-        Root { path, min_depth, max_depth, archives, symlinks, gitignore }
-    }
-
-    fn default() -> Root {
-        Root { path: String::from("."), min_depth: 0, max_depth: 0, archives: false, symlinks: false, gitignore: false }
-    }
-}
-
-#[derive(Debug, Clone, PartialOrd, PartialEq, Eq, Hash, Serialize)]
-pub struct ColumnExpr {
-    pub left: Option<Box<ColumnExpr>>,
-    pub arithmetic_op: Option<ArithmeticOp>,
-    pub right: Option<Box<ColumnExpr>>,
-    pub field: Option<Field>,
-    pub function: Option<Function>,
-    pub val: Option<String>,
-}
-
-impl ColumnExpr {
-    pub fn arithmetic_op(left: ColumnExpr, arithmetic_op: ArithmeticOp, right: ColumnExpr) -> ColumnExpr {
-        ColumnExpr {
-            left: Some(Box::new(left)),
-            arithmetic_op: Some(arithmetic_op),
-            right: Some(Box::new(right)),
-            field: None,
-            function: None,
-            val: None,
-        }
-    }
-
-    pub fn field(field: Field) -> ColumnExpr {
-        ColumnExpr {
-            left: None,
-            arithmetic_op: None,
-            right: None,
-            field: Some(field),
-            function: None,
-            val: None,
-        }
-    }
-
-    pub fn function(function: Function) -> ColumnExpr {
-        ColumnExpr {
-            left: None,
-            arithmetic_op: None,
-            right: None,
-            field: None,
-            function: Some(function),
-            val: None,
-        }
-    }
-
-    fn value(value: String) -> ColumnExpr {
-        ColumnExpr {
-            left: None,
-            arithmetic_op: None,
-            right: None,
-            field: None,
-            function: None,
-            val: Some(value),
-        }
-    }
-
-    pub fn has_aggregate_function(&self) -> bool {
-        if let Some(ref left) = self.left {
-            if left.has_aggregate_function() {
-                return true;
-            }
-        }
-
-        if let Some(ref right) = self.right {
-            if right.has_aggregate_function() {
-                return true;
-            }
-        }
-
-        if let Some(ref function) = self.function {
-            if function.is_aggregate_function() {
-                return true;
-            }
-        }
-
-        false
-    }
-
-    pub fn get_required_fields(&self) -> HashSet<Field> {
-        let mut result = HashSet::new();
-
-        if let Some(ref left) = self.left {
-            result.extend(left.get_required_fields());
-        }
-
-        if let Some(ref right) = self.right {
-            result.extend(right.get_required_fields());
-        }
-
-        if let Some(ref field) = self.field {
-            result.insert(field.clone());
-        }
-
-        result
-    }
-}
-
-impl Display for ColumnExpr {
-    fn fmt(&self, fmt: &mut Formatter) -> fmt::Result {
-        use std::fmt::Write;
-
-        if let Some(ref left) = self.left {
-            fmt.write_str(&left.to_string())?;
-        }
-
-        if let Some(ref function) = self.function {
-            fmt.write_str(&function.to_string())?;
-            fmt.write_char('(')?;
-            if let Some(ref left) = self.left {
-                fmt.write_str(&left.to_string())?;
-            }
-            fmt.write_char(')')?;
-        }
-
-        if let Some(ref field) = self.field {
-            fmt.write_str(&field.to_string())?;
-        }
-
-        Ok(())
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct Expr {
-    pub left: Option<Box<Expr>>,
-    pub logical_op: Option<LogicalOp>,
-    pub right: Option<Box<Expr>>,
-
-    pub field: Option<ColumnExpr>,
-    pub op: Option<Op>,
-    pub val: Option<String>,
-    pub regex: Option<Regex>,
-
-    pub dt_from: Option<DateTime<Local>>,
-    pub dt_to: Option<DateTime<Local>>,
-}
-
-impl Expr {
-    fn node(left: Option<Box<Expr>>, logical_op: Option<LogicalOp>, right: Option<Box<Expr>>) -> Expr {
-        Expr {
-            left,
-            logical_op,
-            right,
-
-            field: None,
-            op: None,
-            val: None,
-            regex: None,
-
-            dt_from: None,
-            dt_to: None,
-        }
-    }
-
-    fn leaf(field: Field, op: Option<Op>, val: String) -> Expr {
-        Expr {
-            left: None,
-            logical_op: None,
-            right: None,
-
-            field: Some(ColumnExpr::field(field)),
-            op,
-            val: Some(val),
-            regex: None,
-
-            dt_from: None,
-            dt_to: None,
-        }
-    }
-
-    fn leaf_regex(field: Field, op: Option<Op>, val: String, regex: Regex) -> Expr {
-        Expr {
-            left: None,
-            logical_op: None,
-            right: None,
-
-            field: Some(ColumnExpr::field(field)),
-            op,
-            val: Some(val),
-            regex: Some(regex),
-
-            dt_from: None,
-            dt_to: None,
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum Op {
-    Eq,
-    Ne,
-    Eeq,
-    Ene,
-    Gt,
-    Gte,
-    Lt,
-    Lte,
-    Rx,
-    Like,
-}
-
-impl Op {
-    fn from(text: String) -> Option<Op> {
-        match text.to_lowercase().as_str() {
-            "=" | "==" | "eq" => Some(Op::Eq),
-            "!=" | "<>" | "ne" => Some(Op::Ne),
-            "===" => Some(Op::Eeq),
-            "!==" => Some(Op::Ene),
-            ">" | "gt" => Some(Op::Gt),
-            ">=" | "gte" | "ge" => Some(Op::Gte),
-            "<" | "lt" => Some(Op::Lt),
-            "<=" | "lte" | "le" => Some(Op::Lte),
-            "~=" | "=~" | "regexp" | "rx" => Some(Op::Rx),
-            "like" => Some(Op::Like),
-            _ => None
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum LogicalOp {
-    And,
-    Or,
-}
-
-#[derive(Debug, Clone, PartialOrd, PartialEq, Eq, Hash, Serialize)]
-pub enum ArithmeticOp {
-    Add,
-    Subtract,
-    Divide,
-    Multiply,
-}
-
-impl ArithmeticOp {
-    fn from(text: String) -> Option<ArithmeticOp> {
-        match text.to_lowercase().as_str() {
-            "+" | "plus" => Some(ArithmeticOp::Add),
-            "-" | "minus"  => Some(ArithmeticOp::Subtract),
-            "*" | "mul" => Some(ArithmeticOp::Multiply),
-            "/" | "div" => Some(ArithmeticOp::Divide),
-            _ => None
-        }
-    }
-
-    pub fn calc(&self, left: &str, right: &str) -> String {
-        if let Ok(left) = left.parse::<i64>() {
-            if let Ok(right) = right.parse::<i64>() {
-                let result = match &self {
-                    ArithmeticOp::Add => left + right,
-                    ArithmeticOp::Subtract => left - right,
-                    ArithmeticOp::Multiply => left * right,
-                    ArithmeticOp::Divide => left / right,
-                };
-
-                return result.to_string();
-            }
-        }
-
-        String::from("0")
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum OutputFormat {
-    Tabs, Lines, List, Csv, Json, Html
-}
-
-#[cfg(test)]
-impl PartialEq for Expr {
-    fn eq(&self, other: &Expr) -> bool {
-        self.left == other.left
-            && self.logical_op == other.logical_op
-            && self.right == other.right
-
-            && self.field == other.field
-            && self.op == other.op
-            && self.val == other.val
-
-            && match self.regex {
-            Some(ref left_rx) => {
-                match other.regex {
-                    Some(ref right_rx) => {
-                        left_rx.as_str() == right_rx.as_str()
-                    },
-                    _ => false
-                }
-            },
-            None => {
-                match other.regex {
-                    None => true,
-                    _ => false
-                }
-            }
-        }
-
-            && self.dt_from == other.dt_from
-            && self.dt_to == other.dt_to
-    }
-
-    fn ne(&self, other: &Expr) -> bool {
-        !self.eq(other)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1039,10 +583,10 @@ mod tests {
         let mut p = Parser::new();
         let query = p.parse(&query).unwrap();
 
-        assert_eq!(query.fields, vec![ColumnExpr::field(Field::Name),
-                                      ColumnExpr::field(Field::Path),
-                                      ColumnExpr::field(Field::Size),
-                                      ColumnExpr::field(Field::FormattedSize),
+        assert_eq!(query.fields, vec![Expr::field(Field::Name),
+                                      Expr::field(Field::Path),
+                                      Expr::field(Field::Size),
+                                      Expr::field(Field::FormattedSize),
         ]);
     }
 
@@ -1052,10 +596,10 @@ mod tests {
         let mut p = Parser::new();
         let query = p.parse(&query).unwrap();
 
-        assert_eq!(query.fields, vec![ColumnExpr::field(Field::Name),
-                                      ColumnExpr::field(Field::Path),
-                                      ColumnExpr::field(Field::Size),
-                                      ColumnExpr::field(Field::FormattedSize)
+        assert_eq!(query.fields, vec![Expr::field(Field::Name),
+                                      Expr::field(Field::Path),
+                                      Expr::field(Field::Size),
+                                      Expr::field(Field::FormattedSize)
         ]);
 
         assert_eq!(query.roots, vec![
@@ -1067,26 +611,22 @@ mod tests {
             Root::new(String::from("/test6"), 3, 0, false, false, false),
         ]);
 
-        let expr = Expr::node(
-            Some(Box::new(
-                Expr::node(
-                    Some(Box::new(Expr::leaf(Field::Name, Some(Op::Ne), String::from("123")))),
-                    Some(LogicalOp::And),
-                    Some(Box::new(Expr::node(
-                        Some(Box::new(Expr::leaf(Field::Size, Some(Op::Gt), String::from("456")))),
-                        Some(LogicalOp::Or),
-                        Some(Box::new(Expr::leaf(Field::FormattedSize, Some(Op::Lte), String::from("758")))),
-                    ))),
-                )
-            )),
-            Some(LogicalOp::Or),
-            Some(Box::new(
-                Expr::leaf(Field::Name, Some(Op::Eq), String::from("xxx"))
-            ))
+        let expr = Expr::logical_op(
+                Expr::logical_op(
+                    Expr::op(Expr::field(Field::Name), Op::Ne, Expr::value(String::from("123"))),
+                    LogicalOp::And,
+                    Expr::logical_op(
+                        Expr::op(Expr::field(Field::Size), Op::Gt, Expr::value(String::from("456"))),
+                        LogicalOp::Or,
+                        Expr::op(Expr::field(Field::FormattedSize), Op::Lte, Expr::value(String::from("758"))),
+                    ),
+                ),
+            LogicalOp::Or,
+                Expr::op(Expr::field(Field::Name), Op::Eq, Expr::value(String::from("xxx")))
         );
 
-        assert_eq!(query.expr, Some(Box::new(expr)));
-        assert_eq!(query.ordering_fields, vec![ColumnExpr::field(Field::Path), ColumnExpr::field(Field::Size)]);
+        assert_eq!(query.expr, Some(expr));
+        assert_eq!(query.ordering_fields, vec![Expr::field(Field::Path), Expr::field(Field::Size)]);
         assert_eq!(query.ordering_asc, Rc::new(vec![true, false]));
         assert_eq!(query.limit, 50);
     }

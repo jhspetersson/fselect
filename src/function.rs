@@ -8,10 +8,135 @@ use std::io::prelude::*;
 use std::str::FromStr;
 
 use chrono::Datelike;
+use chrono::DateTime;
+use chrono::Local;
 use serde::ser::{Serialize, Serializer};
 
 use crate::fileinfo::FileInfo;
+use crate::util::format_datetime;
 use crate::util::parse_datetime;
+use crate::util::parse_filesize;
+use crate::util::str_to_bool;
+
+#[derive(Clone, Debug)]
+pub enum VariantType {
+    String,
+    Int,
+    Bool,
+    DateTime,
+}
+
+#[derive(Debug)]
+pub struct Variant {
+    value_type: VariantType,
+    empty: bool,
+    string_value: String,
+    int_value: i64,
+    bool_value: bool,
+    dt_from: Option<DateTime<Local>>,
+    dt_to: Option<DateTime<Local>>,
+}
+
+impl Variant {
+    pub fn empty(value_type: VariantType) -> Variant {
+        Variant {
+            value_type,
+            empty: true,
+            string_value: String::new(),
+            int_value: 0,
+            bool_value: false,
+            dt_from: None,
+            dt_to: None,
+        }
+    }
+
+    pub fn get_type(&self) -> VariantType {
+        self.value_type.clone()
+    }
+
+    pub fn from_int(value: i64) -> Variant {
+        Variant {
+            value_type: VariantType::Int,
+            empty: false,
+            string_value: format!("{}", value),
+            int_value: value,
+            bool_value: value == 1,
+            dt_from: None,
+            dt_to: None,
+        }
+    }
+
+    pub fn from_string(value: &String) -> Variant {
+        let int_value = value.parse::<usize>();
+        let int_value = match int_value {
+            Ok(i) => i as i64,
+            _ => match parse_filesize(value) {
+                Some(size) => size as i64,
+                _ => 0
+            }
+        };
+        let bool_value = str_to_bool(&value);
+
+        Variant {
+            value_type: VariantType::String,
+            empty: false,
+            string_value: value.clone(),
+            int_value,
+            bool_value,
+            dt_from: None,
+            dt_to: None,
+        }
+    }
+
+    pub fn from_bool(value: bool) -> Variant {
+        Variant {
+            value_type: VariantType::Bool,
+            empty: false,
+            string_value: match value { true => String::from("true"), _ => String::from("false") },
+            int_value: match value { true => 1, _ => 0 },
+            bool_value: value,
+            dt_from: None,
+            dt_to: None,
+        }
+    }
+
+    pub fn from_datetime(value: DateTime<Local>) -> Variant {
+        Variant {
+            value_type: VariantType::DateTime,
+            empty: false,
+            string_value: format_datetime(&value),
+            int_value: 0,
+            bool_value: false,
+            dt_from: Some(value),
+            dt_to: Some(value),
+        }
+    }
+
+    pub fn to_string(&self) -> String {
+        self.string_value.clone()
+    }
+
+    pub fn to_int(&self) -> i64 {
+        self.int_value
+    }
+
+    pub fn to_bool(&self) -> bool {
+        self.bool_value
+    }
+
+    pub fn to_datetime(&self) -> (DateTime<Local>, DateTime<Local>) {
+        if self.dt_from.is_none() {
+            match parse_datetime(&self.string_value) {
+                Ok((dt_from, dt_to)) => {
+                    return (dt_from, dt_to);
+                },
+                _ => panic!("Illegal datetime format")
+            }
+        }
+
+        (self.dt_from.unwrap(), self.dt_to.unwrap())
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Hash)]
 pub enum Function {
@@ -35,7 +160,7 @@ pub enum Function {
 impl FromStr for Function {
     type Err = String;
 
-    fn from_str<'a>(s: &str) -> Result<Self, Self::Err> {
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         let function = s.to_ascii_lowercase();
 
         match function.as_str() {
@@ -86,72 +211,86 @@ impl Function {
             _ => false
         }
     }
+
+    pub fn is_numeric_function(&self) -> bool {
+        if self.is_aggregate_function() {
+            return true;
+        }
+
+        match self {
+            Function::Length
+            | Function::Day
+            | Function::Month
+            | Function::Year => true,
+            _ => false
+        }
+    }
 }
 
 pub fn get_value(function: &Option<Function>,
                  function_arg: String,
                  entry: &DirEntry,
-                 file_info: &Option<FileInfo>) -> String {
+                 file_info: &Option<FileInfo>) -> Variant {
     match function {
         Some(Function::Lower) => {
-            return function_arg.to_lowercase();
+            return Variant::from_string(&function_arg.to_lowercase());
         },
         Some(Function::Upper) => {
-            return function_arg.to_uppercase();
+            return Variant::from_string(&function_arg.to_uppercase());
         },
         Some(Function::Length) => {
-            return format!("{}", function_arg.chars().count());
+            return Variant::from_int(function_arg.chars().count() as i64);
         },
         Some(Function::Year) => {
             match parse_datetime(&function_arg) {
                 Ok(date) => {
-                    return date.0.year().to_string();
+                    return Variant::from_int(date.0.year() as i64);
                 },
                 _ => {
-                    return String::new();
+                    return Variant::empty(VariantType::Int);
                 }
             }
         },
         Some(Function::Month) => {
             match parse_datetime(&function_arg) {
                 Ok(date) => {
-                    return date.0.month().to_string();
+                    return Variant::from_int(date.0.month() as i64);
                 },
                 _ => {
-                    return String::new();
+                    return Variant::empty(VariantType::Int);
                 }
             }
         },
         Some(Function::Day) => {
             match parse_datetime(&function_arg) {
                 Ok(date) => {
-                    return date.0.day().to_string();
+                    return Variant::from_int(date.0.day() as i64);
                 },
                 _ => {
-                    return String::new();
+                    return Variant::empty(VariantType::Int);
                 }
             }
         },
         Some(Function::Contains) => {
             if file_info.is_some() {
-                return String::new();
+                return Variant::empty(VariantType::Bool);
             }
 
             if let Ok(mut f) = File::open(entry.path()) {
                 let mut contents = String::new();
                 if let Ok(_) = f.read_to_string(&mut contents) {
                     if contents.contains(&function_arg) {
-                        return String::from("true");
+                        return Variant::from_bool(true);
                     } else {
-                        return String::from("false");
+                        return Variant::from_bool(false);
                     }
                 }
             }
 
-            return String::new();
+            return Variant::empty(VariantType::Bool);
         },
         _ => {
-            return String::new();
+            return Variant::empty(VariantType::String);
         }
     }
 }

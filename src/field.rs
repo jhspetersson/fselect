@@ -1,9 +1,9 @@
 use std::str::FromStr;
-
-use serde::ser::{Serialize, Serializer};
 use std::fmt::Display;
 use std::fmt::Formatter;
 use std::fmt::Error;
+
+use serde::ser::{Serialize, Serializer};
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Hash)]
 pub enum Field {
@@ -73,7 +73,7 @@ pub enum Field {
 impl FromStr for Field {
     type Err = String;
 
-    fn from_str<'a>(s: &str) -> Result<Self, Self::Err> {
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         let field = s.to_ascii_lowercase();
 
         match field.as_str() {
@@ -161,27 +161,6 @@ impl Serialize for Field {
 }
 
 impl Field {
-    pub fn needs_metadata(&self) -> bool {
-        if self.is_img_field() || self.is_exif_field() || self.is_mp3_field() {
-            return false;
-        }
-
-        match self {
-            Field::Name
-            | Field::Path
-            | Field::AbsPath
-            | Field::IsArchive
-            | Field::IsAudio
-            | Field::IsBook
-            | Field::IsDoc
-            | Field::IsImage
-            | Field::IsSource
-            | Field::IsVideo
-            => false,
-            _ => true
-        }
-    }
-
     pub fn is_numeric_field(&self) -> bool {
         match self {
             Field::Size | Field::FormattedSize
@@ -200,31 +179,41 @@ impl Field {
         }
     }
 
-    pub fn is_img_field(&self) -> bool {
+    pub fn is_available_for_archived_files(&self) -> bool {
         match self {
-            Field::Width | Field::Height => true,
-            _ => false
-        }
-    }
-
-    pub fn is_mp3_field(&self) -> bool {
-        match self {
-            Field::Bitrate | Field::Freq | Field::Title
-            | Field::Artist | Field::Album | Field::Year | Field::Genre => true,
-            _ => false
-        }
-    }
-
-    pub fn is_exif_field(&self) -> bool {
-        match self {
-            | Field::ExifDateTime
-            | Field::ExifGpsAltitude
-            | Field::ExifGpsLatitude
-            | Field::ExifGpsLongitude
-            | Field::ExifMake
-            | Field::ExifModel
-            | Field::ExifSoftware
-            | Field::ExifVersion
+            Field::Name
+            | Field::Path
+            | Field::AbsPath
+            | Field::Size
+            | Field::FormattedSize
+            | Field::IsDir
+            | Field::IsFile
+            | Field::IsSymlink
+            | Field::IsPipe
+            | Field::IsCharacterDevice
+            | Field::IsBlockDevice
+            | Field::IsSocket
+            | Field::Mode
+            | Field::UserRead
+            | Field::UserWrite
+            | Field::UserExec
+            | Field::GroupRead
+            | Field::GroupWrite
+            | Field::GroupExec
+            | Field::OtherRead
+            | Field::OtherWrite
+            | Field::OtherExec
+            | Field::Suid
+            | Field::Sgid
+            | Field::IsHidden
+            | Field::Modified
+            | Field::IsArchive
+            | Field::IsAudio
+            | Field::IsBook
+            | Field::IsDoc
+            | Field::IsImage
+            | Field::IsSource
+            | Field::IsVideo
             => true,
             _ => false
         }

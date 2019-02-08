@@ -45,7 +45,7 @@ Commas for column separation aren't needed as well.
 
 `into` keyword specifies output format, not output table.
 
-Functions are usable only in column list, not inside `where` predicates. Joins, unions, and subselects are not supported (yet?).
+Joins, unions, and subselects are not supported (yet?).
 
 ### Columns and fields
 
@@ -203,13 +203,13 @@ When you specify inexact date and time with `=` or `!=` operator, **fselect** un
 
 Other operators assume exact date and time, which could be specified in a more free way:
 
-    fselect path from /home/user where modified === 'apr 1'
-    fselect path from /home/user where modified gte 'last fri'
+    fselect "path from /home/user where modified === 'apr 1'"
+    fselect "path from /home/user where modified gte 'last fri'"
     fselect path from /home/user where modified gte '01/05'
 
 [More about it](https://github.com/stevedonovan/chrono-english)
 
-**fselect** uses *UK* locale, not American style dates.
+**fselect** uses *UK* locale, not American style dates, i.e. `08/02` means *February 8th*.
 
 ### Regular expressions ###
 

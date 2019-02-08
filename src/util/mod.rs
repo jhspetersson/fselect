@@ -2,34 +2,51 @@ mod top_n;
 mod wbuf;
 
 use std::cmp::Ordering;
+use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::Display;
-use std::fs::{canonicalize, DirEntry, File};
+use std::fs;
+use std::fs::canonicalize;
+use std::fs::DirEntry;
+use std::fs::File;
+use std::fs::Metadata;
+use std::fs::symlink_metadata;
 use std::io;
+use std::io::BufReader;
+use std::io::Read;
+use std::ops::Index;
 use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::string::ToString;
 
+use chrono::Datelike;
 use chrono::DateTime;
 use chrono::Duration;
 use chrono::Local;
 use chrono::LocalResult;
+use chrono::Timelike;
 use chrono::TimeZone;
 use chrono_english::{parse_date_string,Dialect};
+use imagesize;
+use mp3_metadata;
+use mp3_metadata::MP3Metadata;
+use regex::Captures;
 use regex::Regex;
 use sha1::Digest;
 use term;
 use term::StdoutTerminal;
 use time::Tm;
 
+use crate::expr::Expr;
+#[cfg(windows)]
+use crate::mode;
 pub use self::top_n::TopN;
 pub use self::wbuf::WritableBuffer;
-use crate::parser::ColumnExpr;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd)]
 pub struct Criteria<T> where T: Display + ToString {
-    fields: Rc<Vec<ColumnExpr>>,
+    fields: Rc<Vec<Expr>>,
     /// Values of current row to sort with, placed in order of significance.
     values: Vec<T>,
     /// Shared smart reference to Vector of boolean where each index corresponds to whether the
@@ -38,7 +55,7 @@ pub struct Criteria<T> where T: Display + ToString {
 }
 
 impl<T> Criteria<T> where T: Display {
-    pub fn new(fields: Rc<Vec<ColumnExpr>>, values: Vec<T>, orderings: Rc<Vec<bool>>) -> Criteria<T> {
+    pub fn new(fields: Rc<Vec<Expr>>, values: Vec<T>, orderings: Rc<Vec<bool>>) -> Criteria<T> {
         debug_assert_eq!(fields.len(), values.len());
         debug_assert_eq!(values.len(), orderings.len());
 
@@ -48,18 +65,14 @@ impl<T> Criteria<T> where T: Display {
     #[inline]
     fn cmp_at(&self, other: &Self, i: usize) -> Ordering where T: Ord {
         let field = &self.fields[i];
-        let comparison = match &field.field {
-            Some(field) => {
-                if field.is_numeric_field() {
-                    self.cmp_at_numbers(other, i)
-                } else if field.is_datetime_field() {
-                    self.cmp_at_datetimes(other, i)
-                } else {
-                    self.cmp_at_direct(other, i)
-                }
-            },
-            _ => self.cmp_at_direct(other, i)
-        };
+        let comparison;
+        if field.contains_numeric() {
+            comparison = self.cmp_at_numbers(other, i);
+        } else if field.contains_datetime() {
+            comparison = self.cmp_at_datetimes(other, i);
+        } else {
+            comparison = self.cmp_at_direct(other, i);
+        }
 
         if self.orderings[i] { comparison } else { comparison.reverse() }
     }
@@ -264,7 +277,7 @@ pub fn parse_datetime(s: &str) -> Result<(DateTime<Local>, DateTime<Local>), Str
             match cap.get(8) {
                 Some(val) => {
                     sec_start = val.as_str().parse().unwrap();
-                    sec_finish = min_start;
+                    sec_finish = sec_start;
                 },
                 None => {
                     sec_start = 0;
@@ -283,9 +296,23 @@ pub fn parse_datetime(s: &str) -> Result<(DateTime<Local>, DateTime<Local>), Str
             }
         },
         None => {
-            match parse_date_string(s, Local::now(), Dialect::Uk) {
-                Ok(date_time) => Ok((date_time, date_time)),
-                _ => Err("Error parsing date/time value: ".to_string() + s)
+            if s.len() >= 5 {
+                match parse_date_string(s, Local::now(), Dialect::Uk) {
+                    Ok(date_time) => {
+                        let finish;
+                        if date_time.hour() == 0 && date_time.minute() == 0 && date_time.second() == 0 {
+                            finish = Local.ymd(date_time.year(), date_time.month(), date_time.day())
+                                .and_hms(23, 59, 59);
+                        } else {
+                            finish = date_time;
+                        }
+
+                        Ok((date_time, finish))
+                    },
+                    _ => Err("Error parsing date/time value: ".to_string() + s)
+                }
+            } else {
+                Err("Error parsing date/time value: ".to_string() + s)
             }
         }
     }
@@ -294,6 +321,10 @@ pub fn parse_datetime(s: &str) -> Result<(DateTime<Local>, DateTime<Local>), Str
 pub fn to_local_datetime(tm: &Tm) -> DateTime<Local> {
     Local.ymd(tm.tm_year + 1900, (tm.tm_mon + 1) as u32, tm.tm_mday as u32)
         .and_hms(tm.tm_hour as u32, tm.tm_min as u32, tm.tm_sec as u32)
+}
+
+pub fn format_datetime(dt: &DateTime<Local>) -> String {
+    format!("{}", dt.format("%Y-%m-%d %H:%M:%S"))
 }
 
 pub fn str_to_bool(val: &str) -> bool {
@@ -307,6 +338,18 @@ pub fn parse_unix_filename(s: &str) -> &str {
         Some(idx) => &s[idx..],
         _ => s
     }
+}
+
+pub fn has_extension(file_name: &str, extensions: &[&str]) -> bool {
+    let s = file_name.to_ascii_lowercase();
+
+    for ext in extensions {
+        if s.ends_with(ext) {
+            return true
+        }
+    }
+
+    false
 }
 
 pub fn canonical_path(path_buf: &PathBuf) -> Result<String, ()> {
@@ -324,6 +367,104 @@ pub fn format_absolute_path(path_buf: &PathBuf) -> String {
     let path = path.replace("\\\\?\\", "");
 
     path
+}
+
+pub fn get_metadata(entry: &DirEntry, follow_symlinks: bool) -> Option<Metadata> {
+    let metadata = match follow_symlinks {
+        false => symlink_metadata(entry.path()),
+        true => fs::metadata(entry.path())
+    };
+
+    if let Ok(metadata) = metadata {
+        return Some(metadata);
+    }
+
+    None
+}
+
+fn is_image_dim_readable(file_name: &str) -> bool {
+    let extensions = [".bmp", ".gif", ".jpeg", ".jpg", ".png", ".webp"];
+
+    has_extension(file_name, &extensions)
+}
+
+pub fn get_img_dimensions(entry: &DirEntry) -> Option<(usize, usize)> {
+    if !is_image_dim_readable(&entry.file_name().to_string_lossy()) {
+        return None;
+    }
+
+    match imagesize::size(entry.path()) {
+        Ok(dimensions) => Some((dimensions.width, dimensions.height)),
+        _ => None
+    }
+}
+
+pub fn get_mp3_metadata(entry: &DirEntry) -> Option<MP3Metadata> {
+    match mp3_metadata::read_from_file(entry.path()) {
+        Ok(mp3_meta) => Some(mp3_meta),
+        _ => None
+    }
+}
+
+pub fn get_exif_metadata(entry: &DirEntry) -> Option<HashMap<String, String>> {
+    if let Ok(file) = File::open(entry.path()) {
+        if let Ok(reader) = exif::Reader::new(&mut BufReader::new(&file)) {
+            let mut exif_info = HashMap::new();
+
+            for field in reader.fields().iter() {
+                let field_value = match field.value {
+                    exif::Value::Ascii(ref vec) if !vec.is_empty() => std::str::from_utf8(vec[0]).unwrap().to_string(),
+                    _ => field.value.display_as(field.tag).to_string()
+                };
+
+                exif_info.insert(format!("{}", field.tag), field_value);
+            }
+
+            return Some(exif_info);
+        }
+    }
+
+    None
+}
+
+pub fn is_shebang(path: &PathBuf) -> bool {
+    if let Ok(file) = File::open(path) {
+        let mut buf_reader = BufReader::new(file);
+        let mut buf = vec![0; 2];
+        if buf_reader.read_exact(&mut buf).is_ok() {
+            return buf[0] == 0x23 && buf[1] == 0x21
+        }
+    }
+
+    false
+}
+
+#[allow(unused)]
+pub fn is_hidden(file_name: &str, metadata: &Option<Metadata>, archive_mode: bool) -> bool {
+    if archive_mode {
+        if !file_name.contains('\\') {
+            return parse_unix_filename(file_name).starts_with('.');
+        } else {
+            return false;
+        }
+    }
+
+    #[cfg(unix)]
+        {
+            return file_name.starts_with('.');
+        }
+
+    #[cfg(windows)]
+        {
+            if let Some(ref metadata) = metadata {
+                return mode::get_mode(metadata).contains("Hidden");
+            }
+        }
+
+    #[cfg(not(unix))]
+        {
+            false
+        }
 }
 
 pub fn get_sha1_file_hash(entry: &DirEntry) -> String {
@@ -362,13 +503,61 @@ pub fn get_sha512_file_hash(entry: &DirEntry) -> String {
     String::new()
 }
 
+pub fn is_glob(s: &str) -> bool {
+    s.contains("*") || s.contains('?')
+}
+
+pub fn convert_glob_to_pattern(s: &str) -> String {
+    let string = s.to_string();
+    let regex = Regex::new("(\\?|\\.|\\*|\\[|\\]|\\(|\\)|\\^|\\$)").unwrap();
+    let string = regex.replace_all(&string, |c: &Captures| {
+        match c.index(0) {
+            "." => "\\.",
+            "*" => ".*",
+            "?" => ".",
+            "[" => "\\[",
+            "]" => "\\]",
+            "(" => "\\(",
+            ")" => "\\)",
+            "^" => "\\^",
+            "$" => "\\$",
+            _ => panic!("Error parsing glob")
+        }.to_string()
+    });
+
+    format!("^(?i){}$", string)
+}
+
+pub fn convert_like_to_pattern(s: &str) -> String {
+    let string = s.to_string();
+    let regex = Regex::new("(%|_|\\?|\\.|\\*|\\[|\\]|\\(|\\)|\\^|\\$)").unwrap();
+    let string = regex.replace_all(&string, |c: &Captures| {
+        match c.index(0) {
+            "%" => ".*",
+            "_" => ".",
+            "?" => ".?",
+            "." => "\\.",
+            "*" => "\\*",
+            "[" => "\\[",
+            "]" => "\\]",
+            "(" => "\\(",
+            ")" => "\\)",
+            "^" => "\\^",
+            "$" => "\\$",
+            _ => panic!("Error parsing like expression")
+        }.to_string()
+    });
+
+    format!("^(?i){}$", string)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::field::Field;
 
     fn basic_criteria<T: Ord + Clone + Display>(vals: &[T]) -> Criteria<T> {
-        let fields = Rc::new(vec![ColumnExpr::field(Field::Size); vals.len()]);
+        let fields = Rc::new(vec![Expr::field(Field::Size); vals.len()]);
         let orderings = Rc::new(vec![true; vals.len()]);
 
         Criteria::new(fields, vals.to_vec(), orderings)
@@ -408,7 +597,7 @@ mod tests {
 
     #[test]
     fn test_compare_all_fields_reverse() {
-        let fields = Rc::new(vec![ColumnExpr::field(Field::Size); 3]);
+        let fields = Rc::new(vec![Expr::field(Field::Size); 3]);
         let orderings = Rc::new(vec![false, false, false]);
 
         let c1 = Criteria::new(fields.clone(), vec![1, 2, 3], orderings.clone());
@@ -419,7 +608,7 @@ mod tests {
 
     #[test]
     fn test_compare_some_fields_reverse() {
-        let fields = Rc::new(vec![ColumnExpr::field(Field::Size); 3]);
+        let fields = Rc::new(vec![Expr::field(Field::Size); 3]);
         let orderings = Rc::new(vec![true, false, true]);
 
         let c1 = Criteria::new(fields.clone(), vec![1, 2, 3], orderings.clone());

@@ -38,11 +38,12 @@ pub struct Lexer<'a> {
     before_from: bool,
     after_open: bool,
     after_where: bool,
+    after_operator: bool,
 }
 
 impl<'a> Lexer<'a> {
     pub fn new(input: &str) -> Lexer {
-        return Lexer { input, index: 0, before_from: true, after_open: false, after_where: false }
+        return Lexer { input, index: 0, before_from: true, after_open: false, after_where: false, after_operator: false, }
     }
 
     pub fn next_lexem(&mut self) -> Option<Lexem> {
@@ -123,9 +124,9 @@ impl<'a> Lexer<'a> {
             }
         }
 
-        match mode {
+        let lexem = match mode {
             LexingMode::String => Some(Lexem::String(s)),
-            LexingMode::Operator => Some(Lexem::Operator(s)),
+            LexingMode::Operator => { self.after_operator = true; Some(Lexem::Operator(s)) },
             LexingMode::ArithmeticOperator => Some(Lexem::ArithmeticOperator(s)),
             LexingMode::Comma => Some(Lexem::Comma),
             LexingMode::Open => Some(Lexem::Open),
@@ -149,13 +150,20 @@ impl<'a> Lexer<'a> {
                 }
             },
             _ => None
+        };
+
+        match lexem {
+            Some(Lexem::Operator(_)) => {},
+            _ => self.after_operator = false
         }
+
+        lexem
     }
 
     fn is_arithmetic_op_char(&self, c: char) -> bool {
         match c {
             '+' | '-' => self.before_from || self.after_where,
-            '*' | '/' => (self.before_from || self.after_where) && !self.after_open,
+            '*' | '/' => (self.before_from || self.after_where) && !self.after_open && !self.after_operator,
             _ => false
         }
     }
@@ -296,6 +304,42 @@ mod tests {
 
     #[test]
     fn func_calls() {
+        let mut lexer = Lexer::new("name, length(name),UPPER( name ) from .");
+
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("name"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::Comma));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("length"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::Open));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("name"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::Close));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::Comma));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("UPPER"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::Open));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("name"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::Close));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::From));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("."))));
+    }
+
+    #[test]
+    fn func_calls2() {
+        let mut lexer = Lexer::new("select name, upper(name) from . depth 1");
+
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("select"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("name"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::Comma));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("upper"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::Open));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("name"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::Close));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::From));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("."))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("depth"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("1"))));
+    }
+
+    #[test]
+    fn agg_func_calls() {
         let mut lexer = Lexer::new("COUNT(*), MIN(size), AVG(size), MAX(size) from .");
 
         assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("COUNT"))));

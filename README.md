@@ -97,7 +97,7 @@ Formatting functions:
     
 Use single quotes if you need to address files with spaces:
 
-    fselect path from '/home/user/Misc stuff' where name != 'Some file'
+    fselect "path from '/home/user/Misc stuff' where name != 'Some file'"
     
 Regular expressions of [Rust flavor](https://docs.rs/regex/1.1.0/regex/#syntax) are supported:
 
@@ -109,19 +109,19 @@ And even simple glob will suffice:
     
 Classic LIKE:
 
-    fselect path from /home/user where name like %report-2018-__-__???
+    fselect "path from /home/user where name like '%report-2018-__-__???'"
     
 Exact match operators to search with regexps disabled:
 
-    fselect path from /home/user where name === 'some_*_weird_*_name'
+    fselect "path from /home/user where name === 'some_*_weird_*_name'"
     
 Find files by date:
 
     fselect path from /home/user where created = 2017-05-01
     fselect path from /home/user where modified = today
     fselect path from /home/user where accessed = yesterday
-    fselect path from /home/user where modified = 'apr 1'
-    fselect path from /home/user where modified = 'last fri'
+    fselect "path from /home/user where modified = 'apr 1'"
+    fselect "path from /home/user where modified = 'last fri'"
     
 Be more specific to match all files created at interval between 3PM and 4PM:
 
@@ -171,7 +171,7 @@ Search by image dimensions:
     
 Find old-school rap MP3 files:
 
-    fselect path from /home/user/music where genre = Rap and bitrate = 320 and year lt 2000  
+    fselect path from /home/user/music where genre = Rap and bitrate = 320 and mp3_year lt 2000  
     
 Shortcuts to common file extensions:
 
@@ -207,7 +207,7 @@ Find special files:
     
 Include arbitrary text as columns:
 
-    fselect name, ' has size of ', size, ' bytes'
+    fselect "name, ' has size of ', size, ' bytes'"
 
 Order results:
 

@@ -135,6 +135,16 @@ Used mostly for formatting results.
 | MONTH | Extract month of the year | `select month(name) from /home/user/Downloads` |
 | YEAR | Extract year of the date | `select year(name) from /home/user/Downloads` |
 
+#### Xattr functions
+
+Used to check if particular xattr exists, or to get its value.
+Supported platforms are Linux, MacOS, FreeBSD, and NetBSD. 
+
+| Function | Meaning | Example |
+| --- | --- | --- |
+| HAS_XATTR | Check if xattr exists | `select name, has_xattr('user.test') from /home/user/test` |
+| XATTR | Get value of xattr | `select name, xattr('user.test') from /home/user/test` |
+
 #### Other functions
 
 Used mostly for formatting results.

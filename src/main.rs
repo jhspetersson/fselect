@@ -178,6 +178,9 @@ Functions:
         DAY                             Returns day of the month
         MONTH                           Returns month of the year
         YEAR                            Returns year of the date
+    Xattr:
+        HAS_XATTR                       Used to check if xattr exists
+        XATTR                           Returns value of xattr
     Other:
         LENGTH                          Returns length of string value
         LOWER                           Returns lowercase value

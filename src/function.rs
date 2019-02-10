@@ -11,6 +11,8 @@ use chrono::Datelike;
 use chrono::DateTime;
 use chrono::Local;
 use serde::ser::{Serialize, Serializer};
+#[cfg(unix)]
+use xattr::FileExt;
 
 use crate::fileinfo::FileInfo;
 use crate::util::format_datetime;
@@ -155,6 +157,9 @@ pub enum Function {
     Year,
 
     Contains,
+
+    HasXattr,
+    Xattr,
 }
 
 impl FromStr for Function {
@@ -179,6 +184,9 @@ impl FromStr for Function {
             "count" => Ok(Function::Count),
 
             "contains" => Ok(Function::Contains),
+
+            "has_xattr" => Ok(Function::HasXattr),
+            "xattr" => Ok(Function::Xattr),
 
             _ => {
                 let err = String::from("Unknown function ") + &function;
@@ -288,6 +296,32 @@ pub fn get_value(function: &Option<Function>,
             }
 
             return Variant::empty(VariantType::Bool);
+        },
+        Some(Function::HasXattr) => {
+            #[cfg(unix)]
+                {
+                    if let Ok(file) = File::open(&entry.path()) {
+                        if let Ok(xattr) = file.get_xattr(&function_arg) {
+                            return Variant::from_bool(xattr.is_some());
+                        }
+                    }
+                }
+
+            return Variant::empty(VariantType::Bool);
+        },
+        Some(Function::Xattr) => {
+            #[cfg(unix)]
+                {
+                    if let Ok(file) = File::open(&entry.path()) {
+                        if let Ok(xattr) = file.get_xattr(&function_arg) {
+                            if let Some(xattr) = xattr {
+                                return Variant::from_string(&String::from(xattr));
+                            }
+                        }
+                    }
+                }
+
+            return Variant::empty(VariantType::String);
         },
         _ => {
             return Variant::empty(VariantType::String);

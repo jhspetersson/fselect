@@ -315,7 +315,9 @@ pub fn get_value(function: &Option<Function>,
                     if let Ok(file) = File::open(&entry.path()) {
                         if let Ok(xattr) = file.get_xattr(&function_arg) {
                             if let Some(xattr) = xattr {
-                                return Variant::from_string(&String::from(xattr));
+                                if let Ok(value) = String::from_utf8(xattr) {
+                                    return Variant::from_string(&value);
+                                }
                             }
                         }
                     }

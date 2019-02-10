@@ -207,7 +207,7 @@ Find special files:
     
 Find files with xattrs, check if particular xattr exists, or get its value:
 
-    fselect path, xattrs, has_xattr('user.test'), xattr('user.test') from /home/user
+    fselect path, has_xattrs, has_xattr('user.test'), xattr('user.test') from /home/user
     
 Include arbitrary text as columns:
 

@@ -142,8 +142,8 @@ Supported platforms are Linux, MacOS, FreeBSD, and NetBSD.
 
 | Function | Meaning | Example |
 | --- | --- | --- |
-| HAS_XATTR | Check if xattr exists | `select name, has_xattr('user.test') from /home/user/test` |
-| XATTR | Get value of xattr | `select name, xattr('user.test') from /home/user/test` |
+| HAS_XATTR | Check if xattr exists | `select "name, has_xattr(user.test) from /home/user"` |
+| XATTR | Get value of xattr | `select "name, xattr(user.test) from /home/user"` |
 
 #### Other functions
 

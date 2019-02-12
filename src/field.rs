@@ -218,4 +218,11 @@ impl Field {
             _ => false
         }
     }
+
+    pub fn is_colorized_field(&self) -> bool {
+        match self {
+            Field::Name => true,
+            _ => false
+        }
+    }
 }

@@ -11,6 +11,7 @@ use std::rc::Rc;
 use chrono::{DateTime, Local};
 use csv;
 use humansize::{FileSize, file_size_opts};
+use lscolors::{LsColors, Style};
 use mp3_metadata;
 use mp3_metadata::MP3Metadata;
 use regex::Regex;
@@ -48,6 +49,7 @@ pub struct Searcher {
     output_buffer: TopN<Criteria<String>, String>,
     gitignore_map: HashMap<PathBuf, Vec<GitignoreFilter>>,
     visited_dirs: HashSet<PathBuf>,
+    lscolors: LsColors,
 
     current_follow_symlinks: bool,
 
@@ -78,6 +80,7 @@ impl Searcher {
             output_buffer: if limit == 0 { TopN::limitless() } else { TopN::new(limit) },
             gitignore_map: HashMap::new(),
             visited_dirs: HashSet::new(),
+            lscolors: LsColors::from_env().unwrap_or_default(),
 
             current_follow_symlinks: false,
 
@@ -1077,7 +1080,12 @@ impl Searcher {
             let record = self.get_column_expr_value(entry, file_info, &field);
             file_map.insert(field.to_string().to_lowercase(), record.to_string().clone());
 
-            output_value = self.format_results_item(record.to_string(), output_value, &mut records);
+            let value = match field.contains_colorized() {
+                true => self.colorize(&record.to_string()),
+                false => record.to_string()
+            };
+
+            output_value = self.format_results_item(value, output_value, &mut records);
         }
 
         for (idx, field) in self.query.ordering_fields.clone().iter().enumerate() {
@@ -1098,6 +1106,20 @@ impl Searcher {
         } else {
             print!("{}", output_value);
         }
+    }
+
+    fn colorize(&mut self, value: &str) -> String {
+        let style;
+
+        if let Some(ref metadata) = self.file_metadata {
+            style = self.lscolors.style_for_path_with_metadata(Path::new(&value), Some(metadata));
+        } else {
+            style = self.lscolors.style_for_path(Path::new(&value));
+        }
+
+        let ansi_style = style.map(Style::to_ansi_term_style).unwrap_or_default();
+
+        format!("{}", ansi_style.paint(value))
     }
 
     fn check_file_mode(&mut self,

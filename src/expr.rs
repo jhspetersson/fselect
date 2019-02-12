@@ -192,6 +192,28 @@ impl Expr {
 
         left
     }
+
+    pub fn contains_colorized(&self) -> bool {
+        Self::contains_colorized_field(self)
+    }
+
+    fn contains_colorized_field(expr: &Expr) -> bool {
+        let field = match expr.field {
+            Some(ref field) => field.is_colorized_field(),
+            None => false
+        };
+
+        if field {
+            return true;
+        }
+
+        let left = match expr.left {
+            Some(ref left) => Self::contains_colorized_field(&left),
+            None => false
+        };
+
+        left
+    }
 }
 
 impl Display for Expr {

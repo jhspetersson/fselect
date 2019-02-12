@@ -11,6 +11,7 @@ use std::rc::Rc;
 use chrono::{DateTime, Local};
 use csv;
 use humansize::{FileSize, file_size_opts};
+use lscolors::{LsColors, Style};
 use mp3_metadata;
 use mp3_metadata::MP3Metadata;
 use regex::Regex;

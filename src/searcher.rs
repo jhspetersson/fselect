@@ -11,12 +11,10 @@ use std::rc::Rc;
 use chrono::{DateTime, Local};
 use csv;
 use humansize::{FileSize, file_size_opts};
-use lscolors::{LsColors, Style};
 use mp3_metadata;
 use mp3_metadata::MP3Metadata;
 use regex::Regex;
 use serde_json;
-use term::StdoutTerminal;
 #[cfg(all(unix, feature = "users"))]
 use users::{Groups, Users, UsersCache};
 #[cfg(unix)]
@@ -218,7 +216,7 @@ impl Searcher {
         }
     }
 
-    pub fn list_search_results(&mut self, t: &mut Box<StdoutTerminal>) -> io::Result<()> {
+    pub fn list_search_results(&mut self) -> io::Result<()> {
         self.print_results_start();
 
         for root in &self.query.clone().roots {
@@ -240,8 +238,7 @@ impl Searcher {
                 max_depth,
                 1,
                 search_archives,
-                apply_gitignore,
-                t
+                apply_gitignore
             );
         }
 
@@ -347,8 +344,7 @@ impl Searcher {
                  max_depth: u32,
                  depth: u32,
                  search_archives: bool,
-                 apply_gitignore: bool,
-                 t: &mut Box<StdoutTerminal>) -> io::Result<()> {
+                 apply_gitignore: bool) -> io::Result<()> {
         let metadata = match self.current_follow_symlinks {
             true => dir.metadata(),
             false => symlink_metadata(dir)
@@ -394,7 +390,7 @@ impl Searcher {
 
                                         if !apply_gitignore || (apply_gitignore && !matches_gitignore_filter(&gitignore_filters, canonical_path.to_string_lossy().as_ref(), path.is_dir())) {
                                             if min_depth == 0 || depth >= min_depth {
-                                                self.check_file(&entry, &None, t);
+                                                self.check_file(&entry, &None);
 
                                                 if search_archives && is_zip_archive(&path.to_string_lossy()) {
                                                     if let Ok(file) = fs::File::open(&path) {
@@ -406,7 +402,7 @@ impl Searcher {
 
                                                                 if let Ok(afile) = archive.by_index(i) {
                                                                     let file_info = to_file_info(&afile);
-                                                                    self.check_file(&entry, &Some(file_info), t);
+                                                                    self.check_file(&entry, &Some(file_info));
                                                                 }
                                                             }
                                                         }
@@ -422,30 +418,29 @@ impl Searcher {
                                                         max_depth,
                                                         depth + 1,
                                                         search_archives,
-                                                        apply_gitignore,
-                                                        t);
+                                                        apply_gitignore);
 
                                                     if result.is_err() {
-                                                        path_error_message(&path, result.err().unwrap(), t);
+                                                        path_error_message(&path, result.err().unwrap());
                                                     }
                                                 }
                                             }
                                         }
                                     },
                                     Err(err) => {
-                                        path_error_message(dir, err, t);
+                                        path_error_message(dir, err);
                                     }
                                 }
                             }
                         },
                         Err(err) => {
-                            path_error_message(dir, err, t);
+                            path_error_message(dir, err);
                         }
                     }
                 }
             },
             Err(err) => {
-                path_error_message(dir, err, t);
+                path_error_message(dir, err);
             }
         }
 
@@ -1054,8 +1049,7 @@ impl Searcher {
 
     fn check_file(&mut self,
                   entry: &DirEntry,
-                  file_info: &Option<FileInfo>,
-                  _t: &mut Box<StdoutTerminal>) {
+                  file_info: &Option<FileInfo>) {
         self.clear_file_data();
 
         if let Some(ref expr) = self.query.expr.clone() {

@@ -20,6 +20,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::string::ToString;
 
+use ansi_term::Colour::*;
 use chrono::Datelike;
 use chrono::DateTime;
 use chrono::Duration;
@@ -34,8 +35,6 @@ use mp3_metadata::MP3Metadata;
 use regex::Captures;
 use regex::Regex;
 use sha1::Digest;
-use term;
-use term::StdoutTerminal;
 use time::Tm;
 
 use crate::expr::Expr;
@@ -131,20 +130,14 @@ impl<T: Display + Ord> Ord for Criteria<T> {
     }
 }
 
-pub fn path_error_message(p: &Path, e: io::Error, t: &mut Box<StdoutTerminal>) {
-    error_message(&p.to_string_lossy(), e.description(), t);
+pub fn path_error_message(p: &Path, e: io::Error) {
+    error_message(&p.to_string_lossy(), e.description());
 }
 
-pub fn error_message(source: &str, description: &str, t: &mut Box<StdoutTerminal>) {
-    t.fg(term::color::YELLOW).unwrap();
-    eprint!("{}", source);
-    t.reset().unwrap();
-
+pub fn error_message(source: &str, description: &str) {
+    eprint!("{}", Yellow.paint(source));
     eprint!(": ");
-
-    t.fg(term::color::RED).unwrap();
-    eprintln!("{}", description);
-    t.reset().unwrap();
+    eprintln!("{}", Red.paint(description));
 }
 
 pub fn parse_filesize(s: &str) -> Option<u64> {

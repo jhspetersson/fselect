@@ -9,7 +9,9 @@ extern crate xattr;
 
 use std::env;
 
-use term::StdoutTerminal;
+use ansi_term::Colour::*;
+#[cfg(windows)]
+use ansi_term::enable_ansi_support;
 
 mod expr;
 mod field;
@@ -29,10 +31,11 @@ use crate::searcher::Searcher;
 use crate::util::error_message;
 
 fn main() {
-    let mut t = term::stdout().unwrap();
+    #[cfg(windows)]
+    ansi_term::enable_ansi_support();
 
     if env::args().len() == 1 {
-        short_usage_info(&mut t);
+        short_usage_info();
         help_hint();
         return;
     }
@@ -42,7 +45,7 @@ fn main() {
 
     let first_arg = args[0].to_ascii_lowercase();
     if first_arg.contains("help") || first_arg.contains("-h") || first_arg.contains("/?") {
-        usage_info(&mut t);
+        usage_info();
         return;
     }
 
@@ -54,25 +57,21 @@ fn main() {
     match query {
         Ok(query) => {
             let mut searcher = Searcher::new(query);
-            searcher.list_search_results(&mut t).unwrap()
+            searcher.list_search_results().unwrap()
         },
-        Err(err) => error_message("query", &err, &mut t)
+        Err(err) => error_message("query", &err)
     }
 }
 
-fn short_usage_info(t: &mut Box<StdoutTerminal>) {
+fn short_usage_info() {
     const VERSION: &'static str = env!("CARGO_PKG_VERSION");
 
     print!("FSelect utility");
-    t.fg(term::color::BRIGHT_YELLOW).unwrap();
-    println!(" {}", VERSION);
-    t.reset().unwrap();
+    println!(" {}", Yellow.paint(VERSION));
 
     println!("Find files with SQL-like queries.");
 
-    t.fg(term::color::BRIGHT_CYAN).unwrap();
-    println!("https://github.com/jhspetersson/fselect");
-    t.reset().unwrap();
+    println!("{}", Cyan.underline().paint("https://github.com/jhspetersson/fselect"));
 
     println!("Usage: fselect COLUMN[, COLUMN...] [from PATH[, PATH...]] [where EXPR] [order by COLUMN (asc|desc), ...] [limit N] [into FORMAT]");
 }
@@ -82,8 +81,8 @@ fn help_hint() {
 For more detailed instructions please refer to the URL above or run fselect --help");
 }
 
-fn usage_info(t: &mut Box<StdoutTerminal>) {
-    short_usage_info(t);
+fn usage_info() {
+    short_usage_info();
 
     println!("
 

@@ -198,6 +198,10 @@ impl Expr {
     }
 
     fn contains_colorized_field(expr: &Expr) -> bool {
+        if expr.function.is_some() {
+            return false;
+        }
+
         let field = match expr.field {
             Some(ref field) => field.is_colorized_field(),
             None => false

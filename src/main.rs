@@ -11,8 +11,6 @@ use std::env;
 
 use ansi_term::Colour::*;
 use atty::Stream;
-#[cfg(windows)]
-use ansi_term::enable_ansi_support;
 
 mod expr;
 mod field;
@@ -35,7 +33,7 @@ fn main() {
     let no_color = std::env::var("NO_COLOR").ok().eq(&Some("1".to_string()));
 
     #[cfg(windows)]
-    ansi_term::enable_ansi_support();
+    let _ = ansi_term::enable_ansi_support();
 
     if env::args().len() == 1 {
         short_usage_info(no_color);

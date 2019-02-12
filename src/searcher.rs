@@ -41,6 +41,7 @@ use crate::util::*;
 
 pub struct Searcher {
     query: Query,
+    use_colors: bool,
     #[cfg(all(unix, feature = "users"))]
     user_cache: UsersCache,
     regex_cache: HashMap<String, Regex>,
@@ -67,11 +68,12 @@ pub struct Searcher {
 }
 
 impl Searcher {
-    pub fn new(query: Query) -> Self {
+    pub fn new(query: Query, use_colors: bool) -> Self {
         let limit = query.limit;
 
         Searcher {
             query,
+            use_colors,
             #[cfg(all(unix, feature = "users"))]
             user_cache: UsersCache::new(),
             regex_cache: HashMap::new(),
@@ -1080,7 +1082,7 @@ impl Searcher {
             let record = self.get_column_expr_value(entry, file_info, &field);
             file_map.insert(field.to_string().to_lowercase(), record.to_string().clone());
 
-            let value = match field.contains_colorized() {
+            let value = match self.use_colors && field.contains_colorized() {
                 true => self.colorize(&record.to_string()),
                 false => record.to_string()
             };

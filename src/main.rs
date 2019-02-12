@@ -10,6 +10,7 @@ extern crate xattr;
 use std::env;
 
 use ansi_term::Colour::*;
+use atty::Stream;
 #[cfg(windows)]
 use ansi_term::enable_ansi_support;
 
@@ -31,11 +32,13 @@ use crate::searcher::Searcher;
 use crate::util::error_message;
 
 fn main() {
+    let no_color = std::env::var("NO_COLOR").ok().eq(&Some("1".to_string()));
+
     #[cfg(windows)]
     ansi_term::enable_ansi_support();
 
     if env::args().len() == 1 {
-        short_usage_info();
+        short_usage_info(no_color);
         help_hint();
         return;
     }
@@ -45,7 +48,7 @@ fn main() {
 
     let first_arg = args[0].to_ascii_lowercase();
     if first_arg.contains("help") || first_arg.contains("-h") || first_arg.contains("/?") {
-        usage_info();
+        usage_info(no_color);
         return;
     }
 
@@ -56,23 +59,36 @@ fn main() {
 
     match query {
         Ok(query) => {
-            let mut searcher = Searcher::new(query);
+            let is_terminal = atty::is(Stream::Stdout);
+            let use_colors = !no_color && is_terminal;
+
+            let mut searcher = Searcher::new(query, use_colors);
             searcher.list_search_results().unwrap()
         },
         Err(err) => error_message("query", &err)
     }
 }
 
-fn short_usage_info() {
+fn short_usage_info(no_color: bool) {
     const VERSION: &'static str = env!("CARGO_PKG_VERSION");
 
-    print!("FSelect utility");
-    println!(" {}", Yellow.paint(VERSION));
+    print!("FSelect utility ");
+
+    if no_color {
+        println!("{}", VERSION);
+    } else {
+        println!("{}", Yellow.paint(VERSION));
+    }
 
     println!("Find files with SQL-like queries.");
 
-    println!("{}", Cyan.underline().paint("https://github.com/jhspetersson/fselect"));
+    if no_color {
+        println!("https://github.com/jhspetersson/fselect");
+    } else {
+        println!("{}", Cyan.underline().paint("https://github.com/jhspetersson/fselect"));
+    }
 
+    println!();
     println!("Usage: fselect COLUMN[, COLUMN...] [from PATH[, PATH...]] [where EXPR] [order by COLUMN (asc|desc), ...] [limit N] [into FORMAT]");
 }
 
@@ -81,8 +97,8 @@ fn help_hint() {
 For more detailed instructions please refer to the URL above or run fselect --help");
 }
 
-fn usage_info() {
-    short_usage_info();
+fn usage_info(no_color: bool) {
+    short_usage_info(no_color);
 
     println!("
 

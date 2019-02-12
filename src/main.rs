@@ -17,6 +17,7 @@ mod field;
 mod fileinfo;
 mod function;
 mod gitignore;
+mod hgignore;
 mod lexer;
 mod mode;
 mod operators;

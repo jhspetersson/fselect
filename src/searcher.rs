@@ -32,6 +32,7 @@ use crate::function::VariantType;
 use crate::gitignore::GitignoreFilter;
 use crate::gitignore::matches_gitignore_filter;
 use crate::gitignore::parse_gitignore;
+use crate::hgignore::HgignoreFilter;
 use crate::mode;
 use crate::operators::LogicalOp;
 use crate::operators::Op;
@@ -49,6 +50,7 @@ pub struct Searcher {
     raw_output_buffer: Vec<HashMap<String, String>>,
     output_buffer: TopN<Criteria<String>, String>,
     gitignore_map: HashMap<PathBuf, Vec<GitignoreFilter>>,
+    hgignore_map: HashMap<PathBuf, Vec<HgignoreFilter>>,
     visited_dirs: HashSet<PathBuf>,
     lscolors: LsColors,
 
@@ -81,6 +83,7 @@ impl Searcher {
             raw_output_buffer: vec![],
             output_buffer: if limit == 0 { TopN::limitless() } else { TopN::new(limit) },
             gitignore_map: HashMap::new(),
+            hgignore_map: HashMap::new(),
             visited_dirs: HashSet::new(),
             lscolors: LsColors::from_env().unwrap_or_default(),
 

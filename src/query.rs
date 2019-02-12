@@ -35,15 +35,16 @@ pub struct Root {
     pub archives: bool,
     pub symlinks: bool,
     pub gitignore: bool,
+    pub hgignore: bool,
 }
 
 impl Root {
-    pub fn new(path: String, min_depth: u32, max_depth: u32, archives: bool, symlinks: bool, gitignore: bool) -> Root {
-        Root { path, min_depth, max_depth, archives, symlinks, gitignore }
+    pub fn new(path: String, min_depth: u32, max_depth: u32, archives: bool, symlinks: bool, gitignore: bool, hgignore: bool) -> Root {
+        Root { path, min_depth, max_depth, archives, symlinks, gitignore, hgignore }
     }
 
     pub fn default() -> Root {
-        Root { path: String::from("."), min_depth: 0, max_depth: 0, archives: false, symlinks: false, gitignore: false }
+        Root { path: String::from("."), min_depth: 0, max_depth: 0, archives: false, symlinks: false, gitignore: false, hgignore: false }
     }
 }
 

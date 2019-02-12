@@ -126,6 +126,7 @@ impl Parser {
             let mut archives = false;
             let mut symlinks = false;
             let mut gitignore = false;
+            let mut hgignore = false;
 
             loop {
                 let lexem = self.get_lexem();
@@ -152,6 +153,9 @@ impl Parser {
                                             mode = RootParsingMode::Options;
                                         } else if s.starts_with("git") {
                                             gitignore = true;
+                                            mode = RootParsingMode::Options;
+                                        } else if s.starts_with("hg") {
+                                            hgignore = true;
                                             mode = RootParsingMode::Options;
                                         } else {
                                             self.drop_lexem();
@@ -189,13 +193,14 @@ impl Parser {
                             },
                             Lexem::Comma => {
                                 if path.len() > 0 {
-                                    roots.push(Root::new(path, min_depth, depth, archives, symlinks, gitignore));
+                                    roots.push(Root::new(path, min_depth, depth, archives, symlinks, gitignore, hgignore));
 
                                     path = String::from("");
                                     depth = 0;
                                     archives = false;
                                     symlinks = false;
                                     gitignore = false;
+                                    hgignore = false;
 
                                     mode = RootParsingMode::Comma;
                                 } else {
@@ -205,7 +210,7 @@ impl Parser {
                             },
                             _ => {
                                 if path.len() > 0 {
-                                    roots.push(Root::new(path, min_depth, depth, archives, symlinks, gitignore));
+                                    roots.push(Root::new(path, min_depth, depth, archives, symlinks, gitignore, hgignore));
                                 }
 
                                 self.drop_lexem();
@@ -215,7 +220,7 @@ impl Parser {
                     },
                     None => {
                         if path.len() > 0 {
-                            roots.push(Root::new(path, min_depth, depth, archives, symlinks, gitignore));
+                            roots.push(Root::new(path, min_depth, depth, archives, symlinks, gitignore, hgignore));
                         }
                         break;
                     }
@@ -603,12 +608,12 @@ mod tests {
         ]);
 
         assert_eq!(query.roots, vec![
-            Root::new(String::from("/test"), 0, 2, false, false, false),
-            Root::new(String::from("/test2"), 0, 0, true, false, false),
-            Root::new(String::from("/test3"), 0, 3, true, false, false),
-            Root::new(String::from("/test4"), 0, 0, false, false, false),
-            Root::new(String::from("/test5"), 0, 0, false, false, true),
-            Root::new(String::from("/test6"), 3, 0, false, false, false),
+            Root::new(String::from("/test"), 0, 2, false, false, false, false),
+            Root::new(String::from("/test2"), 0, 0, true, false, false, false),
+            Root::new(String::from("/test3"), 0, 3, true, false, false, false),
+            Root::new(String::from("/test4"), 0, 0, false, false, false, false),
+            Root::new(String::from("/test5"), 0, 0, false, false, true, false),
+            Root::new(String::from("/test6"), 3, 0, false, false, false, false),
         ]);
 
         let expr = Expr::logical_op(

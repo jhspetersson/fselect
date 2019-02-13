@@ -33,6 +33,7 @@ use crate::gitignore::GitignoreFilter;
 use crate::gitignore::matches_gitignore_filter;
 use crate::gitignore::parse_gitignore;
 use crate::hgignore::HgignoreFilter;
+use crate::hgignore::parse_hgignore;
 use crate::mode;
 use crate::operators::LogicalOp;
 use crate::operators::Op;
@@ -235,9 +236,14 @@ impl Searcher {
             let max_depth = root.max_depth;
             let search_archives = root.archives;
             let apply_gitignore = root.gitignore;
+            let apply_hgignore = root.hgignore;
 
             if apply_gitignore {
                 self.search_upstream_gitignore(&root_dir);
+            }
+
+            if apply_hgignore {
+                self.search_upstream_hgignore(&root_dir);
             }
 
             let _result = self.visit_dir(
@@ -343,6 +349,36 @@ impl Searcher {
                     result.append(&mut tmp);
                 }
             }
+        }
+    }
+
+    fn search_upstream_hgignore(&mut self, dir: &Path) {
+        if let Ok(canonical_path) = crate::util::canonical_path(&dir.to_path_buf()) {
+            let mut path = PathBuf::from(canonical_path);
+
+            loop {
+                let hgignore_file = path.clone().join(".hgignore");
+                let hg_directory = path.clone().join(".hg");
+
+                if hgignore_file.is_file() && hg_directory.is_dir() {
+                    self.update_hgignore_map(&mut path);
+                    return;
+                }
+
+                let parent_found = path.pop();
+
+                if !parent_found {
+                    return;
+                }
+            }
+        }
+    }
+
+    fn update_hgignore_map(&mut self, path: &Path) {
+        let hgignore_file = path.join(".hgignore");
+        if hgignore_file.is_file() {
+            let regexes = parse_hgignore(&hgignore_file, &path);
+            self.hgignore_map.insert(path.to_path_buf(), regexes);
         }
     }
 

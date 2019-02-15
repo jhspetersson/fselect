@@ -378,7 +378,14 @@ impl Searcher {
         let hgignore_file = path.join(".hgignore");
         if hgignore_file.is_file() {
             let regexes = parse_hgignore(&hgignore_file, &path);
-            self.hgignore_map.insert(path.to_path_buf(), regexes);
+            match regexes {
+                Ok(regexes) => {
+                    self.hgignore_map.insert(path.to_path_buf(), regexes);
+                },
+                Err(err) => {
+                    eprintln!("{}: {}", path.to_string_lossy(), err);
+                }
+            }
         }
     }
 

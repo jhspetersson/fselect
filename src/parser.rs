@@ -532,22 +532,10 @@ impl Parser {
                 let lexem = self.get_lexem();
                 match lexem {
                     Some(Lexem::RawString(s)) | Some(Lexem::String(s)) => {
-                        let s = s.to_lowercase();
-                        if s == "lines" {
-                            return Ok(OutputFormat::Lines);
-                        } else if s == "list" {
-                            return Ok(OutputFormat::List);
-                        } else if s == "csv" {
-                            return Ok(OutputFormat::Csv);
-                        } else if s == "json" {
-                            return Ok(OutputFormat::Json);
-                        } else if s == "tabs" {
-                            return Ok(OutputFormat::Tabs);
-                        } else if s == "html" {
-                            return Ok(OutputFormat::Html);
-                        } else {
-                            return Err("Unknown output format");
-                        }
+                        return match OutputFormat::from(&s) {
+                            Some(output_format) => Ok(output_format),
+                            None => Err("Unknown output format")
+                        };
                     },
                     _ => {
                         self.drop_lexem();

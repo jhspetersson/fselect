@@ -52,3 +52,24 @@ impl Root {
 pub enum OutputFormat {
     Tabs, Lines, List, Csv, Json, Html
 }
+
+impl OutputFormat {
+    pub fn from(s: &String) -> Option<OutputFormat> {
+        let s = s.to_lowercase();
+        if s == "lines" {
+            return Ok(OutputFormat::Lines);
+        } else if s == "list" {
+            return Ok(OutputFormat::List);
+        } else if s == "csv" {
+            return Ok(OutputFormat::Csv);
+        } else if s == "json" {
+            return Ok(OutputFormat::Json);
+        } else if s == "tabs" {
+            return Ok(OutputFormat::Tabs);
+        } else if s == "html" {
+            return Ok(OutputFormat::Html);
+        } else {
+            return None;
+        }
+    }
+}

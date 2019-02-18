@@ -40,6 +40,7 @@ impl Syntax {
 
 pub fn parse_hgignore(file_path: &Path, dir_path: &Path) -> Result<Vec<HgignoreFilter>, String> {
     let mut result = vec![];
+    let mut err = String::new();
 
     if let Ok(file) = File::open(file_path) {
         let mut syntax = Syntax::Regexp;
@@ -53,25 +54,45 @@ pub fn parse_hgignore(file_path: &Path, dir_path: &Path) -> Result<Vec<HgignoreF
                 }
             })
             .for_each(|line| {
-                match line {
-                    Ok(line) => {
-                        if line.starts_with("syntax:") {
-                            let line = line.replace("syntax:", "");
-                            let syntax_directive = line.trim();
-                            syntax = Syntax::from(syntax_directive).unwrap();
-                        } else if line.starts_with("subinclude:") {
-                            //TODO
-                        } else {
-                            let pattern = convert_hgignore_pattern(&line, dir_path, &syntax).unwrap();
-                            result.push(pattern);
-                        }
-                    },
-                    _ => { }
+                if err.is_empty() {
+                    match line {
+                        Ok(line) => {
+                            if line.starts_with("syntax:") {
+                                let line = line.replace("syntax:", "");
+                                let syntax_directive = line.trim();
+                                match Syntax::from(syntax_directive) {
+                                    Ok(parsed_syntax) => syntax = parsed_syntax,
+                                    Err(parse_err) => err = parse_err
+                                }
+                            } else if line.starts_with("subinclude:") {
+                                let include = line.replace("subinclude:", "");
+                                let mut parse_result = parse_hgignore(&Path::new(&include), dir_path);
+                                match parse_result {
+                                    Ok(ref mut filters) => {
+                                        result.append(filters);
+                                    },
+                                    Err(parse_err) => {
+                                        err = parse_err;
+                                    }
+                                };
+                            } else {
+                                let pattern = convert_hgignore_pattern(&line, dir_path, &syntax);
+                                match pattern {
+                                    Ok(pattern) => result.push(pattern),
+                                    Err(parse_err) => err = parse_err
+                                }
+                            }
+                        },
+                        _ => { }
+                    }
                 }
             });
     };
 
-    Ok(result)
+    match err.is_empty() {
+        true => Ok(result),
+        false => Err(err)
+    }
 }
 
 fn convert_hgignore_pattern(pattern: &str, file_path: &Path, syntax: &Syntax) -> Result<HgignoreFilter, String> {

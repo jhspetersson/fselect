@@ -12,7 +12,7 @@ While it doesn't tend to fully replace traditional `find` and `ls`, **fselect** 
 * complex queries
 * aggregate, date, and other functions
 * search within archives
-* `.gitignore` support (experimental)
+* `.gitignore` and `.hgignore` support (experimental)
 * search by width and height of images and videos
 * search by MP3 info
 * search by EXIF metadata
@@ -161,9 +161,10 @@ Or in combination:
 
     fselect size, path from /home/user depth 5 archives symlinks where name = '*.jpg' limit 100
 
-Enable `.gitignore` support:
+Enable `.gitignore` or `.hgignore` support:
 
-    fselect size, path from /home/user/projects gitignore where name = '*.cpp'        
+    fselect size, path from /home/user/projects gitignore where name = '*.cpp'
+    fselect size, path from /home/user/projects hgignore where name = '*.py'        
     
 Search by image dimensions:
 

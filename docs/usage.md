@@ -169,6 +169,7 @@ When you put a directory to search at, you can specify some options.
 | symlinks | If specified, search process will follow symlinks. Default is not to follow. Synonym is `sym`. |
 | archives | Search within archives. Only zip archives are supported. Default is not to include archived content into the search results. Synonym is `arc`. |
 | gitignore | Search respects `.gitignore` files found. Synonym is `git`. |
+| hgignore | Search respects `.hgignore` files found. Synonym is `hg`. |
 
 ### Operators
 

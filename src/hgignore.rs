@@ -79,10 +79,15 @@ fn convert_hgignore_pattern(pattern: &str, file_path: &Path, syntax: &Syntax) ->
         Syntax::Glob => {
             match convert_hgignore_glob(pattern, file_path) {
                 Ok(regex) => Ok(HgignoreFilter::new(regex)),
-                _ => Err("Error creating regex while parsing .hgignore pattern: ".to_string() + pattern)
+                _ => Err("Error creating regex while parsing .hgignore glob: ".to_string() + pattern)
             }
         },
-        Syntax::Regexp => Err("Not supported".to_string())
+        Syntax::Regexp => {
+            match convert_hgignore_regexp(pattern, file_path) {
+                Ok(regex) => Ok(HgignoreFilter::new(regex)),
+                _ => Err("Error creating regex while parsing .hgignore regexp: ".to_string() + pattern)
+            }
+        }
     }
 }
 
@@ -135,6 +140,36 @@ fn convert_hgignore_glob(glob: &str, file_path: &Path) -> Result<Regex, Error> {
             pattern = file_path.to_string_lossy().to_string()
                 .replace("\\", "\\\\")
                 .add("\\\\([^\\\\]+\\\\)*").add(&pattern);
+
+            Regex::new(&pattern)
+        }
+}
+
+fn convert_hgignore_regexp(regexp: &str, file_path: &Path) -> Result<Regex, Error> {
+    #[cfg(not(windows))]
+        {
+            let mut pattern = file_path.to_string_lossy().to_string();
+            if !pattern.starts_with("^") {
+                pattern = pattern.add("/([^/]+/)*");
+            } else {
+                pattern.trim_start_matches("^");
+            }
+
+            pattern = pattern.add(&regexp);
+
+            Regex::new(&pattern)
+        }
+
+    #[cfg(windows)]
+        {
+            let mut pattern = file_path.to_string_lossy().to_string();
+            if !pattern.starts_with("^") {
+                pattern = pattern.add("\\\\([^\\\\]+\\\\)*");
+            } else {
+                pattern.trim_start_matches("^");
+            }
+
+            pattern = pattern.add(&regexp);
 
             Regex::new(&pattern)
         }

@@ -1,8 +1,12 @@
 use std::fs::File;
 use std::io::BufRead;
 use std::io::BufReader;
+use std::ops::Add;
+use std::ops::Index;
 use std::path::Path;
 
+use regex::Captures;
+use regex::Error;
 use regex::Regex;
 
 #[derive(Clone, Debug)]
@@ -73,11 +77,65 @@ pub fn parse_hgignore(file_path: &Path, dir_path: &Path) -> Result<Vec<HgignoreF
 fn convert_hgignore_pattern(pattern: &str, file_path: &Path, syntax: &Syntax) -> Result<HgignoreFilter, String> {
     match syntax {
         Syntax::Glob => {
-            match crate::util::convert_glob_to_regex(pattern, file_path) {
+            match convert_hgignore_glob(pattern, file_path) {
                 Ok(regex) => Ok(HgignoreFilter::new(regex)),
                 _ => Err("Error creating regex while parsing .hgignore pattern: ".to_string() + pattern)
             }
         },
         Syntax::Regexp => Err("Not supported".to_string())
     }
+}
+
+fn convert_hgignore_glob(glob: &str, file_path: &Path) -> Result<Regex, Error> {
+    #[cfg(not(windows))]
+        {
+            let replace_regex = Regex::new("(\\*\\*|\\?|\\.|\\*|\\[|\\]|\\(|\\)|\\^|\\$)").unwrap();
+            let mut pattern = replace_regex.replace_all(&glob, |c: &Captures| {
+                match c.index(0) {
+                    "**" => ".*",
+                    "." => "\\.",
+                    "*" => "[^/]*",
+                    "?" => "[^/]+",
+                    "[" => "\\[",
+                    "]" => "\\]",
+                    "(" => "\\(",
+                    ")" => "\\)",
+                    "^" => "\\^",
+                    "$" => "\\$",
+                    _ => panic!("Error parsing pattern")
+                }.to_string()
+            }).to_string();
+
+            pattern = file_path.to_string_lossy().to_string()
+                .replace("\\", "\\\\")
+                .add("/([^/]+/)*").add(&pattern);
+
+            Regex::new(&pattern)
+        }
+
+    #[cfg(windows)]
+        {
+            let replace_regex = Regex::new("(\\*\\*|\\?|\\.|\\*|\\[|\\]|\\(|\\)|\\^|\\$)").unwrap();
+            let mut pattern = replace_regex.replace_all(&glob, |c: &Captures| {
+                match c.index(0) {
+                    "**" => ".*",
+                    "." => "\\.",
+                    "*" => "[^\\\\]*",
+                    "?" => "[^\\\\]+",
+                    "[" => "\\[",
+                    "]" => "\\]",
+                    "(" => "\\(",
+                    ")" => "\\)",
+                    "^" => "\\^",
+                    "$" => "\\$",
+                    _ => panic!("Error parsing pattern")
+                }.to_string()
+            }).to_string();
+
+            pattern = file_path.to_string_lossy().to_string()
+                .replace("\\", "\\\\")
+                .add("\\\\([^\\\\]+\\\\)*").add(&pattern);
+
+            Regex::new(&pattern)
+        }
 }

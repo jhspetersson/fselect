@@ -1,49 +1,52 @@
-use std::ops::Add;
 use std::ops::Index;
-use std::path::Path;
 
 use regex::Captures;
-use regex::Error;
 use regex::Regex;
 
-pub fn convert_glob_to_regex(glob: &str, file_path: &Path) -> Result<Regex, Error> {
-    #[cfg(not(windows))]
-        {
-            let replace_regex = Regex::new("(\\*\\*|\\?|\\.|\\*)").unwrap();
-            let mut pattern = replace_regex.replace_all(&glob, |c: &Captures| {
-                match c.index(0) {
-                    "**" => ".*",
-                    "." => "\\.",
-                    "*" => "[^/]*",
-                    "?" => "[^/]+",
-                    _ => panic!("Error parsing pattern")
-                }.to_string()
-            }).to_string();
+pub fn is_glob(s: &str) -> bool {
+    s.contains("*") || s.contains('?')
+}
 
-            pattern = file_path.to_string_lossy().to_string()
-                .replace("\\", "\\\\")
-                .add("/([^/]+/)*").add(&pattern);
+pub fn convert_glob_to_pattern(s: &str) -> String {
+    let string = s.to_string();
+    let regex = Regex::new("(\\?|\\.|\\*|\\[|\\]|\\(|\\)|\\^|\\$)").unwrap();
+    let string = regex.replace_all(&string, |c: &Captures| {
+        match c.index(0) {
+            "." => "\\.",
+            "*" => ".*",
+            "?" => ".",
+            "[" => "\\[",
+            "]" => "\\]",
+            "(" => "\\(",
+            ")" => "\\)",
+            "^" => "\\^",
+            "$" => "\\$",
+            _ => panic!("Error parsing glob")
+        }.to_string()
+    });
 
-            Regex::new(&pattern)
-        }
+    format!("^(?i){}$", string)
+}
 
-    #[cfg(windows)]
-        {
-            let replace_regex = Regex::new("(\\*\\*|\\?|\\.|\\*)").unwrap();
-            let mut pattern = replace_regex.replace_all(&glob, |c: &Captures| {
-                match c.index(0) {
-                    "**" => ".*",
-                    "." => "\\.",
-                    "*" => "[^\\\\]*",
-                    "?" => "[^\\\\]+",
-                    _ => panic!("Error parsing pattern")
-                }.to_string()
-            }).to_string();
+pub fn convert_like_to_pattern(s: &str) -> String {
+    let string = s.to_string();
+    let regex = Regex::new("(%|_|\\?|\\.|\\*|\\[|\\]|\\(|\\)|\\^|\\$)").unwrap();
+    let string = regex.replace_all(&string, |c: &Captures| {
+        match c.index(0) {
+            "%" => ".*",
+            "_" => ".",
+            "?" => ".?",
+            "." => "\\.",
+            "*" => "\\*",
+            "[" => "\\[",
+            "]" => "\\]",
+            "(" => "\\(",
+            ")" => "\\)",
+            "^" => "\\^",
+            "$" => "\\$",
+            _ => panic!("Error parsing like expression")
+        }.to_string()
+    });
 
-            pattern = file_path.to_string_lossy().to_string()
-                .replace("\\", "\\\\")
-                .add("\\\\([^\\\\]+\\\\)*").add(&pattern);
-
-            Regex::new(&pattern)
-        }
+    format!("^(?i){}$", string)
 }

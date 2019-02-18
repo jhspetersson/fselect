@@ -15,7 +15,6 @@ use std::fs::symlink_metadata;
 use std::io;
 use std::io::BufReader;
 use std::io::Read;
-use std::ops::Index;
 use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -33,7 +32,6 @@ use chrono_english::{parse_date_string,Dialect};
 use imagesize;
 use mp3_metadata;
 use mp3_metadata::MP3Metadata;
-use regex::Captures;
 use regex::Regex;
 use sha1::Digest;
 use time::Tm;
@@ -41,7 +39,9 @@ use time::Tm;
 use crate::expr::Expr;
 #[cfg(windows)]
 use crate::mode;
-pub use self::glob::convert_glob_to_regex;
+pub use self::glob::convert_glob_to_pattern;
+pub use self::glob::convert_like_to_pattern;
+pub use self::glob::is_glob;
 pub use self::top_n::TopN;
 pub use self::wbuf::WritableBuffer;
 
@@ -496,54 +496,6 @@ pub fn get_sha512_file_hash(entry: &DirEntry) -> String {
     }
 
     String::new()
-}
-
-pub fn is_glob(s: &str) -> bool {
-    s.contains("*") || s.contains('?')
-}
-
-pub fn convert_glob_to_pattern(s: &str) -> String {
-    let string = s.to_string();
-    let regex = Regex::new("(\\?|\\.|\\*|\\[|\\]|\\(|\\)|\\^|\\$)").unwrap();
-    let string = regex.replace_all(&string, |c: &Captures| {
-        match c.index(0) {
-            "." => "\\.",
-            "*" => ".*",
-            "?" => ".",
-            "[" => "\\[",
-            "]" => "\\]",
-            "(" => "\\(",
-            ")" => "\\)",
-            "^" => "\\^",
-            "$" => "\\$",
-            _ => panic!("Error parsing glob")
-        }.to_string()
-    });
-
-    format!("^(?i){}$", string)
-}
-
-pub fn convert_like_to_pattern(s: &str) -> String {
-    let string = s.to_string();
-    let regex = Regex::new("(%|_|\\?|\\.|\\*|\\[|\\]|\\(|\\)|\\^|\\$)").unwrap();
-    let string = regex.replace_all(&string, |c: &Captures| {
-        match c.index(0) {
-            "%" => ".*",
-            "_" => ".",
-            "?" => ".?",
-            "." => "\\.",
-            "*" => "\\*",
-            "[" => "\\[",
-            "]" => "\\]",
-            "(" => "\\(",
-            ")" => "\\)",
-            "^" => "\\^",
-            "$" => "\\$",
-            _ => panic!("Error parsing like expression")
-        }.to_string()
-    });
-
-    format!("^(?i){}$", string)
 }
 
 #[cfg(test)]

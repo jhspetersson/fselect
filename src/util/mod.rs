@@ -1,3 +1,4 @@
+mod glob;
 mod top_n;
 mod wbuf;
 
@@ -40,6 +41,7 @@ use time::Tm;
 use crate::expr::Expr;
 #[cfg(windows)]
 use crate::mode;
+pub use self::glob::convert_glob_to_regex;
 pub use self::top_n::TopN;
 pub use self::wbuf::WritableBuffer;
 

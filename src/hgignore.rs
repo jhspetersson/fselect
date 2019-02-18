@@ -67,17 +67,17 @@ pub fn parse_hgignore(file_path: &Path, dir_path: &Path) -> Result<Vec<HgignoreF
             });
     };
 
-    //TODO
-
     Ok(result)
 }
 
 fn convert_hgignore_pattern(pattern: &str, file_path: &Path, syntax: &Syntax) -> Result<HgignoreFilter, String> {
-    //TODO
-
-    let regex = Regex::new("");
-    match regex {
-        Ok(regex) => Ok(HgignoreFilter { regex }),
-        Err(_) => Err("Error parsing regex".to_string())
+    match syntax {
+        Syntax::Glob => {
+            match crate::util::convert_glob_to_regex(pattern, file_path) {
+                Ok(regex) => Ok(HgignoreFilter::new(regex)),
+                _ => Err("Error creating regex while parsing .hgignore pattern: ".to_string() + pattern)
+            }
+        },
+        Syntax::Regexp => Err("Not supported".to_string())
     }
 }

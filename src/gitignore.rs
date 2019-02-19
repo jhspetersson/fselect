@@ -135,44 +135,44 @@ fn convert_gitignore_pattern(pattern: &str, file_path: &Path) -> Vec<GitignoreFi
 
 fn convert_gitignore_glob(glob: &str, file_path: &Path) -> Result<Regex, Error> {
     #[cfg(not(windows))]
-    {
-        let replace_regex = Regex::new("(\\*\\*|\\?|\\.|\\*)").unwrap();
-        let mut pattern = replace_regex.replace_all(&glob, |c: &Captures| {
-            match c.index(0) {
-                "**" => ".*",
-                "." => "\\.",
-                "*" => "[^/]*",
-                "?" => "[^/]+",
-                _ => panic!("Error parsing pattern")
-            }.to_string()
-        }).to_string();
+        {
+            let replace_regex = Regex::new("(\\*\\*|\\?|\\.|\\*)").unwrap();
+            let mut pattern = replace_regex.replace_all(&glob, |c: &Captures| {
+                match c.index(0) {
+                    "**" => ".*",
+                    "." => "\\.",
+                    "*" => "[^/]*",
+                    "?" => "[^/]+",
+                    _ => panic!("Error parsing pattern")
+                }.to_string()
+            }).to_string();
 
-        pattern = file_path.to_string_lossy().to_string()
-            .replace("\\", "\\\\")
-            .add("/([^/]+/)*").add(&pattern);
+            pattern = file_path.to_string_lossy().to_string()
+                .replace("\\", "\\\\")
+                .add("/([^/]+/)*").add(&pattern);
 
-        Regex::new(&pattern)
-    }
+            Regex::new(&pattern)
+        }
 
     #[cfg(windows)]
-    {
-        let replace_regex = Regex::new("(\\*\\*|\\?|\\.|\\*)").unwrap();
-        let mut pattern = replace_regex.replace_all(&glob, |c: &Captures| {
-            match c.index(0) {
-                "**" => ".*",
-                "." => "\\.",
-                "*" => "[^\\\\]*",
-                "?" => "[^\\\\]+",
-                _ => panic!("Error parsing pattern")
-            }.to_string()
-        }).to_string();
+        {
+            let replace_regex = Regex::new("(\\*\\*|\\?|\\.|\\*)").unwrap();
+            let mut pattern = replace_regex.replace_all(&glob, |c: &Captures| {
+                match c.index(0) {
+                    "**" => ".*",
+                    "." => "\\.",
+                    "*" => "[^\\\\]*",
+                    "?" => "[^\\\\]+",
+                    _ => panic!("Error parsing pattern")
+                }.to_string()
+            }).to_string();
 
-        pattern = file_path.to_string_lossy().to_string()
-            .replace("\\", "\\\\")
-            .add("\\\\([^\\\\]+\\\\)*").add(&pattern);
+            pattern = file_path.to_string_lossy().to_string()
+                .replace("\\", "\\\\")
+                .add("\\\\([^\\\\]+\\\\)*").add(&pattern);
 
-        Regex::new(&pattern)
-    }
+            Regex::new(&pattern)
+        }
 }
 
 #[cfg(test)]

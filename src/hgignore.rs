@@ -1,8 +1,12 @@
 use std::fs::File;
 use std::io::BufRead;
 use std::io::BufReader;
+use std::ops::Add;
+use std::ops::Index;
 use std::path::Path;
 
+use regex::Captures;
+use regex::Error;
 use regex::Regex;
 
 #[derive(Clone, Debug)]
@@ -36,6 +40,7 @@ impl Syntax {
 
 pub fn parse_hgignore(file_path: &Path, dir_path: &Path) -> Result<Vec<HgignoreFilter>, String> {
     let mut result = vec![];
+    let mut err = String::new();
 
     if let Ok(file) = File::open(file_path) {
         let mut syntax = Syntax::Regexp;
@@ -49,35 +54,144 @@ pub fn parse_hgignore(file_path: &Path, dir_path: &Path) -> Result<Vec<HgignoreF
                 }
             })
             .for_each(|line| {
-                match line {
-                    Ok(line) => {
-                        if line.starts_with("syntax:") {
-                            let line = line.replace("syntax:", "");
-                            let syntax_directive = line.trim();
-                            syntax = Syntax::from(syntax_directive).unwrap();
-                        } else if line.starts_with("subinclude:") {
-                            //TODO
-                        } else {
-                            let pattern = convert_hgignore_pattern(&line, dir_path, &syntax).unwrap();
-                            result.push(pattern);
-                        }
-                    },
-                    _ => { }
+                if err.is_empty() {
+                    match line {
+                        Ok(line) => {
+                            if line.starts_with("syntax:") {
+                                let line = line.replace("syntax:", "");
+                                let syntax_directive = line.trim();
+                                match Syntax::from(syntax_directive) {
+                                    Ok(parsed_syntax) => syntax = parsed_syntax,
+                                    Err(parse_err) => err = parse_err
+                                }
+                            } else if line.starts_with("subinclude:") {
+                                let include = line.replace("subinclude:", "");
+                                let mut parse_result = parse_hgignore(&Path::new(&include), dir_path);
+                                match parse_result {
+                                    Ok(ref mut filters) => {
+                                        result.append(filters);
+                                    },
+                                    Err(parse_err) => {
+                                        err = parse_err;
+                                    }
+                                };
+                            } else {
+                                let pattern = convert_hgignore_pattern(&line, dir_path, &syntax);
+                                match pattern {
+                                    Ok(pattern) => result.push(pattern),
+                                    Err(parse_err) => err = parse_err
+                                }
+                            }
+                        },
+                        _ => { }
+                    }
                 }
             });
     };
 
-    //TODO
-
-    Ok(result)
+    match err.is_empty() {
+        true => Ok(result),
+        false => Err(err)
+    }
 }
 
 fn convert_hgignore_pattern(pattern: &str, file_path: &Path, syntax: &Syntax) -> Result<HgignoreFilter, String> {
-    //TODO
-
-    let regex = Regex::new("");
-    match regex {
-        Ok(regex) => Ok(HgignoreFilter { regex }),
-        Err(_) => Err("Error parsing regex".to_string())
+    match syntax {
+        Syntax::Glob => {
+            match convert_hgignore_glob(pattern, file_path) {
+                Ok(regex) => Ok(HgignoreFilter::new(regex)),
+                _ => Err("Error creating regex while parsing .hgignore glob: ".to_string() + pattern)
+            }
+        },
+        Syntax::Regexp => {
+            match convert_hgignore_regexp(pattern, file_path) {
+                Ok(regex) => Ok(HgignoreFilter::new(regex)),
+                _ => Err("Error creating regex while parsing .hgignore regexp: ".to_string() + pattern)
+            }
+        }
     }
+}
+
+fn convert_hgignore_glob(glob: &str, file_path: &Path) -> Result<Regex, Error> {
+    #[cfg(not(windows))]
+        {
+            let replace_regex = Regex::new("(\\*\\*|\\?|\\.|\\*|\\[|\\]|\\(|\\)|\\^|\\$)").unwrap();
+            let mut pattern = replace_regex.replace_all(&glob, |c: &Captures| {
+                match c.index(0) {
+                    "**" => ".*",
+                    "." => "\\.",
+                    "*" => "[^/]*",
+                    "?" => "[^/]+",
+                    "[" => "\\[",
+                    "]" => "\\]",
+                    "(" => "\\(",
+                    ")" => "\\)",
+                    "^" => "\\^",
+                    "$" => "\\$",
+                    _ => panic!("Error parsing pattern")
+                }.to_string()
+            }).to_string();
+
+            pattern = file_path.to_string_lossy().to_string()
+                .replace("\\", "\\\\")
+                .add("/([^/]+/)*").add(&pattern);
+
+            Regex::new(&pattern)
+        }
+
+    #[cfg(windows)]
+        {
+            let replace_regex = Regex::new("(\\*\\*|\\?|\\.|\\*|\\[|\\]|\\(|\\)|\\^|\\$)").unwrap();
+            let mut pattern = replace_regex.replace_all(&glob, |c: &Captures| {
+                match c.index(0) {
+                    "**" => ".*",
+                    "." => "\\.",
+                    "*" => "[^\\\\]*",
+                    "?" => "[^\\\\]+",
+                    "[" => "\\[",
+                    "]" => "\\]",
+                    "(" => "\\(",
+                    ")" => "\\)",
+                    "^" => "\\^",
+                    "$" => "\\$",
+                    _ => panic!("Error parsing pattern")
+                }.to_string()
+            }).to_string();
+
+            pattern = file_path.to_string_lossy().to_string()
+                .replace("\\", "\\\\")
+                .add("\\\\([^\\\\]+\\\\)*").add(&pattern);
+
+            Regex::new(&pattern)
+        }
+}
+
+fn convert_hgignore_regexp(regexp: &str, file_path: &Path) -> Result<Regex, Error> {
+    #[cfg(not(windows))]
+        {
+            let mut pattern = file_path.to_string_lossy().to_string();
+            if !pattern.starts_with("^") {
+                pattern = pattern.add("/([^/]+/)*");
+            } else {
+                pattern.trim_start_matches("^");
+            }
+
+            pattern = pattern.add(&regexp);
+
+            Regex::new(&pattern)
+        }
+
+    #[cfg(windows)]
+        {
+            let mut pattern = file_path.to_string_lossy().to_string();
+            if !pattern.starts_with("^") {
+                pattern = pattern.add("\\\\([^\\\\]+\\\\)*");
+            } else {
+                pattern.trim_start_matches("^");
+            }
+
+            pattern = pattern.add(&regexp);
+
+            Regex::new(&pattern)
+        }
 }

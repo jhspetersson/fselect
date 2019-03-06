@@ -57,17 +57,17 @@ impl OutputFormat {
     pub fn from(s: &String) -> Option<OutputFormat> {
         let s = s.to_lowercase();
         if s == "lines" {
-            return Ok(OutputFormat::Lines);
+            return Some(OutputFormat::Lines);
         } else if s == "list" {
-            return Ok(OutputFormat::List);
+            return Some(OutputFormat::List);
         } else if s == "csv" {
-            return Ok(OutputFormat::Csv);
+            return Some(OutputFormat::Csv);
         } else if s == "json" {
-            return Ok(OutputFormat::Json);
+            return Some(OutputFormat::Json);
         } else if s == "tabs" {
-            return Ok(OutputFormat::Tabs);
+            return Some(OutputFormat::Tabs);
         } else if s == "html" {
-            return Ok(OutputFormat::Html);
+            return Some(OutputFormat::Html);
         } else {
             return None;
         }

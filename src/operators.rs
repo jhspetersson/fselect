@@ -17,7 +17,9 @@ pub enum Op {
     Lt,
     Lte,
     Rx,
+    NotRx,
     Like,
+    NotLike,
 }
 
 impl Op {
@@ -32,7 +34,9 @@ impl Op {
             "<" | "lt" => Some(Op::Lt),
             "<=" | "lte" | "le" => Some(Op::Lte),
             "~=" | "=~" | "regexp" | "rx" => Some(Op::Rx),
+            "!=~" => Some(Op::NotRx),
             "like" => Some(Op::Like),
+            "notlike" => Some(Op::NotLike),
             _ => None
         }
     }

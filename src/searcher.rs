@@ -1314,6 +1314,26 @@ impl Searcher {
                                 }
                             }
                         },
+                        Op::NotRx => {
+                            let regex = self.regex_cache.get(&val);
+                            match regex {
+                                Some(ref regex) => {
+                                    return !regex.is_match(&field_value.to_string());
+                                },
+                                None => {
+                                    let regex = Regex::new(&val);
+                                    match regex {
+                                        Ok(ref regex) => {
+                                            self.regex_cache.insert(val.clone(), regex.clone());
+                                            return !regex.is_match(&field_value.to_string());
+                                        },
+                                        _ => {
+                                            panic!("Incorrect regex expression")
+                                        }
+                                    }
+                                }
+                            }
+                        },
                         Op::Like => {
                             let regex = self.regex_cache.get(&val);
                             match regex {
@@ -1327,6 +1347,27 @@ impl Searcher {
                                         Ok(ref regex) => {
                                             self.regex_cache.insert(val.clone(), regex.clone());
                                             return regex.is_match(&field_value.to_string());
+                                        },
+                                        _ => {
+                                            panic!("Incorrect LIKE expression")
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        Op::NotLike => {
+                            let regex = self.regex_cache.get(&val);
+                            match regex {
+                                Some(ref regex) => {
+                                    return !regex.is_match(&field_value.to_string());
+                                },
+                                None => {
+                                    let pattern = convert_like_to_pattern(&val);
+                                    let regex = Regex::new(&pattern);
+                                    match regex {
+                                        Ok(ref regex) => {
+                                            self.regex_cache.insert(val.clone(), regex.clone());
+                                            return !regex.is_match(&field_value.to_string());
                                         },
                                         _ => {
                                             panic!("Incorrect LIKE expression")

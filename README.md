@@ -103,7 +103,11 @@ Regular expressions of [Rust flavor](https://docs.rs/regex/1.1.0/regex/#syntax) 
 
     fselect name from /home/user where path =~ '.*Rust.*'
     
-And even simple glob will suffice:
+Negate regular expressions:
+
+    fselect "name from . where path !=~ '^\./config'"
+    
+Simple globs expand automatically and work with `=` and `!=` operators:
 
     fselect name from /home/user where path = '*Rust*'
     

@@ -22,7 +22,7 @@ impl HgignoreFilter {
     }
 }
 
-pub fn matches_hgignore_filter(hgignore_filters: &Vec<HgignoreFilter>, file_name: &str, is_dir: bool) -> bool {
+pub fn matches_hgignore_filter(hgignore_filters: &Vec<HgignoreFilter>, file_name: &str) -> bool {
     let mut matched = false;
 
     for hgignore_filter in hgignore_filters {
@@ -184,13 +184,15 @@ fn convert_hgignore_regexp(regexp: &str, file_path: &Path) -> Result<Regex, Erro
     #[cfg(not(windows))]
         {
             let mut pattern = file_path.to_string_lossy().to_string();
-            if !pattern.starts_with("^") {
+            if !regexp.starts_with("^") {
                 pattern = pattern.add("/([^/]+/)*");
-            } else {
-                pattern.trim_start_matches("^");
             }
 
-            pattern = pattern.add(&regexp);
+            if !regexp.starts_with("^") {
+                pattern = pattern.add(".*");
+            }
+
+            pattern = pattern.add(&regexp.trim_start_matches("^"));
 
             Regex::new(&pattern)
         }
@@ -198,13 +200,15 @@ fn convert_hgignore_regexp(regexp: &str, file_path: &Path) -> Result<Regex, Erro
     #[cfg(windows)]
         {
             let mut pattern = file_path.to_string_lossy().to_string();
-            if !pattern.starts_with("^") {
+            if !regexp.starts_with("^") {
                 pattern = pattern.add("\\\\([^\\\\]+\\\\)*");
-            } else {
-                pattern.trim_start_matches("^");
             }
 
-            pattern = pattern.add(&regexp);
+            if !regexp.starts_with("^") {
+                pattern = pattern.add(".*");
+            }
+
+            pattern = pattern.add(&regexp.trim_start_matches("^"));
 
             Regex::new(&pattern)
         }

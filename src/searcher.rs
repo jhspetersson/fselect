@@ -33,6 +33,7 @@ use crate::gitignore::GitignoreFilter;
 use crate::gitignore::matches_gitignore_filter;
 use crate::gitignore::parse_gitignore;
 use crate::hgignore::HgignoreFilter;
+use crate::hgignore::matches_hgignore_filter;
 use crate::hgignore::parse_hgignore;
 use crate::mode;
 use crate::operators::LogicalOp;
@@ -51,7 +52,7 @@ pub struct Searcher {
     raw_output_buffer: Vec<HashMap<String, String>>,
     output_buffer: TopN<Criteria<String>, String>,
     gitignore_map: HashMap<PathBuf, Vec<GitignoreFilter>>,
-    hgignore_map: HashMap<PathBuf, Vec<HgignoreFilter>>,
+    hgignore_filters: Vec<HgignoreFilter>,
     visited_dirs: HashSet<PathBuf>,
     lscolors: LsColors,
 
@@ -84,7 +85,7 @@ impl Searcher {
             raw_output_buffer: vec![],
             output_buffer: if limit == 0 { TopN::limitless() } else { TopN::new(limit) },
             gitignore_map: HashMap::new(),
-            hgignore_map: HashMap::new(),
+            hgignore_filters: vec![],
             visited_dirs: HashSet::new(),
             lscolors: LsColors::from_env().unwrap_or_default(),
 
@@ -252,7 +253,8 @@ impl Searcher {
                 max_depth,
                 1,
                 search_archives,
-                apply_gitignore
+                apply_gitignore,
+                apply_hgignore
             );
         }
 
@@ -361,7 +363,7 @@ impl Searcher {
                 let hg_directory = path.clone().join(".hg");
 
                 if hgignore_file.is_file() && hg_directory.is_dir() {
-                    self.update_hgignore_map(&mut path);
+                    self.update_hgignore_filters(&mut path);
                     return;
                 }
 
@@ -374,13 +376,13 @@ impl Searcher {
         }
     }
 
-    fn update_hgignore_map(&mut self, path: &Path) {
+    fn update_hgignore_filters(&mut self, path: &Path) {
         let hgignore_file = path.join(".hgignore");
         if hgignore_file.is_file() {
             let regexes = parse_hgignore(&hgignore_file, &path);
             match regexes {
-                Ok(regexes) => {
-                    self.hgignore_map.insert(path.to_path_buf(), regexes);
+                Ok(ref regexes) => {
+                    self.hgignore_filters.append(&mut regexes.clone());
                 },
                 Err(err) => {
                     eprintln!("{}: {}", path.to_string_lossy(), err);
@@ -395,7 +397,8 @@ impl Searcher {
                  max_depth: u32,
                  depth: u32,
                  search_archives: bool,
-                 apply_gitignore: bool) -> io::Result<()> {
+                 apply_gitignore: bool,
+                 apply_hgignore: bool) -> io::Result<()> {
         let metadata = match self.current_follow_symlinks {
             true => dir.metadata(),
             false => symlink_metadata(dir)
@@ -433,13 +436,16 @@ impl Searcher {
                                         let path = entry.path();
                                         let mut canonical_path = path.clone();
 
-                                        if apply_gitignore {
+                                        if apply_gitignore && apply_hgignore {
                                             if let Ok(canonicalized) = crate::util::canonical_path(&path.clone()) {
                                                 canonical_path = PathBuf::from(canonicalized);
                                             }
                                         }
 
-                                        if !apply_gitignore || (apply_gitignore && !matches_gitignore_filter(&gitignore_filters, canonical_path.to_string_lossy().as_ref(), path.is_dir())) {
+                                        let pass_gitignore = !apply_gitignore || (apply_gitignore && !matches_gitignore_filter(&gitignore_filters, canonical_path.to_string_lossy().as_ref(), path.is_dir()));
+                                        let pass_hgignore = !apply_hgignore || (apply_hgignore && !matches_hgignore_filter(&self.hgignore_filters, canonical_path.to_string_lossy().as_ref(), path.is_dir()));
+
+                                        if pass_gitignore && pass_hgignore {
                                             if min_depth == 0 || depth >= min_depth {
                                                 self.check_file(&entry, &None);
 
@@ -469,7 +475,8 @@ impl Searcher {
                                                         max_depth,
                                                         depth + 1,
                                                         search_archives,
-                                                        apply_gitignore);
+                                                        apply_gitignore,
+                                                        apply_hgignore);
 
                                                     if result.is_err() {
                                                         path_error_message(&path, result.err().unwrap());

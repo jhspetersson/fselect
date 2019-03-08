@@ -22,6 +22,20 @@ impl HgignoreFilter {
     }
 }
 
+pub fn matches_hgignore_filter(hgignore_filters: &Vec<HgignoreFilter>, file_name: &str, is_dir: bool) -> bool {
+    let mut matched = false;
+
+    for hgignore_filter in hgignore_filters {
+        let is_match = hgignore_filter.regex.is_match(file_name);
+
+        if is_match {
+            matched = true;
+        }
+    }
+
+    matched
+}
+
 enum Syntax {
     Regexp, Glob
 }

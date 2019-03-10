@@ -40,7 +40,7 @@ More is under way!
 
 #### Windows 64bit
 
-A statically precompiled [binary](https://github.com/jhspetersson/fselect/releases/download/0.6.1/fselect-x86_64-win.zip) is available at Github downloads.
+A statically precompiled [binary](https://github.com/jhspetersson/fselect/releases/download/0.6.2/fselect-x86_64-win.zip) is available at Github downloads.
 
 #### Mac
 

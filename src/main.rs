@@ -31,10 +31,13 @@ use crate::searcher::Searcher;
 use crate::util::error_message;
 
 fn main() {
-    let no_color = std::env::var("NO_COLOR").ok().eq(&Some("1".to_string()));
+    let env_no_color = std::env::var("NO_COLOR").ok().eq(&Some("1".to_string()));
+
+    #[cfg(not(windows))]
+    let no_color = env_no_color;
 
     #[cfg(windows)]
-    let _ = ansi_term::enable_ansi_support();
+    let no_color = env_no_color || ansi_term::enable_ansi_support().is_err();
 
     if env::args().len() == 1 {
         short_usage_info(no_color);

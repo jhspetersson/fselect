@@ -133,7 +133,7 @@ pub fn path_error_message(p: &Path, e: io::Error) {
 }
 
 pub fn error_message(source: &str, description: &str) {
-    eprint!("{}: {}", source, description));
+    eprint!("{}: {}", source, description);
 }
 
 pub fn parse_filesize(s: &str) -> Option<u64> {

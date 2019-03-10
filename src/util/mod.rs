@@ -21,7 +21,6 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::string::ToString;
 
-use ansi_term::Colour::*;
 use chrono::Local;
 use chrono::TimeZone;
 use imagesize;

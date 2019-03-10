@@ -38,7 +38,7 @@ fn main() {
 
     #[cfg(windows)]
     let no_color = env_no_color || ansi_term::enable_ansi_support().is_err();
-dbg!(ansi_term::enable_ansi_support());
+
     if env::args().len() == 1 {
         short_usage_info(no_color);
         help_hint();

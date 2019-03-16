@@ -75,7 +75,7 @@ impl<'a> Lexer<'a> {
                     break;
                 },
                 LexingMode::RawString => {
-                    if !escape_next {
+                    if !escape_next || c == ' ' {
                         //Detect the escape character ... ignore it ... push pointer over and continue
                         if c == '\\' {
                             escape_next = true;

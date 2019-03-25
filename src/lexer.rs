@@ -75,13 +75,16 @@ impl<'a> Lexer<'a> {
                     break;
                 },
                 LexingMode::RawString => {
-                    if !escape_next || c == ' ' {
+                    if !escape_next {
                         //Detect the escape character ... ignore it ... push pointer over and continue
-                        if c == '\\' {
-                            escape_next = true;
-                            self.index += 1;
-                            continue;
-                        }
+                        #[cfg(not(windows))]
+                            {
+                                if c == '\\' {
+                                    escape_next = true;
+                                    self.index += 1;
+                                    continue;
+                                }
+                            }
 
                         let is_date = c == '-' && looks_like_date(&s);
                         if !is_date {

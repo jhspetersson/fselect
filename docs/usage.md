@@ -154,6 +154,7 @@ Used mostly for formatting results.
 | LENGTH | Length of string value | `select length(name) from /home/user/Downloads order by 1 desc limit 10` |
 | LOWER | Convert value to lowercase | `select lower(name) from /home/user/Downloads` |
 | UPPER | Convert value to uppercase | `select upper(name) from /home/user/Downloads` |
+| BASE64 | Encode value to Base64 | `select base64(name) from /home/user/Downloads` |
 | CONTAINS | `true` if file contains string, `false` if not | `select contains(TODO) from /home/user/Projects/foo/src` |
 
 ### Search roots

@@ -145,6 +145,7 @@ pub enum Function {
     Lower,
     Upper,
     Length,
+    Base64,
 
     Min,
     Max,
@@ -172,6 +173,7 @@ impl FromStr for Function {
             "lower" => Ok(Function::Lower),
             "upper" => Ok(Function::Upper),
             "length" => Ok(Function::Length),
+            "base64" => Ok(Function::Base64),
 
             "day" => Ok(Function::Day),
             "month" => Ok(Function::Month),
@@ -248,6 +250,9 @@ pub fn get_value(function: &Option<Function>,
         },
         Some(Function::Length) => {
             return Variant::from_int(function_arg.chars().count() as i64);
+        },
+        Some(Function::Base64) => {
+            return Variant::from_string(&base64::encode(&function_arg));
         },
         Some(Function::Year) => {
             match parse_datetime(&function_arg) {

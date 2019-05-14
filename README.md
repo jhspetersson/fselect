@@ -18,6 +18,7 @@ While it doesn't tend to fully replace traditional `find` and `ls`, **fselect** 
 * search by EXIF metadata
 * search by extended file attributes
 * search by file hashes
+* search by MIME type
 * shortcuts to common file types
 * various output formatting (CSV, JSON, and others)
 
@@ -186,8 +187,8 @@ Find old-school rap MP3 files:
 Shortcuts to common file extensions:
 
     fselect path from /home/user where is_archive = true
-    fselect path from /home/user where is_audio = 1
-    fselect path from /home/user where is_book != false
+    fselect path, mime from /home/user where is_audio = 1
+    fselect path, mime from /home/user where is_book != false
     fselect path from /home/user where is_doc != 1
     fselect path from /home/user where is_image = false
     fselect path from /home/user where is_video != true

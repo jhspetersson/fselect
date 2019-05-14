@@ -100,6 +100,7 @@ Joins, unions, and subselects are not supported (yet?).
 * `exif_model`
 * `exif_software`
 * `exif_version`
+* `mime`
 * `is_archive`
 * `is_audio`
 * `is_book`

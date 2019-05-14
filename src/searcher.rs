@@ -1035,6 +1035,11 @@ impl Searcher {
                     }
                 }
             },
+            Field::Mime => {
+                let mime = tree_magic::from_filepath(&entry.path());
+
+                return Variant::from_string(&mime);
+            },
             Field::IsArchive => {
                 let is_archive = match file_info {
                     Some(file_info) => is_archive(&file_info.name),

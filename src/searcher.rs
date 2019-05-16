@@ -1040,6 +1040,34 @@ impl Searcher {
 
                 return Variant::from_string(&mime);
             },
+            Field::IsBinary => {
+                self.update_file_metadata(entry);
+
+                if let Some(ref meta) = self.file_metadata {
+                    if meta.is_dir() {
+                        return Variant::from_bool(false);
+                    }
+                }
+
+                let mime = tree_magic::from_filepath(&entry.path());
+                let is_binary = !is_text_mime(&mime);
+
+                return Variant::from_bool(is_binary);
+            },
+            Field::IsText => {
+                self.update_file_metadata(entry);
+
+                if let Some(ref meta) = self.file_metadata {
+                    if meta.is_dir() {
+                        return Variant::from_bool(false);
+                    }
+                }
+
+                let mime = tree_magic::from_filepath(&entry.path());
+                let is_text = is_text_mime(&mime);
+
+                return Variant::from_bool(is_text);
+            },
             Field::IsArchive => {
                 let is_archive = match file_info {
                     Some(file_info) => is_archive(&file_info.name),

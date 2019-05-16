@@ -101,6 +101,8 @@ Joins, unions, and subselects are not supported (yet?).
 * `exif_software`
 * `exif_version`
 * `mime`
+* `is_binary`
+* `is_text`
 * `is_archive`
 * `is_audio`
 * `is_book`
@@ -230,7 +232,19 @@ Other operators assume exact date and time, which could be specified in a more f
 
 [Rust flavor regular expressions](https://docs.rs/regex/1.1.0/regex/#syntax) are used.
 
-### File extensions
+### MIME and file types
+
+For MIME guessing use field `mime`. It returns a simple string with deduced MIME type,
+which is not always accurate.
+
+    fselect path, mime, is_binary, is_text from /home/user
+
+`is_binary` and `is_text` return `true` or `false` based on MIME type detected. 
+Once again, this should not be considered as 100% accurate result, 
+or even possible at all to detect correct file type.
+
+Other fields listed below **do NOT** use MIME detection.
+Assumptions are being made based on file extension.
 
 | Search field | Extensions |
 | --- | --- |

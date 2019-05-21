@@ -232,6 +232,17 @@ pub fn has_extension(file_name: &str, extensions: &[&str]) -> bool {
     false
 }
 
+pub fn is_text_mime(mime: &str) -> bool {
+    mime.starts_with("text/") ||
+    mime.contains("+xml") ||
+    mime.contains("-xml") ||
+    mime.eq("application/x-awk") ||
+    mime.eq("application/x-perl") ||
+    mime.eq("application/x-php") ||
+    mime.eq("application/x-ruby") ||
+    mime.eq("application/x-shellscript")
+}
+
 pub fn canonical_path(path_buf: &PathBuf) -> Result<String, ()> {
     if let Ok(path) = canonicalize(path_buf) {
         return Ok(format_absolute_path(&path));

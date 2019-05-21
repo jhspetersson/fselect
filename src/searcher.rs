@@ -1457,7 +1457,7 @@ def_extension_queries! {
 ;   is_audio                [".aac", ".aiff", ".amr", ".flac", ".gsm", ".m4a", ".m4b", ".m4p", ".mp3", ".ogg", ".wav", ".wma"]
 ;   is_book                 [".azw3", ".chm", ".epub", ".fb2", ".mobi", ".pdf"]
 ;   is_doc                  [".accdb", ".doc", ".docm", ".docx", ".dot", ".dotm", ".dotx", ".mdb", ".ods", ".odt", ".pdf", ".potm", ".potx", ".ppt", ".pptm", ".pptx", ".rtf", ".xlm", ".xls", ".xlsm", ".xlsx", ".xlt", ".xltm", ".xltx", ".xps"]
-;   is_image                [".bmp", ".gif", ".jpeg", ".jpg", ".png", ".tiff", ".webp"]
+;   is_image                [".bmp", ".gif", ".jpeg", ".jpg", ".png", ".psb", ".psd", ".tiff", ".webp"]
 ;   is_source               [".asm", ".bas", ".c", ".cc", ".ceylon", ".clj", ".coffee", ".cpp", ".cs", ".dart", ".elm", ".erl", ".go", ".groovy", ".h", ".hh", ".hpp", ".java", ".js", ".jsp", ".kt", ".kts", ".lua", ".nim", ".pas", ".php", ".pl", ".pm", ".py", ".rb", ".rs", ".scala", ".swift", ".tcl", ".vala", ".vb"]
 ;   is_video                [".3gp", ".avi", ".flv", ".m4p", ".m4v", ".mkv", ".mov", ".mp4", ".mpeg", ".mpg", ".webm", ".wmv"]
 }

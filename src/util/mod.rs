@@ -263,7 +263,7 @@ pub fn get_metadata(entry: &DirEntry, follow_symlinks: bool) -> Option<Metadata>
 }
 
 fn is_image_dim_readable(file_name: &str) -> bool {
-    let extensions = [".bmp", ".gif", ".jpeg", ".jpg", ".png", ".webp"];
+    let extensions = [".bmp", ".gif", ".jpeg", ".jpg", ".png", ".psb", ".psd", ".tiff", ".webp"];
 
     has_extension(file_name, &extensions)
 }

@@ -25,19 +25,19 @@ csv = "1.0"
 humansize = "1.1"
 imagesize = "0.8"
 kamadak-exif = "0.3"
-lazy_static = "1.1"
+lazy_static = "1.3"
 lscolors = "0.5"
 mp3-metadata = "0.3"
-regex = "1.0"
+regex = "1.1"
 serde = "1.0"
 serde_derive = "1.0"
 serde_json = "1.0"
 sha-1 = "0.8"
 sha2 = "0.8"
 time = "0.1"
-tree_magic = "0.2.1"
+tree_magic = "0.2"
 zip = "0.4"
 
 [target.'cfg(unix)'.dependencies]
-users = { version = "0.8", optional = true }
+users = { version = "0.9", optional = true }
 xattr = "0.2"

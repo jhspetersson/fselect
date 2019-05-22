@@ -303,3 +303,4 @@ Duration is measured in seconds.
     fselect size, path from /home/user limit 5 into json
     fselect size, path from /home/user limit 5 into csv
     fselect size, path from /home/user limit 5 into html
+    fselect path from /home/user into list | xargs -0 grep foobar

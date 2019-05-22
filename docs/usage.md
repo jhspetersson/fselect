@@ -85,6 +85,7 @@ Joins, unions, and subselects are not supported (yet?).
 * `is_shebang`
 * `width`
 * `height`
+* `duration`
 * `mp3_bitrate` or `bitrate`
 * `mp3_freq` or `freq`
 * `mp3_title` or `title`
@@ -267,9 +268,11 @@ Assumptions are being made based on file extension.
 **fselect** can parse basic MP3 metadata and search by bitrate or sampling frequency of the first frame,
 title of the track, artist's name, album, genre, and year.
 
+Duration is measured in seconds.
+
 [List of supported genres](https://docs.rs/mp3-metadata/0.3.0/mp3_metadata/enum.Genre.html)
 
-    fselect bitrate, path from /home/user/music
+    fselect duration, bitrate, path from /home/user/music
     fselect mp3_year, album, title from /home/user/music where artist like %Vampire% and bitrate gte 320
     fselect bitrate, freq, path from /home/user/music where genre = Rap or genre = HipHop
 

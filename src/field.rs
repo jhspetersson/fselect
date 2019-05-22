@@ -43,6 +43,7 @@ pub enum Field {
     IsShebang,
     Width,
     Height,
+    Duration,
     Bitrate,
     Freq,
     Title,
@@ -117,6 +118,7 @@ impl FromStr for Field {
             "width" => Ok(Field::Width),
             "height" => Ok(Field::Height),
             "mime" => Ok(Field::Mime),
+            "duration" => Ok(Field::Duration),
             "mp3_bitrate" | "bitrate" => Ok(Field::Bitrate),
             "mp3_freq" | "freq" => Ok(Field::Freq),
             "mp3_title" | "title" => Ok(Field::Title),
@@ -172,6 +174,7 @@ impl Field {
             Field::Size | Field::FormattedSize
             | Field::Uid | Field::Gid
             | Field::Width | Field::Height
+            | Field::Duration
             | Field::Bitrate | Field::Freq | Field::Year => true,
             _ => false
         }

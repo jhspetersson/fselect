@@ -182,7 +182,7 @@ Find square images:
     
 Find old-school rap MP3 files:
 
-    fselect path from /home/user/music where genre = Rap and bitrate = 320 and mp3_year lt 2000  
+    fselect duration, path from /home/user/music where genre = Rap and bitrate = 320 and mp3_year lt 2000  
     
 Shortcuts to common file extensions:
 

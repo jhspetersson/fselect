@@ -902,6 +902,13 @@ impl Searcher {
                     return Variant::from_int(y as i64);
                 }
             },
+            Field::Duration => {
+                self.update_file_mp3_metadata(entry);
+
+                if let Some(ref mp3_info) = self.file_mp3_metadata {
+                    return Variant::from_int(mp3_info.duration as i64);
+                }
+            },
             Field::Bitrate => {
                 self.update_file_mp3_metadata(entry);
 

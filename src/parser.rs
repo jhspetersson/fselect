@@ -466,7 +466,6 @@ impl Parser {
         if let Some(Lexem::Order) = self.get_lexem() {
             if let Some(Lexem::By) = self.get_lexem() {
                 loop {
-                    use std::str::FromStr;
                     match self.get_lexem() {
                         Some(Lexem::Comma) => {},
                         Some(Lexem::RawString(ref ordering_field)) => {

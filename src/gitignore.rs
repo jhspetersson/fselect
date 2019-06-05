@@ -32,7 +32,8 @@ pub fn matches_gitignore_filter(gitignore_filters: &Option<Vec<GitignoreFilter>>
                     continue;
                 }
 
-                let is_match = gitignore_filter.regex.is_match(file_name);
+                let file_name_prepared = convert_file_name_for_matcher(file_name);
+                let is_match = gitignore_filter.regex.is_match(&file_name_prepared);
 
                 if is_match && gitignore_filter.negate {
                     return false;
@@ -46,6 +47,18 @@ pub fn matches_gitignore_filter(gitignore_filters: &Option<Vec<GitignoreFilter>>
             matched
         },
         _ => false
+    }
+}
+
+fn convert_file_name_for_matcher(file_name: &str) -> String {
+    #[cfg(windows)]
+    {
+        return String::from(file_name).replace("\\", "/");
+    }
+
+    #[cfg(not(windows))]
+    {
+        return String::from(file_name);
     }
 }
 
@@ -114,15 +127,7 @@ fn convert_gitignore_pattern(pattern: &str, file_path: &Path) -> Vec<GitignoreFi
             result.push(GitignoreFilter::new(regex.unwrap(), true, negate));
         }
 
-        #[cfg(not(windows))]
-        {
-            pattern = pattern.add("/**");
-        }
-
-        #[cfg(windows)]
-        {
-            pattern = pattern.add("\\\\**");
-        }
+        pattern = pattern.add("/**");
     }
 
     let regex = convert_gitignore_glob(&pattern, file_path);
@@ -134,45 +139,31 @@ fn convert_gitignore_pattern(pattern: &str, file_path: &Path) -> Vec<GitignoreFi
 }
 
 fn convert_gitignore_glob(glob: &str, file_path: &Path) -> Result<Regex, Error> {
-    #[cfg(not(windows))]
-        {
-            let replace_regex = Regex::new("(\\*\\*|\\?|\\.|\\*)").unwrap();
-            let mut pattern = replace_regex.replace_all(&glob, |c: &Captures| {
-                match c.index(0) {
-                    "**" => ".*",
-                    "." => "\\.",
-                    "*" => "[^/]*",
-                    "?" => "[^/]+",
-                    _ => panic!("Error parsing pattern")
-                }.to_string()
-            }).to_string();
+    let replace_regex = Regex::new("(\\*\\*|\\?|\\.|\\*)").unwrap();
+    let mut pattern = replace_regex.replace_all(&glob, |c: &Captures| {
+        match c.index(0) {
+            "**" => ".*",
+            "." => "\\.",
+            "*" => "[^/]*",
+            "?" => "[^/]+",
+            _ => panic!("Error parsing pattern")
+        }.to_string()
+    }).to_string();
 
-            pattern = file_path.to_string_lossy().to_string()
-                .replace("\\", "\\\\")
-                .add("/([^/]+/)*").add(&pattern);
+    while pattern.starts_with("/") || pattern.starts_with("\\") {
+        pattern.remove(0);
+    }
 
-            Regex::new(&pattern)
-        }
+    pattern = file_path.to_string_lossy().to_string()
+        .replace("\\", "\\\\")
+        .add("/([^/]+/)*").add(&pattern);
 
     #[cfg(windows)]
-        {
-            let replace_regex = Regex::new("(\\*\\*|\\?|\\.|\\*)").unwrap();
-            let mut pattern = replace_regex.replace_all(&glob, |c: &Captures| {
-                match c.index(0) {
-                    "**" => ".*",
-                    "." => "\\.",
-                    "*" => "[^\\\\]*",
-                    "?" => "[^\\\\]+",
-                    _ => panic!("Error parsing pattern")
-                }.to_string()
-            }).to_string();
+    {
+        pattern = pattern.replace("\\", "/").replace("//", "/");
+    }
 
-            pattern = file_path.to_string_lossy().to_string()
-                .replace("\\", "\\\\")
-                .add("\\\\([^\\\\]+\\\\)*").add(&pattern);
-
-            Regex::new(&pattern)
-        }
+    Regex::new(&pattern)
 }
 
 #[cfg(test)]
@@ -252,7 +243,7 @@ mod tests {
 
         let filter = &result[0];
 
-        assert_eq!(filter.regex.as_str(), "C:\\\\Projects\\\\testprj\\\\([^\\\\]+\\\\)*foo");
+        assert_eq!(filter.regex.as_str(), "C:/Projects/testprj/([^/]+/)*foo");
         assert_eq!(filter.only_dir, false);
         assert_eq!(filter.negate, false);
     }
@@ -269,13 +260,13 @@ mod tests {
 
         let filter = &result[0];
 
-        assert_eq!(filter.regex.as_str(), "C:\\\\Projects\\\\testprj\\\\([^\\\\]+\\\\)*foo");
+        assert_eq!(filter.regex.as_str(), "C:/Projects/testprj/([^/]+/)*foo");
         assert_eq!(filter.only_dir, true);
         assert_eq!(filter.negate, false);
 
         let filter = &result[1];
 
-        assert_eq!(filter.regex.as_str(), "C:\\\\Projects\\\\testprj\\\\([^\\\\]+\\\\)*foo\\\\.*");
+        assert_eq!(filter.regex.as_str(), "C:/Projects/testprj/([^/]+/)*foo/.*");
         assert_eq!(filter.only_dir, false);
         assert_eq!(filter.negate, false);
     }
@@ -292,7 +283,7 @@ mod tests {
 
         let filter = &result[0];
 
-        assert_eq!(filter.regex.as_str(), "C:\\\\Projects\\\\testprj\\\\([^\\\\]+\\\\)*foo");
+        assert_eq!(filter.regex.as_str(), "C:/Projects/testprj/([^/]+/)*foo");
         assert_eq!(filter.only_dir, false);
         assert_eq!(filter.negate, true);
     }

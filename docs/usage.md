@@ -114,6 +114,7 @@ Joins, unions, and subselects are not supported (yet?).
 * `sha1`
 * `sha256`
 * `sha512`
+* `sha3`
 
 ### Functions
 
@@ -283,6 +284,7 @@ Duration is measured in seconds.
 | `sha1` | SHA-1 digest of a file|
 | `sha256` | SHA2-256 digest of a file |
 | `sha512` | SHA2-512 digest of a file |
+| `sha3` | SHA3-512 digest of a file |
 
     fselect path, sha256, 256 from /home/user/archive limit 5
     fselect path from /home/user/Download where sha1 like cb23ef45% 

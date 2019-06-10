@@ -1139,6 +1139,9 @@ impl Searcher {
             },
             Field::Sha512 => {
                 return Variant::from_string(&crate::util::get_sha512_file_hash(&entry));
+            },
+            Field::Sha3 => {
+                return Variant::from_string(&crate::util::get_sha3_512_file_hash(&entry));
             }
         };
 

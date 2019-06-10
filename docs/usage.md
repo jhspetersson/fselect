@@ -112,9 +112,9 @@ Joins, unions, and subselects are not supported (yet?).
 * `is_source`
 * `is_video`
 * `sha1`
-* `sha256`
-* `sha512`
-* `sha3`
+* `sha2_256` or `sha256`
+* `sha2_512` or `sha512`
+* `sha3_512` or `sha3`
 
 ### Functions
 
@@ -282,9 +282,9 @@ Duration is measured in seconds.
 | Column | Meaning |
 | --- | --- |
 | `sha1` | SHA-1 digest of a file|
-| `sha256` | SHA2-256 digest of a file |
-| `sha512` | SHA2-512 digest of a file |
-| `sha3` | SHA3-512 digest of a file |
+| `sha2_256` or `sha256` | SHA2-256 digest of a file |
+| `sha2_512` or `sha512` | SHA2-512 digest of a file |
+| `sha3_512` or `sha3` | SHA3-512 digest of a file |
 
     fselect path, sha256, 256 from /home/user/archive limit 5
     fselect path from /home/user/Download where sha1 like cb23ef45% 

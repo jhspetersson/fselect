@@ -394,6 +394,18 @@ pub fn get_sha512_file_hash(entry: &DirEntry) -> String {
     String::new()
 }
 
+pub fn get_sha3_512_file_hash(entry: &DirEntry) -> String {
+    if let Ok(mut file) = File::open(&entry.path()) {
+        let mut hasher = sha3::Sha3_512::new();
+        if io::copy(&mut file, &mut hasher).is_ok() {
+            let hash = hasher.result();
+            return format!("{:x}", hash);
+        }
+    }
+
+    String::new()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

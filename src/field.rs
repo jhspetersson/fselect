@@ -72,6 +72,7 @@ pub enum Field {
     Sha1,
     Sha256,
     Sha512,
+    Sha3,
 }
 
 impl FromStr for Field {
@@ -144,8 +145,9 @@ impl FromStr for Field {
             "is_source" => Ok(Field::IsSource),
             "is_video" => Ok(Field::IsVideo),
             "sha1" => Ok(Field::Sha1),
-            "sha256" => Ok(Field::Sha256),
-            "sha512" => Ok(Field::Sha512),
+            "sha2_256" | "sha256" => Ok(Field::Sha256),
+            "sha2_512" | "sha512" => Ok(Field::Sha512),
+            "sha3_512" | "sha3" => Ok(Field::Sha3),
             _ => {
                 let err = String::from("Unknown field ") + &field;
                 Err(err)

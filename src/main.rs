@@ -12,6 +12,7 @@ use std::env;
 use ansi_term::Colour::*;
 use atty::Stream;
 
+mod config;
 mod expr;
 mod field;
 mod fileinfo;
@@ -26,18 +27,34 @@ mod query;
 mod searcher;
 mod util;
 
+use crate::config::Config;
 use crate::parser::Parser;
 use crate::searcher::Searcher;
 use crate::util::error_message;
 
 fn main() {
+    let config = Config::new();
+
     let env_no_color = std::env::var("NO_COLOR").ok().eq(&Some("1".to_string()));
 
     #[cfg(not(windows))]
-    let no_color = env_no_color;
+    let no_color = env_no_color || config.no_color;
 
     #[cfg(windows)]
-    let no_color = env_no_color || ansi_term::enable_ansi_support().is_err();
+    let mut no_color = env_no_color || config.no_color;
+
+    #[cfg(windows)]
+    {
+        if !no_color {
+            let res = ansi_term::enable_ansi_support();
+            let win_init_ok = match res {
+                Ok(()) => true,
+                Err(0x203) => true,
+                _ => false
+            };
+            no_color = no_color || win_init_ok;
+        }
+    }
 
     if env::args().len() == 1 {
         short_usage_info(no_color);
@@ -69,6 +86,8 @@ fn main() {
         },
         Err(err) => error_message("query", &err)
     }
+
+    config.save();
 }
 
 fn short_usage_info(no_color: bool) {

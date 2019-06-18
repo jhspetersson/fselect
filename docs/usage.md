@@ -12,7 +12,7 @@ You write SQL-like query, that's it.
 But if you'll put one more `select` behind occasionally, that's not a problem.
 
 Next you put columns you are interested in. It could be file name or path, size, modification date, etc.
-See full list of possible columns. You can add columns with arbitrary text (put in quotes if it contains spaces). Few functions (aggregating and formatting) are there for your service. You can use arithmetic expressions when it makes sense.
+See full list of possible columns. You can add columns with arbitrary text (put in quotes if it contains spaces). A few functions (aggregating and formatting) are there for your service. You can use arithmetic expressions when it makes sense.
 
 Where to search? Specify with `from` keyword. You can list one or more directories separated with comma.
 If you leave the `from`, then current directory will be processed.
@@ -27,8 +27,8 @@ Limiting search results is possible with `limit`. Formatting options are support
 If you want to use operators containing `>` or `<`, 
 put the whole query into the double quotes. 
 This will protect query from the shell and output redirection.
-The same applies to queries with parentheses or *, ? and other special symbols
- that are supposed to be executed on Linux or Mac OS.
+The same applies to queries with parentheses or `*`, `?` and other special shell
+metacharacters.
 
 ### It's not a real SQL
 

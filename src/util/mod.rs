@@ -136,67 +136,74 @@ pub fn error_message(source: &str, description: &str) {
 }
 
 pub fn parse_filesize(s: &str) -> Option<u64> {
-    let string = s.to_string().to_ascii_lowercase();
+    let string = s.to_string().to_ascii_lowercase().replace(" ", "");
 
     if string.ends_with("k") {
-        match &string[..(s.len() - 1)].parse::<u64>() {
-            Ok(size) => return Some(size * 1024),
+        match &string[..(s.len() - 2)].parse::<f64>() {
+            Ok(size) => return Some((*size * 1024.0) as u64),
             _ => return None
         }
     }
 
     if string.ends_with("kb") {
-        match &string[..(s.len() - 2)].parse::<u64>() {
-            Ok(size) => return Some(size * 1024),
+        match &string[..(s.len() - 3)].parse::<f64>() {
+            Ok(size) => return Some((*size * 1024.0) as u64),
             _ => return None
         }
     }
 
     if string.ends_with("kib") {
-        match &string[..(s.len() - 3)].parse::<u64>() {
-            Ok(size) => return Some(size * 1024),
+        match &string[..(s.len() - 4)].parse::<f64>() {
+            Ok(size) => return Some((*size * 1024.0) as u64),
             _ => return None
         }
     }
 
     if string.ends_with("m") {
-        match &string[..(s.len() - 1)].parse::<u64>() {
-            Ok(size) => return Some(size * 1024 * 1024),
+        match &string[..(s.len() - 2)].parse::<f64>() {
+            Ok(size) => return Some((*size * 1024.0 * 1024.0) as u64),
             _ => return None
         }
     }
 
     if string.ends_with("mb") {
-        match &string[..(s.len() - 2)].parse::<u64>() {
-            Ok(size) => return Some(size * 1024 * 1024),
+        match &string[..(s.len() - 3)].parse::<f64>() {
+            Ok(size) => return Some((*size * 1024.0 * 1024.0) as u64),
             _ => return None
         }
     }
 
     if string.ends_with("mib") {
-        match &string[..(s.len() - 3)].parse::<u64>() {
-            Ok(size) => return Some(size * 1024 * 1024),
+        match &string[..(s.len() - 4)].parse::<f64>() {
+            Ok(size) => return Some((*size * 1024.0 * 1024.0) as u64),
             _ => return None
         }
     }
 
     if string.ends_with("g") {
-        match &string[..(s.len() - 1)].parse::<u64>() {
-            Ok(size) => return Some(size * 1024 * 1024 * 1024),
+        match &string[..(s.len() - 2)].parse::<f64>() {
+            Ok(size) => return Some((*size * 1024.0 * 1024.0 * 1024.0) as u64),
             _ => return None
         }
     }
 
     if string.ends_with("gb") {
-        match &string[..(s.len() - 2)].parse::<u64>() {
-            Ok(size) => return Some(size * 1024 * 1024 * 1024),
+        match &string[..(s.len() - 3)].parse::<f64>() {
+            Ok(size) => return Some((*size * 1024.0 * 1024.0 * 1024.0) as u64),
             _ => return None
         }
     }
 
     if string.ends_with("gib") {
-        match &string[..(s.len() - 3)].parse::<u64>() {
-            Ok(size) => return Some(size * 1024 * 1024 * 1024),
+        match &string[..(s.len() - 4)].parse::<f64>() {
+            Ok(size) => return Some((*size * 1024.0 * 1024.0 * 1024.0) as u64),
+            _ => return None
+        }
+    }
+
+    if string.ends_with("b") {
+        match &string[..(s.len() - 2)].parse::<u64>() {
+            Ok(size) => return Some(size * 1),
             _ => return None
         }
     }

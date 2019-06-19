@@ -1,0 +1,202 @@
+.TH FSELECT 1
+.SH NAME
+fselect \- find files with SQL-like queries
+.SH SYNOPSIS
+.B fselect
+.B COLUMN
+[, COLUMN ...]
+[ from ROOT [, ROOT...] ]
+[where EXPR]
+[order by COLUMNS]
+[limit N]
+[into FORMAT]
+.SH DESCRIPTION
+.B fselect
+is a simple utility with a SQL-like query for finding files.
+.PP
+You write SQL-like query, that's it.
+.PP
+fselect command itself is like a first keyword (select, i.e., file select).
+But if you'll put one more select behind occasionally, that's not a problem.
+.PP
+Next you put columns you are interested in.
+It could be file name or path, size, modification date, etc.
+See full list of possible columns.
+You can add columns with arbitrary text (put in quotes if it contains spaces).
+A few functions (aggregating and formatting) are there for your service.
+You can use arithmetic expressions when it makes sense.
+.PP
+Where to search? Specify with
+.B from
+keyword. You can list one or more directories separated with comma.
+If you leave the from, then current directory will be processed.
+.PP
+What to search? Use
+.B where
+with any number of conditions.
+.PP
+Order results like in real SQL with
+.B order by.
+All columns are supported for ordering by, as well as asc/desc parameters and positional numeric shortcuts.
+.PP
+Limiting search results is possible with limit. Formatting options are supported with
+.B into
+keyword.
+.PP
+If you want to use operators containing \> or \<, put the whole query into double quotes.
+This will protect query from the shell and output redirection.
+The same applies to queries with parentheses or *, ? and other special symbols that are shell metacharacters
+.RE
+.SH COLUMNS AND FIELDS
+.IP \(bu
+name
+.IP \(bu
+path
+.IP \(bu
+abspath
+.IP \(bu
+size
+.IP \(bu
+hsize or fsize
+.IP \(bu
+uid
+.IP \(bu
+gid
+.IP \(bu
+user
+.IP \(bu
+group
+.IP \(bu
+created
+.IP \(bu
+accessed
+.IP \(bu
+modified
+.IP \(bu
+is_dir
+.IP \(bu
+is_file
+.IP \(bu
+is_symlink
+.IP \(bu
+is_pipe or is_fifo
+.IP \(bu
+is_character or is_char
+.IP \(bu
+is_block
+.IP \(bu
+is_socket
+.IP \(bu
+mode
+.IP \(bu
+user_read
+.IP \(bu
+user_write
+.IP \(bu
+user_exec
+.IP \(bu
+group_read
+.IP \(bu
+group_write
+.IP \(bu
+group_exec
+.IP \(bu
+other_read
+.IP \(bu
+other_write
+.IP \(bu
+other_exec
+.IP \(bu
+suid
+.IP \(bu
+sgid
+.IP \(bu
+is_hidden
+.IP \(bu
+has_xattrs
+.IP \(bu
+is_shebang
+.IP \(bu
+width
+.IP \(bu
+height
+.IP \(bu
+duration
+.IP \(bu
+mp3_bitrate or bitrate
+.IP \(bu
+mp3_freq or freq
+.IP \(bu
+mp3_title or title
+.IP \(bu
+mp3_artist or artist
+.IP \(bu
+mp3_album or album
+.IP \(bu
+mp3_genre or genre
+.IP \(bu
+mp3_year
+.IP \(bu
+exif_datetime
+.IP \(bu
+exif_altitude or exif_alt
+.IP \(bu
+exif_latitude or exif_lat
+.IP \(bu
+exif_longitude or exif_lng or exif_lon
+.IP \(bu
+exif_make
+.IP \(bu
+exif_model
+.IP \(bu
+exif_software
+.IP \(bu
+exif_version
+.IP \(bu
+mime
+.IP \(bu
+is_binary
+.IP \(bu
+is_text
+.IP \(bu
+is_archive
+.IP \(bu
+is_audio
+.IP \(bu
+is_book
+.IP \(bu
+is_doc
+.IP \(bu
+is_image
+.IP \(bu
+is_source
+.IP \(bu
+is_video
+.IP \(bu
+sha1
+.IP \(bu
+sha2_256 or sha256
+.IP \(bu
+sha2_512 or sha512
+.IP \(bu
+sha3_512 or sha3
+.RE
+.SH ENVIRONMENT
+.TP
+.B LS_COLORS
+Determines how to colorize search results, see
+.BR dircolors (1) .
+.SH EXIT STATUS
+The
+.B fselect
+utility exists with status 0 as long as the provided query parses correctly.
+.SH EXAMPLES
+.TP
+.RI "Find files and directories that match the pattern '" needle "':"
+$ fselect name WHERE name =~ "needle"
+.TP
+.RI "Start a search in a given directory (" /var/log "):"
+$ fselect name FROM /var/log
+.SH SEE ALSO
+.BR find (1)
+.BR fd (1)

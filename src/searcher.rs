@@ -6,6 +6,7 @@ use std::fs::symlink_metadata;
 use std::path::Path;
 use std::path::PathBuf;
 use std::io;
+use std::io::Write;
 use std::rc::Rc;
 
 use chrono::{DateTime, Local};
@@ -41,6 +42,7 @@ use crate::operators::Op;
 use crate::query::Query;
 use crate::query::OutputFormat;
 use crate::util::*;
+use std::io::ErrorKind;
 
 pub struct Searcher {
     query: Query,
@@ -131,12 +133,20 @@ impl Searcher {
         self.query.fields.iter().any(|ref f| f.has_aggregate_function())
     }
 
-    fn print_results_start(&self) {
-        match self.query.output_format {
-            OutputFormat::Json => print!("["),
-            OutputFormat::Html => print!("<html><body><table>"),
-            _ => ()
+    fn print_results_start(&self) -> bool {
+        let res = match self.query.output_format {
+            OutputFormat::Json => Some(write!(std::io::stdout(), "[")),
+            OutputFormat::Html => Some(write!(std::io::stdout(), "<html><body><table>")),
+            _ => None
+        };
+
+        if let Some(Err(e)) = res {
+            if e.kind() == ErrorKind::BrokenPipe {
+                return false;
+            }
         }
+
+        true
     }
 
     fn format_results_item(&self, record: String,
@@ -220,14 +230,17 @@ impl Searcher {
 
     fn print_results_end(&self) {
         match self.query.output_format {
-            OutputFormat::Json => print!("]"),
-            OutputFormat::Html => print!("</table></body></html>"),
-            _ => ()
+            OutputFormat::Json => { let _ = write!(std::io::stdout(), "]"); },
+            OutputFormat::Html => { let _ = write!(std::io::stdout(), "</table></body></html>"); },
+            _ => { }
         }
     }
 
     pub fn list_search_results(&mut self) -> io::Result<()> {
-        self.print_results_start();
+        let started = self.print_results_start();
+        if !started {
+            return Ok(());
+        }
 
         for root in &self.query.clone().roots {
             self.current_follow_symlinks = root.symlinks;
@@ -274,7 +287,12 @@ impl Searcher {
 
             output_value = self.format_results_row_end(output_value, &records, &file_map);
 
-            print!("{}", output_value);
+            let printed = write!(std::io::stdout(), "{}", output_value);
+            if let Err(e) = printed {
+                if e.kind() == ErrorKind::BrokenPipe {
+                    return Ok(());
+                }
+            }
         } else if self.is_buffered() {
             let mut first = true;
             for piece in self.output_buffer.values() {
@@ -282,10 +300,20 @@ impl Searcher {
                     if first {
                         first = false;
                     } else {
-                        print!(",");
+                        let printed = write!(std::io::stdout(), ",");
+                        if let Err(e) = printed {
+                            if e.kind() == ErrorKind::BrokenPipe {
+                                return Ok(());
+                            }
+                        }
                     }
                 }
-                print!("{}", piece);
+                let printed = write!(std::io::stdout(), "{}", piece);
+                if let Err(e) = printed {
+                    if e.kind() == ErrorKind::BrokenPipe {
+                        return Ok(());
+                    }
+                }
             }
         }
 
@@ -447,7 +475,10 @@ impl Searcher {
 
                                         if pass_gitignore && pass_hgignore {
                                             if min_depth == 0 || depth >= min_depth {
-                                                self.check_file(&entry, &None);
+                                                let checked = self.check_file(&entry, &None);
+                                                if !checked {
+                                                    return Ok(());
+                                                }
 
                                                 if search_archives && is_zip_archive(&path.to_string_lossy()) {
                                                     if let Ok(file) = fs::File::open(&path) {
@@ -459,7 +490,10 @@ impl Searcher {
 
                                                                 if let Ok(afile) = archive.by_index(i) {
                                                                     let file_info = to_file_info(&afile);
-                                                                    self.check_file(&entry, &Some(file_info));
+                                                                    let checked = self.check_file(&entry, &Some(file_info));
+                                                                    if !checked {
+                                                                        return Ok(());
+                                                                    }
                                                                 }
                                                             }
                                                         }
@@ -1150,13 +1184,13 @@ impl Searcher {
 
     fn check_file(&mut self,
                   entry: &DirEntry,
-                  file_info: &Option<FileInfo>) {
+                  file_info: &Option<FileInfo>) -> bool {
         self.clear_file_data();
 
         if let Some(ref expr) = self.query.expr.clone() {
             let result = self.conforms(entry, file_info, expr);
             if !result {
-                return
+                return true;
             }
         }
 
@@ -1202,8 +1236,15 @@ impl Searcher {
                 self.raw_output_buffer.push(file_map);
             }
         } else {
-            print!("{}", output_value);
+            let printed = write!(std::io::stdout(), "{}", output_value);
+            if let Err(e) = printed {
+                if e.kind() == ErrorKind::BrokenPipe {
+                    return false;
+                }
+            }
         }
+
+        true
     }
 
     fn colorize(&mut self, value: &str) -> String {

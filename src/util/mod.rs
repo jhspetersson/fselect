@@ -227,7 +227,7 @@ pub fn parse_unix_filename(s: &str) -> &str {
     }
 }
 
-pub fn has_extension(file_name: &str, extensions: &[&str]) -> bool {
+pub fn has_extension(file_name: &str, extensions: &Vec<String>) -> bool {
     let s = file_name.to_ascii_lowercase();
 
     for ext in extensions {
@@ -281,7 +281,7 @@ pub fn get_metadata(entry: &DirEntry, follow_symlinks: bool) -> Option<Metadata>
 }
 
 fn is_image_dim_readable(file_name: &str) -> bool {
-    let extensions = [".bmp", ".gif", ".jpeg", ".jpg", ".png", ".psb", ".psd", ".tiff", ".webp"];
+    let extensions = vec![String::from(".bmp"), String::from(".gif"), String::from(".jpeg"), String::from(".jpg"), String::from(".png"), String::from(".psb"), String::from(".psd"), String::from(".tiff"), String::from(".webp")];
 
     has_extension(file_name, &extensions)
 }

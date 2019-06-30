@@ -81,7 +81,7 @@ fn main() {
             let is_terminal = atty::is(Stream::Stdout);
             let use_colors = !no_color && is_terminal;
 
-            let mut searcher = Searcher::new(query, use_colors);
+            let mut searcher = Searcher::new(query, config.clone(), use_colors);
             searcher.list_search_results().unwrap()
         },
         Err(err) => error_message("query", &err)

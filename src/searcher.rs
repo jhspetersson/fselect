@@ -23,6 +23,7 @@ use users::{Groups, Users, UsersCache};
 use xattr::FileExt;
 use zip;
 
+use crate::config::Config;
 use crate::expr::Expr;
 use crate::field::Field;
 use crate::fileinfo::FileInfo;
@@ -46,6 +47,7 @@ use std::io::ErrorKind;
 
 pub struct Searcher {
     query: Query,
+    config : Config,
     use_colors: bool,
     #[cfg(all(unix, feature = "users"))]
     user_cache: UsersCache,
@@ -74,11 +76,12 @@ pub struct Searcher {
 }
 
 impl Searcher {
-    pub fn new(query: Query, use_colors: bool) -> Self {
+    pub fn new(query: Query, config: Config, use_colors: bool) -> Self {
         let limit = query.limit;
 
         Searcher {
             query,
+            config,
             use_colors,
             #[cfg(all(unix, feature = "users"))]
             user_cache: UsersCache::new(),
@@ -480,7 +483,7 @@ impl Searcher {
                                                     return Ok(());
                                                 }
 
-                                                if search_archives && is_zip_archive(&path.to_string_lossy()) {
+                                                if search_archives && self.is_zip_archive(&path.to_string_lossy()) {
                                                     if let Ok(file) = fs::File::open(&path) {
                                                         if let Ok(mut archive) = zip::ZipArchive::new(file) {
                                                             for i in 0..archive.len() {
@@ -1111,56 +1114,56 @@ impl Searcher {
             },
             Field::IsArchive => {
                 let is_archive = match file_info {
-                    Some(file_info) => is_archive(&file_info.name),
-                    None => is_archive(&entry.file_name().to_string_lossy())
+                    Some(file_info) => self.is_archive(&file_info.name),
+                    None => self.is_archive(&entry.file_name().to_string_lossy())
                 };
 
                 return Variant::from_bool(is_archive);
             },
             Field::IsAudio => {
                 let is_audio = match file_info {
-                    Some(file_info) => is_audio(&file_info.name),
-                    None => is_audio(&entry.file_name().to_string_lossy())
+                    Some(file_info) => self.is_audio(&file_info.name),
+                    None => self.is_audio(&entry.file_name().to_string_lossy())
                 };
 
                 return Variant::from_bool(is_audio);
             },
             Field::IsBook => {
                 let is_book = match file_info {
-                    Some(file_info) => is_book(&file_info.name),
-                    None => is_book(&entry.file_name().to_string_lossy())
+                    Some(file_info) => self.is_book(&file_info.name),
+                    None => self.is_book(&entry.file_name().to_string_lossy())
                 };
 
                 return Variant::from_bool(is_book);
             },
             Field::IsDoc => {
                 let is_doc = match file_info {
-                    Some(file_info) => is_doc(&file_info.name),
-                    None => is_doc(&entry.file_name().to_string_lossy())
+                    Some(file_info) => self.is_doc(&file_info.name),
+                    None => self.is_doc(&entry.file_name().to_string_lossy())
                 };
 
                 return Variant::from_bool(is_doc);
             },
             Field::IsImage => {
                 let is_image = match file_info {
-                    Some(file_info) => is_image(&file_info.name),
-                    None => is_image(&entry.file_name().to_string_lossy())
+                    Some(file_info) => self.is_image(&file_info.name),
+                    None => self.is_image(&entry.file_name().to_string_lossy())
                 };
 
                 return Variant::from_bool(is_image);
             },
             Field::IsSource => {
                 let is_source = match file_info {
-                    Some(file_info) => is_source(&file_info.name),
-                    None => is_source(&entry.file_name().to_string_lossy())
+                    Some(file_info) => self.is_source(&file_info.name),
+                    None => self.is_source(&entry.file_name().to_string_lossy())
                 };
 
                 return Variant::from_bool(is_source);
             },
             Field::IsVideo => {
                 let is_video = match file_info {
-                    Some(file_info) => is_video(&file_info.name),
-                    None => is_video(&entry.file_name().to_string_lossy())
+                    Some(file_info) => self.is_video(&file_info.name),
+                    None => self.is_video(&entry.file_name().to_string_lossy())
                 };
 
                 return Variant::from_bool(is_video);
@@ -1518,25 +1521,36 @@ impl Searcher {
 
         result
     }
-}
 
-macro_rules! def_extension_queries {
-    ($($name:ident $extensions:expr);*) => {
-        $(
-            fn $name(file_name: &str) -> bool {
-                has_extension(file_name, &$extensions)
-            }
-        )*
+    fn is_zip_archive(&self, file_name: &str) -> bool {
+        has_extension(file_name, &self.config.is_zip_archive)
     }
-}
 
-def_extension_queries! {
-    is_zip_archive          [".zip", ".jar", ".war", ".ear"]
-;   is_archive              [".7z", ".bz2", ".bzip2", ".gz", ".gzip", ".rar", ".tar", ".xz", ".zip"]
-;   is_audio                [".aac", ".aiff", ".amr", ".flac", ".gsm", ".m4a", ".m4b", ".m4p", ".mp3", ".ogg", ".wav", ".wma"]
-;   is_book                 [".azw3", ".chm", ".epub", ".fb2", ".mobi", ".pdf"]
-;   is_doc                  [".accdb", ".doc", ".docm", ".docx", ".dot", ".dotm", ".dotx", ".mdb", ".ods", ".odt", ".pdf", ".potm", ".potx", ".ppt", ".pptm", ".pptx", ".rtf", ".xlm", ".xls", ".xlsm", ".xlsx", ".xlt", ".xltm", ".xltx", ".xps"]
-;   is_image                [".bmp", ".gif", ".jpeg", ".jpg", ".png", ".psb", ".psd", ".tiff", ".webp"]
-;   is_source               [".asm", ".bas", ".c", ".cc", ".ceylon", ".clj", ".coffee", ".cpp", ".cs", ".dart", ".elm", ".erl", ".go", ".groovy", ".h", ".hh", ".hpp", ".java", ".js", ".jsp", ".kt", ".kts", ".lua", ".nim", ".pas", ".php", ".pl", ".pm", ".py", ".rb", ".rs", ".scala", ".swift", ".tcl", ".vala", ".vb"]
-;   is_video                [".3gp", ".avi", ".flv", ".m4p", ".m4v", ".mkv", ".mov", ".mp4", ".mpeg", ".mpg", ".webm", ".wmv"]
+    fn is_archive(&self, file_name: &str) -> bool {
+        has_extension(file_name, &self.config.is_archive)
+    }
+
+    fn is_audio(&self, file_name: &str) -> bool {
+        has_extension(file_name, &self.config.is_audio)
+    }
+
+    fn is_book(&self, file_name: &str) -> bool {
+        has_extension(file_name, &self.config.is_book)
+    }
+
+    fn is_doc(&self, file_name: &str) -> bool {
+        has_extension(file_name, &self.config.is_doc)
+    }
+
+    fn is_image(&self, file_name: &str) -> bool {
+        has_extension(file_name, &self.config.is_image)
+    }
+
+    fn is_source(&self, file_name: &str) -> bool {
+        has_extension(file_name, &self.config.is_source)
+    }
+
+    fn is_video(&self, file_name: &str) -> bool {
+        has_extension(file_name, &self.config.is_video)
+    }
 }

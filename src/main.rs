@@ -66,9 +66,15 @@ fn main() {
     args.remove(0);
 
     let first_arg = args[0].to_ascii_lowercase();
+
     if first_arg.contains("help") || first_arg.contains("-h") || first_arg.contains("/?") {
         usage_info(no_color);
         return;
+    }
+
+    if first_arg.contains("nocolor") || first_arg.contains("no-color") {
+        args.remove(0);
+        no_color = true;
     }
 
     let query = args.join(" ");

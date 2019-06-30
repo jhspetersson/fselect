@@ -49,10 +49,10 @@ fn main() {
             let res = ansi_term::enable_ansi_support();
             let win_init_ok = match res {
                 Ok(()) => true,
-                Err(0x203) => true,
+                Err(203) => true,
                 _ => false
             };
-            no_color = no_color || win_init_ok;
+            no_color = !win_init_ok;
         }
     }
 

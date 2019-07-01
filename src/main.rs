@@ -36,11 +36,6 @@ fn main() {
     let config = Config::new();
 
     let env_no_color = std::env::var("NO_COLOR").ok().eq(&Some("1".to_string()));
-
-    #[cfg(not(windows))]
-    let no_color = env_no_color || config.no_color;
-
-    #[cfg(windows)]
     let mut no_color = env_no_color || config.no_color;
 
     #[cfg(windows)]

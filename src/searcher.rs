@@ -65,6 +65,9 @@ pub struct Searcher {
     file_metadata: Option<Metadata>,
     file_metadata_set: bool,
 
+    file_line_count: Option<usize>,
+    file_line_count_set: bool,
+
     file_dimensions: Option<(usize, usize)>,
     file_dimensions_set: bool,
 
@@ -99,6 +102,9 @@ impl Searcher {
             file_metadata: None,
             file_metadata_set: false,
 
+            file_line_count: None,
+            file_line_count_set: false,
+
             file_dimensions: None,
             file_dimensions_set: false,
 
@@ -113,6 +119,9 @@ impl Searcher {
     fn clear_file_data(&mut self) {
         self.file_metadata_set = false;
         self.file_metadata = None;
+
+        self.file_line_count = None;
+        self.file_line_count_set = false;
 
         self.file_dimensions_set = false;
         self.file_dimensions = None;
@@ -618,6 +627,13 @@ impl Searcher {
         }
     }
 
+    fn update_file_line_count(&mut self, entry: &DirEntry) {
+        if !self.file_line_count_set {
+            self.file_line_count_set = true;
+            self.file_line_count = crate::util::get_line_count(entry);
+        }
+    }
+
     fn update_file_mp3_metadata(&mut self, entry: &DirEntry) {
         if !self.file_mp3_metadata_set {
             self.file_mp3_metadata_set = true;
@@ -1077,6 +1093,13 @@ impl Searcher {
                     if let Some(exif_value) = exif_info.get("ExifVersion") {
                         return Variant::from_string(&exif_value);
                     }
+                }
+            },
+            Field::LineCount => {
+                self.update_file_line_count(entry);
+
+                if let Some(line_count) = self.file_line_count {
+                    return Variant::from_int(line_count as i64);
                 }
             },
             Field::Mime => {

@@ -14,7 +14,7 @@ use std::fs::File;
 use std::fs::Metadata;
 use std::fs::symlink_metadata;
 use std::io;
-use std::io::BufReader;
+use std::io::{BufReader, BufRead};
 use std::io::Read;
 use std::path::Path;
 use std::path::PathBuf;
@@ -363,6 +363,34 @@ pub fn is_hidden(file_name: &str, metadata: &Option<Metadata>, archive_mode: boo
         {
             false
         }
+}
+
+pub fn get_line_count(entry: &DirEntry) -> Option<usize> {
+    if let Ok(file) = File::open(&entry.path()) {
+        let mut reader = BufReader::with_capacity(1024 * 32, file);
+        let mut count = 0;
+
+        loop {
+            let len = {
+                if let Ok(buf) = reader.fill_buf() {
+                    if buf.is_empty() {
+                        break;
+                    }
+
+                    count += bytecount::count(&buf, b'\n');
+                    buf.len()
+                } else {
+                    return None;
+                }
+            };
+
+            reader.consume(len);
+        }
+
+        return Some(count);
+    }
+
+    None
 }
 
 pub fn get_sha1_file_hash(entry: &DirEntry) -> String {

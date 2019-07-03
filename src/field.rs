@@ -60,6 +60,7 @@ pub enum Field {
     ExifSoftware,
     ExifVersion,
     Mime,
+    LineCount,
     IsBinary,
     IsText,
     IsArchive,
@@ -119,6 +120,7 @@ impl FromStr for Field {
             "width" => Ok(Field::Width),
             "height" => Ok(Field::Height),
             "mime" => Ok(Field::Mime),
+            "line_count" => Ok(Field::LineCount),
             "duration" => Ok(Field::Duration),
             "mp3_bitrate" | "bitrate" => Ok(Field::Bitrate),
             "mp3_freq" | "freq" => Ok(Field::Freq),
@@ -176,6 +178,7 @@ impl Field {
             Field::Size | Field::FormattedSize
             | Field::Uid | Field::Gid
             | Field::Width | Field::Height
+            | Field::LineCount
             | Field::Duration
             | Field::Bitrate | Field::Freq | Field::Year => true,
             _ => false

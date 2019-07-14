@@ -62,7 +62,7 @@ fn main() {
 
     let first_arg = args[0].to_ascii_lowercase();
 
-    if first_arg.contains("help") || first_arg.contains("-h") || first_arg.contains("/?") {
+    if first_arg.contains("help") || first_arg.contains("-h") || first_arg.contains("/?") || first_arg.contains("/h") {
         usage_info(no_color);
         return;
     }
@@ -111,7 +111,7 @@ fn short_usage_info(no_color: bool) {
     }
 
     println!();
-    println!("Usage: fselect COLUMN[, COLUMN...] [from PATH[, PATH...]] [where EXPR] [order by COLUMN (asc|desc), ...] [limit N] [into FORMAT]");
+    println!("Usage: fselect [ARGS] COLUMN[, COLUMN...] [from PATH[, PATH...]] [where EXPR] [order by COLUMN (asc|desc), ...] [limit N] [into FORMAT]");
 }
 
 fn help_hint() {
@@ -180,6 +180,7 @@ Column Options:
     mime                            Returns MIME type of the file
     is_binary                       Returns a boolean signifying whether the file has binary contents
     is_text                         Returns a boolean signifying whether the file has text contents
+    line_count                      Returns a number of lines in a text file
 
     exif_datetime                   Returns date and time of taken photo
     exif_altitude | exif_alt        Returns GPS altitude of taken photo

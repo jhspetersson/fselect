@@ -13,9 +13,8 @@ While it doesn't tend to fully replace traditional `find` and `ls`, **fselect** 
 * aggregate, date, and other functions
 * search within archives
 * `.gitignore` and `.hgignore` support (experimental)
-* search by width and height of images
+* search by width and height of images, EXIF metadata
 * search by MP3 info
-* search by EXIF metadata
 * search by extended file attributes
 * search by file hashes
 * search by MIME type
@@ -54,11 +53,11 @@ A statically precompiled [binary](https://github.com/jhspetersson/fselect/releas
 
 ### Usage
 
-    fselect COLUMN[, COLUMN...] [from ROOT[, ROOT...]] [where EXPR] [order by COLUMNS] [limit N] [into FORMAT]
+    fselect [ARGS] COLUMN[, COLUMN...] [from ROOT[, ROOT...]] [where EXPR] [order by COLUMNS] [limit N] [into FORMAT]
 
 ### Documentation
 
-[More detailed description. Look examples first.](docs/usage.md)
+[More detailed description. Look at examples first.](docs/usage.md)
 
 ### Examples
 

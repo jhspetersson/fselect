@@ -4,7 +4,7 @@ Find files with SQL-like queries
 
 ### Basic usage
 
-    fselect COLUMN[, COLUMN...] [from ROOT[, ROOT...]] [where EXPR] [order by COLUMNS] [limit N] [into FORMAT]
+    fselect [ARGS] COLUMN[, COLUMN...] [from ROOT[, ROOT...]] [where EXPR] [order by COLUMNS] [limit N] [into FORMAT]
 
 You write SQL-like query, that's it.
 
@@ -104,6 +104,7 @@ Joins, unions, and subselects are not supported (yet?).
 * `mime`
 * `is_binary`
 * `is_text`
+* `line_count`
 * `is_archive`
 * `is_audio`
 * `is_book`
@@ -248,6 +249,8 @@ or even possible at all to detect correct file type.
 Other fields listed below **do NOT** use MIME detection.
 Assumptions are being made based on file extension.
 
+The lists below could be edited with the configuration file. 
+
 | Search field | Extensions |
 | --- | --- |
 | `is_archive` | .7z, .bz2, .bzip2, .gz, .gzip, .rar, .tar, .xz, .zip |
@@ -306,3 +309,28 @@ Duration is measured in seconds.
     fselect size, path from /home/user limit 5 into csv
     fselect size, path from /home/user limit 5 into html
     fselect path from /home/user into list | xargs -0 grep foobar
+
+### Configuration file
+
+**fselect** tries to create a new configuration file if one doesn't exists.
+
+Usual location on Linux:
+
+    /home/user_name/.config/fselect/config.toml
+    
+On Windows:
+    
+    C:\Users\user_name\AppData\Roaming\jhspetersson\fselect\config.toml
+    
+Fresh config is filled with defaults, feel free to update it.
+
+### Command-line arguments
+
+| Argument | Meaning |
+| --- | --- |
+| `--nocolor` or `--no-color` or `/nocolor` | Disable colors |
+| `--help` or `-h` or `/?` or `/h` | Show help and exit |
+
+### Environment variables
+
+**fselect** respects `NO_COLOR` [environment variable](https://no-color.org).

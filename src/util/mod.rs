@@ -137,72 +137,73 @@ pub fn error_message(source: &str, description: &str) {
 
 pub fn parse_filesize(s: &str) -> Option<u64> {
     let string = s.to_string().to_ascii_lowercase().replace(" ", "");
+    let length = string.len();
 
-    if string.ends_with("k") {
-        match &string[..(s.len() - 2)].parse::<f64>() {
+    if length > 1 && string.ends_with("k") {
+        match &string[..(length - 1)].parse::<f64>() {
             Ok(size) => return Some((*size * 1024.0) as u64),
             _ => return None
         }
     }
 
-    if string.ends_with("kb") {
-        match &string[..(s.len() - 3)].parse::<f64>() {
+    if length > 2 && string.ends_with("kb") {
+        match &string[..(length - 2)].parse::<f64>() {
             Ok(size) => return Some((*size * 1024.0) as u64),
             _ => return None
         }
     }
 
-    if string.ends_with("kib") {
-        match &string[..(s.len() - 4)].parse::<f64>() {
+    if length > 3 && string.ends_with("kib") {
+        match &string[..(length - 3)].parse::<f64>() {
             Ok(size) => return Some((*size * 1024.0) as u64),
             _ => return None
         }
     }
 
-    if string.ends_with("m") {
-        match &string[..(s.len() - 2)].parse::<f64>() {
+    if length > 1 && string.ends_with("m") {
+        match &string[..(length - 1)].parse::<f64>() {
             Ok(size) => return Some((*size * 1024.0 * 1024.0) as u64),
             _ => return None
         }
     }
 
-    if string.ends_with("mb") {
-        match &string[..(s.len() - 3)].parse::<f64>() {
+    if length > 2 && string.ends_with("mb") {
+        match &string[..(length - 2)].parse::<f64>() {
             Ok(size) => return Some((*size * 1024.0 * 1024.0) as u64),
             _ => return None
         }
     }
 
-    if string.ends_with("mib") {
-        match &string[..(s.len() - 4)].parse::<f64>() {
+    if length > 3 && string.ends_with("mib") {
+        match &string[..(length - 3)].parse::<f64>() {
             Ok(size) => return Some((*size * 1024.0 * 1024.0) as u64),
             _ => return None
         }
     }
 
-    if string.ends_with("g") {
-        match &string[..(s.len() - 2)].parse::<f64>() {
+    if length > 1 && string.ends_with("g") {
+        match &string[..(length - 1)].parse::<f64>() {
             Ok(size) => return Some((*size * 1024.0 * 1024.0 * 1024.0) as u64),
             _ => return None
         }
     }
 
-    if string.ends_with("gb") {
-        match &string[..(s.len() - 3)].parse::<f64>() {
+    if length > 2 && string.ends_with("gb") {
+        match &string[..(length - 2)].parse::<f64>() {
             Ok(size) => return Some((*size * 1024.0 * 1024.0 * 1024.0) as u64),
             _ => return None
         }
     }
 
-    if string.ends_with("gib") {
-        match &string[..(s.len() - 4)].parse::<f64>() {
+    if length > 3 && string.ends_with("gib") {
+        match &string[..(length - 3)].parse::<f64>() {
             Ok(size) => return Some((*size * 1024.0 * 1024.0 * 1024.0) as u64),
             _ => return None
         }
     }
 
-    if string.ends_with("b") {
-        match &string[..(s.len() - 2)].parse::<u64>() {
+    if length > 1 && string.ends_with("b") {
+        match &string[..(length - 1)].parse::<u64>() {
             Ok(size) => return Some(size * 1),
             _ => return None
         }
@@ -505,5 +506,47 @@ mod tests {
         let c2 = Criteria::new(fields.clone(), vec![1, 3, 1], orderings.clone());
 
         assert_eq!(c1.cmp(&c2), Ordering::Greater);
+    }
+
+    #[test]
+    fn test_parse_filesize() {
+        let file_size = "abc";
+        assert_eq!(parse_filesize(file_size), None);
+
+        let file_size = "b";
+        assert_eq!(parse_filesize(file_size), None);
+
+        let file_size = "kb";
+        assert_eq!(parse_filesize(file_size), None);
+
+        let file_size = "gib";
+        assert_eq!(parse_filesize(file_size), None);
+
+        let file_size = " gibb";
+        assert_eq!(parse_filesize(file_size), None);
+
+        let file_size = "b123";
+        assert_eq!(parse_filesize(file_size), None);
+
+        let file_size = "123";
+        assert_eq!(parse_filesize(file_size), Some(123));
+
+        let file_size = "123b";
+        assert_eq!(parse_filesize(file_size), Some(123));
+
+        let file_size = "123 b";
+        assert_eq!(parse_filesize(file_size), Some(123));
+
+        let file_size = "1kb";
+        assert_eq!(parse_filesize(file_size), Some(1024));
+
+        let file_size = "1 kb";
+        assert_eq!(parse_filesize(file_size), Some(1024));
+
+        let file_size = "1kib";
+        assert_eq!(parse_filesize(file_size), Some(1024));
+
+        let file_size = "1 kib";
+        assert_eq!(parse_filesize(file_size), Some(1024));
     }
 }

@@ -1500,13 +1500,14 @@ impl Searcher {
                 },
                 VariantType::Int => {
                     let val = value.to_int();
+                    let int_value = field_value.to_int();
                     match op {
-                        Op::Eq | Op::Eeq => field_value.to_int() == val,
-                        Op::Ne | Op::Ene => field_value.to_int() != val,
-                        Op::Gt => field_value.to_int() > val,
-                        Op::Gte => field_value.to_int() >= val,
-                        Op::Lt => field_value.to_int() < val,
-                        Op::Lte => field_value.to_int() <= val,
+                        Op::Eq | Op::Eeq => int_value == val,
+                        Op::Ne | Op::Ene => int_value != val,
+                        Op::Gt => int_value > val,
+                        Op::Gte => int_value >= val,
+                        Op::Lt => int_value < val,
+                        Op::Lte => int_value <= val,
                         _ => false
                     }
                 },

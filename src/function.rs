@@ -33,7 +33,7 @@ pub struct Variant {
     value_type: VariantType,
     empty: bool,
     string_value: String,
-    int_value: i64,
+    int_value: Option<i64>,
     bool_value: bool,
     dt_from: Option<DateTime<Local>>,
     dt_to: Option<DateTime<Local>>,
@@ -45,7 +45,7 @@ impl Variant {
             value_type,
             empty: true,
             string_value: String::new(),
-            int_value: 0,
+            int_value: None,
             bool_value: false,
             dt_from: None,
             dt_to: None,
@@ -61,7 +61,7 @@ impl Variant {
             value_type: VariantType::Int,
             empty: false,
             string_value: format!("{}", value),
-            int_value: value,
+            int_value: Some(value),
             bool_value: value == 1,
             dt_from: None,
             dt_to: None,
@@ -69,21 +69,13 @@ impl Variant {
     }
 
     pub fn from_string(value: &String) -> Variant {
-        let int_value = value.parse::<usize>();
-        let int_value = match int_value {
-            Ok(i) => i as i64,
-            _ => match parse_filesize(value) {
-                Some(size) => size as i64,
-                _ => 0
-            }
-        };
         let bool_value = str_to_bool(&value);
 
         Variant {
             value_type: VariantType::String,
             empty: false,
             string_value: value.clone(),
-            int_value,
+            int_value: None,
             bool_value,
             dt_from: None,
             dt_to: None,
@@ -95,7 +87,7 @@ impl Variant {
             value_type: VariantType::Bool,
             empty: false,
             string_value: match value { true => String::from("true"), _ => String::from("false") },
-            int_value: match value { true => 1, _ => 0 },
+            int_value: match value { true => Some(1), _ => Some(0) },
             bool_value: value,
             dt_from: None,
             dt_to: None,
@@ -107,7 +99,7 @@ impl Variant {
             value_type: VariantType::DateTime,
             empty: false,
             string_value: format_datetime(&value),
-            int_value: 0,
+            int_value: Some(0),
             bool_value: false,
             dt_from: Some(value),
             dt_to: Some(value),
@@ -119,7 +111,19 @@ impl Variant {
     }
 
     pub fn to_int(&self) -> i64 {
-        self.int_value
+        match self.int_value {
+            Some(i) => i,
+            None => {
+                let int_value = self.string_value.parse::<usize>();
+                match int_value {
+                    Ok(i) => i as i64,
+                    _ => match parse_filesize(&self.string_value) {
+                        Some(size) => size as i64,
+                        _ => 0
+                    }
+                }
+            }
+        }
     }
 
     pub fn to_bool(&self) -> bool {

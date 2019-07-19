@@ -42,6 +42,11 @@ More is under way!
 
 A statically precompiled [binary](https://github.com/jhspetersson/fselect/releases/download/0.6.4/fselect-x86_64-win.zip) is available at Github downloads.
 
+#### Windows from Chocolatey
+
+* Install [Chocolatey](https://chocolatey.org/install)
+* Run `choco install fselect`
+
 #### Mac
 
 [Precompiled on OS X Mavericks 10.9.5](https://github.com/jhspetersson/fselect/releases/download/0.6.4/fselect-x86_64-apple-darwin.zip)

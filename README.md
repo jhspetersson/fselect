@@ -25,7 +25,7 @@ More is under way!
 
 ### Installation
 
-#### From source
+#### Latest release from source
 
 * Install [Rust with Cargo](https://www.rust-lang.org/en-US/install.html) and its dependencies to build a binary
 * Run `cargo install fselect`

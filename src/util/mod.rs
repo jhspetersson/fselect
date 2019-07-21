@@ -287,15 +287,57 @@ fn is_image_dim_readable(file_name: &str) -> bool {
     has_extension(file_name, &extensions)
 }
 
-pub fn get_img_dimensions(entry: &DirEntry) -> Option<(usize, usize)> {
-    if !is_image_dim_readable(&entry.file_name().to_string_lossy()) {
-        return None;
+fn is_mp4_dim_readable(file_name: &str) -> bool {
+    let extensions = vec![String::from(".mp4")];
+
+    has_extension(file_name, &extensions)
+}
+
+pub fn get_dimensions(entry: &DirEntry) -> Option<(usize, usize)> {
+    let file_name = entry.file_name().to_string_lossy().to_string();
+
+    if is_image_dim_readable(&file_name) {
+        return get_img_dimensions(entry);
     }
 
+    if is_mp4_dim_readable(&file_name) {
+        return get_mp4_dimensions(entry);
+    }
+
+    None
+}
+
+pub fn get_img_dimensions(entry: &DirEntry) -> Option<(usize, usize)> {
     match imagesize::size(entry.path()) {
         Ok(dimensions) => Some((dimensions.width, dimensions.height)),
         _ => None
     }
+}
+
+pub fn get_mp4_dimensions(entry: &DirEntry) -> Option<(usize, usize)> {
+    if let Ok(mut fd) = File::open(entry.path().as_path()) {
+        let mut buf = Vec::new();
+
+        if let Ok(_) = fd.read_to_end(&mut buf) {
+            let mut c = std::io::Cursor::new(&buf);
+            let mut context = mp4parse::MediaContext::new();
+
+            if let Ok(()) = mp4parse::read_mp4(&mut c, &mut context) {
+                for track in context.tracks {
+                    match track.track_type {
+                        mp4parse::TrackType::Video => {
+                            if let Some(tkhd) = track.tkhd {
+                                return Some(((tkhd.width / 65536) as usize, (tkhd.height / 65536) as usize));
+                            }
+                        },
+                        _ => { }
+                    }
+                }
+            }
+        }
+    }
+
+    None
 }
 
 pub fn get_mp3_metadata(entry: &DirEntry) -> Option<MP3Metadata> {

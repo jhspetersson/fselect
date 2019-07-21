@@ -938,7 +938,7 @@ impl Searcher {
             Field::Width => {
                 if !self.file_dimensions_set {
                     self.file_dimensions_set = true;
-                    self.file_dimensions = get_img_dimensions(entry);
+                    self.file_dimensions = get_dimensions(entry);
                 }
 
                 if let Some((x, _)) = self.file_dimensions {
@@ -948,7 +948,7 @@ impl Searcher {
             Field::Height => {
                 if !self.file_dimensions_set {
                     self.file_dimensions_set = true;
-                    self.file_dimensions = get_img_dimensions(entry);
+                    self.file_dimensions = get_dimensions(entry);
                 }
 
                 if let Some((_, y)) = self.file_dimensions {

@@ -796,6 +796,9 @@ impl Searcher {
             Field::UserExec => {
                 return self.check_file_mode(entry, &mode::user_exec, &file_info, &mode::mode_user_exec);
             },
+            Field::UserAll => {
+                return self.check_file_mode(entry, &mode::user_all, &file_info, &mode::mode_user_all);
+            },
             Field::GroupRead => {
                 return self.check_file_mode(entry, &mode::group_read, &file_info, &mode::mode_group_read);
             },
@@ -805,6 +808,9 @@ impl Searcher {
             Field::GroupExec => {
                 return self.check_file_mode(entry, &mode::group_exec, &file_info, &mode::mode_group_exec);
             },
+            Field::GroupAll => {
+                return self.check_file_mode(entry, &mode::group_all, &file_info, &mode::mode_group_all);
+            },
             Field::OtherRead => {
                 return self.check_file_mode(entry, &mode::other_read, &file_info, &mode::mode_other_read);
             },
@@ -813,6 +819,9 @@ impl Searcher {
             },
             Field::OtherExec => {
                 return self.check_file_mode(entry, &mode::other_exec, &file_info, &mode::mode_other_exec);
+            },
+            Field::OtherAll => {
+                return self.check_file_mode(entry, &mode::other_all, &file_info, &mode::mode_other_all);
             },
             Field::Suid => {
                 return self.check_file_mode(entry, &mode::suid_bit_set, &file_info, &mode::mode_suid);

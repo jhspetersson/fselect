@@ -30,12 +30,15 @@ pub enum Field {
     UserRead,
     UserWrite,
     UserExec,
+    UserAll,
     GroupRead,
     GroupWrite,
     GroupExec,
+    GroupAll,
     OtherRead,
     OtherWrite,
     OtherExec,
+    OtherAll,
     Suid,
     Sgid,
     IsHidden,
@@ -106,12 +109,15 @@ impl FromStr for Field {
             "user_read" => Ok(Field::UserRead),
             "user_write" => Ok(Field::UserWrite),
             "user_exec" => Ok(Field::UserExec),
+            "user_all" | "user_rwx" => Ok(Field::UserAll),
             "group_read" => Ok(Field::GroupRead),
             "group_write" => Ok(Field::GroupWrite),
             "group_exec" => Ok(Field::GroupExec),
+            "group_all" | "group_rwx" => Ok(Field::GroupAll),
             "other_read" => Ok(Field::OtherRead),
             "other_write" => Ok(Field::OtherWrite),
             "other_exec" => Ok(Field::OtherExec),
+            "other_all" | "other_rwx" => Ok(Field::OtherAll),
             "suid" => Ok(Field::Suid),
             "sgid" => Ok(Field::Sgid),
             "is_hidden" => Ok(Field::IsHidden),
@@ -211,12 +217,15 @@ impl Field {
             | Field::UserRead
             | Field::UserWrite
             | Field::UserExec
+            | Field::UserAll
             | Field::GroupRead
             | Field::GroupWrite
             | Field::GroupExec
+            | Field::GroupAll
             | Field::OtherRead
             | Field::OtherWrite
             | Field::OtherExec
+            | Field::OtherAll
             | Field::Suid
             | Field::Sgid
             | Field::IsHidden

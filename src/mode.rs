@@ -141,6 +141,14 @@ pub fn mode_user_exec(mode: u32) -> bool {
     mode & S_IXUSR == S_IXUSR
 }
 
+pub fn user_all(meta: &Metadata) -> bool {
+    user_read(meta) && user_write(meta) && user_exec(meta)
+}
+
+pub fn mode_user_all(mode: u32) -> bool {
+    mode_user_read(mode) && mode_user_write(mode) && mode_user_exec(mode)
+}
+
 pub fn group_read(meta: &Metadata) -> bool {
     match get_mode_from_boxed_unix_int(meta) {
         Some(mode) => mode_group_read(mode),
@@ -174,6 +182,14 @@ pub fn mode_group_exec(mode: u32) -> bool {
     mode & S_IXGRP == S_IXGRP
 }
 
+pub fn group_all(meta: &Metadata) -> bool {
+    group_read(meta) && group_write(meta) && group_exec(meta)
+}
+
+pub fn mode_group_all(mode: u32) -> bool {
+    mode_group_read(mode) && mode_group_write(mode) && mode_group_exec(mode)
+}
+
 pub fn other_read(meta: &Metadata) -> bool {
     match get_mode_from_boxed_unix_int(meta) {
         Some(mode) => mode_other_read(mode),
@@ -205,6 +221,14 @@ pub fn other_exec(meta: &Metadata) -> bool {
 
 pub fn mode_other_exec(mode: u32) -> bool {
     mode & S_IXOTH == S_IXOTH
+}
+
+pub fn other_all(meta: &Metadata) -> bool {
+    other_read(meta) && other_write(meta) && other_exec(meta)
+}
+
+pub fn mode_other_all(mode: u32) -> bool {
+    mode_other_read(mode) && mode_other_write(mode) && mode_other_exec(mode)
 }
 
 pub fn suid_bit_set(meta: &Metadata) -> bool {

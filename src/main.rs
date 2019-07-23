@@ -33,10 +33,16 @@ use crate::searcher::Searcher;
 use crate::util::error_message;
 
 fn main() {
-    let config = Config::new();
+    let config = match Config::new() {
+        Ok(cnf) => cnf,
+        Err(err) => {
+            eprintln!("{}", err);
+            Config::default()
+        }
+    };
 
     let env_no_color = std::env::var("NO_COLOR").ok().eq(&Some("1".to_string()));
-    let mut no_color = env_no_color || config.no_color;
+    let mut no_color = env_no_color || (config.no_color.is_some() && config.no_color.unwrap());
 
     #[cfg(windows)]
     {

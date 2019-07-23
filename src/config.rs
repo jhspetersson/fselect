@@ -12,7 +12,7 @@ const CONFIG_FILE: &str = "config.toml";
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct Config {
-    pub no_color : bool,
+    pub no_color : Option<bool>,
     pub is_zip_archive : Vec<String>,
     pub is_archive : Vec<String>,
     pub is_audio : Vec<String>,
@@ -24,29 +24,34 @@ pub struct Config {
 }
 
 impl Config {
-    pub fn new() -> Config {
+    pub fn new() -> Result<Config, &'static str> {
         let config_dir = app_root(AppDataType::UserConfig, &APP_INFO);
 
         if config_dir.is_err() {
-            return Config::default();
+            return Ok(Config::default());
         }
 
         let mut config_file = config_dir.unwrap().clone();
         config_file.push(CONFIG_FILE);
 
         if !config_file.exists() {
-            return Config::default();
+            return Ok(Config::default());
         }
 
         if let Ok(mut file) = fs::File::open(&config_file) {
             let mut contents = String::new();
             if let Ok(_) = file.read_to_string(&mut contents) {
-                let config: Config = toml::from_str(&contents).unwrap();
-                return config;
+                if let Ok(config) = toml::from_str(&contents) {
+                    return Ok(config);
+                } else {
+                    return Err("Could not parse config file. Using default settings.");
+                }
             }
+        } else {
+            return Err("Could not open config file. Using default settings.");
         }
 
-        Config::default()
+        Ok(Config::default())
     }
 
     pub fn save(&self) {
@@ -70,9 +75,9 @@ impl Config {
         }
     }
 
-    fn default() -> Config {
+    pub fn default() -> Config {
         Config {
-            no_color : false,
+            no_color : Some(false),
             is_zip_archive : vec![String::from(".zip"), String::from(".jar"), String::from(".war"), String::from(".ear")],
             is_archive : vec![String::from(String::from(".7z")), String::from(String::from(".bz2")), String::from(String::from(".bzip2")), String::from(String::from(".gz")), String::from(String::from(".gzip")), String::from(String::from(".rar")), String::from(String::from(".tar")), String::from(".xz"), String::from(".zip")],
             is_audio : vec![String::from(".aac"), String::from(".aiff"), String::from(".amr"), String::from(".flac"), String::from(".gsm"), String::from(".m4a"), String::from(".m4b"), String::from(".m4p"), String::from(".mp3"), String::from(".ogg"), String::from(".wav"), String::from(".wma")],

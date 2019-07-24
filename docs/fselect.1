@@ -3,7 +3,8 @@
 fselect \- find files with SQL-like queries
 .SH SYNOPSIS
 .B fselect
-.B COLUMN
+.B [ARGS]
+COLUMN
 [, COLUMN ...]
 [ from ROOT [, ROOT...] ]
 [where EXPR]
@@ -95,17 +96,23 @@ user_write
 .IP \(bu
 user_exec
 .IP \(bu
+user_all
+.IP \(bu
 group_read
 .IP \(bu
 group_write
 .IP \(bu
 group_exec
 .IP \(bu
+group_all
+.IP \(bu
 other_read
 .IP \(bu
 other_write
 .IP \(bu
 other_exec
+.IP \(bu
+other_all
 .IP \(bu
 suid
 .IP \(bu

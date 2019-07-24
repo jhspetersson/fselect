@@ -200,6 +200,7 @@ Shortcuts to common file extensions:
 Find files with dangerous permissions:
     
     fselect mode, path from /home/user where other_write = true or other_exec = true
+    fselect mode, path from /home/user where other_all = true
     
 Simple glob-like expressions or even regular expressions on file mode are possible:
     

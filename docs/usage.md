@@ -72,12 +72,15 @@ Joins, unions, and subselects are not supported (yet?).
 * `user_read`
 * `user_write`
 * `user_exec`
+* `user_all`
 * `group_read`
 * `group_write`
 * `group_exec`
+* `group_all`
 * `other_read`
 * `other_write`
 * `other_exec`
+* `other_all`
 * `suid`
 * `sgid`
 * `is_hidden`

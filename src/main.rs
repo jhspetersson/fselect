@@ -181,7 +181,7 @@ Column Options:
     other_all                       Returns a boolean signifying whether the file can be fully accecced by the others
 
     suid                            Returns a boolean signifying whether the file permissions have a SUID bit set
-    suid                            Returns a boolean signifying whether the file permissions have a SGID bit set
+    sgid                            Returns a boolean signifying whether the file permissions have a SGID bit set
 
     width                           Returns the number of pixels along the width of the photo or MP4 file
     height                          Returns the number of pixels along the height of the photo or MP4 file

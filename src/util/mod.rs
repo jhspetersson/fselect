@@ -293,6 +293,12 @@ fn is_mp4_dim_readable(file_name: &str) -> bool {
     has_extension(file_name, &extensions)
 }
 
+fn is_mkv_dim_readable(file_name: &str) -> bool {
+    let extensions = vec![String::from(".mkv")];
+
+    has_extension(file_name, &extensions)
+}
+
 pub fn get_dimensions(entry: &DirEntry) -> Option<(usize, usize)> {
     let file_name = entry.file_name().to_string_lossy().to_string();
 
@@ -302,6 +308,10 @@ pub fn get_dimensions(entry: &DirEntry) -> Option<(usize, usize)> {
 
     if is_mp4_dim_readable(&file_name) {
         return get_mp4_dimensions(entry);
+    }
+
+    if is_mkv_dim_readable(&file_name) {
+        return get_mkv_dimensions(entry);
     }
 
     None
@@ -332,6 +342,25 @@ pub fn get_mp4_dimensions(entry: &DirEntry) -> Option<(usize, usize)> {
                         },
                         _ => { }
                     }
+                }
+            }
+        }
+    }
+
+    None
+}
+
+pub fn get_mkv_dimensions(entry: &DirEntry) -> Option<(usize, usize)> {
+    if let Ok(fd) = File::open(entry.path().as_path()) {
+        if let Ok(matroska) = matroska::Matroska::open(fd) {
+            for track in matroska.tracks {
+                match track.tracktype {
+                    matroska::Tracktype::Video => {
+                        if let matroska::Settings::Video(settings) = track.settings {
+                            return Some((settings.pixel_width as usize, settings.pixel_height as usize));
+                        }
+                    },
+                    _ => { }
                 }
             }
         }

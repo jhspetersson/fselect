@@ -317,14 +317,14 @@ pub fn get_dimensions(entry: &DirEntry) -> Option<(usize, usize)> {
     None
 }
 
-pub fn get_img_dimensions(entry: &DirEntry) -> Option<(usize, usize)> {
+fn get_img_dimensions(entry: &DirEntry) -> Option<(usize, usize)> {
     match imagesize::size(entry.path()) {
         Ok(dimensions) => Some((dimensions.width, dimensions.height)),
         _ => None
     }
 }
 
-pub fn get_mp4_dimensions(entry: &DirEntry) -> Option<(usize, usize)> {
+fn get_mp4_dimensions(entry: &DirEntry) -> Option<(usize, usize)> {
     if let Ok(mut fd) = File::open(entry.path().as_path()) {
         let mut buf = Vec::new();
 
@@ -350,7 +350,7 @@ pub fn get_mp4_dimensions(entry: &DirEntry) -> Option<(usize, usize)> {
     None
 }
 
-pub fn get_mkv_dimensions(entry: &DirEntry) -> Option<(usize, usize)> {
+fn get_mkv_dimensions(entry: &DirEntry) -> Option<(usize, usize)> {
     if let Ok(fd) = File::open(entry.path().as_path()) {
         if let Ok(matroska) = matroska::Matroska::open(fd) {
             for track in matroska.tracks {

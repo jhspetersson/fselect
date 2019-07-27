@@ -346,9 +346,10 @@ pub fn get_aggregate_value(function: &Option<Function>,
                            default_value: &Option<String>) -> String {
     match function {
         Some(Function::Min) => {
-            if raw_output_buffer.len() == 0 {
+            if raw_output_buffer.is_empty() {
                 return String::from("0");
             }
+
             let mut min = -1;
             for value in raw_output_buffer {
                 if let Some(value) = value.get(&field_value) {
@@ -377,9 +378,10 @@ pub fn get_aggregate_value(function: &Option<Function>,
             return max.to_string();
         },
         Some(Function::Avg) => {
-            if raw_output_buffer.len() == 0 {
+            if raw_output_buffer.is_empty() {
                 return String::from("0");
             }
+
             let mut sum = 0;
             for value in raw_output_buffer {
                 if let Some(value) = value.get(&field_value) {

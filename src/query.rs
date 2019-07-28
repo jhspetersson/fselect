@@ -3,6 +3,7 @@ use std::rc::Rc;
 
 use crate::expr::Expr;
 use crate::field::Field;
+use crate::query::TraversalMode::Bfs;
 
 #[derive(Debug, Clone)]
 pub struct Query {
@@ -36,16 +37,22 @@ pub struct Root {
     pub symlinks: bool,
     pub gitignore: bool,
     pub hgignore: bool,
+    pub traversal: TraversalMode,
 }
 
 impl Root {
-    pub fn new(path: String, min_depth: u32, max_depth: u32, archives: bool, symlinks: bool, gitignore: bool, hgignore: bool) -> Root {
-        Root { path, min_depth, max_depth, archives, symlinks, gitignore, hgignore }
+    pub fn new(path: String, min_depth: u32, max_depth: u32, archives: bool, symlinks: bool, gitignore: bool, hgignore: bool, traversal: TraversalMode) -> Root {
+        Root { path, min_depth, max_depth, archives, symlinks, gitignore, hgignore, traversal }
     }
 
     pub fn default() -> Root {
-        Root { path: String::from("."), min_depth: 0, max_depth: 0, archives: false, symlinks: false, gitignore: false, hgignore: false }
+        Root { path: String::from("."), min_depth: 0, max_depth: 0, archives: false, symlinks: false, gitignore: false, hgignore: false, traversal: Bfs }
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum TraversalMode {
+    Bfs, Dfs
 }
 
 #[derive(Debug, Clone, PartialEq)]

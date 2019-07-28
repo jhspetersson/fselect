@@ -12,6 +12,7 @@ use crate::operators::Op;
 use crate::query::OutputFormat;
 use crate::query::Query;
 use crate::query::Root;
+use crate::query::TraversalMode::{Bfs, Dfs};
 
 pub struct Parser {
     lexems: Vec<Lexem>,
@@ -127,6 +128,7 @@ impl Parser {
             let mut symlinks = false;
             let mut gitignore = false;
             let mut hgignore = false;
+            let mut traversal = Bfs;
 
             loop {
                 let lexem = self.get_lexem();
@@ -156,6 +158,12 @@ impl Parser {
                                             mode = RootParsingMode::Options;
                                         } else if s.starts_with("hg") {
                                             hgignore = true;
+                                            mode = RootParsingMode::Options;
+                                        } else if s == "bfs" {
+                                            traversal = Bfs;
+                                            mode = RootParsingMode::Options;
+                                        } else if s == "dfs" {
+                                            traversal = Dfs;
                                             mode = RootParsingMode::Options;
                                         } else {
                                             self.drop_lexem();
@@ -193,14 +201,16 @@ impl Parser {
                             },
                             Lexem::Comma => {
                                 if path.len() > 0 {
-                                    roots.push(Root::new(path, min_depth, depth, archives, symlinks, gitignore, hgignore));
+                                    roots.push(Root::new(path, min_depth, depth, archives, symlinks, gitignore, hgignore, traversal));
 
                                     path = String::from("");
+                                    min_depth = 0;
                                     depth = 0;
                                     archives = false;
                                     symlinks = false;
                                     gitignore = false;
                                     hgignore = false;
+                                    traversal = Bfs;
 
                                     mode = RootParsingMode::Comma;
                                 } else {
@@ -210,7 +220,7 @@ impl Parser {
                             },
                             _ => {
                                 if path.len() > 0 {
-                                    roots.push(Root::new(path, min_depth, depth, archives, symlinks, gitignore, hgignore));
+                                    roots.push(Root::new(path, min_depth, depth, archives, symlinks, gitignore, hgignore, traversal));
                                 }
 
                                 self.drop_lexem();
@@ -220,7 +230,7 @@ impl Parser {
                     },
                     None => {
                         if path.len() > 0 {
-                            roots.push(Root::new(path, min_depth, depth, archives, symlinks, gitignore, hgignore));
+                            roots.push(Root::new(path, min_depth, depth, archives, symlinks, gitignore, hgignore, traversal));
                         }
                         break;
                     }
@@ -584,7 +594,7 @@ mod tests {
 
     #[test]
     fn query() {
-        let query = "select name, path ,size , fsize from /test depth 2, /test2 archives,/test3 depth 3 archives , /test4 ,'/test5' gitignore , /test6 mindepth 3 where name != 123 AND ( size gt 456 or fsize lte 758) or name = 'xxx' order by 2, size desc limit 50";
+        let query = "select name, path ,size , fsize from /test depth 2, /test2 archives,/test3 depth 3 archives , /test4 ,'/test5' gitignore , /test6 mindepth 3, /test7 archives DFS where name != 123 AND ( size gt 456 or fsize lte 758) or name = 'xxx' order by 2, size desc limit 50";
         let mut p = Parser::new();
         let query = p.parse(&query).unwrap();
 
@@ -595,12 +605,13 @@ mod tests {
         ]);
 
         assert_eq!(query.roots, vec![
-            Root::new(String::from("/test"), 0, 2, false, false, false, false),
-            Root::new(String::from("/test2"), 0, 0, true, false, false, false),
-            Root::new(String::from("/test3"), 0, 3, true, false, false, false),
-            Root::new(String::from("/test4"), 0, 0, false, false, false, false),
-            Root::new(String::from("/test5"), 0, 0, false, false, true, false),
-            Root::new(String::from("/test6"), 3, 0, false, false, false, false),
+            Root::new(String::from("/test"), 0, 2, false, false, false, false, Bfs),
+            Root::new(String::from("/test2"), 0, 0, true, false, false, false, Bfs),
+            Root::new(String::from("/test3"), 0, 3, true, false, false, false, Bfs),
+            Root::new(String::from("/test4"), 0, 0, false, false, false, false, Bfs),
+            Root::new(String::from("/test5"), 0, 0, false, false, true, false, Bfs),
+            Root::new(String::from("/test6"), 3, 0, false, false, false, false, Bfs),
+            Root::new(String::from("/test7"), 0, 0, true, false, false, false, Dfs),
         ]);
 
         let expr = Expr::logical_op(

@@ -8,6 +8,7 @@ extern crate users;
 extern crate xattr;
 
 use std::env;
+use std::thread;
 
 use ansi_term::Colour::*;
 use atty::Stream;
@@ -32,7 +33,18 @@ use crate::parser::Parser;
 use crate::searcher::Searcher;
 use crate::util::error_message;
 
+const STACK_SIZE: usize = 8 * 1024 * 1024;
+
 fn main() {
+    let child = thread::Builder::new()
+        .stack_size(STACK_SIZE)
+        .spawn(run)
+        .unwrap();
+
+    child.join().unwrap();
+}
+
+fn run() {
     let config = match Config::new() {
         Ok(cnf) => cnf,
         Err(err) => {

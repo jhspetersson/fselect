@@ -59,7 +59,7 @@ pub struct Searcher {
     hgignore_filters: Vec<HgignoreFilter>,
     visited_dirs: HashSet<PathBuf>,
     lscolors: LsColors,
-
+    dir_queue: Box<VecDeque<PathBuf>>,
     current_follow_symlinks: bool,
 
     file_metadata: Option<Metadata>,
@@ -96,7 +96,7 @@ impl Searcher {
             hgignore_filters: vec![],
             visited_dirs: HashSet::new(),
             lscolors: LsColors::from_env().unwrap_or_default(),
-
+            dir_queue: Box::from(VecDeque::new()),
             current_follow_symlinks: false,
 
             file_metadata: None,
@@ -273,7 +273,7 @@ impl Searcher {
                 self.search_upstream_hgignore(&root_dir);
             }
 
-            let mut dir_queue = VecDeque::new();
+            self.dir_queue.clear();
 
             let _result = self.visit_dir(
                 root_dir,
@@ -283,8 +283,7 @@ impl Searcher {
                 search_archives,
                 apply_gitignore,
                 apply_hgignore,
-                traversal_mode,
-                &mut dir_queue
+                traversal_mode
             );
         }
 
@@ -444,8 +443,7 @@ impl Searcher {
                  search_archives: bool,
                  apply_gitignore: bool,
                  apply_hgignore: bool,
-                 traversal_mode: TraversalMode,
-                 mut dir_queue: &mut VecDeque<PathBuf>) -> io::Result<()> {
+                 traversal_mode: TraversalMode) -> io::Result<()> {
         let metadata = match self.current_follow_symlinks {
             true => dir.metadata(),
             false => symlink_metadata(dir)
@@ -531,14 +529,13 @@ impl Searcher {
                                                             search_archives,
                                                             apply_gitignore,
                                                             apply_hgignore,
-                                                            traversal_mode,
-                                                            &mut dir_queue);
+                                                            traversal_mode);
 
                                                         if result.is_err() {
                                                             path_error_message(&path, result.err().unwrap());
                                                         }
                                                     } else {
-                                                        dir_queue.push_back(path);
+                                                        self.dir_queue.push_back(path);
                                                     }
                                                 }
                                             }
@@ -561,8 +558,8 @@ impl Searcher {
             }
         }
 
-        while !dir_queue.is_empty() {
-            let path = dir_queue.pop_front().unwrap();
+        while !self.dir_queue.is_empty() {
+            let path = self.dir_queue.pop_front().unwrap();
             let result = self.visit_dir(
                 &path,
                 min_depth,
@@ -571,8 +568,7 @@ impl Searcher {
                 search_archives,
                 apply_gitignore,
                 apply_hgignore,
-                traversal_mode,
-                &mut dir_queue);
+                traversal_mode);
 
             if result.is_err() {
                 path_error_message(&path, result.err().unwrap());

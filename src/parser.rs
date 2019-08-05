@@ -128,7 +128,7 @@ impl Parser {
             let mut symlinks = false;
             let mut gitignore = false;
             let mut hgignore = false;
-            let mut traversal = Bfs;
+            let mut traversal = Dfs;
 
             loop {
                 let lexem = self.get_lexem();
@@ -210,7 +210,7 @@ impl Parser {
                                     symlinks = false;
                                     gitignore = false;
                                     hgignore = false;
-                                    traversal = Bfs;
+                                    traversal = Dfs;
 
                                     mode = RootParsingMode::Comma;
                                 } else {

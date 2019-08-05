@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs;
 use std::fs::DirEntry;
 use std::fs::Metadata;
@@ -40,7 +40,7 @@ use crate::hgignore::parse_hgignore;
 use crate::mode;
 use crate::operators::LogicalOp;
 use crate::operators::Op;
-use crate::query::Query;
+use crate::query::{Query, TraversalMode};
 use crate::query::OutputFormat;
 use crate::util::*;
 use std::io::ErrorKind;
@@ -263,6 +263,7 @@ impl Searcher {
             let search_archives = root.archives;
             let apply_gitignore = root.gitignore;
             let apply_hgignore = root.hgignore;
+            let traversal_mode = root.traversal;
 
             if apply_gitignore {
                 self.search_upstream_gitignore(&root_dir);
@@ -272,6 +273,8 @@ impl Searcher {
                 self.search_upstream_hgignore(&root_dir);
             }
 
+            let mut dir_queue = VecDeque::new();
+
             let _result = self.visit_dir(
                 root_dir,
                 min_depth,
@@ -279,7 +282,9 @@ impl Searcher {
                 1,
                 search_archives,
                 apply_gitignore,
-                apply_hgignore
+                apply_hgignore,
+                traversal_mode,
+                &mut dir_queue
             );
         }
 
@@ -438,7 +443,9 @@ impl Searcher {
                  depth: u32,
                  search_archives: bool,
                  apply_gitignore: bool,
-                 apply_hgignore: bool) -> io::Result<()> {
+                 apply_hgignore: bool,
+                 traversal_mode: TraversalMode,
+                 mut dir_queue: &mut VecDeque<PathBuf>) -> io::Result<()> {
         let metadata = match self.current_follow_symlinks {
             true => dir.metadata(),
             false => symlink_metadata(dir)
@@ -515,17 +522,23 @@ impl Searcher {
 
                                             if max_depth == 0 || depth < max_depth {
                                                 if path.is_dir() {
-                                                    let result = self.visit_dir(
-                                                        &path,
-                                                        min_depth,
-                                                        max_depth,
-                                                        depth + 1,
-                                                        search_archives,
-                                                        apply_gitignore,
-                                                        apply_hgignore);
+                                                    if traversal_mode == TraversalMode::Dfs {
+                                                        let result = self.visit_dir(
+                                                            &path,
+                                                            min_depth,
+                                                            max_depth,
+                                                            depth + 1,
+                                                            search_archives,
+                                                            apply_gitignore,
+                                                            apply_hgignore,
+                                                            traversal_mode,
+                                                            &mut dir_queue);
 
-                                                    if result.is_err() {
-                                                        path_error_message(&path, result.err().unwrap());
+                                                        if result.is_err() {
+                                                            path_error_message(&path, result.err().unwrap());
+                                                        }
+                                                    } else {
+                                                        dir_queue.push_back(path);
                                                     }
                                                 }
                                             }
@@ -545,6 +558,24 @@ impl Searcher {
             },
             Err(err) => {
                 path_error_message(dir, err);
+            }
+        }
+
+        while !dir_queue.is_empty() {
+            let path = dir_queue.pop_front().unwrap();
+            let result = self.visit_dir(
+                &path,
+                min_depth,
+                max_depth,
+                depth + 1,
+                search_archives,
+                apply_gitignore,
+                apply_hgignore,
+                traversal_mode,
+                &mut dir_queue);
+
+            if result.is_err() {
+                path_error_message(&path, result.err().unwrap());
             }
         }
 

@@ -127,6 +127,16 @@ impl<T: Display + Ord> Ord for Criteria<T> {
     }
 }
 
+#[cfg(windows)]
+pub fn calc_depth(s: &str) -> u32 {
+    s.matches("\\").count() as u32
+}
+
+#[cfg(not(windows))]
+pub fn calc_depth(s: &str) -> u32 {
+    s.matches("/").count() as u32
+}
+
 pub fn path_error_message(p: &Path, e: io::Error) {
     error_message(&p.to_string_lossy(), e.description());
 }

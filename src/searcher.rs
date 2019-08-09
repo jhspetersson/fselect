@@ -280,7 +280,7 @@ impl Searcher {
                 root_dir,
                 min_depth,
                 max_depth,
-                1,
+                0,
                 search_archives,
                 apply_gitignore,
                 apply_hgignore,
@@ -441,7 +441,7 @@ impl Searcher {
                  dir: &Path,
                  min_depth: u32,
                  max_depth: u32,
-                 depth: u32,
+                 root_depth: u32,
                  search_archives: bool,
                  apply_gitignore: bool,
                  apply_hgignore: bool,
@@ -454,6 +454,23 @@ impl Searcher {
         match metadata {
             Ok(metadata) => {
                 if metadata.is_dir() {
+                    let canonical_path = crate::util::canonical_path(&dir.to_path_buf());
+
+                    if canonical_path.is_err() {
+                        error_message(&dir.to_string_lossy(), "could not canonicalize path");
+                        return Ok(());
+                    }
+
+                    let canonical_path = canonical_path.unwrap();
+                    let canonical_depth = crate::util::calc_depth(&canonical_path);
+
+                    let base_depth = match root_depth {
+                        0 => canonical_depth,
+                        _ => root_depth
+                    };
+
+                    let depth = canonical_depth - base_depth + 1;
+
                     if self.current_follow_symlinks {
                         if self.visited_dirs.contains(&dir.to_path_buf()) {
                             return Ok(());
@@ -465,11 +482,9 @@ impl Searcher {
                     let mut gitignore_filters = None;
 
                     if apply_gitignore {
-                        if let Ok(canonical_path) = crate::util::canonical_path(&dir.to_path_buf()) {
-                            let canonical_path = PathBuf::from(canonical_path);
-                            self.update_gitignore_map(&canonical_path);
-                            gitignore_filters = Some(self.get_gitignore_filters(&canonical_path));
-                        }
+                        let canonical_path = PathBuf::from(canonical_path);
+                        self.update_gitignore_map(&canonical_path);
+                        gitignore_filters = Some(self.get_gitignore_filters(&canonical_path));
                     }
 
                     match fs::read_dir(dir) {
@@ -528,7 +543,7 @@ impl Searcher {
                                                             &path,
                                                             min_depth,
                                                             max_depth,
-                                                            depth + 1,
+                                                            base_depth,
                                                             search_archives,
                                                             apply_gitignore,
                                                             apply_hgignore,
@@ -555,30 +570,30 @@ impl Searcher {
                             path_error_message(dir, err);
                         }
                     }
+
+                    if traversal_mode == Bfs && process_queue {
+                        while !self.dir_queue.is_empty() {
+                            let path = self.dir_queue.pop_front().unwrap();
+                            let result = self.visit_dir(
+                                &path,
+                                min_depth,
+                                max_depth,
+                                base_depth,
+                                search_archives,
+                                apply_gitignore,
+                                apply_hgignore,
+                                traversal_mode,
+                                false);
+
+                            if result.is_err() {
+                                path_error_message(&path, result.err().unwrap());
+                            }
+                        }
+                    }
                 }
             },
             Err(err) => {
                 path_error_message(dir, err);
-            }
-        }
-
-        if traversal_mode == Bfs && process_queue {
-            while !self.dir_queue.is_empty() {
-                let path = self.dir_queue.pop_front().unwrap();
-                let result = self.visit_dir(
-                    &path,
-                    min_depth,
-                    max_depth,
-                    depth + 1,
-                    search_archives,
-                    apply_gitignore,
-                    apply_hgignore,
-                    traversal_mode,
-                    false);
-
-                if result.is_err() {
-                    path_error_message(&path, result.err().unwrap());
-                }
             }
         }
 

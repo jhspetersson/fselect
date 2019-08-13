@@ -128,7 +128,7 @@ impl Parser {
             let mut symlinks = false;
             let mut gitignore = false;
             let mut hgignore = false;
-            let mut traversal = Dfs;
+            let mut traversal = Bfs;
 
             loop {
                 let lexem = self.get_lexem();
@@ -210,7 +210,7 @@ impl Parser {
                                     symlinks = false;
                                     gitignore = false;
                                     hgignore = false;
-                                    traversal = Dfs;
+                                    traversal = Bfs;
 
                                     mode = RootParsingMode::Comma;
                                 } else {
@@ -594,7 +594,7 @@ mod tests {
 
     #[test]
     fn query() {
-        let query = "select name, path ,size , fsize from /test depth 2, /test2 archives,/test3 depth 3 archives , /test4 ,'/test5' gitignore , /test6 mindepth 3, /test7 archives DFS, /test8 bfs where name != 123 AND ( size gt 456 or fsize lte 758) or name = 'xxx' order by 2, size desc limit 50";
+        let query = "select name, path ,size , fsize from /test depth 2, /test2 archives,/test3 depth 3 archives , /test4 ,'/test5' gitignore , /test6 mindepth 3, /test7 archives DFS, /test8 dfs where name != 123 AND ( size gt 456 or fsize lte 758) or name = 'xxx' order by 2, size desc limit 50";
         let mut p = Parser::new();
         let query = p.parse(&query).unwrap();
 
@@ -605,14 +605,14 @@ mod tests {
         ]);
 
         assert_eq!(query.roots, vec![
-            Root::new(String::from("/test"), 0, 2, false, false, false, false, Dfs),
-            Root::new(String::from("/test2"), 0, 0, true, false, false, false, Dfs),
-            Root::new(String::from("/test3"), 0, 3, true, false, false, false, Dfs),
-            Root::new(String::from("/test4"), 0, 0, false, false, false, false, Dfs),
-            Root::new(String::from("/test5"), 0, 0, false, false, true, false, Dfs),
-            Root::new(String::from("/test6"), 3, 0, false, false, false, false, Dfs),
+            Root::new(String::from("/test"), 0, 2, false, false, false, false, Bfs),
+            Root::new(String::from("/test2"), 0, 0, true, false, false, false, Bfs),
+            Root::new(String::from("/test3"), 0, 3, true, false, false, false, Bfs),
+            Root::new(String::from("/test4"), 0, 0, false, false, false, false, Bfs),
+            Root::new(String::from("/test5"), 0, 0, false, false, true, false, Bfs),
+            Root::new(String::from("/test6"), 3, 0, false, false, false, false, Bfs),
             Root::new(String::from("/test7"), 0, 0, true, false, false, false, Dfs),
-            Root::new(String::from("/test8"), 0, 0, false, false, false, false, Bfs),
+            Root::new(String::from("/test8"), 0, 0, false, false, false, false, Dfs),
         ]);
 
         let expr = Expr::logical_op(

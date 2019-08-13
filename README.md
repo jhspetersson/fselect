@@ -36,11 +36,11 @@ More is under way!
 
 #### Other Linux
 
-[Static build with musl](https://github.com/jhspetersson/fselect/releases/download/0.6.4/fselect-x86_64-linux-musl.gz).
+[Static build with musl](https://github.com/jhspetersson/fselect/releases/download/0.6.5/fselect-x86_64-linux-musl.gz).
 
 #### Windows 64bit
 
-A statically precompiled [binary](https://github.com/jhspetersson/fselect/releases/download/0.6.4/fselect-x86_64-win.zip) is available at Github downloads.
+A statically precompiled [binary](https://github.com/jhspetersson/fselect/releases/download/0.6.5/fselect-x86_64-win.zip) is available at Github downloads.
 
 #### Windows from Chocolatey
 
@@ -49,7 +49,7 @@ A statically precompiled [binary](https://github.com/jhspetersson/fselect/releas
 
 #### Mac
 
-[Precompiled on OS X Mavericks 10.9.5](https://github.com/jhspetersson/fselect/releases/download/0.6.4/fselect-x86_64-apple-darwin.zip)
+[Precompiled on OS X Mavericks 10.9.5](https://github.com/jhspetersson/fselect/releases/download/0.6.5/fselect-x86_64-apple-darwin.zip)
 
 #### Mac from brew
 

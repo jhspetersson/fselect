@@ -132,7 +132,7 @@ fn usage_info(no_color: bool) {
 
 Files Detected as Archives: .7z, .bz2, .bzip2, .gz, .gzip, .rar, .tar, .xz, .zip
 Files Detected as Audio: .aac, .aiff, .amr, .flac, .gsm, .m4a, .m4b, .m4p, .mp3, .ogg, .wav, .wma
-Files Detected as Book: .azw3, .chm, .epub, .fb2, .mobi, .pdf, .djvu
+Files Detected as Book: .azw3, .chm, .djvu, .epub, .fb2, .mobi, .pdf
 Files Detected as Document: .accdb, .doc, .docm, .docx, .dot, .dotm, .dotx, .mdb, .ods, .odt, .pdf, .potm, .potx, .ppt, .pptm, .pptx, .rtf, .xlm, .xls, .xlsm, .xlsx, .xlt, .xltm, .xltx, .xps
 Files Detected as Image: .bmp, .gif, .jpeg, .jpg, .png, .psb, .psd, .tiff, .webp
 Files Detected as Source Code: .asm, .bas, .c, .cc, .ceylon, .clj, .coffee, .cpp, .cs, .dart, .elm, .erl, .go, .groovy, .h, .hh, .hpp, .java, .js, .jsp, .kt, .kts, .lua, .nim, .pas, .php, .pl, .pm, .py, .rb, .rs, .scala, .swift, .tcl, .vala, .vb

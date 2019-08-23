@@ -242,6 +242,8 @@ Functions:
         LOWER                       Returns lowercase value
         UPPER                       Returns uppercase value
         BASE64                      Returns Base64 digest of a value
+        HEX                         Returns hexadecimal representation of an integer value
+        OCT                         Returns octal representation of an integer value
         CONTAINS                    Returns true, if file contains string, false if not
 
 Expressions:

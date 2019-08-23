@@ -150,6 +150,8 @@ pub enum Function {
     Upper,
     Length,
     Base64,
+    Hex,
+    Oct,
 
     Min,
     Max,
@@ -178,6 +180,8 @@ impl FromStr for Function {
             "upper" => Ok(Function::Upper),
             "length" => Ok(Function::Length),
             "base64" => Ok(Function::Base64),
+            "hex" => Ok(Function::Hex),
+            "oct" => Ok(Function::Oct),
 
             "day" => Ok(Function::Day),
             "month" => Ok(Function::Month),
@@ -257,6 +261,18 @@ pub fn get_value(function: &Option<Function>,
         },
         Some(Function::Base64) => {
             return Variant::from_string(&base64::encode(&function_arg));
+        },
+        Some(Function::Hex) => {
+            return match function_arg.parse::<i64>() {
+                Ok(val) => Variant::from_string(&format!("{:x}", val)),
+                _ => Variant::empty(VariantType::String)
+            };
+        },
+        Some(Function::Oct) => {
+            return match function_arg.parse::<i64>() {
+                Ok(val) => Variant::from_string(&format!("{:o}", val)),
+                _ => Variant::empty(VariantType::String)
+            };
         },
         Some(Function::Year) => {
             match parse_datetime(&function_arg) {

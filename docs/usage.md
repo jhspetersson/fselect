@@ -164,6 +164,8 @@ Used mostly for formatting results.
 | LOWER | Convert value to lowercase | `select lower(name) from /home/user/Downloads` |
 | UPPER | Convert value to uppercase | `select upper(name) from /home/user/Downloads` |
 | BASE64 | Encode value to Base64 | `select base64(name) from /home/user/Downloads` |
+| HEX | Convert integer value to hexadecimal representation | `select name, size, hex(size), upper(hex(size)) from /home/user/Downloads` |
+| OCT | Convert integer value to octal representation | `select name, size, oct(size) from /home/user/Downloads` |
 | CONTAINS | `true` if file contains string, `false` if not | `select contains(TODO) from /home/user/Projects/foo/src` |
 
 ### Search roots

@@ -260,7 +260,7 @@ The lists below could be edited with the configuration file.
 
 | Search field | Extensions |
 | --- | --- |
-| `is_archive` | .7z, .bz2, .bzip2, .gz, .gzip, .rar, .tar, .xz, .zip |
+| `is_archive` | .7z, .bz2, .bzip2, .gz, .gzip, .lz, .rar, .tar, .xz, .zip |
 | `is_audio` | .aac, .aiff, .amr, .flac, .gsm, .m4a, .m4b, .m4p, .mp3, .ogg, .wav, .wma |
 | `is_book` | .azw3, .chm, .djvu, .epub, .fb2, .mobi, .pdf |
 | `is_doc` | .accdb, .doc, .docm, .docx, .dot, .dotm, .dotx, .mdb, .ods, .odt, .pdf, .potm, .potx, .ppt, .pptm, .pptx, .rtf, .xlm, .xls, .xlsm, .xlsx, .xlt, .xltm, .xltx, .xps |

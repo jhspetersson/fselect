@@ -616,7 +616,7 @@ impl Searcher {
             return Variant::from_string(&value);
         }
 
-        let mut result;
+        let result;
 
         if let Some(ref left) = column_expr.left {
             let left_result = self.get_column_expr_value(entry, file_info, left);
@@ -1347,9 +1347,9 @@ impl Searcher {
 
     fn check_file_mode(&mut self,
                        entry: &DirEntry,
-                       mode_func_boxed: &Fn(&Metadata) -> bool,
+                       mode_func_boxed: &dyn Fn(&Metadata) -> bool,
                        file_info: &Option<FileInfo>,
-                       mode_func_i32: &Fn(u32) -> bool) -> Variant {
+                       mode_func_i32: &dyn Fn(u32) -> bool) -> Variant {
         match file_info {
             Some(ref file_info) => {
                 if let Some(mode) = file_info.mode {

@@ -40,6 +40,10 @@ impl Parser {
         let limit = self.parse_limit()?;
         let output_format = self.parse_output_format()?;
 
+        if self.is_something_left() {
+            return Err(String::from("Could not parse tokens at the end of the query"));
+        }
+
         Ok(Query {
             fields,
             roots,
@@ -560,6 +564,10 @@ impl Parser {
         Ok(OutputFormat::Tabs)
     }
 
+    fn is_something_left(&mut self) -> bool {
+        self.get_lexem().is_some()
+    }
+
     fn get_lexem(&mut self) -> Option<Lexem> {
         let lexem = self.lexems.get(self.index );
         self.index += 1;
@@ -633,5 +641,14 @@ mod tests {
         assert_eq!(query.ordering_fields, vec![Expr::field(Field::Path), Expr::field(Field::Size)]);
         assert_eq!(query.ordering_asc, Rc::new(vec![true, false]));
         assert_eq!(query.limit, 50);
+    }
+
+    #[test]
+    fn broken_query() {
+        let query = "select name, path ,size , fsize from / where name != 'foobar' order by size desc limit 10 into csv this is unexpected";
+        let mut p = Parser::new();
+        let query = p.parse(&query);
+
+        assert!(query.is_err());
     }
 }

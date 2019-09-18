@@ -224,10 +224,6 @@ impl Display for Expr {
     fn fmt(&self, fmt: &mut Formatter) -> fmt::Result {
         use std::fmt::Write;
 
-        if let Some(ref left) = self.left {
-            fmt.write_str(&left.to_string())?;
-        }
-
         if let Some(ref function) = self.function {
             fmt.write_str(&function.to_string())?;
             fmt.write_char('(')?;
@@ -235,6 +231,8 @@ impl Display for Expr {
                 fmt.write_str(&left.to_string())?;
             }
             fmt.write_char(')')?;
+        } else if let Some(ref left) = self.left {
+            fmt.write_str(&left.to_string())?;
         }
 
         if let Some(ref field) = self.field {

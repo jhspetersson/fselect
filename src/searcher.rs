@@ -296,8 +296,8 @@ impl Searcher {
 
             output_value = self.format_results_row_begin(output_value, &records, &file_map);
 
-            for column_expr in &self.query.fields {
-                let record = format!("{}", self.get_aggregate_function_value(column_expr));
+            for column_expr in &self.query.fields.clone() {
+                let record = format!("{}", self.get_column_expr_value(None, &None, &mut HashMap::new(), column_expr));
                 file_map.insert(column_expr.to_string().to_lowercase(), record.clone());
 
                 output_value = self.format_results_item(record, output_value, &mut records);
@@ -601,15 +601,28 @@ impl Searcher {
     }
 
     fn get_column_expr_value(&mut self,
-                             entry: &DirEntry,
+                             entry: Option<&DirEntry>,
                              file_info: &Option<FileInfo>,
+                             file_map: &mut HashMap<String, String>,
                              column_expr: &Expr) -> Variant {
         if let Some(ref _function) = column_expr.function {
-            return self.get_function_value(entry, file_info, column_expr);
+            let result = self.get_function_value(entry, file_info, file_map, column_expr);
+            file_map.insert(column_expr.to_string(), result.to_string());
+            return result;
         }
 
         if let Some(ref field) = column_expr.field {
-            return self.get_field_value(entry, file_info, field);
+            if entry.is_some() {
+                let result = self.get_field_value(entry.unwrap(), file_info, field);
+                file_map.insert(column_expr.to_string(), result.to_string());
+                return result;
+            } else {
+                if let Some(val) = file_map.get(&field.to_string()) {
+                    return Variant::from_string(val);
+                } else {
+                    return Variant::empty(VariantType::String);
+                }
+            }
         }
 
         if let Some(ref value) = column_expr.val {
@@ -619,12 +632,13 @@ impl Searcher {
         let result;
 
         if let Some(ref left) = column_expr.left {
-            let left_result = self.get_column_expr_value(entry, file_info, left);
+            let left_result = self.get_column_expr_value(entry, file_info, file_map, left);
 
             if let Some(ref op) = column_expr.arithmetic_op {
                 if let Some(ref right) = column_expr.right {
-                    let right_result = self.get_column_expr_value(entry, file_info, right);
+                    let right_result = self.get_column_expr_value(entry, file_info, file_map, right);
                     result = op.calc(&left_result, &right_result);
+                    file_map.insert(column_expr.to_string(), result.to_string());
                 } else {
                     result = left_result;
                 }
@@ -639,34 +653,32 @@ impl Searcher {
     }
 
     fn get_function_value(&mut self,
-                          entry: &DirEntry,
+                          entry: Option<&DirEntry>,
                           file_info: &Option<FileInfo>,
+                          file_map: &mut HashMap<String, String>,
                           column_expr: &Expr) -> Variant {
         if let Some(ref left_expr) = column_expr.left {
-            let function_arg = self.get_column_expr_value(entry, file_info,left_expr);
+            let function = &column_expr.function.as_ref().unwrap();
 
-            return function::get_value(&column_expr.function, function_arg.to_string(), entry, file_info);
-        }
+            if function.is_aggregate_function() {
+                let _ = self.get_column_expr_value(entry, file_info, file_map, left_expr);
+                let buffer_key = left_expr.to_string();
+                let aggr_result = function::get_aggregate_value(&column_expr.function,
+                                                     &self.raw_output_buffer,
+                                                     //left_expr.field.as_ref().unwrap().to_string().to_lowercase(),
+                                                     buffer_key,
+                                                     &column_expr.val);
+                return Variant::from_string(&aggr_result);
+            } else {
+                let function_arg = self.get_column_expr_value(entry, file_info, file_map, left_expr);
+                let result = function::get_value(&column_expr.function, function_arg.to_string(), entry, file_info);
+                file_map.insert(column_expr.to_string(), result.to_string());
 
-        Variant::empty(VariantType::String)
-    }
-
-    fn get_aggregate_function_value(&self,
-                                    column_expr: &Expr) -> String {
-        let mut field_value = String::new();
-
-        if let Some(ref field) = column_expr.field {
-            field_value = field.to_string();
-        } else if let Some(ref left) = column_expr.left  {
-            if let Some(ref field) = left.field {
-                field_value = field.to_string();
+                return result;
             }
         }
 
-        return function::get_aggregate_value(&column_expr.function,
-                                             &self.raw_output_buffer,
-                                             field_value.to_lowercase(),
-                                             &column_expr.val);
+        Variant::empty(VariantType::String)
     }
 
     fn update_file_metadata(&mut self, entry: &DirEntry) {
@@ -1287,14 +1299,14 @@ impl Searcher {
         let mut criteria = vec!["".to_string(); self.query.ordering_fields.len()];
 
         for field in self.query.get_all_fields() {
-            file_map.insert(field.to_string().to_lowercase(), self.get_field_value(entry, file_info, &field).to_string());
+            file_map.insert(field.to_string(), self.get_field_value(entry, file_info, &field).to_string());
         }
 
         output_value = self.format_results_row_begin(output_value, &records, &file_map);
 
         for field in self.query.fields.clone().iter() {
-            let record = self.get_column_expr_value(entry, file_info, &field);
-            file_map.insert(field.to_string().to_lowercase(), record.to_string().clone());
+            let record = self.get_column_expr_value(Some(entry), file_info, &mut file_map, &field);
+            file_map.insert(field.to_string(), record.to_string().clone());
 
             let value = match self.use_colors && field.contains_colorized() {
                 true => self.colorize(&record.to_string()),
@@ -1305,9 +1317,9 @@ impl Searcher {
         }
 
         for (idx, field) in self.query.ordering_fields.clone().iter().enumerate() {
-            criteria[idx] = match file_map.get(&field.to_string().to_lowercase()) {
+            criteria[idx] = match file_map.get(&field.to_string()) {
                 Some(record) => record.clone(),
-                None => self.get_column_expr_value(entry, file_info, &field).to_string()
+                None => self.get_column_expr_value(Some(entry), file_info, &mut file_map, &field).to_string()
             }
         }
 
@@ -1410,8 +1422,8 @@ impl Searcher {
                 }
             }
         } else if let Some(ref op) = expr.op {
-            let field_value = self.get_column_expr_value(entry, file_info, &expr.left.clone().unwrap());
-            let value = self.get_column_expr_value(entry, file_info, &expr.right.clone().unwrap());
+            let field_value = self.get_column_expr_value(Some(entry), file_info, &mut HashMap::new(), &expr.left.clone().unwrap());
+            let value = self.get_column_expr_value(Some(entry), file_info, &mut HashMap::new(), &expr.right.clone().unwrap());
 
             result = match field_value.get_type() {
                 VariantType::String => {

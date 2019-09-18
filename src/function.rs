@@ -144,6 +144,12 @@ impl Variant {
     }
 }
 
+impl Display for Variant {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), Error>{
+        write!(f, "{}", self.to_string())
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Hash)]
 pub enum Function {
     Lower,
@@ -247,7 +253,7 @@ impl Function {
 
 pub fn get_value(function: &Option<Function>,
                  function_arg: String,
-                 entry: &DirEntry,
+                 entry: Option<&DirEntry>,
                  file_info: &Option<FileInfo>) -> Variant {
     match function {
         Some(Function::Lower) => {
@@ -309,13 +315,15 @@ pub fn get_value(function: &Option<Function>,
                 return Variant::empty(VariantType::Bool);
             }
 
-            if let Ok(mut f) = File::open(entry.path()) {
-                let mut contents = String::new();
-                if let Ok(_) = f.read_to_string(&mut contents) {
-                    if contents.contains(&function_arg) {
-                        return Variant::from_bool(true);
-                    } else {
-                        return Variant::from_bool(false);
+            if let Some(entry) = entry {
+                if let Ok(mut f) = File::open(entry.path()) {
+                    let mut contents = String::new();
+                    if let Ok(_) = f.read_to_string(&mut contents) {
+                        if contents.contains(&function_arg) {
+                            return Variant::from_bool(true);
+                        } else {
+                            return Variant::from_bool(false);
+                        }
                     }
                 }
             }
@@ -325,9 +333,11 @@ pub fn get_value(function: &Option<Function>,
         Some(Function::HasXattr) => {
             #[cfg(unix)]
                 {
-                    if let Ok(file) = File::open(&entry.path()) {
-                        if let Ok(xattr) = file.get_xattr(&function_arg) {
-                            return Variant::from_bool(xattr.is_some());
+                    if let Some(entry) = entry {
+                        if let Ok(file) = File::open(&entry.path()) {
+                            if let Ok(xattr) = file.get_xattr(&function_arg) {
+                                return Variant::from_bool(xattr.is_some());
+                            }
                         }
                     }
                 }
@@ -337,11 +347,13 @@ pub fn get_value(function: &Option<Function>,
         Some(Function::Xattr) => {
             #[cfg(unix)]
                 {
-                    if let Ok(file) = File::open(&entry.path()) {
-                        if let Ok(xattr) = file.get_xattr(&function_arg) {
-                            if let Some(xattr) = xattr {
-                                if let Ok(value) = String::from_utf8(xattr) {
-                                    return Variant::from_string(&value);
+                    if let Some(entry) = entry {
+                        if let Ok(file) = File::open(&entry.path()) {
+                            if let Ok(xattr) = file.get_xattr(&function_arg) {
+                                if let Some(xattr) = xattr {
+                                    if let Ok(value) = String::from_utf8(xattr) {
+                                        return Variant::from_string(&value);
+                                    }
                                 }
                             }
                         }
@@ -358,19 +370,23 @@ pub fn get_value(function: &Option<Function>,
 
 pub fn get_aggregate_value(function: &Option<Function>,
                            raw_output_buffer: &Vec<HashMap<String, String>>,
-                           field_value: String,
+                           buffer_key: String,
                            default_value: &Option<String>) -> String {
     match function {
         Some(Function::Min) => {
-            let mut min = 0;
+            let mut min = -1;
             for value in raw_output_buffer {
-                if let Some(value) = value.get(&field_value) {
+                if let Some(value) = value.get(&buffer_key) {
                     if let Ok(value) = value.parse::<i64>() {
-                        if value < min {
+                        if min == -1 || value < min {
                             min = value;
                         }
                     }
                 }
+            }
+
+            if min == -1 {
+                min = 0;
             }
 
             return min.to_string();
@@ -378,7 +394,7 @@ pub fn get_aggregate_value(function: &Option<Function>,
         Some(Function::Max) => {
             let mut max = 0;
             for value in raw_output_buffer {
-                if let Some(value) = value.get(&field_value) {
+                if let Some(value) = value.get(&buffer_key) {
                     if let Ok(value) = value.parse::<usize>() {
                         if value > max {
                             max = value;
@@ -396,7 +412,7 @@ pub fn get_aggregate_value(function: &Option<Function>,
 
             let mut sum = 0;
             for value in raw_output_buffer {
-                if let Some(value) = value.get(&field_value) {
+                if let Some(value) = value.get(&buffer_key) {
                     if let Ok(value) = value.parse::<usize>() {
                         sum += value;
                     }
@@ -408,7 +424,7 @@ pub fn get_aggregate_value(function: &Option<Function>,
         Some(Function::Sum) => {
             let mut sum = 0;
             for value in raw_output_buffer {
-                if let Some(value) = value.get(&field_value) {
+                if let Some(value) = value.get(&buffer_key) {
                     if let Ok(value) = value.parse::<usize>() {
                         sum += value;
                     }

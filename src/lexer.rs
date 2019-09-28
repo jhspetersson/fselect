@@ -49,7 +49,6 @@ impl<'a> Lexer<'a> {
     pub fn next_lexem(&mut self) -> Option<Lexem> {
         let mut s = String::new();
         let mut mode = LexingMode::Undefined;
-        let mut escape_next = false;
 
         for c in self.input.chars().skip(self.index) {
             match mode {
@@ -75,28 +74,15 @@ impl<'a> Lexer<'a> {
                     break;
                 },
                 LexingMode::RawString => {
-                    if !escape_next {
-                        //Detect the escape character ... ignore it ... push pointer over and continue
-                        #[cfg(not(windows))]
-                            {
-                                if c == '\\' {
-                                    escape_next = true;
-                                    self.index += 1;
-                                    continue;
-                                }
-                            }
-
-                        let is_date = c == '-' && looks_like_date(&s);
-                        if !is_date {
-                            if c == ' ' || c == ',' || c == '(' || c == ')' || is_op_char(c) || self.is_arithmetic_op_char(c) {
-                                break
-                            }
+                    let is_date = c == '-' && looks_like_date(&s);
+                    if !is_date {
+                        if c == ' ' || c == ',' || c == '(' || c == ')' || is_op_char(c) || self.is_arithmetic_op_char(c) {
+                            break
                         }
                     }
 
                     self.index += 1;
                     s.push(c);
-                    escape_next = false;
                 },
                 LexingMode::Undefined => {
                     self.index += 1;

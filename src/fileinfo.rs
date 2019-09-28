@@ -1,11 +1,11 @@
-use time::Tm;
 use zip;
+use zip::DateTime;
 
 pub struct FileInfo {
     pub name: String,
     pub size: u64,
     pub mode: Option<u32>,
-    pub modified: Tm,
+    pub modified: DateTime,
 }
 
 pub fn to_file_info(zipped_file: &zip::read::ZipFile) -> FileInfo {

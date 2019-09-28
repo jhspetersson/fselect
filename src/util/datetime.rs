@@ -7,7 +7,6 @@ use chrono::Timelike;
 use chrono::TimeZone;
 use chrono_english::{parse_date_string,Dialect};
 use regex::Regex;
-use time::Tm;
 
 lazy_static! {
     static ref DATE_REGEX: Regex = Regex::new("(\\d{4})(-|:)(\\d{1,2})(-|:)(\\d{1,2}) ?(\\d{1,2})?:?(\\d{1,2})?:?(\\d{1,2})?").unwrap();
@@ -108,9 +107,9 @@ pub fn parse_datetime(s: &str) -> Result<(DateTime<Local>, DateTime<Local>), Str
     }
 }
 
-pub fn to_local_datetime(tm: &Tm) -> DateTime<Local> {
-    Local.ymd(tm.tm_year + 1900, (tm.tm_mon + 1) as u32, tm.tm_mday as u32)
-        .and_hms(tm.tm_hour as u32, tm.tm_min as u32, tm.tm_sec as u32)
+pub fn to_local_datetime(dt: &zip::DateTime) -> DateTime<Local> {
+    Local.ymd(dt.year() as i32, dt.month() as u32, dt.day() as u32)
+        .and_hms(dt.hour() as u32, dt.minute() as u32, dt.second() as u32)
 }
 
 pub fn format_datetime(dt: &DateTime<Local>) -> String {

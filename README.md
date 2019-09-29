@@ -101,6 +101,10 @@ Formatting functions:
 
     fselect "LOWER(name), UPPER(name), LENGTH(name), YEAR(modified) from /home/user/Downloads"
     
+Get the year of an oldest file:
+
+    fselect "MIN(YEAR(modified)) from /home/user"
+    
 Use single quotes if you need to address files with spaces:
 
     fselect "path from '/home/user/Misc stuff' where name != 'Some file'"

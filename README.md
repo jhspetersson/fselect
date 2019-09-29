@@ -49,11 +49,7 @@ A statically precompiled [binary](https://github.com/jhspetersson/fselect/releas
 
 #### Mac
 
-[Precompiled on OS X Mavericks 10.9.5](https://github.com/jhspetersson/fselect/releases/download/0.6.6/fselect-x86_64-apple-darwin.zip)
-
-#### Mac from brew
-
-* Install [brew](https://docs.brew.sh/Installation)
+* Install [brew](https://brew.sh)
 * Run `brew install fselect`
 
 ### Usage

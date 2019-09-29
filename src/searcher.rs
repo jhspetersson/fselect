@@ -781,7 +781,7 @@ impl Searcher {
             Field::IsDir => {
                 match file_info {
                     Some(ref file_info) => {
-                        return Variant::from_bool(file_info.name.ends_with('/'));
+                        return Variant::from_bool(file_info.name.ends_with('/') || file_info.name.ends_with('\\'));
                     },
                     _ => {
                         self.update_file_metadata(entry);

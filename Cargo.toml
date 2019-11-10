@@ -41,6 +41,7 @@ sha2 = "0.8"
 sha3 = "0.8"
 toml = "0.5"
 tree_magic = "0.2"
+wana_kana = "0.9"
 zip = "0.5"
 
 [target.'cfg(unix)'.dependencies]

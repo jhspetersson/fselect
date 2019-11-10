@@ -1,5 +1,6 @@
 mod datetime;
 mod glob;
+pub(crate) mod japanese;
 mod top_n;
 mod wbuf;
 

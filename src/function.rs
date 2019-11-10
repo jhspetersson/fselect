@@ -159,6 +159,12 @@ pub enum Function {
     Hex,
     Oct,
 
+    ContainsJapanese,
+    ContainsHiragana,
+    ContainsKatakana,
+    ContainsKana,
+    ContainsKanji,
+
     Min,
     Max,
     Avg,
@@ -188,6 +194,12 @@ impl FromStr for Function {
             "base64" => Ok(Function::Base64),
             "hex" => Ok(Function::Hex),
             "oct" => Ok(Function::Oct),
+
+            "contains_japanese" | "japanese" => Ok(Function::ContainsJapanese),
+            "contains_hiragana" | "hiragana" => Ok(Function::ContainsHiragana),
+            "contains_katakana" | "katakana" => Ok(Function::ContainsKatakana),
+            "contains_kana" | "kana" => Ok(Function::ContainsKana),
+            "contains_kanji" | "kanji" => Ok(Function::ContainsKanji),
 
             "day" => Ok(Function::Day),
             "month" => Ok(Function::Month),
@@ -279,6 +291,31 @@ pub fn get_value(function: &Option<Function>,
                 Ok(val) => Variant::from_string(&format!("{:o}", val)),
                 _ => Variant::empty(VariantType::String)
             };
+        },
+        Some(Function::ContainsJapanese) => {
+            let result = crate::util::japanese::contains_japanese(&function_arg);
+
+            return Variant::from_bool(result);
+        },
+        Some(Function::ContainsHiragana) => {
+            let result = crate::util::japanese::contains_hiragana(&function_arg);
+
+            return Variant::from_bool(result);
+        },
+        Some(Function::ContainsKatakana) => {
+            let result = crate::util::japanese::contains_katakana(&function_arg);
+
+            return Variant::from_bool(result);
+        },
+        Some(Function::ContainsKana) => {
+            let result = crate::util::japanese::contains_kana(&function_arg);
+
+            return Variant::from_bool(result);
+        },
+        Some(Function::ContainsKanji) => {
+            let result = crate::util::japanese::contains_kanji(&function_arg);
+
+            return Variant::from_bool(result);
         },
         Some(Function::Year) => {
             match parse_datetime(&function_arg) {

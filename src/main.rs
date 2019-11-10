@@ -237,11 +237,18 @@ Functions:
     Xattr:
         HAS_XATTR                   Used to check if xattr exists
         XATTR                       Returns value of xattr
-    Other:
+    String:
         LENGTH                      Returns length of string value
         LOWER                       Returns lowercase value
         UPPER                       Returns uppercase value
         BASE64                      Returns Base64 digest of a value
+    Japanese string:
+        CONTAINS_JAPANESE           Used to check if string value contains Japanese symbols
+        CONTAINS_KANA               Used to check if string value contains kana symbols
+        CONTAINS_HIRAGANA           Used to check if string value contains hiragana symbols
+        CONTAINS_KATAKANA           Used to check if string value contains katakana symbols
+        CONTAINS_KANJI              Used to check if string value contains kanji symbols
+    Other:
         HEX                         Returns hexadecimal representation of an integer value
         OCT                         Returns octal representation of an integer value
         CONTAINS                    Returns true, if file contains string, false if not

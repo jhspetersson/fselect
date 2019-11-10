@@ -154,7 +154,7 @@ Supported platforms are Linux, MacOS, FreeBSD, and NetBSD.
 | HAS_XATTR | Check if xattr exists | `select "name, has_xattr(user.test) from /home/user"` |
 | XATTR | Get value of xattr | `select "name, xattr(user.test) from /home/user"` |
 
-#### Other functions
+#### String functions
 
 Used mostly for formatting results.
 
@@ -164,6 +164,23 @@ Used mostly for formatting results.
 | LOWER | Convert value to lowercase | `select lower(name) from /home/user/Downloads` |
 | UPPER | Convert value to uppercase | `select upper(name) from /home/user/Downloads` |
 | BASE64 | Encode value to Base64 | `select base64(name) from /home/user/Downloads` |
+
+#### Japanese string functions
+
+Used for detecting Japanese symbols in file names and such.
+
+| Function | Meaning | Example |
+| --- | --- | --- |
+| CONTAINS_JAPANESE or JAPANESE | Check if string value contains Japanese symbols | `select japanese(name) from /home/user/Downloads` |
+| CONTAINS_KANA or KANA | Check if string value contains kana symbols | `select kana(name) from /home/user/Downloads` |
+| CONTAINS_HIRAGANA or HIRAGANA | Check if string value contains hiragana symbols | `select contains_hiragana(name) from /home/user/Downloads` |
+| CONTAINS_KATAKANA or KATAKANA | Check if string value contains katakana symbols | `select katakana(name) from /home/user/Downloads` |
+| CONTAINS_KANJI or KANJI | Check if string value contains kanji symbols | `select kanji(name) from /home/user/Downloads` |
+
+#### Other functions
+
+| Function | Meaning | Example |
+| --- | --- | --- |
 | HEX | Convert integer value to hexadecimal representation | `select name, size, hex(size), upper(hex(size)) from /home/user/Downloads` |
 | OCT | Convert integer value to octal representation | `select name, size, oct(size) from /home/user/Downloads` |
 | CONTAINS | `true` if file contains string, `false` if not | `select contains(TODO) from /home/user/Projects/foo/src` |

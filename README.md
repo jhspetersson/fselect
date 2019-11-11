@@ -34,6 +34,10 @@ More is under way!
 
 [AUR package](https://aur.archlinux.org/packages/fselect/), thanks to [@asm0dey](https://github.com/asm0dey)
 
+#### NixOS
+
+[`fselect` in `nixpkgs`](https://github.com/filalex77/nixpkgs/blob/1eced92263395896c10cea69e5f60e8be5f43aeb/pkgs/tools/misc/fselect/default.nix), thanks to [@filalex77](https://github.com/filalex77)
+
 #### Other Linux
 
 [Static build with musl](https://github.com/jhspetersson/fselect/releases/download/0.6.7/fselect-x86_64-linux-musl.gz).

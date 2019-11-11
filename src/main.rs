@@ -100,7 +100,7 @@ fn main() {
 fn short_usage_info(no_color: bool) {
     const VERSION: &'static str = env!("CARGO_PKG_VERSION");
 
-    print!("FSelect utility ");
+    print!("fselect ");
 
     if no_color {
         println!("{}", VERSION);

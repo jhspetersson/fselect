@@ -166,6 +166,7 @@ pub enum Function {
     ContainsKanji,
 
     Concat,
+    ConcatWs,
 
     Min,
     Max,
@@ -204,6 +205,7 @@ impl FromStr for Function {
             "contains_kanji" | "kanji" => Ok(Function::ContainsKanji),
 
             "concat" => Ok(Function::Concat),
+            "concat_ws" => Ok(Function::ConcatWs),
 
             "day" => Ok(Function::Day),
             "month" => Ok(Function::Month),
@@ -324,6 +326,9 @@ pub fn get_value(function: &Option<Function>,
         },
         Some(Function::Concat) => {
             return Variant::from_string(&(String::from(&function_arg) + &function_args.join("")));
+        },
+        Some(Function::ConcatWs) => {
+            return Variant::from_string(&function_args.join(&function_arg));
         },
         Some(Function::Year) => {
             match parse_datetime(&function_arg) {

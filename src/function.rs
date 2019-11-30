@@ -165,6 +165,8 @@ pub enum Function {
     ContainsKana,
     ContainsKanji,
 
+    Concat,
+
     Min,
     Max,
     Avg,
@@ -200,6 +202,8 @@ impl FromStr for Function {
             "contains_katakana" | "katakana" => Ok(Function::ContainsKatakana),
             "contains_kana" | "kana" => Ok(Function::ContainsKana),
             "contains_kanji" | "kanji" => Ok(Function::ContainsKanji),
+
+            "concat" => Ok(Function::Concat),
 
             "day" => Ok(Function::Day),
             "month" => Ok(Function::Month),
@@ -265,6 +269,7 @@ impl Function {
 
 pub fn get_value(function: &Option<Function>,
                  function_arg: String,
+                 function_args: Vec<String>,
                  entry: Option<&DirEntry>,
                  file_info: &Option<FileInfo>) -> Variant {
     match function {
@@ -316,6 +321,9 @@ pub fn get_value(function: &Option<Function>,
             let result = crate::util::japanese::contains_kanji(&function_arg);
 
             return Variant::from_bool(result);
+        },
+        Some(Function::Concat) => {
+            return Variant::from_string(&(String::from(&function_arg) + &function_args.join("")));
         },
         Some(Function::Year) => {
             match parse_datetime(&function_arg) {

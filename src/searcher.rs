@@ -671,7 +671,14 @@ impl Searcher {
                 return Variant::from_string(&aggr_result);
             } else {
                 let function_arg = self.get_column_expr_value(entry, file_info, file_map, left_expr);
-                let result = function::get_value(&column_expr.function, function_arg.to_string(), entry, file_info);
+                let mut function_args = vec![];
+                if let Some(args) = &column_expr.args {
+                    for arg in args {
+                        let arg_value = self.get_column_expr_value(entry, file_info, file_map, arg);
+                        function_args.push(arg_value.to_string());
+                    }
+                }
+                let result = function::get_value(&column_expr.function, function_arg.to_string(), function_args, entry, file_info);
                 file_map.insert(column_expr.to_string(), result.to_string());
 
                 return result;

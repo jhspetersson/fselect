@@ -18,6 +18,7 @@ pub struct Expr {
     pub right: Option<Box<Expr>>,
     pub field: Option<Field>,
     pub function: Option<Function>,
+    pub args: Option<Vec<Expr>>,
     pub val: Option<String>,
 }
 
@@ -31,6 +32,7 @@ impl Expr {
             right: Some(Box::new(right)),
             field: None,
             function: None,
+            args: None,
             val: None,
         }
     }
@@ -44,6 +46,7 @@ impl Expr {
             right: Some(Box::new(right)),
             field: None,
             function: None,
+            args: None,
             val: None,
         }
     }
@@ -57,6 +60,7 @@ impl Expr {
             right: Some(Box::new(right)),
             field: None,
             function: None,
+            args: None,
             val: None,
         }
     }
@@ -70,6 +74,7 @@ impl Expr {
             right: None,
             field: Some(field),
             function: None,
+            args: None,
             val: None,
         }
     }
@@ -83,6 +88,7 @@ impl Expr {
             right: None,
             field: None,
             function: Some(function),
+            args: Some(vec![]),
             val: None,
         }
     }
@@ -96,6 +102,7 @@ impl Expr {
             right: None,
             field: None,
             function: None,
+            args: None,
             val: Some(value),
         }
     }

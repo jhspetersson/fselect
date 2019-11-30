@@ -464,13 +464,29 @@ impl Parser {
             function_expr.left = Some(Box::from(function_arg));
         }
 
-        if let Some(lexem) = self.get_lexem() {
-            if lexem != Lexem::Close {
-                return Err("Error in function expression".to_string());
+        // TODO: try find a comma, then parse another expr, repeat until it's a close paren
+
+        let mut args = vec![];
+
+        loop {
+            match self.get_lexem() {
+                Some(lexem) if lexem == Lexem::Comma => {
+                    match self.parse_expr() {
+                        Ok(Some(expr)) => args.push(expr),
+                        _ => {
+                            return Err("Error in function expression".to_string());
+                        }
+                    }
+                },
+                Some(lexem) if lexem == Lexem::Close => {
+                    function_expr.args = Some(args);
+                    return Ok(function_expr);
+                },
+                _ => {
+                    return Err("Error in function expression".to_string());
+                }
             }
         }
-
-        Ok(function_expr)
     }
 
     fn parse_order_by(&mut self, fields: &Vec<Expr>) -> Result<(Vec<Expr>, Vec<bool>), String> {

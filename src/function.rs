@@ -167,6 +167,7 @@ pub enum Function {
 
     Concat,
     ConcatWs,
+    Coalesce,
 
     Min,
     Max,
@@ -206,6 +207,7 @@ impl FromStr for Function {
 
             "concat" => Ok(Function::Concat),
             "concat_ws" => Ok(Function::ConcatWs),
+            "coalesce" => Ok(Function::Coalesce),
 
             "day" => Ok(Function::Day),
             "month" => Ok(Function::Month),
@@ -329,6 +331,19 @@ pub fn get_value(function: &Option<Function>,
         },
         Some(Function::ConcatWs) => {
             return Variant::from_string(&function_args.join(&function_arg));
+        },
+        Some(Function::Coalesce) => {
+            if !&function_arg.is_empty() {
+                return Variant::from_string(&function_arg);
+            }
+
+            for arg in function_args {
+                if !arg.is_empty() {
+                    return Variant::from_string(&arg);
+                }
+            }
+
+            return Variant::empty(VariantType::String);
         },
         Some(Function::Year) => {
             match parse_datetime(&function_arg) {

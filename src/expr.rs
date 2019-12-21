@@ -126,6 +126,14 @@ impl Expr {
             }
         }
 
+        if let Some(ref args) = self.args {
+            for arg in args {
+                if arg.has_aggregate_function() {
+                    return true;
+                }
+            }
+        }
+
         false
     }
 
@@ -142,6 +150,12 @@ impl Expr {
 
         if let Some(ref field) = self.field {
             result.insert(field.clone());
+        }
+
+        if let Some(ref args) = self.args {
+            for arg in args {
+                result.extend(arg.get_required_fields());
+            }
         }
 
         result

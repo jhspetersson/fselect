@@ -182,7 +182,7 @@ Enable `.gitignore` or `.hgignore` support:
     
 Search by image dimensions:
 
-    fselect width, height, path from /home/user/photos where width gte 2000 or height gte 2000
+    fselect CONCAT(width, 'x', height), path from /home/user/photos where width gte 2000 or height gte 2000
     
 Find square images:
     

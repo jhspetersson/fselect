@@ -184,6 +184,9 @@ Used for detecting Japanese symbols in file names and such.
 | HEX | Convert integer value to hexadecimal representation | `select name, size, hex(size), upper(hex(size)) from /home/user/Downloads` |
 | OCT | Convert integer value to octal representation | `select name, size, oct(size) from /home/user/Downloads` |
 | CONTAINS | `true` if file contains string, `false` if not | `select contains(TODO) from /home/user/Projects/foo/src` |
+| COALESCE | Returns first nonempty expression value | `select name, size, COALESCE(sha256, '---') from /home/user/Downloads` |
+| CONCAT | Returns concatenated string of expression values | `select CONCAT('Name is ', name, ' size is ', fsize, '!!!') from /home/user/Downloads` |
+| CONCAT_WS | Returns concatenated string of expression values with specified delimiter | `select name, fsize, CONCAT_WS('x', width, height) from /home/user/Images` |
 
 ### Search roots
 

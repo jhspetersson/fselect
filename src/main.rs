@@ -252,6 +252,9 @@ Functions:
         HEX                         Returns hexadecimal representation of an integer value
         OCT                         Returns octal representation of an integer value
         CONTAINS                    Returns true, if file contains string, false if not
+        COALESCE                    Returns first nonempty expression value
+        CONCAT                      Returns concatenated string of expression values
+        CONCAT_WS                   Returns concatenated string of expression values with specified delimiter
 
 Expressions:
     Operators:

@@ -25,6 +25,7 @@ use std::string::ToString;
 use chrono::Local;
 use chrono::TimeZone;
 use imagesize;
+use humansize::FileSize;
 use mp3_metadata;
 use mp3_metadata::MP3Metadata;
 use sha1::Digest;
@@ -223,6 +224,99 @@ pub fn parse_filesize(s: &str) -> Option<u64> {
     match string.parse::<u64>() {
         Ok(size) => return Some(size),
         _ => return None
+    }
+}
+
+pub fn format_filesize(size: u64, modifier: &str) -> String {
+    let modifier = modifier.to_ascii_lowercase();
+
+    let formatter = match modifier.as_str() {
+        "b" | "byte" | "bytes" => {
+            humansize::file_size_opts::FileSizeOpts {
+                fixed_at: humansize::file_size_opts::FixedAt::Byte,
+                ..humansize::file_size_opts::BINARY
+            }
+        },
+        "k" | "kib" | "kibibyte" | "kibibytes" => {
+            humansize::file_size_opts::FileSizeOpts {
+                fixed_at: humansize::file_size_opts::FixedAt::Kilo,
+                ..humansize::file_size_opts::BINARY
+            }
+        },
+        "kb" => {
+            humansize::file_size_opts::FileSizeOpts {
+                fixed_at: humansize::file_size_opts::FixedAt::Kilo,
+                ..humansize::file_size_opts::DECIMAL
+            }
+        },
+        "m" | "mib" | "mebibyte" | "mebibytes" => {
+            humansize::file_size_opts::FileSizeOpts {
+                fixed_at: humansize::file_size_opts::FixedAt::Mega,
+                ..humansize::file_size_opts::BINARY
+            }
+        },
+        "mb" => {
+            humansize::file_size_opts::FileSizeOpts {
+                fixed_at: humansize::file_size_opts::FixedAt::Mega,
+                ..humansize::file_size_opts::DECIMAL
+            }
+        },
+        "g" | "gib" | "gibibyte" | "gibibytes" => {
+            humansize::file_size_opts::FileSizeOpts {
+                fixed_at: humansize::file_size_opts::FixedAt::Giga,
+                ..humansize::file_size_opts::BINARY
+            }
+        },
+        "gb" => {
+            humansize::file_size_opts::FileSizeOpts {
+                fixed_at: humansize::file_size_opts::FixedAt::Giga,
+                ..humansize::file_size_opts::DECIMAL
+            }
+        },
+        "t" | "tib" | "tebibyte" | "tebibytes" => {
+            humansize::file_size_opts::FileSizeOpts {
+                fixed_at: humansize::file_size_opts::FixedAt::Tera,
+                ..humansize::file_size_opts::BINARY
+            }
+        },
+        "tb" => {
+            humansize::file_size_opts::FileSizeOpts {
+                fixed_at: humansize::file_size_opts::FixedAt::Tera,
+                ..humansize::file_size_opts::DECIMAL
+            }
+        },
+        "p" | "pib" | "pebibyte" | "pebibytes" => {
+            humansize::file_size_opts::FileSizeOpts {
+                fixed_at: humansize::file_size_opts::FixedAt::Peta,
+                ..humansize::file_size_opts::BINARY
+            }
+        },
+        "pb" => {
+            humansize::file_size_opts::FileSizeOpts {
+                fixed_at: humansize::file_size_opts::FixedAt::Peta,
+                ..humansize::file_size_opts::DECIMAL
+            }
+        },
+        "e" | "eib" | "exbibyte" | "exbibytes" => {
+            humansize::file_size_opts::FileSizeOpts {
+                fixed_at: humansize::file_size_opts::FixedAt::Peta,
+                ..humansize::file_size_opts::BINARY
+            }
+        },
+        "eb" => {
+            humansize::file_size_opts::FileSizeOpts {
+                fixed_at: humansize::file_size_opts::FixedAt::Peta,
+                ..humansize::file_size_opts::DECIMAL
+            }
+        },
+        _ => {
+            panic!("Unknown file size modifier");
+        }
+    };
+
+    match size.file_size(formatter) {
+        Ok(size) => size,
+        _ => String::new()
     }
 }
 

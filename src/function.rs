@@ -168,6 +168,7 @@ pub enum Function {
     Concat,
     ConcatWs,
     Coalesce,
+    FormatSize,
 
     Min,
     Max,
@@ -208,6 +209,7 @@ impl FromStr for Function {
             "concat" => Ok(Function::Concat),
             "concat_ws" => Ok(Function::ConcatWs),
             "coalesce" => Ok(Function::Coalesce),
+            "format_size" | "format_filesize" => Ok(Function::FormatSize),
 
             "day" => Ok(Function::Day),
             "month" => Ok(Function::Month),
@@ -340,6 +342,20 @@ pub fn get_value(function: &Option<Function>,
             for arg in function_args {
                 if !arg.is_empty() {
                     return Variant::from_string(&arg);
+                }
+            }
+
+            return Variant::empty(VariantType::String);
+        },
+        Some(Function::FormatSize) => {
+            if function_arg.is_empty() {
+                return Variant::empty(VariantType::String);
+            }
+
+            if let Ok(size) = function_arg.parse::<u64>() {
+                if let Some(modifier) = function_args.get(0) {
+                    let file_size = crate::util::format_filesize(size, modifier);
+                    return Variant::from_string(&file_size);
                 }
             }
 

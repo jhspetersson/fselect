@@ -220,13 +220,18 @@ When you put a directory to search at, you can specify some options.
 * `like`
 * `notlike`
 
-### File size specifiers
+### File size units
 
-| Specifier | Meaning |
-| --- | --- |
-| `g` or `gb` or `gib` | gibibytes |
-| `m` or `mb` or `mib` | mibibytes |
-| `k` or `kb` or `kib` | kibibytes |
+| Specifier | Meaning | Bytes |
+| --- | --- | --- |
+| `t` or `tib` | tebibyte | 1024 * 1024 * 1024 * 1024
+| `tb` | terabyte | 1000 * 1000 * 1000 * 1000
+| `g` or `gib` | gibibyte | 1024 * 1024 * 1024
+| `gb` | gigabyte | 1000 * 1000 * 1000
+| `m` or `mib` | mebibyte | 1024 * 1024
+| `mb` | megabyte | 1000 * 1000
+| `k` or `kib` | kibibyte | 1024
+| `kb` | kilobyte | 1000
 
     fselect size, path from /home/user/tmp where size gt 2g
     fselect fsize, path from /home/user/tmp where size = 5mib

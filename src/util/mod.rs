@@ -160,7 +160,7 @@ pub fn parse_filesize(s: &str) -> Option<u64> {
 
     if length > 2 && string.ends_with("kb") {
         match &string[..(length - 2)].parse::<f64>() {
-            Ok(size) => return Some((*size * 1024.0) as u64),
+            Ok(size) => return Some((*size * 1000.0) as u64),
             _ => return None
         }
     }
@@ -181,7 +181,7 @@ pub fn parse_filesize(s: &str) -> Option<u64> {
 
     if length > 2 && string.ends_with("mb") {
         match &string[..(length - 2)].parse::<f64>() {
-            Ok(size) => return Some((*size * 1024.0 * 1024.0) as u64),
+            Ok(size) => return Some((*size * 1000.0 * 1000.0) as u64),
             _ => return None
         }
     }
@@ -202,7 +202,7 @@ pub fn parse_filesize(s: &str) -> Option<u64> {
 
     if length > 2 && string.ends_with("gb") {
         match &string[..(length - 2)].parse::<f64>() {
-            Ok(size) => return Some((*size * 1024.0 * 1024.0 * 1024.0) as u64),
+            Ok(size) => return Some((*size * 1000.0 * 1000.0 * 1000.0) as u64),
             _ => return None
         }
     }

@@ -714,10 +714,10 @@ mod tests {
         assert_eq!(parse_filesize(file_size), Some(123));
 
         let file_size = "1kb";
-        assert_eq!(parse_filesize(file_size), Some(1024));
+        assert_eq!(parse_filesize(file_size), Some(1000));
 
         let file_size = "1 kb";
-        assert_eq!(parse_filesize(file_size), Some(1024));
+        assert_eq!(parse_filesize(file_size), Some(1000));
 
         let file_size = "1kib";
         assert_eq!(parse_filesize(file_size), Some(1024));

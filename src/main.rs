@@ -255,6 +255,7 @@ Functions:
         COALESCE                    Returns first nonempty expression value
         CONCAT                      Returns concatenated string of expression values
         CONCAT_WS                   Returns concatenated string of expression values with specified delimiter
+        FORMAT_SIZE                 Returns file size formatted in specified units
 
 Expressions:
     Operators:

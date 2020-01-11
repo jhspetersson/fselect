@@ -195,7 +195,7 @@ impl FromStr for Function {
         match function.as_str() {
             "lower" => Ok(Function::Lower),
             "upper" => Ok(Function::Upper),
-            "length" => Ok(Function::Length),
+            "length" | "len" => Ok(Function::Length),
             "base64" => Ok(Function::Base64),
             "hex" => Ok(Function::Hex),
             "oct" => Ok(Function::Oct),

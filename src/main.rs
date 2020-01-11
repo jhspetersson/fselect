@@ -238,7 +238,7 @@ Functions:
         HAS_XATTR                   Used to check if xattr exists
         XATTR                       Returns value of xattr
     String:
-        LENGTH                      Returns length of string value
+        LENGTH | LEN                Returns length of string value
         LOWER                       Returns lowercase value
         UPPER                       Returns uppercase value
         BASE64                      Returns Base64 digest of a value

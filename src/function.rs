@@ -167,6 +167,7 @@ pub enum Function {
 
     Concat,
     ConcatWs,
+    Substring,
     Coalesce,
     FormatSize,
 
@@ -208,6 +209,7 @@ impl FromStr for Function {
 
             "concat" => Ok(Function::Concat),
             "concat_ws" => Ok(Function::ConcatWs),
+            "substr" | "substring" => Ok(Function::Substring),
             "coalesce" => Ok(Function::Coalesce),
             "format_size" | "format_filesize" => Ok(Function::FormatSize),
 
@@ -333,6 +335,31 @@ pub fn get_value(function: &Option<Function>,
         },
         Some(Function::ConcatWs) => {
             return Variant::from_string(&function_args.join(&function_arg));
+        },
+        Some(Function::Substring) => {
+            let string = String::from(&function_arg);
+
+            let mut pos = match &function_args.is_empty() {
+                true => 0,
+                false => *&function_args[0].parse::<i32>().unwrap() - 1
+            };
+
+            if pos < 0 {
+                let string_length = string.chars().count() as i32;
+                pos = string_length - pos.abs();
+            }
+
+            let len = match &function_args.get(1) {
+                Some(len) => len.parse::<usize>().unwrap(),
+                _ => 0
+            };
+
+            let result = match len > 0 {
+                true => string.chars().skip(pos as usize).take(len).collect(),
+                false => string.chars().skip(pos as usize).collect()
+            };
+
+            return Variant::from_string(&result);
         },
         Some(Function::Coalesce) => {
             if !&function_arg.is_empty() {

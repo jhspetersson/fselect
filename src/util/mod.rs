@@ -483,7 +483,7 @@ pub fn get_mp3_metadata(entry: &DirEntry) -> Option<MP3Metadata> {
 
 pub fn get_exif_metadata(entry: &DirEntry) -> Option<HashMap<String, String>> {
     if let Ok(file) = File::open(entry.path()) {
-        if let Ok(reader) = exif::Reader::new(&mut BufReader::new(&file)) {
+        if let Ok(reader) = exif::Reader::new().read_from_container(&mut BufReader::new(&file)) {
             let mut exif_info = HashMap::new();
 
             for field in reader.fields() {

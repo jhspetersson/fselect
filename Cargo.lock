@@ -239,7 +239,7 @@ dependencies = [
  "csv 1.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "humansize 1.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "imagesize 0.8.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "kamadak-exif 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "kamadak-exif 0.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "lazy_static 1.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "lscolors 0.6.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "matroska 0.5.1 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -306,7 +306,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
 name = "kamadak-exif"
-version = "0.4.0"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "mutate_once 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -819,7 +819,7 @@ dependencies = [
 "checksum imagesize 0.8.0 (registry+https://github.com/rust-lang/crates.io-index)" = "4dbda68c8bb67cf3fed35104aa4def4ebc0ec5eea47bf895022edf779b4714cf"
 "checksum itertools 0.8.2 (registry+https://github.com/rust-lang/crates.io-index)" = "f56a2d0bc861f9165be4eb3442afd3c236d8a98afd426f65d92324ae1091a484"
 "checksum itoa 0.4.4 (registry+https://github.com/rust-lang/crates.io-index)" = "501266b7edd0174f8530248f87f99c88fbe60ca4ef3dd486835b8d8d53136f7f"
-"checksum kamadak-exif 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)" = "68b3e8df0161570e8ba25cccb28b2cc9546f98277370ed235dee9065a2a91c57"
+"checksum kamadak-exif 0.5.0 (registry+https://github.com/rust-lang/crates.io-index)" = "0cf8a813ecf0387be4f2e3b201c133f5bb44c3964a14f208297a51c91a8277ba"
 "checksum keccak 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)" = "67c21572b4949434e4fc1e1978b99c5f77064153c59d998bf13ecd96fb5ecba7"
 "checksum lazy_static 0.2.11 (registry+https://github.com/rust-lang/crates.io-index)" = "76f033c7ad61445c5b347c7382dd1237847eb1bce590fe50365dcb33d546be73"
 "checksum lazy_static 1.4.0 (registry+https://github.com/rust-lang/crates.io-index)" = "e2abad23fbc42b3700f2f279844dc832adb2b2eb069b2df918f455c4e18cc646"

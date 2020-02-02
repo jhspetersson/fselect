@@ -63,7 +63,7 @@ impl<'a> Lexer<'a> {
                     s.push(c);
                 },
                 LexingMode::Operator => {
-                    if !is_op_char(c) {
+                    if !self.is_op_char(c) {
                         break
                     }
 
@@ -76,7 +76,7 @@ impl<'a> Lexer<'a> {
                 LexingMode::RawString => {
                     let is_date = c == '-' && looks_like_date(&s);
                     if !is_date {
-                        if c == ' ' || c == ',' || c == '(' || c == ')' || is_op_char(c) || self.is_arithmetic_op_char(c) {
+                        if c == ' ' || c == ',' || c == '(' || c == ')' || self.is_op_char(c) || self.is_arithmetic_op_char(c) {
                             break
                         }
                     }
@@ -93,7 +93,7 @@ impl<'a> Lexer<'a> {
                         '(' => mode = LexingMode::Open,
                         ')' => mode = LexingMode::Close,
                         _ => {
-                            mode = if is_op_char(c) {
+                            mode = if self.is_op_char(c) {
                                 LexingMode::Operator
                             } else if self.is_arithmetic_op_char(c) {
                                 LexingMode::ArithmeticOperator
@@ -156,14 +156,19 @@ impl<'a> Lexer<'a> {
             _ => false
         }
     }
-}
 
-fn is_op_char(c: char) -> bool {
-    match c {
-        '=' | '!' | '<' | '>' | '~' => true,
-        _ => false
+    fn is_op_char(&self, c: char) -> bool {
+	if !self.before_from && !self.after_where {
+	    return false;
+	}
+
+	match c {
+	    '=' | '!' | '<' | '>' | '~' => true,
+    	    _ => false
+	}
     }
 }
+
 
 lazy_static! {
     static ref DATE_ALIKE_REGEX: Regex = Regex::new("(\\d{4})-?(\\d{2})?").unwrap();

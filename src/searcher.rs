@@ -626,7 +626,7 @@ impl Searcher {
         }
 
         if let Some(ref value) = column_expr.val {
-            return Variant::from_string(&value);
+            return Variant::from_signed_string(&value, column_expr.minus);
         }
 
         let result;

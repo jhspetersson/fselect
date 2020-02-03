@@ -82,6 +82,29 @@ impl Variant {
         }
     }
 
+    pub fn from_signed_string(value: &String, minus: bool) -> Variant {
+        let bool_value = str_to_bool(&value);
+        let string_value = match minus {
+            true => {
+                let mut result = String::from("-");
+                result += &value.clone();
+
+                result
+            },
+            false => value.clone()
+        };
+
+        Variant {
+            value_type: VariantType::String,
+            empty: false,
+            string_value,
+            int_value: None,
+            bool_value,
+            dt_from: None,
+            dt_to: None,
+        }
+    }
+
     pub fn from_bool(value: bool) -> Variant {
         Variant {
             value_type: VariantType::Bool,
@@ -346,7 +369,7 @@ pub fn get_value(function: &Option<Function>,
 
             if pos < 0 {
                 let string_length = string.chars().count() as i32;
-                pos = string_length - pos.abs();
+                pos = string_length - pos.abs() + 1;
             }
 
             let len = match &function_args.get(1) {

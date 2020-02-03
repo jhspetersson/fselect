@@ -429,21 +429,43 @@ dbg!(&self.lexems);
     }
 
     fn parse_func_scalar(&mut self) -> Result<Option<Expr>, String> {
-        let lexem = self.get_lexem();
+        let mut lexem = self.get_lexem();
+        let mut minus = false;
+
+        if let Some(Lexem::ArithmeticOperator(ref s)) = lexem {
+            if s == "-" {
+                minus = true;
+                lexem = self.get_lexem();
+            } else if s == "+" {
+                // nop
+            } else {
+                self.drop_lexem();
+            }
+        }
+
         match lexem {
             Some(Lexem::String(ref s)) | Some(Lexem::RawString(ref s)) => {
                 if let Ok(field) = Field::from_str(s) {
-                    return Ok(Some(Expr::field(field)));
+                    let mut expr = Expr::field(field);
+                    expr.minus = minus;
+                    return Ok(Some(expr));
                 }
 
                 if let Ok(function) = Function::from_str(s) {
                     match self.parse_function(function) {
-                        Ok(expr) => return Ok(Some(expr)),
+                        Ok(expr) => {
+                            let mut expr = expr;
+                            expr.minus = minus;
+                            return Ok(Some(expr));
+                        },
                         Err(err) => return Err(err)
                     }
                 }
 
-                Ok(Some(Expr::value(s.to_string())))
+                let mut expr = Expr::value(s.to_string());
+                expr.minus = minus;
+
+                Ok(Some(expr))
             }
             _ => {
                 Err("Error parsing expression, expecting string".to_string())

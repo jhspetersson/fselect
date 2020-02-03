@@ -16,6 +16,7 @@ pub struct Expr {
     pub logical_op: Option<LogicalOp>,
     pub op: Option<Op>,
     pub right: Option<Box<Expr>>,
+    pub minus: bool,
     pub field: Option<Field>,
     pub function: Option<Function>,
     pub args: Option<Vec<Expr>>,
@@ -30,6 +31,7 @@ impl Expr {
             logical_op: None,
             op: Some(op),
             right: Some(Box::new(right)),
+            minus: false,
             field: None,
             function: None,
             args: None,
@@ -44,6 +46,7 @@ impl Expr {
             logical_op: Some(logical_op),
             op: None,
             right: Some(Box::new(right)),
+            minus: false,
             field: None,
             function: None,
             args: None,
@@ -58,6 +61,7 @@ impl Expr {
             logical_op: None,
             op: None,
             right: Some(Box::new(right)),
+            minus: false,
             field: None,
             function: None,
             args: None,
@@ -72,6 +76,7 @@ impl Expr {
             logical_op: None,
             op: None,
             right: None,
+            minus: false,
             field: Some(field),
             function: None,
             args: None,
@@ -86,6 +91,7 @@ impl Expr {
             logical_op: None,
             op: None,
             right: None,
+            minus: false,
             field: None,
             function: Some(function),
             args: Some(vec![]),
@@ -100,6 +106,7 @@ impl Expr {
             logical_op: None,
             op: None,
             right: None,
+            minus: false,
             field: None,
             function: None,
             args: None,
@@ -244,6 +251,10 @@ impl Expr {
 impl Display for Expr {
     fn fmt(&self, fmt: &mut Formatter) -> fmt::Result {
         use std::fmt::Write;
+
+        if self.minus {
+            fmt.write_char('-')?;
+        }
 
         if let Some(ref function) = self.function {
             fmt.write_str(&function.to_string())?;

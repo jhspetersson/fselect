@@ -164,6 +164,7 @@ Used mostly for formatting results.
 | LOWER | Convert value to lowercase | `select lower(name) from /home/user/Downloads` |
 | UPPER | Convert value to uppercase | `select upper(name) from /home/user/Downloads` |
 | BASE64 | Encode value to Base64 | `select base64(name) from /home/user/Downloads` |
+| SUBSTRING or SUBSTR (str, pos, len) | Part of `str` value starting from `pos` of (optionally) `len` characters long. Negative `pos` means starting `pos` characters from the end of the string.  | `select substr(name, 1, 8) from /home/user/Downloads` |
 
 #### Japanese string functions
 

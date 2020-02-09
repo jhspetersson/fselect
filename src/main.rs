@@ -242,6 +242,7 @@ Functions:
         LOWER                       Returns lowercase value
         UPPER                       Returns uppercase value
         BASE64                      Returns Base64 digest of a value
+        SUBSTRING | SUBSTR          Returns part of the string value
     Japanese string:
         CONTAINS_JAPANESE           Used to check if string value contains Japanese symbols
         CONTAINS_KANA               Used to check if string value contains kana symbols

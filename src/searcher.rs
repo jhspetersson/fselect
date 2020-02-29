@@ -3,6 +3,8 @@ use std::fs;
 use std::fs::DirEntry;
 use std::fs::Metadata;
 use std::fs::symlink_metadata;
+#[cfg(linux)]
+use std::os::linux::fs::MetadataExt;
 use std::path::Path;
 use std::path::PathBuf;
 use std::io;
@@ -838,6 +840,54 @@ impl Searcher {
             },
             Field::IsSocket => {
                 return self.check_file_mode(entry, &mode::is_socket, &file_info, &mode::mode_is_socket);
+            },
+            Field::Device => {
+                #[cfg(linux)]
+                    {
+                        self.update_file_metadata(entry);
+
+                        if let Some(ref attrs) = self.file_metadata {
+                            return Variant::from_int(attrs.st_dev() as i64);
+                        }
+                    }
+
+                return Variant::empty(VariantType::String);
+            },
+            Field::Inode => {
+                #[cfg(linux)]
+                    {
+                        self.update_file_metadata(entry);
+
+                        if let Some(ref attrs) = self.file_metadata {
+                            return Variant::from_int(attrs.st_ino() as i64);
+                        }
+                    }
+
+                return Variant::empty(VariantType::String);
+            },
+            Field::Blocks => {
+                #[cfg(linux)]
+                    {
+                        self.update_file_metadata(entry);
+
+                        if let Some(ref attrs) = self.file_metadata {
+                            return Variant::from_int(attrs.st_blocks() as i64);
+                        }
+                    }
+
+                return Variant::empty(VariantType::String);
+            },
+            Field::Hardlinks => {
+                #[cfg(linux)]
+                    {
+                        self.update_file_metadata(entry);
+
+                        if let Some(ref attrs) = self.file_metadata {
+                            return Variant::from_int(attrs.st_nlink() as i64);
+                        }
+                    }
+
+                return Variant::empty(VariantType::String);
             },
             Field::Mode => {
                 match file_info {

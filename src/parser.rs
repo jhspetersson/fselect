@@ -32,7 +32,7 @@ impl Parser {
         while let Some(lexem) = lexer.next_lexem() {
             self.lexems.push(lexem);
         }
-dbg!(&self.lexems);
+
         let fields = self.parse_fields()?;
         let roots = self.parse_roots();
         let expr = self.parse_where()?;

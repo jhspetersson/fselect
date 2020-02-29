@@ -3,7 +3,7 @@ use std::fs;
 use std::fs::DirEntry;
 use std::fs::Metadata;
 use std::fs::symlink_metadata;
-#[cfg(linux)]
+#[cfg(target_os = "linux")]
 use std::os::linux::fs::MetadataExt;
 use std::path::Path;
 use std::path::PathBuf;
@@ -842,7 +842,7 @@ impl Searcher {
                 return self.check_file_mode(entry, &mode::is_socket, &file_info, &mode::mode_is_socket);
             },
             Field::Device => {
-                #[cfg(linux)]
+                #[cfg(target_os = "linux")]
                     {
                         self.update_file_metadata(entry);
 
@@ -854,7 +854,7 @@ impl Searcher {
                 return Variant::empty(VariantType::String);
             },
             Field::Inode => {
-                #[cfg(linux)]
+                #[cfg(target_os = "linux")]
                     {
                         self.update_file_metadata(entry);
 
@@ -866,7 +866,7 @@ impl Searcher {
                 return Variant::empty(VariantType::String);
             },
             Field::Blocks => {
-                #[cfg(linux)]
+                #[cfg(target_os = "linux")]
                     {
                         self.update_file_metadata(entry);
 
@@ -878,7 +878,7 @@ impl Searcher {
                 return Variant::empty(VariantType::String);
             },
             Field::Hardlinks => {
-                #[cfg(linux)]
+                #[cfg(target_os = "linux")]
                     {
                         self.update_file_metadata(entry);
 

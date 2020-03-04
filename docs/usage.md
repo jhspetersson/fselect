@@ -68,6 +68,10 @@ Joins, unions, and subselects are not supported (yet?).
 * `is_character` or `is_char`
 * `is_block`
 * `is_socket`
+* `device` (Linux only)
+* `inode` (Linux only)
+* `blocks` (Linux only)
+* `hardlinks` (Linux only)
 * `mode`
 * `user_read`
 * `user_write`

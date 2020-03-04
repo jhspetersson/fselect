@@ -161,6 +161,11 @@ Column Options:
     is_hidden                       Returns a boolean signifying whether the file is a hidden file (e.g., files that start with a dot on *nix)
     has_xattrs                      Returns a boolean signifying whether the file has extended attributes
 
+    device (Linux only)             Returns the code of device the file is stored on
+    inode (Linux only)              Returns the number of inode
+    blocks (Linux only)             Returns the number of blocks (256 bytes) the file occupies
+    hardlinks (Linux only)          Returns the number of hardlinks of the file
+
     mode                            Returns the permissions of the owner, group, and everybody (similar to the first field in `ls -la`)
 
     user                            Returns the name of the owner for this file

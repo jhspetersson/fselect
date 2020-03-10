@@ -16,5 +16,5 @@ os:
   - windows
 
 script:
-  - cargo build --verbose --all
-  - cargo test --verbose --all
+  - cargo build --locked --verbose --all
+  - cargo test --locked --verbose --all

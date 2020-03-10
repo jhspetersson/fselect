@@ -3,6 +3,6 @@ FROM rust:latest
 WORKDIR /usr/src/fselect
 COPY . .
 
-RUN cargo install --path .
+RUN cargo install --locked --path .
 
-CMD ["cargo", "test", "--verbose", "--all"]
+CMD ["cargo", "test", "--locked" , "--verbose", "--all"]

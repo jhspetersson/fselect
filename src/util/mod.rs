@@ -6,7 +6,6 @@ mod wbuf;
 
 use std::cmp::Ordering;
 use std::collections::HashMap;
-use std::error::Error;
 use std::fmt::Display;
 use std::fs;
 use std::fs::canonicalize;
@@ -140,7 +139,7 @@ pub fn calc_depth(s: &str) -> u32 {
 }
 
 pub fn path_error_message(p: &Path, e: io::Error) {
-    error_message(&p.to_string_lossy(), e.description());
+    error_message(&p.to_string_lossy(), &e.to_string());
 }
 
 pub fn error_message(source: &str, description: &str) {

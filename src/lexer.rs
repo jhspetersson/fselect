@@ -158,14 +158,14 @@ impl<'a> Lexer<'a> {
     }
 
     fn is_op_char(&self, c: char) -> bool {
-	if !self.before_from && !self.after_where {
-	    return false;
-	}
+        if !self.before_from && !self.after_where {
+            return false;
+        }
 
-	match c {
-	    '=' | '!' | '<' | '>' | '~' => true,
-    	    _ => false
-	}
+        match c {
+            '=' | '!' | '<' | '>' | '~' => true,
+                _ => false
+        }
     }
 }
 

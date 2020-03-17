@@ -386,7 +386,7 @@ pub fn get_metadata(entry: &DirEntry, follow_symlinks: bool) -> Option<Metadata>
 }
 
 fn is_image_dim_readable(file_name: &str) -> bool {
-    let extensions = vec![String::from(".bmp"), String::from(".gif"), String::from(".jpeg"), String::from(".jpg"), String::from(".png"), String::from(".psb"), String::from(".psd"), String::from(".tiff"), String::from(".webp")];
+    let extensions = vec![String::from(".bmp"), String::from(".gif"), String::from(".heic"), String::from(".heif"), String::from(".jpeg"), String::from(".jpg"), String::from(".png"), String::from(".psb"), String::from(".psd"), String::from(".tiff"), String::from(".webp")];
 
     has_extension(file_name, &extensions)
 }

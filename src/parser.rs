@@ -498,8 +498,6 @@ impl Parser {
             function_expr.left = Some(Box::from(function_arg));
         }
 
-        // TODO: try find a comma, then parse another expr, repeat until it's a close paren
-
         let mut args = vec![];
 
         loop {

@@ -324,11 +324,23 @@ impl Parser {
     fn parse_cond(&mut self) -> Result<Option<Expr>, String> {
         let left = self.parse_add_sub()?;
 
+        let mut not = false;
+
+        let lexem = self.get_lexem();
+        match lexem {
+            Some(Lexem::Not) => {
+                not = true;
+            },
+            _ => {
+                self.drop_lexem();
+            }
+        };
+
         let lexem = self.get_lexem();
         match lexem {
             Some(Lexem::Operator(s)) => {
                 let right = self.parse_add_sub()?;
-                let op = Op::from(s);
+                let op = Op::from_with_not(s, not);
                 Ok(Some(Expr::op(left.unwrap(), op.unwrap(), right.unwrap())))
             },
             _ => {
@@ -679,6 +691,23 @@ mod tests {
         assert_eq!(query.ordering_fields, vec![Expr::field(Field::Path), Expr::field(Field::Size)]);
         assert_eq!(query.ordering_asc, Rc::new(vec![true, false]));
         assert_eq!(query.limit, 50);
+    }
+
+    #[test]
+    fn query_with_not() {
+        let query = "select name from /test where name not like '%.tmp'";
+        let mut p = Parser::new();
+        let query = p.parse(&query).unwrap();
+
+        assert_eq!(query.fields, vec![Expr::field(Field::Name)]);
+
+        assert_eq!(query.roots, vec![
+            Root::new(String::from("/test"), 0, 0, false, false, false, false, Bfs),
+        ]);
+
+        let expr = Expr::op(Expr::field(Field::Name), Op::NotLike, Expr::value(String::from("%.tmp")));
+
+        assert_eq!(query.expr, Some(expr));
     }
 
     #[test]

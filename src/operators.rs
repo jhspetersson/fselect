@@ -40,6 +40,29 @@ impl Op {
             _ => None
         }
     }
+
+    pub fn from_with_not(text: String, not: bool) -> Option<Op> {
+        let op = Op::from(text);
+        match op {
+            Some(op) if not => {
+                match op {
+                    Op::Eq => Some(Op::Ne),
+                    Op::Ne => Some(Op::Eq),
+                    Op::Eeq => Some(Op::Ene),
+                    Op::Ene => Some(Op::Eeq),
+                    Op::Gt => Some(Op::Lt),
+                    Op::Lt => Some(Op::Gt),
+                    Op::Gte => Some(Op::Lte),
+                    Op::Lte => Some(Op::Gte),
+                    Op::Rx => Some(Op::NotRx),
+                    Op::NotRx => Some(Op::Rx),
+                    Op::Like => Some(Op::NotLike),
+                    Op::NotLike => Some(Op::Like),
+                }
+            },
+            _ => op
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialOrd, PartialEq, Eq, Hash, Serialize)]

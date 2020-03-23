@@ -274,7 +274,7 @@ Expressions:
         > | gt                      Used to check whether the column value is greater than the value
         >= | gte | ge               Used to check whether the column value is greater than or equal to the value
         ~= | =~ | regexp | rx       Used to check if the column value matches the regex pattern
-        !=~ | notrx                 Used to check if the column value doesn't match the regex pattern
+        !=~ | !~= | notrx           Used to check if the column value doesn't match the regex pattern
         like                        Used to check if the column value matches the pattern which follows SQL conventions
         notlike                     Used to check if the column value doesn't match the pattern which follows SQL conventions
     Logical Operators:

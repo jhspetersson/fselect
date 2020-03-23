@@ -34,7 +34,7 @@ impl Op {
             "<" | "lt" => Some(Op::Lt),
             "<=" | "lte" | "le" => Some(Op::Lte),
             "~=" | "=~" | "regexp" | "rx" => Some(Op::Rx),
-            "!=~" | "notrx" => Some(Op::NotRx),
+            "!=~" | "!~=" | "notrx" => Some(Op::NotRx),
             "like" => Some(Op::Like),
             "notlike" => Some(Op::NotLike),
             _ => None

@@ -191,6 +191,7 @@ pub enum Function {
     Concat,
     ConcatWs,
     Substring,
+    Trim,
     Coalesce,
     FormatSize,
 
@@ -233,6 +234,7 @@ impl FromStr for Function {
             "concat" => Ok(Function::Concat),
             "concat_ws" => Ok(Function::ConcatWs),
             "substr" | "substring" => Ok(Function::Substring),
+            "trim" => Ok(Function::Trim),
             "coalesce" => Ok(Function::Coalesce),
             "format_size" | "format_filesize" => Ok(Function::FormatSize),
 
@@ -383,6 +385,9 @@ pub fn get_value(function: &Option<Function>,
             };
 
             return Variant::from_string(&result);
+        },
+        Some(Function::Trim) => {
+            return Variant::from_string(&function_arg.trim().to_string());
         },
         Some(Function::Coalesce) => {
             if !&function_arg.is_empty() {

@@ -41,7 +41,7 @@ And yes, you should use quotes for glob-patterns or regular expressions in the q
 on Linux or Mac OS to prevent parameter expansion from the shell. 
 If you are on Windows, feel free to omit most of the quotes.
 
-Commas for column separation aren't needed as well.
+Commas for column separation aren't needed as well. Column aliasing (with or without `as` keyword) is not supported.
 
 `into` keyword specifies output format, not output table.
 

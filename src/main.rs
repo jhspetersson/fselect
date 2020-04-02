@@ -244,8 +244,8 @@ Functions:
         XATTR                       Returns value of xattr
     String:
         LENGTH | LEN                Returns length of string value
-        LOWER                       Returns lowercase value
-        UPPER                       Returns uppercase value
+        LOWER | CASE                Returns lowercase value
+        UPPER | UCASE               Returns uppercase value
         BASE64                      Returns Base64 digest of a value
         SUBSTRING | SUBSTR          Returns part of the string value
         TRIM                        Returns string with whitespaces at the beginning and the end stripped

@@ -191,6 +191,7 @@ pub enum Function {
     Concat,
     ConcatWs,
     Substring,
+    Replace,
     Trim,
     Coalesce,
     FormatSize,
@@ -234,6 +235,7 @@ impl FromStr for Function {
             "concat" => Ok(Function::Concat),
             "concat_ws" => Ok(Function::ConcatWs),
             "substr" | "substring" => Ok(Function::Substring),
+            "replace" => Ok(Function::Replace),
             "trim" => Ok(Function::Trim),
             "coalesce" => Ok(Function::Coalesce),
             "format_size" | "format_filesize" => Ok(Function::FormatSize),
@@ -383,6 +385,15 @@ pub fn get_value(function: &Option<Function>,
                 true => string.chars().skip(pos as usize).take(len).collect(),
                 false => string.chars().skip(pos as usize).collect()
             };
+
+            return Variant::from_string(&result);
+        },
+        Some(Function::Replace) => {
+            let source = function_arg;
+            let from = &function_args[0];
+            let to = &function_args[1];
+
+            let result = source.replace(from, to);
 
             return Variant::from_string(&result);
         },

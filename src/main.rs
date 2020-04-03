@@ -248,6 +248,7 @@ Functions:
         UPPER | UCASE               Returns uppercase value
         BASE64                      Returns Base64 digest of a value
         SUBSTRING | SUBSTR          Returns part of the string value
+        REPLACE                     Returns string with substring replaced with another one
         TRIM                        Returns string with whitespaces at the beginning and the end stripped
     Japanese string:
         CONTAINS_JAPANESE           Used to check if string value contains Japanese symbols

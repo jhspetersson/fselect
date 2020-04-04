@@ -284,11 +284,11 @@ Expressions:
         or                          Used as an OR operator for two conditions made with the above operators
 
 Format:
-        tabs (default)              Outputs each file with its column value(s) on a line with each column value delimited by a tab
-        lines                       Outputs each column value on a new line
-        list                        Outputs entire output onto a single line for xargs
-        csv                         Outputs each file with its column value(s) on a line with each column value delimited by a comma
-        json                        Outputs a JSON array with JSON objects holding the column value(s) of each file
-        html                        Outputs HTML document with table
+    tabs (default)                  Outputs each file with its column value(s) on a line with each column value delimited by a tab
+    lines                           Outputs each column value on a new line
+    list                            Outputs entire output onto a single line for xargs
+    csv                             Outputs each file with its column value(s) on a line with each column value delimited by a comma
+    json                            Outputs a JSON array with JSON objects holding the column value(s) of each file
+    html                            Outputs HTML document with table
     ");
 }

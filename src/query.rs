@@ -37,16 +37,45 @@ pub struct Root {
     pub symlinks: bool,
     pub gitignore: bool,
     pub hgignore: bool,
+    pub dockerignore: bool,
     pub traversal: TraversalMode,
 }
 
 impl Root {
-    pub fn new(path: String, min_depth: u32, max_depth: u32, archives: bool, symlinks: bool, gitignore: bool, hgignore: bool, traversal: TraversalMode) -> Root {
-        Root { path, min_depth, max_depth, archives, symlinks, gitignore, hgignore, traversal }
+    pub fn new(path: String,
+               min_depth: u32,
+               max_depth: u32,
+               archives: bool,
+               symlinks: bool,
+               gitignore: bool,
+               hgignore: bool,
+               dockerignore: bool,
+               traversal: TraversalMode) -> Root {
+        Root {
+            path,
+            min_depth,
+            max_depth,
+            archives,
+            symlinks,
+            gitignore,
+            hgignore,
+            dockerignore,
+            traversal
+        }
     }
 
     pub fn default() -> Root {
-        Root { path: String::from("."), min_depth: 0, max_depth: 0, archives: false, symlinks: false, gitignore: false, hgignore: false, traversal: Bfs }
+        Root {
+            path: String::from("."),
+            min_depth: 0,
+            max_depth: 0,
+            archives: false,
+            symlinks: false,
+            gitignore: false,
+            hgignore: false,
+            dockerignore: false,
+            traversal: Bfs
+        }
     }
 }
 

@@ -13,6 +13,7 @@ use ansi_term::Colour::*;
 use atty::Stream;
 
 mod config;
+mod dockerignore;
 mod expr;
 mod field;
 mod fileinfo;

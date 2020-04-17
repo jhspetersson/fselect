@@ -26,6 +26,9 @@ use xattr::FileExt;
 use zip;
 
 use crate::config::Config;
+use crate::dockerignore::DockerignoreFilter;
+use crate::dockerignore::matches_dockerignore_filter;
+use crate::dockerignore::parse_dockerignore;
 use crate::expr::Expr;
 use crate::field::Field;
 use crate::fileinfo::FileInfo;
@@ -60,6 +63,7 @@ pub struct Searcher {
     output_buffer: TopN<Criteria<String>, String>,
     gitignore_map: HashMap<PathBuf, Vec<GitignoreFilter>>,
     hgignore_filters: Vec<HgignoreFilter>,
+    dockerignore_filters: Vec<DockerignoreFilter>,
     visited_dirs: HashSet<PathBuf>,
     lscolors: LsColors,
     dir_queue: Box<VecDeque<PathBuf>>,
@@ -97,6 +101,7 @@ impl Searcher {
             output_buffer: if limit == 0 { TopN::limitless() } else { TopN::new(limit) },
             gitignore_map: HashMap::new(),
             hgignore_filters: vec![],
+            dockerignore_filters: vec![],
             visited_dirs: HashSet::new(),
             lscolors: LsColors::from_env().unwrap_or_default(),
             dir_queue: Box::from(VecDeque::new()),
@@ -266,6 +271,7 @@ impl Searcher {
             let search_archives = root.archives;
             let apply_gitignore = root.gitignore;
             let apply_hgignore = root.hgignore;
+            let apply_dockerignore = root.dockerignore;
             let traversal_mode = root.traversal;
 
             if apply_gitignore {
@@ -274,6 +280,10 @@ impl Searcher {
 
             if apply_hgignore {
                 self.search_upstream_hgignore(&root_dir);
+            }
+
+            if apply_dockerignore {
+                self.search_upstream_dockerignore(&root_dir);
             }
 
             self.dir_queue.clear();
@@ -286,6 +296,7 @@ impl Searcher {
                 search_archives,
                 apply_gitignore,
                 apply_hgignore,
+                apply_dockerignore,
                 traversal_mode,
                 true
             );
@@ -439,6 +450,42 @@ impl Searcher {
         }
     }
 
+    fn search_upstream_dockerignore(&mut self, dir: &Path) {
+        if let Ok(canonical_path) = crate::util::canonical_path(&dir.to_path_buf()) {
+            let mut path = PathBuf::from(canonical_path);
+
+            loop {
+                let dockerignore_file = path.clone().join(".dockerignore");
+
+                if dockerignore_file.is_file() {
+                    self.update_dockerignore_filters(&mut path);
+                    return;
+                }
+
+                let parent_found = path.pop();
+
+                if !parent_found {
+                    return;
+                }
+            }
+        }
+    }
+
+    fn update_dockerignore_filters(&mut self, path: &Path) {
+        let dockerignore_file = path.join(".dockerignore");
+        if dockerignore_file.is_file() {
+            let regexes = parse_dockerignore(&dockerignore_file, &path);
+            match regexes {
+                Ok(ref regexes) => {
+                    self.dockerignore_filters.append(&mut regexes.clone());
+                },
+                Err(err) => {
+                    eprintln!("{}: {}", path.to_string_lossy(), err);
+                }
+            }
+        }
+    }
+
     fn visit_dir(&mut self,
                  dir: &Path,
                  min_depth: u32,
@@ -447,6 +494,7 @@ impl Searcher {
                  search_archives: bool,
                  apply_gitignore: bool,
                  apply_hgignore: bool,
+                 apply_dockerignore: bool,
                  traversal_mode: TraversalMode,
                  process_queue: bool) -> io::Result<()> {
         let metadata = match self.current_follow_symlinks {
@@ -509,8 +557,9 @@ impl Searcher {
 
                                         let pass_gitignore = !apply_gitignore || (apply_gitignore && !matches_gitignore_filter(&gitignore_filters, canonical_path.to_string_lossy().as_ref(), path.is_dir()));
                                         let pass_hgignore = !apply_hgignore || (apply_hgignore && !matches_hgignore_filter(&self.hgignore_filters, canonical_path.to_string_lossy().as_ref()));
+                                        let pass_dockerignore = !apply_dockerignore || (apply_dockerignore && !matches_dockerignore_filter(&self.dockerignore_filters, canonical_path.to_string_lossy().as_ref()));
 
-                                        if pass_gitignore && pass_hgignore {
+                                        if pass_gitignore && pass_hgignore && pass_dockerignore {
                                             if min_depth == 0 || depth >= min_depth {
                                                 let checked = self.check_file(&entry, &None);
                                                 if !checked {
@@ -549,6 +598,7 @@ impl Searcher {
                                                             search_archives,
                                                             apply_gitignore,
                                                             apply_hgignore,
+                                                            apply_dockerignore,
                                                             traversal_mode,
                                                             false);
 
@@ -584,6 +634,7 @@ impl Searcher {
                                 search_archives,
                                 apply_gitignore,
                                 apply_hgignore,
+                                apply_dockerignore,
                                 traversal_mode,
                                 false);
 

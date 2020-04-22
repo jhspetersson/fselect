@@ -1,20 +1,24 @@
 use std::fs::File;
 use std::io::BufRead;
 use std::io::BufReader;
+use std::ops::Add;
+use std::ops::Index;
 use std::path::Path;
 
+use regex::Captures;
 use regex::Error;
 use regex::Regex;
 
 #[derive(Clone, Debug)]
 pub struct DockerignoreFilter {
     pub regex: Regex,
+    pub negate: bool,
 }
 
 impl DockerignoreFilter {
-    fn new(regex: Regex) -> DockerignoreFilter {
+    fn new(regex: Regex, negate: bool) -> DockerignoreFilter {
         DockerignoreFilter {
-            regex
+            regex, negate
         }
     }
 }
@@ -22,8 +26,14 @@ impl DockerignoreFilter {
 pub fn matches_dockerignore_filter(dockerignore_filters: &Vec<DockerignoreFilter>, file_name: &str) -> bool {
     let mut matched = false;
 
+    let file_name = file_name.to_string().replace("\\", "/").replace("//", "/");
+
     for dockerignore_filter in dockerignore_filters {
-        let is_match = dockerignore_filter.regex.is_match(file_name);
+        let is_match = dockerignore_filter.regex.is_match(&file_name);
+
+        if is_match && dockerignore_filter.negate {
+            return false;
+        }
 
         if is_match {
             matched = true;
@@ -69,12 +79,45 @@ pub fn parse_dockerignore(file_path: &Path, dir_path: &Path) -> Result<Vec<Docke
 }
 
 fn convert_dockerignore_pattern(pattern: &str, file_path: &Path) -> Result<DockerignoreFilter, String> {
-    match convert_dockerignore_glob(pattern, file_path) {
-        Ok(regex) => Ok(DockerignoreFilter::new(regex)),
-        _ => Err("Error creating regex while parsing .dockerignore glob: ".to_string() + pattern)
+    let mut pattern = String::from(pattern);
+
+    let mut negate = false;
+    if pattern.starts_with("!") {
+        pattern = pattern.replace("!", "");
+        negate = true;
+    }
+
+    match convert_dockerignore_glob(&pattern, file_path) {
+        Ok(regex) => Ok(DockerignoreFilter::new(regex, negate)),
+        _ => Err("Error creating regex while parsing .dockerignore glob: ".to_string().add(&pattern))
     }
 }
 
-fn convert_dockerignore_glob(_glob: &str, _file_path: &Path) -> Result<Regex, Error> {
-    Err(Error::Syntax(String::from("Not implemented")))
+fn convert_dockerignore_glob(glob: &str, file_path: &Path) -> Result<Regex, Error> {
+    let replace_regex = Regex::new("(\\*\\*|\\?|\\.|\\*)").unwrap();
+    let mut pattern = replace_regex.replace_all(&glob, |c: &Captures| {
+        match c.index(0) {
+            "**" => ".*",
+            "." => "\\.",
+            "*" => "[^/]*",
+            "?" => "[^/]",
+            _ => panic!("Error parsing pattern")
+        }.to_string()
+    }).to_string();
+
+    while pattern.starts_with("/") || pattern.starts_with("\\") {
+        pattern.remove(0);
+    }
+
+    let mut path = file_path.to_string_lossy().to_string();
+    #[cfg(windows)]
+        {
+            path = path.replace("\\", "/").replace("//", "/");
+        }
+
+    pattern = path
+        .replace("\\", "\\\\")
+        .add("/([^/]+/)*").add(&pattern);
+
+    Regex::new(&pattern)
 }

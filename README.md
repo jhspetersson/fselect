@@ -12,7 +12,7 @@ While it doesn't tend to fully replace traditional `find` and `ls`, **fselect** 
 * complex queries
 * aggregate, date, and other functions
 * search within archives
-* `.gitignore` and `.hgignore` support (experimental)
+* `.gitignore`, `.hgignore`, and `.dockerignore` support (experimental)
 * search by width and height of images, EXIF metadata
 * search by MP3 info
 * search by extended file attributes

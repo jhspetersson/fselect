@@ -13,13 +13,11 @@ use ansi_term::Colour::*;
 use atty::Stream;
 
 mod config;
-mod dockerignore;
 mod expr;
 mod field;
 mod fileinfo;
 mod function;
-mod gitignore;
-mod hgignore;
+mod ignore;
 mod lexer;
 mod mode;
 mod operators;

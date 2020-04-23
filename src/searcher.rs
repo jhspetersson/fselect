@@ -8,6 +8,7 @@ use std::os::linux::fs::MetadataExt;
 use std::path::Path;
 use std::path::PathBuf;
 use std::io;
+use std::io::ErrorKind;
 use std::io::Write;
 use std::rc::Rc;
 
@@ -26,9 +27,6 @@ use xattr::FileExt;
 use zip;
 
 use crate::config::Config;
-use crate::dockerignore::DockerignoreFilter;
-use crate::dockerignore::matches_dockerignore_filter;
-use crate::dockerignore::parse_dockerignore;
 use crate::expr::Expr;
 use crate::field::Field;
 use crate::fileinfo::FileInfo;
@@ -36,20 +34,22 @@ use crate::fileinfo::to_file_info;
 use crate::function;
 use crate::function::Variant;
 use crate::function::VariantType;
-use crate::gitignore::GitignoreFilter;
-use crate::gitignore::matches_gitignore_filter;
-use crate::gitignore::parse_gitignore;
-use crate::hgignore::HgignoreFilter;
-use crate::hgignore::matches_hgignore_filter;
-use crate::hgignore::parse_hgignore;
+use crate::ignore::docker::DockerignoreFilter;
+use crate::ignore::docker::matches_dockerignore_filter;
+use crate::ignore::docker::parse_dockerignore;
+use crate::ignore::git::GitignoreFilter;
+use crate::ignore::git::matches_gitignore_filter;
+use crate::ignore::git::parse_gitignore;
+use crate::ignore::hg::HgignoreFilter;
+use crate::ignore::hg::matches_hgignore_filter;
+use crate::ignore::hg::parse_hgignore;
 use crate::mode;
 use crate::operators::LogicalOp;
 use crate::operators::Op;
 use crate::query::{Query, TraversalMode};
 use crate::query::OutputFormat;
-use crate::util::*;
-use std::io::ErrorKind;
 use crate::query::TraversalMode::Bfs;
+use crate::util::*;
 
 pub struct Searcher {
     query: Query,

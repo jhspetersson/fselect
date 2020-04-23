@@ -109,11 +109,12 @@ fn convert_dockerignore_glob(glob: &str, file_path: &Path) -> Result<Regex, Erro
         pattern.remove(0);
     }
 
-    let mut path = file_path.to_string_lossy().to_string();
     #[cfg(windows)]
-        {
-            path = path.replace("\\", "/").replace("//", "/");
-        }
+    let path = file_path.to_string_lossy().to_string()
+        .replace("\\", "/").replace("//", "/");
+
+    #[cfg(not(windows))]
+    let path = file_path.to_string_lossy().to_string();
 
     pattern = path
         .replace("\\", "\\\\")

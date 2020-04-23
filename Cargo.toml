@@ -45,5 +45,5 @@ wana_kana = "2.0"
 zip = "0.5"
 
 [target.'cfg(unix)'.dependencies]
-users = { version = "0.9", optional = true }
+users = { version = "0.10", optional = true }
 xattr = "0.2"

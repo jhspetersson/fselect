@@ -35,9 +35,9 @@ pub struct Root {
     pub max_depth: u32,
     pub archives: bool,
     pub symlinks: bool,
-    pub gitignore: bool,
-    pub hgignore: bool,
-    pub dockerignore: bool,
+    pub gitignore: Option<bool>,
+    pub hgignore: Option<bool>,
+    pub dockerignore: Option<bool>,
     pub traversal: TraversalMode,
 }
 
@@ -47,9 +47,9 @@ impl Root {
                max_depth: u32,
                archives: bool,
                symlinks: bool,
-               gitignore: bool,
-               hgignore: bool,
-               dockerignore: bool,
+               gitignore: Option<bool>,
+               hgignore: Option<bool>,
+               dockerignore: Option<bool>,
                traversal: TraversalMode) -> Root {
         Root {
             path,
@@ -71,9 +71,9 @@ impl Root {
             max_depth: 0,
             archives: false,
             symlinks: false,
-            gitignore: false,
-            hgignore: false,
-            dockerignore: false,
+            gitignore: None,
+            hgignore: None,
+            dockerignore: None,
             traversal: Bfs
         }
     }

@@ -269,9 +269,9 @@ impl Searcher {
             let min_depth = root.min_depth;
             let max_depth = root.max_depth;
             let search_archives = root.archives;
-            let apply_gitignore = root.gitignore;
-            let apply_hgignore = root.hgignore;
-            let apply_dockerignore = root.dockerignore;
+            let apply_gitignore = root.gitignore.unwrap_or(self.config.gitignore.unwrap_or(false));
+            let apply_hgignore = root.hgignore.unwrap_or(self.config.hgignore.unwrap_or(false));
+            let apply_dockerignore = root.dockerignore.unwrap_or(self.config.dockerignore.unwrap_or(false));
             let traversal_mode = root.traversal;
 
             if apply_gitignore {

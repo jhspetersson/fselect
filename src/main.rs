@@ -243,7 +243,7 @@ Functions:
         XATTR                       Returns value of xattr
     String:
         LENGTH | LEN                Returns length of string value
-        LOWER | CASE                Returns lowercase value
+        LOWER | LCASE               Returns lowercase value
         UPPER | UCASE               Returns uppercase value
         BASE64                      Returns Base64 digest of a value
         SUBSTRING | SUBSTR          Returns part of the string value

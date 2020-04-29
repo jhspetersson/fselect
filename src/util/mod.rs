@@ -355,12 +355,14 @@ pub fn is_text_mime(mime: &str) -> bool {
     mime.eq("application/x-shellscript")
 }
 
-pub fn canonical_path(path_buf: &PathBuf) -> Result<String, ()> {
-    if let Ok(path) = canonicalize(path_buf) {
-        return Ok(format_absolute_path(&path));
+pub fn canonical_path(path_buf: &PathBuf) -> Result<String, String> {
+    match canonicalize(path_buf) {
+        Ok(path) => Ok(format_absolute_path(&path)),
+        Err(err) => match err.kind() {
+            std::io::ErrorKind::Other => Ok(format_absolute_path(&path_buf)),
+            _ => Err(err.to_string())
+        }
     }
-
-    Err(())
 }
 
 pub fn format_absolute_path(path_buf: &PathBuf) -> String {

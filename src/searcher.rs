@@ -50,6 +50,7 @@ use crate::query::{Query, TraversalMode};
 use crate::query::OutputFormat;
 use crate::query::TraversalMode::Bfs;
 use crate::util::*;
+use std::ops::Add;
 
 pub struct Searcher {
     query: Query,
@@ -507,7 +508,7 @@ impl Searcher {
                     let canonical_path = crate::util::canonical_path(&dir.to_path_buf());
 
                     if canonical_path.is_err() {
-                        error_message(&dir.to_string_lossy(), "could not canonicalize path");
+                        error_message(&dir.to_string_lossy(), String::from("could not canonicalize path: ").add(canonical_path.err().unwrap().as_str()).as_str());
                         return Ok(());
                     }
 

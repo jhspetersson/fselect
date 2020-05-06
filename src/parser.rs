@@ -48,7 +48,7 @@ impl Parser {
             fields,
             roots,
             expr,
-            ordering_fields,
+            ordering_fields: Rc::new(ordering_fields),
             ordering_asc: Rc::new(ordering_asc),
             limit,
             output_format,
@@ -700,7 +700,7 @@ mod tests {
         );
 
         assert_eq!(query.expr, Some(expr));
-        assert_eq!(query.ordering_fields, vec![Expr::field(Field::Path), Expr::field(Field::Size)]);
+        assert_eq!(query.ordering_fields, Rc::new(vec![Expr::field(Field::Path), Expr::field(Field::Size)]));
         assert_eq!(query.ordering_asc, Rc::new(vec![true, false]));
         assert_eq!(query.limit, 50);
     }

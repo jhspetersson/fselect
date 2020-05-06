@@ -3,14 +3,14 @@ use std::fs;
 use std::fs::DirEntry;
 use std::fs::Metadata;
 use std::fs::symlink_metadata;
+use std::io;
+use std::io::ErrorKind;
+use std::io::Write;
+use std::ops::Add;
 #[cfg(target_os = "linux")]
 use std::os::linux::fs::MetadataExt;
 use std::path::Path;
 use std::path::PathBuf;
-use std::io;
-use std::io::ErrorKind;
-use std::io::Write;
-use std::rc::Rc;
 
 use chrono::{DateTime, Local};
 use csv;
@@ -50,7 +50,6 @@ use crate::query::{Query, TraversalMode};
 use crate::query::OutputFormat;
 use crate::query::TraversalMode::Bfs;
 use crate::util::*;
-use std::ops::Add;
 
 pub struct Searcher {
     query: Query,
@@ -1435,7 +1434,7 @@ impl Searcher {
         output_value = self.format_results_row_end(output_value, &records, &file_map);
 
         if self.is_buffered() {
-            self.output_buffer.insert(Criteria::new(Rc::new(self.query.ordering_fields.clone()), criteria, self.query.ordering_asc.clone()), output_value);
+            self.output_buffer.insert(Criteria::new(self.query.ordering_fields.clone(), criteria, self.query.ordering_asc.clone()), output_value);
 
             if self.has_aggregate_column() {
                 self.raw_output_buffer.push(file_map);

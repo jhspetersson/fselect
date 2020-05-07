@@ -52,8 +52,8 @@ impl Variant {
         }
     }
 
-    pub fn get_type(&self) -> VariantType {
-        self.value_type.clone()
+    pub fn get_type(&self) -> &VariantType {
+        &self.value_type
     }
 
     pub fn from_int(value: i64) -> Variant {

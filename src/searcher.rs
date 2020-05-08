@@ -550,7 +550,7 @@ impl Searcher {
                                         let mut canonical_path = path.clone();
 
                                         if apply_gitignore || apply_hgignore || apply_dockerignore {
-                                            if let Ok(canonicalized) = crate::util::canonical_path(&path.clone()) {
+                                            if let Ok(canonicalized) = crate::util::canonical_path(&path) {
                                                 canonical_path = PathBuf::from(canonicalized);
                                             }
                                         }

@@ -2,12 +2,15 @@
 extern crate lazy_static;
 #[macro_use]
 extern crate serde_derive;
+#[macro_use]
+extern crate text_io;
 #[cfg(all(unix, feature = "users"))]
 extern crate users;
 #[cfg(unix)]
 extern crate xattr;
 
 use std::env;
+use std::io::Write;
 
 use ansi_term::Colour::*;
 use atty::Stream;
@@ -77,7 +80,16 @@ fn main() {
         no_color = true;
     }
 
-    let query = args.join(" ");
+    let first_arg = args[0].to_ascii_lowercase();
+    let query = if first_arg.starts_with("-i") {
+        print!("query> ");
+        std::io::stdout().flush().unwrap();
+
+        let input: String = read!("{}\n");
+        input.trim_end().to_string()
+    } else {
+        args.join(" ")
+    };
 
     let mut p = Parser::new();
     let query = p.parse(&query);

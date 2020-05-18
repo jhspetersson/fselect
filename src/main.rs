@@ -81,7 +81,7 @@ fn main() {
     }
 
     let first_arg = args[0].to_ascii_lowercase();
-    let query = if first_arg.starts_with("-i") {
+    let query = if first_arg.starts_with("-i") || first_arg.starts_with("--i") || first_arg.starts_with("/i") {
         print!("query> ");
         std::io::stdout().flush().unwrap();
 

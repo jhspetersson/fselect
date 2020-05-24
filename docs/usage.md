@@ -171,6 +171,8 @@ Used mostly for formatting results.
 | SUBSTRING or SUBSTR (str, pos, len) | Part of `str` value starting from `pos` of (optionally) `len` characters long. Negative `pos` means starting `pos` characters from the end of the string.  | `select substr(name, 1, 8) from /home/user/Downloads` |
 | REPLACE (str, from, to) | Replace all occurrences of `from` by `to` | `select replace(name, metallica, MetaLLicA) from /home/user/Music/Rock` |
 | TRIM | Returns string with whitespaces at the beginning and the end stripped | `select trim(title), trim(artist), trim(album) from /home/user/Music into json` |
+| LTRIM | Returns string with whitespaces at the beginning stripped | `select ltrim(title) from /home/user/Music into json` |
+| RTRIM | Returns string with whitespaces at the end stripped | `select rtrim(title) from /home/user/Music into json` |
 
 #### Japanese string functions
 

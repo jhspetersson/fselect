@@ -193,6 +193,8 @@ pub enum Function {
     Substring,
     Replace,
     Trim,
+    LTrim,
+    RTrim,
     Coalesce,
     FormatSize,
 
@@ -237,6 +239,8 @@ impl FromStr for Function {
             "substr" | "substring" => Ok(Function::Substring),
             "replace" => Ok(Function::Replace),
             "trim" => Ok(Function::Trim),
+            "ltrim" => Ok(Function::LTrim),
+            "rtrim" => Ok(Function::RTrim),
             "coalesce" => Ok(Function::Coalesce),
             "format_size" | "format_filesize" => Ok(Function::FormatSize),
 
@@ -399,6 +403,12 @@ pub fn get_value(function: &Option<Function>,
         },
         Some(Function::Trim) => {
             return Variant::from_string(&function_arg.trim().to_string());
+        },
+        Some(Function::LTrim) => {
+            return Variant::from_string(&function_arg.trim_start().to_string());
+        },
+        Some(Function::RTrim) => {
+            return Variant::from_string(&function_arg.trim_end().to_string());
         },
         Some(Function::Coalesce) => {
             if !&function_arg.is_empty() {

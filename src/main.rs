@@ -70,12 +70,12 @@ fn main() {
 
     let first_arg = args[0].to_ascii_lowercase();
 
-    if first_arg.contains("help") || first_arg.contains("-h") || first_arg.contains("/?") || first_arg.contains("/h") {
+    if first_arg.starts_with("help") || first_arg.starts_with("-h") || first_arg.starts_with("/?") || first_arg.starts_with("/h") {
         usage_info(no_color);
         return;
     }
 
-    if first_arg.contains("nocolor") || first_arg.contains("no-color") {
+    if first_arg.starts_with("nocolor") || first_arg.starts_with("no-color") {
         args.remove(0);
         no_color = true;
     }

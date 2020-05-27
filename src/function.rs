@@ -74,7 +74,7 @@ impl Variant {
         Variant {
             value_type: VariantType::String,
             empty: false,
-            string_value: value.clone(),
+            string_value: value.to_owned(),
             int_value: None,
             bool_value,
             dt_from: None,
@@ -87,11 +87,11 @@ impl Variant {
         let string_value = match minus {
             true => {
                 let mut result = String::from("-");
-                result += &value.clone();
+                result += &value.to_owned();
 
                 result
             },
-            false => value.clone()
+            false => value.to_owned()
         };
 
         Variant {
@@ -130,7 +130,7 @@ impl Variant {
     }
 
     pub fn to_string(&self) -> String {
-        self.string_value.clone()
+        self.string_value.to_owned()
     }
 
     pub fn to_int(&self) -> i64 {
@@ -595,7 +595,7 @@ pub fn get_aggregate_value(function: &Option<Function>,
         },
         _ => {
             match &default_value {
-                Some(val) => return val.clone(),
+                Some(val) => return val.to_owned(),
                 _ => return String::new()
             }
         }

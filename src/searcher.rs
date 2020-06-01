@@ -1550,7 +1550,7 @@ impl Searcher {
                                             let regex = Regex::new(&pattern);
                                             match regex {
                                                 Ok(ref regex) => {
-                                                    self.regex_cache.insert(val.clone(), regex.clone());
+                                                    self.regex_cache.insert(val, regex.clone());
                                                     return regex.is_match(&field_value.to_string());
                                                 },
                                                 _ => {
@@ -1576,7 +1576,7 @@ impl Searcher {
                                             let regex = Regex::new(&pattern);
                                             match regex {
                                                 Ok(ref regex) => {
-                                                    self.regex_cache.insert(val.clone(), regex.clone());
+                                                    self.regex_cache.insert(val, regex.clone());
                                                     return !regex.is_match(&field_value.to_string());
                                                 },
                                                 _ => {
@@ -1599,7 +1599,7 @@ impl Searcher {
                                     let regex = Regex::new(&val);
                                     match regex {
                                         Ok(ref regex) => {
-                                            self.regex_cache.insert(val.clone(), regex.clone());
+                                            self.regex_cache.insert(val, regex.clone());
                                             return regex.is_match(&field_value.to_string());
                                         },
                                         _ => {
@@ -1619,7 +1619,7 @@ impl Searcher {
                                     let regex = Regex::new(&val);
                                     match regex {
                                         Ok(ref regex) => {
-                                            self.regex_cache.insert(val.clone(), regex.clone());
+                                            self.regex_cache.insert(val, regex.clone());
                                             return !regex.is_match(&field_value.to_string());
                                         },
                                         _ => {
@@ -1640,7 +1640,7 @@ impl Searcher {
                                     let regex = Regex::new(&pattern);
                                     match regex {
                                         Ok(ref regex) => {
-                                            self.regex_cache.insert(val.clone(), regex.clone());
+                                            self.regex_cache.insert(val, regex.clone());
                                             return regex.is_match(&field_value.to_string());
                                         },
                                         _ => {
@@ -1661,7 +1661,7 @@ impl Searcher {
                                     let regex = Regex::new(&pattern);
                                     match regex {
                                         Ok(ref regex) => {
-                                            self.regex_cache.insert(val.clone(), regex.clone());
+                                            self.regex_cache.insert(val, regex.clone());
                                             return !regex.is_match(&field_value.to_string());
                                         },
                                         _ => {

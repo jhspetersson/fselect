@@ -19,6 +19,7 @@ While it doesn't tend to fully replace traditional `find` and `ls`, **fselect** 
 * search by file hashes
 * search by MIME type
 * shortcuts to common file types
+* interactive mode
 * various output formatting (CSV, JSON, and others)
 
 More is under way!
@@ -59,6 +60,10 @@ A statically precompiled [binary](https://github.com/jhspetersson/fselect/releas
 ### Usage
 
     fselect [ARGS] COLUMN[, COLUMN...] [from ROOT[, ROOT...]] [where EXPR] [order by COLUMNS] [limit N] [into FORMAT]
+
+### Interactive mode
+
+    fselect -i
 
 ### Documentation
 

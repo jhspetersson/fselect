@@ -30,6 +30,8 @@ This will protect query from the shell and output redirection.
 The same applies to queries with parentheses or `*`, `?` and other special shell
 metacharacters.
 
+It's ok to use any metacharacters in interactive mode.
+
 ### It's not a real SQL
 
 Directories to search at are listed with comma separators.

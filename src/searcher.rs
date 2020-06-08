@@ -555,9 +555,9 @@ impl Searcher {
                                             }
                                         }
 
-                                        let pass_gitignore = !apply_gitignore || (apply_gitignore && !matches_gitignore_filter(&gitignore_filters, canonical_path.to_string_lossy().as_ref(), path.is_dir()));
-                                        let pass_hgignore = !apply_hgignore || (apply_hgignore && !matches_hgignore_filter(&self.hgignore_filters, canonical_path.to_string_lossy().as_ref()));
-                                        let pass_dockerignore = !apply_dockerignore || (apply_dockerignore && !matches_dockerignore_filter(&self.dockerignore_filters, canonical_path.to_string_lossy().as_ref()));
+                                        let pass_gitignore = !apply_gitignore || !matches_gitignore_filter(&gitignore_filters, canonical_path.to_string_lossy().as_ref(), path.is_dir());
+                                        let pass_hgignore = !apply_hgignore || !matches_hgignore_filter(&self.hgignore_filters, canonical_path.to_string_lossy().as_ref());
+                                        let pass_dockerignore = !apply_dockerignore || !matches_dockerignore_filter(&self.dockerignore_filters, canonical_path.to_string_lossy().as_ref());
 
                                         if pass_gitignore && pass_hgignore && pass_dockerignore {
                                             if min_depth == 0 || depth >= min_depth {

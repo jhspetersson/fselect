@@ -48,3 +48,6 @@ zip = "0.5"
 [target.'cfg(unix)'.dependencies]
 users = { version = "0.10", optional = true }
 xattr = "0.2"
+
+[profile.release]
+lto = true

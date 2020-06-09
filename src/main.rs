@@ -33,6 +33,7 @@ use crate::config::Config;
 use crate::parser::Parser;
 use crate::searcher::Searcher;
 use crate::util::error_message;
+use crate::util::str_to_bool;
 
 fn main() {
     let config = match Config::new() {
@@ -43,7 +44,8 @@ fn main() {
         }
     };
 
-    let env_no_color = std::env::var("NO_COLOR").ok().eq(&Some("1".to_string()));
+    let env_var_value = std::env::var("NO_COLOR").ok().unwrap_or(String::new());
+    let env_no_color = str_to_bool(&env_var_value);
     let mut no_color = env_no_color || (config.no_color.is_some() && config.no_color.unwrap());
 
     #[cfg(windows)]

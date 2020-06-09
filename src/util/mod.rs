@@ -321,7 +321,7 @@ pub fn format_filesize(size: u64, modifier: &str) -> String {
 
 pub fn str_to_bool(val: &str) -> bool {
     let str_val = val.to_ascii_lowercase();
-    str_val.eq("true") || str_val.eq("1")
+    str_val.eq("true") || str_val.eq("1") || str_val.eq("y") || str_val.eq("yes")
 }
 
 pub fn parse_unix_filename(s: &str) -> &str {

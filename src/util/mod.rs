@@ -575,7 +575,7 @@ pub fn get_sha1_file_hash(entry: &DirEntry) -> String {
     if let Ok(mut file) = File::open(&entry.path()) {
         let mut hasher = sha1::Sha1::new();
         if io::copy(&mut file, &mut hasher).is_ok() {
-            let hash = hasher.result();
+            let hash = hasher.finalize();
             return format!("{:x}", hash);
         }
     }
@@ -587,7 +587,7 @@ pub fn get_sha256_file_hash(entry: &DirEntry) -> String {
     if let Ok(mut file) = File::open(&entry.path()) {
         let mut hasher = sha2::Sha256::new();
         if io::copy(&mut file, &mut hasher).is_ok() {
-            let hash = hasher.result();
+            let hash = hasher.finalize();
             return format!("{:x}", hash);
         }
     }
@@ -599,7 +599,7 @@ pub fn get_sha512_file_hash(entry: &DirEntry) -> String {
     if let Ok(mut file) = File::open(&entry.path()) {
         let mut hasher = sha2::Sha512::new();
         if io::copy(&mut file, &mut hasher).is_ok() {
-            let hash = hasher.result();
+            let hash = hasher.finalize();
             return format!("{:x}", hash);
         }
     }
@@ -611,7 +611,7 @@ pub fn get_sha3_512_file_hash(entry: &DirEntry) -> String {
     if let Ok(mut file) = File::open(&entry.path()) {
         let mut hasher = sha3::Sha3_512::new();
         if io::copy(&mut file, &mut hasher).is_ok() {
-            let hash = hasher.result();
+            let hash = hasher.finalize();
             return format!("{:x}", hash);
         }
     }

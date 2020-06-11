@@ -262,7 +262,7 @@ impl Searcher {
             return Ok(());
         }
 
-        for root in &self.query.clone().roots {
+        for root in self.query.roots.clone() {
             self.current_follow_symlinks = root.symlinks;
 
             let root_dir = Path::new(&root.path);

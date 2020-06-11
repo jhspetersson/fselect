@@ -1530,8 +1530,8 @@ impl Searcher {
                 }
             }
         } else if let Some(ref op) = expr.op {
-            let field_value = self.get_column_expr_value(Some(entry), file_info, &mut HashMap::new(), &expr.left.clone().unwrap());
-            let value = self.get_column_expr_value(Some(entry), file_info, &mut HashMap::new(), &expr.right.clone().unwrap());
+            let field_value = self.get_column_expr_value(Some(entry), file_info, &mut HashMap::new(), expr.left.as_ref().unwrap());
+            let value = self.get_column_expr_value(Some(entry), file_info, &mut HashMap::new(), expr.right.as_ref().unwrap());
 
             result = match field_value.get_type() {
                 VariantType::String => {

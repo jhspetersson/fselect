@@ -927,7 +927,7 @@ impl Searcher {
                         self.update_file_metadata(entry);
 
                         if let Some(ref attrs) = self.file_metadata {
-                            return Variant::from_int(attrs.rdev() as i64);
+                            return Variant::from_int(attrs.dev() as i64);
                         }
                     }
 

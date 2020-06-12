@@ -8,8 +8,8 @@ use std::io;
 use std::io::ErrorKind;
 use std::io::Write;
 use std::ops::Add;
-#[cfg(target_os = "linux")]
-use std::os::linux::fs::MetadataExt;
+#[cfg(unix)]
+use std::os::unix::fs::MetadataExt;
 #[cfg(unix)]
 use std::os::unix::fs::DirEntryExt;
 use std::path::Path;
@@ -299,9 +299,9 @@ impl Searcher {
                 {
                     let metadata = match self.current_follow_symlinks {
                         true => root_dir.metadata(),
-                        false => symlink_metadata(dir)
+                        false => symlink_metadata(root_dir)
                     };
-                    self.visited_inodes.insert(metadata.ino);
+                    self.visited_inodes.insert(metadata.ino());
                 }
 
             let _result = self.visit_dir(
@@ -666,7 +666,7 @@ impl Searcher {
     #[cfg(unix)]
     fn ok_to_visit_dir(&mut self, entry: &DirEntry) -> bool {
         let ino = entry.ino();
-        if self.visited_inodes.contains(ino) {
+        if self.visited_inodes.contains(&ino) {
             return false;
         } else {
             self.visited_inodes.insert(ino);

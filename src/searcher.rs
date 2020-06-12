@@ -2,6 +2,8 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs;
 use std::fs::DirEntry;
 use std::fs::Metadata;
+#[cfg(unix)]
+use std::fs::symlink_metadata;
 use std::io;
 use std::io::ErrorKind;
 use std::io::Write;
@@ -293,6 +295,15 @@ impl Searcher {
 
             self.dir_queue.clear();
 
+            #[cfg(unix)]
+                {
+                    let metadata = match self.current_follow_symlinks {
+                        true => root_dir.metadata(),
+                        false => symlink_metadata(dir)
+                    };
+                    self.visited_inodes.insert(metadata.ino);
+                }
+
             let _result = self.visit_dir(
                 root_dir,
                 min_depth,
@@ -502,16 +513,6 @@ impl Searcher {
                  apply_dockerignore: bool,
                  traversal_mode: TraversalMode,
                  process_queue: bool) -> io::Result<()> {
-        #[cfg(unix)]
-        {
-            let inode = dir.ino();
-            if self.visited_inodes.contains(inode) {
-                return Ok(());
-            } else {
-                self.visited_inodes.insert(inode);
-            }
-        }
-
         if self.current_follow_symlinks {
             if self.visited_dirs.contains(&dir.to_path_buf()) {
                 return Ok(());
@@ -596,26 +597,33 @@ impl Searcher {
                                 }
 
                                 if max_depth == 0 || depth < max_depth {
-                                    if path.is_dir() {
-                                        if traversal_mode == TraversalMode::Dfs {
-                                            let result = self.visit_dir(
-                                                &path,
-                                                min_depth,
-                                                max_depth,
-                                                base_depth,
-                                                search_archives,
-                                                apply_gitignore,
-                                                apply_hgignore,
-                                                apply_dockerignore,
-                                                traversal_mode,
-                                                false);
+                                    let result = entry.file_type();
+                                    if let Ok(file_type) = result {
+                                        if file_type.is_dir() {
+                                            if self.ok_to_visit_dir(&entry) {
+                                                if traversal_mode == TraversalMode::Dfs {
+                                                    let result = self.visit_dir(
+                                                        &path,
+                                                        min_depth,
+                                                        max_depth,
+                                                        base_depth,
+                                                        search_archives,
+                                                        apply_gitignore,
+                                                        apply_hgignore,
+                                                        apply_dockerignore,
+                                                        traversal_mode,
+                                                        false);
 
-                                            if result.is_err() {
-                                                path_error_message(&path, result.err().unwrap());
+                                                    if result.is_err() {
+                                                        path_error_message(&path, result.err().unwrap());
+                                                    }
+                                                } else {
+                                                    self.dir_queue.push_back(path);
+                                                }
                                             }
-                                        } else {
-                                            self.dir_queue.push_back(path);
                                         }
+                                    } else {
+                                        path_error_message(&path, result.err().unwrap());
                                     }
                                 }
                             }
@@ -653,6 +661,23 @@ impl Searcher {
         }
 
         Ok(())
+    }
+
+    #[cfg(unix)]
+    fn ok_to_visit_dir(&mut self, entry: &DirEntry) -> bool {
+        let ino = entry.ino();
+        if self.visited_inodes.contains(ino) {
+            return false;
+        } else {
+            self.visited_inodes.insert(ino);
+        }
+
+        true
+    }
+
+    #[cfg(not(unix))]
+    fn ok_to_visit_dir(&mut self, _: &DirEntry) -> bool {
+        true
     }
 
     fn get_column_expr_value(&mut self,

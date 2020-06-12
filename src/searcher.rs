@@ -2,13 +2,14 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs;
 use std::fs::DirEntry;
 use std::fs::Metadata;
-use std::fs::symlink_metadata;
 use std::io;
 use std::io::ErrorKind;
 use std::io::Write;
 use std::ops::Add;
 #[cfg(target_os = "linux")]
 use std::os::linux::fs::MetadataExt;
+#[cfg(unix)]
+use std::os::unix::fs::DirEntryExt;
 use std::path::Path;
 use std::path::PathBuf;
 
@@ -65,6 +66,8 @@ pub struct Searcher {
     hgignore_filters: Vec<HgignoreFilter>,
     dockerignore_filters: Vec<DockerignoreFilter>,
     visited_dirs: HashSet<PathBuf>,
+    #[cfg(unix)]
+    visited_inodes: HashSet<u64>,
     lscolors: LsColors,
     dir_queue: Box<VecDeque<PathBuf>>,
     current_follow_symlinks: bool,
@@ -103,6 +106,8 @@ impl Searcher {
             hgignore_filters: vec![],
             dockerignore_filters: vec![],
             visited_dirs: HashSet::new(),
+            #[cfg(unix)]
+            visited_inodes: HashSet::new(),
             lscolors: LsColors::from_env().unwrap_or_default(),
             dir_queue: Box::from(VecDeque::new()),
             current_follow_symlinks: false,
@@ -497,123 +502,120 @@ impl Searcher {
                  apply_dockerignore: bool,
                  traversal_mode: TraversalMode,
                  process_queue: bool) -> io::Result<()> {
-        let metadata = match self.current_follow_symlinks {
-            true => dir.metadata(),
-            false => symlink_metadata(dir)
+        #[cfg(unix)]
+        {
+            let inode = dir.ino();
+            if self.visited_inodes.contains(inode) {
+                return Ok(());
+            } else {
+                self.visited_inodes.insert(inode);
+            }
+        }
+
+        if self.current_follow_symlinks {
+            if self.visited_dirs.contains(&dir.to_path_buf()) {
+                return Ok(());
+            } else {
+                self.visited_dirs.insert(dir.to_path_buf());
+            }
+        }
+
+        let canonical_path = crate::util::canonical_path(&dir.to_path_buf());
+
+        if canonical_path.is_err() {
+            error_message(&dir.to_string_lossy(), String::from("could not canonicalize path: ").add(canonical_path.err().unwrap().as_str()).as_str());
+            return Ok(());
+        }
+
+        let canonical_path = canonical_path.unwrap();
+        let canonical_depth = crate::util::calc_depth(&canonical_path);
+
+        let base_depth = match root_depth {
+            0 => canonical_depth,
+            _ => root_depth
         };
-        match metadata {
-            Ok(metadata) => {
-                if metadata.is_dir() {
-                    let canonical_path = crate::util::canonical_path(&dir.to_path_buf());
 
-                    if canonical_path.is_err() {
-                        error_message(&dir.to_string_lossy(), String::from("could not canonicalize path: ").add(canonical_path.err().unwrap().as_str()).as_str());
-                        return Ok(());
+        let depth = canonical_depth - base_depth + 1;
+
+        let mut gitignore_filters = None;
+
+        if apply_gitignore {
+            let canonical_path = PathBuf::from(canonical_path);
+            self.update_gitignore_map(&canonical_path);
+            gitignore_filters = Some(self.get_gitignore_filters(&canonical_path));
+        }
+
+        match fs::read_dir(dir) {
+            Ok(entry_list) => {
+                for entry in entry_list {
+                    if !self.is_buffered() && self.query.limit > 0 && self.query.limit <= self.found {
+                        break;
                     }
 
-                    let canonical_path = canonical_path.unwrap();
-                    let canonical_depth = crate::util::calc_depth(&canonical_path);
+                    match entry {
+                        Ok(entry) => {
+                            let path = entry.path();
+                            let mut canonical_path = path.clone();
 
-                    let base_depth = match root_depth {
-                        0 => canonical_depth,
-                        _ => root_depth
-                    };
+                            if apply_gitignore || apply_hgignore || apply_dockerignore {
+                                if let Ok(canonicalized) = crate::util::canonical_path(&path) {
+                                    canonical_path = PathBuf::from(canonicalized);
+                                }
+                            }
 
-                    let depth = canonical_depth - base_depth + 1;
+                            let pass_gitignore = !apply_gitignore || !matches_gitignore_filter(&gitignore_filters, canonical_path.to_string_lossy().as_ref(), path.is_dir());
+                            let pass_hgignore = !apply_hgignore || !matches_hgignore_filter(&self.hgignore_filters, canonical_path.to_string_lossy().as_ref());
+                            let pass_dockerignore = !apply_dockerignore || !matches_dockerignore_filter(&self.dockerignore_filters, canonical_path.to_string_lossy().as_ref());
 
-                    if self.current_follow_symlinks {
-                        if self.visited_dirs.contains(&dir.to_path_buf()) {
-                            return Ok(());
-                        } else {
-                            self.visited_dirs.insert(dir.to_path_buf());
-                        }
-                    }
+                            if pass_gitignore && pass_hgignore && pass_dockerignore {
+                                if min_depth == 0 || depth >= min_depth {
+                                    let checked = self.check_file(&entry, &None);
+                                    if !checked {
+                                        return Ok(());
+                                    }
 
-                    let mut gitignore_filters = None;
+                                    if search_archives && self.is_zip_archive(&path.to_string_lossy()) {
+                                        if let Ok(file) = fs::File::open(&path) {
+                                            if let Ok(mut archive) = zip::ZipArchive::new(file) {
+                                                for i in 0..archive.len() {
+                                                    if self.query.limit > 0 && self.query.limit <= self.found {
+                                                        break;
+                                                    }
 
-                    if apply_gitignore {
-                        let canonical_path = PathBuf::from(canonical_path);
-                        self.update_gitignore_map(&canonical_path);
-                        gitignore_filters = Some(self.get_gitignore_filters(&canonical_path));
-                    }
-
-                    match fs::read_dir(dir) {
-                        Ok(entry_list) => {
-                            for entry in entry_list {
-                                if !self.is_buffered() && self.query.limit > 0 && self.query.limit <= self.found {
-                                    break;
+                                                    if let Ok(afile) = archive.by_index(i) {
+                                                        let file_info = to_file_info(&afile);
+                                                        let checked = self.check_file(&entry, &Some(file_info));
+                                                        if !checked {
+                                                            return Ok(());
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
 
-                                match entry {
-                                    Ok(entry) => {
-                                        let path = entry.path();
-                                        let mut canonical_path = path.clone();
+                                if max_depth == 0 || depth < max_depth {
+                                    if path.is_dir() {
+                                        if traversal_mode == TraversalMode::Dfs {
+                                            let result = self.visit_dir(
+                                                &path,
+                                                min_depth,
+                                                max_depth,
+                                                base_depth,
+                                                search_archives,
+                                                apply_gitignore,
+                                                apply_hgignore,
+                                                apply_dockerignore,
+                                                traversal_mode,
+                                                false);
 
-                                        if apply_gitignore || apply_hgignore || apply_dockerignore {
-                                            if let Ok(canonicalized) = crate::util::canonical_path(&path) {
-                                                canonical_path = PathBuf::from(canonicalized);
+                                            if result.is_err() {
+                                                path_error_message(&path, result.err().unwrap());
                                             }
+                                        } else {
+                                            self.dir_queue.push_back(path);
                                         }
-
-                                        let pass_gitignore = !apply_gitignore || !matches_gitignore_filter(&gitignore_filters, canonical_path.to_string_lossy().as_ref(), path.is_dir());
-                                        let pass_hgignore = !apply_hgignore || !matches_hgignore_filter(&self.hgignore_filters, canonical_path.to_string_lossy().as_ref());
-                                        let pass_dockerignore = !apply_dockerignore || !matches_dockerignore_filter(&self.dockerignore_filters, canonical_path.to_string_lossy().as_ref());
-
-                                        if pass_gitignore && pass_hgignore && pass_dockerignore {
-                                            if min_depth == 0 || depth >= min_depth {
-                                                let checked = self.check_file(&entry, &None);
-                                                if !checked {
-                                                    return Ok(());
-                                                }
-
-                                                if search_archives && self.is_zip_archive(&path.to_string_lossy()) {
-                                                    if let Ok(file) = fs::File::open(&path) {
-                                                        if let Ok(mut archive) = zip::ZipArchive::new(file) {
-                                                            for i in 0..archive.len() {
-                                                                if self.query.limit > 0 && self.query.limit <= self.found {
-                                                                    break;
-                                                                }
-
-                                                                if let Ok(afile) = archive.by_index(i) {
-                                                                    let file_info = to_file_info(&afile);
-                                                                    let checked = self.check_file(&entry, &Some(file_info));
-                                                                    if !checked {
-                                                                        return Ok(());
-                                                                    }
-                                                                }
-                                                            }
-                                                        }
-                                                    }
-                                                }
-                                            }
-
-                                            if max_depth == 0 || depth < max_depth {
-                                                if path.is_dir() {
-                                                    if traversal_mode == TraversalMode::Dfs {
-                                                        let result = self.visit_dir(
-                                                            &path,
-                                                            min_depth,
-                                                            max_depth,
-                                                            base_depth,
-                                                            search_archives,
-                                                            apply_gitignore,
-                                                            apply_hgignore,
-                                                            apply_dockerignore,
-                                                            traversal_mode,
-                                                            false);
-
-                                                        if result.is_err() {
-                                                            path_error_message(&path, result.err().unwrap());
-                                                        }
-                                                    } else {
-                                                        self.dir_queue.push_back(path);
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    },
-                                    Err(err) => {
-                                        path_error_message(dir, err);
                                     }
                                 }
                             }
@@ -622,31 +624,31 @@ impl Searcher {
                             path_error_message(dir, err);
                         }
                     }
-
-                    if traversal_mode == Bfs && process_queue {
-                        while !self.dir_queue.is_empty() {
-                            let path = self.dir_queue.pop_front().unwrap();
-                            let result = self.visit_dir(
-                                &path,
-                                min_depth,
-                                max_depth,
-                                base_depth,
-                                search_archives,
-                                apply_gitignore,
-                                apply_hgignore,
-                                apply_dockerignore,
-                                traversal_mode,
-                                false);
-
-                            if result.is_err() {
-                                path_error_message(&path, result.err().unwrap());
-                            }
-                        }
-                    }
                 }
             },
             Err(err) => {
                 path_error_message(dir, err);
+            }
+        }
+
+        if traversal_mode == Bfs && process_queue {
+            while !self.dir_queue.is_empty() {
+                let path = self.dir_queue.pop_front().unwrap();
+                let result = self.visit_dir(
+                    &path,
+                    min_depth,
+                    max_depth,
+                    base_depth,
+                    search_archives,
+                    apply_gitignore,
+                    apply_hgignore,
+                    apply_dockerignore,
+                    traversal_mode,
+                    false);
+
+                if result.is_err() {
+                    path_error_message(&path, result.err().unwrap());
+                }
             }
         }
 

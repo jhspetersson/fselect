@@ -301,7 +301,9 @@ impl Searcher {
                         true => root_dir.metadata(),
                         false => symlink_metadata(root_dir)
                     };
-                    self.visited_inodes.insert(metadata.ino());
+                    if let Ok(metadata) = metadata {
+                        self.visited_inodes.insert(metadata.ino());
+                    }
                 }
 
             let _result = self.visit_dir(

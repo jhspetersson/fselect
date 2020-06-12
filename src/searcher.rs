@@ -922,48 +922,48 @@ impl Searcher {
                 return self.check_file_mode(entry, &mode::is_socket, &file_info, &mode::mode_is_socket);
             },
             Field::Device => {
-                #[cfg(target_os = "linux")]
+                #[cfg(unix)]
                     {
                         self.update_file_metadata(entry);
 
                         if let Some(ref attrs) = self.file_metadata {
-                            return Variant::from_int(attrs.st_dev() as i64);
+                            return Variant::from_int(attrs.rdev() as i64);
                         }
                     }
 
                 return Variant::empty(VariantType::String);
             },
             Field::Inode => {
-                #[cfg(target_os = "linux")]
+                #[cfg(unix)]
                     {
                         self.update_file_metadata(entry);
 
                         if let Some(ref attrs) = self.file_metadata {
-                            return Variant::from_int(attrs.st_ino() as i64);
+                            return Variant::from_int(attrs.ino() as i64);
                         }
                     }
 
                 return Variant::empty(VariantType::String);
             },
             Field::Blocks => {
-                #[cfg(target_os = "linux")]
+                #[cfg(unix)]
                     {
                         self.update_file_metadata(entry);
 
                         if let Some(ref attrs) = self.file_metadata {
-                            return Variant::from_int(attrs.st_blocks() as i64);
+                            return Variant::from_int(attrs.blocks() as i64);
                         }
                     }
 
                 return Variant::empty(VariantType::String);
             },
             Field::Hardlinks => {
-                #[cfg(target_os = "linux")]
+                #[cfg(unix)]
                     {
                         self.update_file_metadata(entry);
 
                         if let Some(ref attrs) = self.file_metadata {
-                            return Variant::from_int(attrs.st_nlink() as i64);
+                            return Variant::from_int(attrs.nlink() as i64);
                         }
                     }
 

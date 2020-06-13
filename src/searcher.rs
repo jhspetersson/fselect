@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs;
-use std::fs::DirEntry;
+use std::fs::{DirEntry, FileType};
 use std::fs::Metadata;
 #[cfg(unix)]
 use std::fs::symlink_metadata;
@@ -602,7 +602,7 @@ impl Searcher {
                                     let result = entry.file_type();
                                     if let Ok(file_type) = result {
                                         if file_type.is_dir() {
-                                            if self.ok_to_visit_dir(&entry) {
+                                            if self.ok_to_visit_dir(&entry, file_type) {
                                                 if traversal_mode == TraversalMode::Dfs {
                                                     let result = self.visit_dir(
                                                         &path,
@@ -666,7 +666,7 @@ impl Searcher {
     }
 
     #[cfg(unix)]
-    fn ok_to_visit_dir(&mut self, entry: &DirEntry) -> bool {
+    fn ok_to_visit_dir(&mut self, entry: &DirEntry, file_type: FileType) -> bool {
         let ino = entry.ino();
         if self.visited_inodes.contains(&ino) {
             return false;
@@ -674,12 +674,18 @@ impl Searcher {
             self.visited_inodes.insert(ino);
         }
 
-        true
+        match self.current_follow_symlinks {
+            true => true,
+            false => !file_type.is_symlink()
+        }
     }
 
     #[cfg(not(unix))]
-    fn ok_to_visit_dir(&mut self, _: &DirEntry) -> bool {
-        true
+    fn ok_to_visit_dir(&mut self, _: &DirEntry, file_type: FileType) -> bool {
+        match self.current_follow_symlinks {
+            true => true,
+            false => !file_type.is_symlink()
+        }
     }
 
     fn get_column_expr_value(&mut self,

@@ -207,6 +207,7 @@ pub enum Function {
     Day,
     Month,
     Year,
+    DayOfWeek,
 
     Contains,
 
@@ -247,6 +248,7 @@ impl FromStr for Function {
             "day" => Ok(Function::Day),
             "month" => Ok(Function::Month),
             "year" => Ok(Function::Year),
+            "dayofweek" | "dow" => Ok(Function::DayOfWeek),
 
             "min" => Ok(Function::Min),
             "max" => Ok(Function::Max),
@@ -461,6 +463,16 @@ pub fn get_value(function: &Option<Function>,
             match parse_datetime(&function_arg) {
                 Ok(date) => {
                     return Variant::from_int(date.0.day() as i64);
+                },
+                _ => {
+                    return Variant::empty(VariantType::Int);
+                }
+            }
+        },
+        Some(Function::DayOfWeek) => {
+            match parse_datetime(&function_arg) {
+                Ok(date) => {
+                    return Variant::from_int(date.0.weekday().number_from_sunday() as i64);
                 },
                 _ => {
                     return Variant::empty(VariantType::Int);

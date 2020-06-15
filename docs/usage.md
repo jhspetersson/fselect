@@ -149,6 +149,7 @@ Used mostly for formatting results.
 | DAY | Extract day of the month | `select day(modified) from /home/user/Downloads` |
 | MONTH | Extract month of the year | `select month(name) from /home/user/Downloads` |
 | YEAR | Extract year of the date | `select year(name) from /home/user/Downloads` |
+| DOW or DAYOFWEEK | Returns day of the week (1 - Sunday, 2 - Monday, etc.) | `select name, modified, dow(modified) from /home/user/projects/FizzBuzz` |
 
 #### Xattr functions
 

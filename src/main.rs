@@ -252,6 +252,7 @@ Functions:
         DAY                         Returns day of the month
         MONTH                       Returns month of the year
         YEAR                        Returns year of the date
+        DOW | DAYOFWEEK             Returns day of the week (1 - Sunday, 2 - Monday, etc.)
     Xattr:
         HAS_XATTR                   Used to check if xattr exists
         XATTR                       Returns value of xattr

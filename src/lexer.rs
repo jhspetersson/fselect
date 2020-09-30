@@ -1,4 +1,6 @@
 use regex::Regex;
+use crate::field::Field;
+use std::str::FromStr;
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum Lexem {
@@ -77,7 +79,17 @@ impl<'a> Lexer<'a> {
                 LexingMode::RawString => {
                     let is_date = c == '-' && looks_like_date(&s);
                     if !is_date {
-                        if c == ' ' || c == ',' || c == '(' || c == ')' || self.is_op_char(c) || self.is_arithmetic_op_char(c) {
+                        if self.is_arithmetic_op_char(c) {
+                            let maybe_column = looks_like_column(&s);
+                            if maybe_column {
+                                break;
+                            }
+
+                            let maybe_arithmetic_expr = looks_like_arithmetic_expr(&s);
+                            if maybe_arithmetic_expr {
+                                break
+                            }
+                        } else if c == ' ' || c == ',' || c == '(' || c == ')' || self.is_op_char(c) {
                             break
                         }
                     }
@@ -173,7 +185,25 @@ impl<'a> Lexer<'a> {
 
 
 lazy_static! {
+    static ref MAYBE_COLUMN_REGEX: Regex = Regex::new("([a-zA-Z0-9_]+)$").unwrap();
+    static ref MAYBE_ARITHMETIC_EXPR_REGEX: Regex = Regex::new("(\\d+)|\\)$").unwrap();
     static ref DATE_ALIKE_REGEX: Regex = Regex::new("(\\d{4})-?(\\d{2})?").unwrap();
+}
+
+fn looks_like_column(s: &str) -> bool {
+    match MAYBE_COLUMN_REGEX.captures(s) {
+        Some(cap) => {
+            match Field::from_str(&cap[1]) {
+                Ok(_) => true,
+                _ => false
+            }
+        },
+        _ => false
+    }
+}
+
+fn looks_like_arithmetic_expr(s: &str) -> bool {
+    MAYBE_ARITHMETIC_EXPR_REGEX.is_match(s)
 }
 
 fn looks_like_date(s: &str) -> bool {
@@ -209,6 +239,19 @@ fn looks_like_date(s: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn looks_like_date_test() {
+        assert!(looks_like_date("2018"));
+        assert!(looks_like_date("2018-01"));
+    }
+
+    #[test]
+    fn looks_like_column_test() {
+        assert!(looks_like_column("width"));
+        assert!(looks_like_column(") / height"));
+        assert!(!looks_like_column("foobar"));
+    }
 
     #[test]
     fn lexems() {
@@ -413,5 +456,18 @@ mod tests {
         assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("path"))));
         assert_eq!(lexer.next_lexem(), Some(Lexem::From));
         assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("./foo-bar"))));
+    }
+
+    #[test]
+    fn another_workaround_for_raw_paths() {
+        let mut lexer = Lexer::new("name, size where path eq \\*some/stuff-inside/\\*.rs");
+
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("name"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::Comma));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("size"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::Where));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("path"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::Operator(String::from("eq"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("\\*some/stuff-inside/\\*.rs"))));
     }
 }

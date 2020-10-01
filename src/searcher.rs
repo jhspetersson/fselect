@@ -557,7 +557,7 @@ impl Searcher {
 
                     match entry {
                         Ok(entry) => {
-                            let path = entry.path();
+                            let mut path = entry.path();
                             let mut canonical_path = path.clone();
 
                             if apply_gitignore || apply_hgignore || apply_dockerignore {
@@ -601,7 +601,18 @@ impl Searcher {
                                 if max_depth == 0 || depth < max_depth {
                                     let result = entry.file_type();
                                     if let Ok(file_type) = result {
-                                        if file_type.is_dir() {
+                                        let mut ok = false;
+
+                                        if file_type.is_symlink() {
+                                            if let Ok(resolved) = std::fs::read_link(&path) {
+                                                ok = true;
+                                                path = resolved;
+                                            }
+                                        } else if file_type.is_dir() {
+                                            ok = true;
+                                        }
+
+                                        if ok {
                                             if self.ok_to_visit_dir(&entry, file_type) {
                                                 if traversal_mode == TraversalMode::Dfs {
                                                     let result = self.visit_dir(

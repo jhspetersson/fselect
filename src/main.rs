@@ -72,7 +72,12 @@ fn main() {
 
     let first_arg = args[0].to_ascii_lowercase();
 
-    if first_arg.starts_with("help") || first_arg.starts_with("-h") || first_arg.starts_with("/?") || first_arg.starts_with("/h") {
+    if first_arg.contains("version") || first_arg.starts_with("-v") {
+        short_usage_info(no_color);
+        return;
+    }
+
+    if first_arg.contains("help") || first_arg.starts_with("-h") || first_arg.starts_with("/?") || first_arg.starts_with("/h") {
         usage_info(no_color);
         return;
     }

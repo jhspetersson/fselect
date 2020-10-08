@@ -18,3 +18,5 @@ out/
 .vscode/**
 
 target
+
+.cargo/config

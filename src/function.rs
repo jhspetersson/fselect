@@ -204,6 +204,11 @@ pub enum Function {
     Sum,
     Count,
 
+    StdDevPop,
+    StdDevSamp,
+    VarPop,
+    VarSamp,
+
     Day,
     Month,
     Year,
@@ -256,6 +261,11 @@ impl FromStr for Function {
             "sum" => Ok(Function::Sum),
             "count" => Ok(Function::Count),
 
+            "stddev_pop" | "stddev" | "std" => Ok(Function::StdDevPop),
+            "stddev_samp" => Ok(Function::StdDevSamp),
+            "var_pop" | "variance" => Ok(Function::VarPop),
+            "var_samp" => Ok(Function::VarSamp),
+
             "contains" => Ok(Function::Contains),
 
             "has_xattr" => Ok(Function::HasXattr),
@@ -286,9 +296,15 @@ impl Serialize for Function {
 impl Function {
     pub fn is_aggregate_function(&self) -> bool {
         match self {
-            Function::Min | Function::Max
-            | Function::Avg | Function::Sum
-            | Function::Count => true,
+            Function::Min
+            | Function::Max
+            | Function::Avg
+            | Function::Sum
+            | Function::Count
+            | Function::StdDevPop
+            | Function::StdDevSamp
+            | Function::VarPop
+            | Function::VarSamp => true,
             _ => false
         }
     }
@@ -579,32 +595,59 @@ pub fn get_aggregate_value(function: &Option<Function>,
                 return String::from("0");
             }
 
-            let mut sum = 0;
-            for value in raw_output_buffer {
-                if let Some(value) = value.get(&buffer_key) {
-                    if let Ok(value) = value.parse::<usize>() {
-                        sum += value;
-                    }
-                }
-            }
-
-            return (sum / raw_output_buffer.len()).to_string();
+            get_mean(raw_output_buffer, &buffer_key).to_string()
         },
         Some(Function::Sum) => {
-            let mut sum = 0;
-            for value in raw_output_buffer {
-                if let Some(value) = value.get(&buffer_key) {
-                    if let Ok(value) = value.parse::<usize>() {
-                        sum += value;
-                    }
-                }
-            }
-
-            return sum.to_string();
+            get_buffer_sum(raw_output_buffer, &buffer_key).to_string()
         },
         Some(Function::Count) => {
             return raw_output_buffer.len().to_string();
         },
+        Some(Function::StdDevPop) => {
+            if raw_output_buffer.is_empty() {
+                return String::new();
+            }
+
+            let n = raw_output_buffer.len();
+            let variance = get_variance(raw_output_buffer, &buffer_key, n);
+            let result = variance.sqrt();
+
+            return result.to_string();
+        },
+        Some(Function::StdDevSamp) => {
+            if raw_output_buffer.is_empty() {
+                return String::new();
+            }
+
+            let size = raw_output_buffer.len();
+            let n = if size == 1 { 1 } else { size - 1 };
+            let variance = get_variance(raw_output_buffer, &buffer_key, n);
+            let result = variance.sqrt();
+
+            return result.to_string();
+        },
+        Some(Function::VarPop) => {
+            if raw_output_buffer.is_empty() {
+                return String::new();
+            }
+
+            let n = raw_output_buffer.len();
+            let variance = get_variance(raw_output_buffer, &buffer_key, n);
+
+            return variance.to_string();
+        },
+        Some(Function::VarSamp) => {
+            if raw_output_buffer.is_empty() {
+                return String::new();
+            }
+
+            let size = raw_output_buffer.len();
+            let n = if size == 1 { 1 } else { size - 1 };
+            let variance = get_variance(raw_output_buffer, &buffer_key, n);
+
+            return variance.to_string();
+        },
+
         _ => {
             match &default_value {
                 Some(val) => return val.to_owned(),
@@ -612,4 +655,41 @@ pub fn get_aggregate_value(function: &Option<Function>,
             }
         }
     }
+}
+
+fn get_variance(raw_output_buffer: &Vec<HashMap<String, String>>,
+                buffer_key: &String,
+                n: usize) -> f64 {
+    let avg = get_mean(raw_output_buffer, buffer_key);
+
+    let mut result: f64 = 0.0;
+    for value in raw_output_buffer {
+        if let Some(value) = value.get(buffer_key) {
+            if let Ok(value) = value.parse::<f64>() {
+                result += (avg - value).powi(2) / n as f64;
+            }
+        }
+    }
+
+    result
+}
+
+fn get_mean(raw_output_buffer: &Vec<HashMap<String, String>>, buffer_key: &String) -> f64 {
+    let sum = get_buffer_sum(raw_output_buffer, buffer_key);
+    let size = raw_output_buffer.len();
+
+    (sum / size) as f64
+}
+
+fn get_buffer_sum(raw_output_buffer: &Vec<HashMap<String, String>>, buffer_key: &String) -> usize {
+    let mut sum = 0;
+    for value in raw_output_buffer {
+        if let Some(value) = value.get(buffer_key) {
+            if let Ok(value) = value.parse::<usize>() {
+                sum += value;
+            }
+        }
+    }
+
+    sum
 }

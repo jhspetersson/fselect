@@ -139,6 +139,10 @@ Queries using these functions return only one result row.
 | MAX | Maximum value | `select max(size) from /home/user/Downloads` |
 | MIN | Minimum value | `select min(size) from /home/user where size gt 0` |
 | SUM | Sum of all values | `select sum(size) from /home/user/Downloads` |
+| STDDEV_POP, STDDEV or STD | Population standard deviation, the square root of variance | `select stddev_pop(size) from /home/user/Downloads` |
+| STDDEV_SAMP | Sample standard deviation, the square root of sample variance | `select stddev_samp(size) from /home/user/Downloads` |
+| VAR_POP or VARIANCE | Population variance | `select var_pop(size) from /home/user/Downloads` |
+| VAR_SAMP | Sample variance | `select var_samp(size) from /home/user/Downloads` |
 
 #### Date functions
 

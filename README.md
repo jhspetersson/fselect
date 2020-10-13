@@ -10,7 +10,7 @@ While it doesn't tend to fully replace traditional `find` and `ls`, **fselect** 
 
 * SQL-like (not real SQL, but highly relaxed!) grammar easily understandable by humans
 * complex queries
-* aggregate, date, and other functions
+* aggregate, statistics, date, and other functions
 * search within archives
 * `.gitignore`, `.hgignore`, and `.dockerignore` support (experimental)
 * search by width and height of images, EXIF metadata

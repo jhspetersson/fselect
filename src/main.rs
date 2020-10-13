@@ -253,6 +253,10 @@ Functions:
         MAX                         Returns maximum value
         MIN                         Returns minimum value
         SUM                         Returns sum of all values
+        STDDEV_POP | STDDEV | STD   Population standard deviation, the square root of variance
+        STDDEV_SAMP                 Sample standard deviation, the square root of sample variance
+        VAR_POP | VARIANCE          Population variance
+        VAR_SAMP                    Sample variance
     Date:
         DAY                         Returns day of the month
         MONTH                       Returns month of the year

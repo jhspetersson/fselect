@@ -39,6 +39,7 @@ pub struct Root {
     pub hgignore: Option<bool>,
     pub dockerignore: Option<bool>,
     pub traversal: TraversalMode,
+    pub regexp: bool,
 }
 
 impl Root {
@@ -50,7 +51,8 @@ impl Root {
                gitignore: Option<bool>,
                hgignore: Option<bool>,
                dockerignore: Option<bool>,
-               traversal: TraversalMode) -> Root {
+               traversal: TraversalMode,
+               regexp: bool) -> Root {
         Root {
             path,
             min_depth,
@@ -60,7 +62,8 @@ impl Root {
             gitignore,
             hgignore,
             dockerignore,
-            traversal
+            traversal,
+            regexp
         }
     }
 
@@ -74,7 +77,8 @@ impl Root {
             gitignore: None,
             hgignore: None,
             dockerignore: None,
-            traversal: Bfs
+            traversal: Bfs,
+            regexp: false
         }
     }
 }

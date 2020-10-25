@@ -134,6 +134,7 @@ impl Parser {
             let mut hgignore = None;
             let mut dockerignore = None;
             let mut traversal = Bfs;
+            let mut regexp = false;
 
             loop {
                 let lexem = self.get_lexem();
@@ -182,6 +183,9 @@ impl Parser {
                                         } else if s == "dfs" {
                                             traversal = Dfs;
                                             mode = RootParsingMode::Options;
+                                        } else if s == "rx" || s.starts_with("regex") {
+                                            regexp = true;
+                                            mode = RootParsingMode::Options;
                                         } else {
                                             self.drop_lexem();
                                             break;
@@ -218,7 +222,7 @@ impl Parser {
                             },
                             Lexem::Comma => {
                                 if path.len() > 0 {
-                                    roots.push(Root::new(path, min_depth, depth, archives, symlinks, gitignore, hgignore, dockerignore, traversal));
+                                    roots.push(Root::new(path, min_depth, depth, archives, symlinks, gitignore, hgignore, dockerignore, traversal, regexp));
 
                                     path = String::from("");
                                     min_depth = 0;
@@ -229,6 +233,7 @@ impl Parser {
                                     hgignore = None;
                                     dockerignore = None;
                                     traversal = Bfs;
+                                    regexp = false;
 
                                     mode = RootParsingMode::Comma;
                                 } else {
@@ -238,7 +243,7 @@ impl Parser {
                             },
                             _ => {
                                 if path.len() > 0 {
-                                    roots.push(Root::new(path, min_depth, depth, archives, symlinks, gitignore, hgignore, dockerignore, traversal));
+                                    roots.push(Root::new(path, min_depth, depth, archives, symlinks, gitignore, hgignore, dockerignore, traversal, regexp));
                                 }
 
                                 self.drop_lexem();
@@ -248,7 +253,7 @@ impl Parser {
                     },
                     None => {
                         if path.len() > 0 {
-                            roots.push(Root::new(path, min_depth, depth, archives, symlinks, gitignore, hgignore, dockerignore, traversal));
+                            roots.push(Root::new(path, min_depth, depth, archives, symlinks, gitignore, hgignore, dockerignore, traversal, regexp));
                         }
                         break;
                     }
@@ -675,14 +680,14 @@ mod tests {
         ]);
 
         assert_eq!(query.roots, vec![
-            Root::new(String::from("/test"), 0, 2, false, false, None, None, None, Bfs),
-            Root::new(String::from("/test2"), 0, 0, true, false, None, None, None, Bfs),
-            Root::new(String::from("/test3"), 0, 3, true, false, None, None, None, Bfs),
-            Root::new(String::from("/test4"), 0, 0, false, false, None, None, None, Bfs),
-            Root::new(String::from("/test5"), 0, 0, false, false, Some(true), None, None, Bfs),
-            Root::new(String::from("/test6"), 3, 0, false, false, None, None, None, Bfs),
-            Root::new(String::from("/test7"), 0, 0, true, false, None, None, None, Dfs),
-            Root::new(String::from("/test8"), 0, 0, false, false, None, None, None, Dfs),
+            Root::new(String::from("/test"), 0, 2, false, false, None, None, None, Bfs, false),
+            Root::new(String::from("/test2"), 0, 0, true, false, None, None, None, Bfs, false),
+            Root::new(String::from("/test3"), 0, 3, true, false, None, None, None, Bfs, false),
+            Root::new(String::from("/test4"), 0, 0, false, false, None, None, None, Bfs, false),
+            Root::new(String::from("/test5"), 0, 0, false, false, Some(true), None, None, Bfs, false),
+            Root::new(String::from("/test6"), 3, 0, false, false, None, None, None, Bfs, false),
+            Root::new(String::from("/test7"), 0, 0, true, false, None, None, None, Dfs, false),
+            Root::new(String::from("/test8"), 0, 0, false, false, None, None, None, Dfs, false),
         ]);
 
         let expr = Expr::logical_op(
@@ -714,7 +719,7 @@ mod tests {
         assert_eq!(query.fields, vec![Expr::field(Field::Name)]);
 
         assert_eq!(query.roots, vec![
-            Root::new(String::from("/test"), 0, 0, false, false, None, None, None, Bfs),
+            Root::new(String::from("/test"), 0, 0, false, false, None, None, None, Bfs, false),
         ]);
 
         let expr = Expr::op(Expr::field(Field::Name), Op::NotLike, Expr::value(String::from("%.tmp")));

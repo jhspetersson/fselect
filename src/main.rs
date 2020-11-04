@@ -156,6 +156,17 @@ Files Detected as Image: .bmp, .gif, .heic, .jpeg, .jpg, .png, .psb, .psd, .tiff
 Files Detected as Source Code: .asm, .bas, .c, .cc, .ceylon, .clj, .coffee, .cpp, .cs, .d, .dart, .elm, .erl, .go, .groovy, .h, .hh, .hpp, .java, .js, .jsp, .kt, .kts, .lua, .nim, .pas, .php, .pl, .pm, .py, .rb, .rs, .scala, .swift, .tcl, .vala, .vb
 Files Detected as Video: .3gp, .avi, .flv, .m4p, .m4v, .mkv, .mov, .mp4, .mpeg, .mpg, .webm, .wmv
 
+Path Options:
+    mindepth N 	                    Minimum search depth. Default is unlimited. Depth 1 means skip one directory level and search further.
+    maxdepth N | depth N 	        Maximum search depth. Default is unlimited. Depth 1 means search the mentioned directory only. Depth 2 means search mentioned directory and its subdirectories.
+    symlinks | sym                  If specified, search process will follow symlinks. Default is not to follow.
+    archives | arc                  Search within archives. Only zip archives are supported. Default is not to include archived content into the search results.
+    gitignore | git                 Search respects .gitignore files found.
+    hgignore | hg                   Search respects .hgignore files found.
+    dockerignore | docker           Search respects .dockerignore files found.
+    dfs 	                        Depth-first search mode.
+    bfs 	                        Breadth-first search mode. This is the default.
+
 Column Options:
     name                            Returns the name of the file
     path                            Returns the path of the file

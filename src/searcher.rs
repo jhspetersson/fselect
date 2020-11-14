@@ -49,7 +49,7 @@ use crate::ignore::hg::parse_hgignore;
 use crate::mode;
 use crate::operators::LogicalOp;
 use crate::operators::Op;
-use crate::query::{Query, TraversalMode};
+use crate::query::{Query, Root, TraversalMode};
 use crate::query::OutputFormat;
 use crate::query::TraversalMode::Bfs;
 use crate::util::*;
@@ -269,7 +269,56 @@ impl Searcher {
             return Ok(());
         }
 
+        let mut roots = vec![];
+
         for root in self.query.roots.clone() {
+            if root.regexp {
+                let mut ext_roots: Vec<String> = vec![];
+                let parts = root.path.split('/').collect::<Vec<&str>>();
+                for part in parts {
+                    if self.looks_like_regexp(part) {
+                        let rx_string = format!("^{}$", part);
+                        let rx = Regex::new(&rx_string).unwrap();
+                        let mut tmp = vec![];
+
+                        for root in ext_roots.clone() {
+                            let path = Path::new(&root);
+
+                            match path.read_dir() {
+                                Ok(read_result) => {
+                                    for entry in read_result {
+                                        if let Ok(entry) = entry {
+                                            if rx.is_match(entry.file_name().to_string_lossy().as_ref()) {
+                                                tmp.push(entry.path().to_string_lossy().to_string());
+                                            }
+                                        }
+                                    }
+                                },
+                                Err(e) => path_error_message(&path, e)
+                            }
+                        }
+
+                        ext_roots.clear();
+                        ext_roots.append(&mut tmp);
+                    } else {
+                        if ext_roots.is_empty() {
+                            ext_roots.push(part.to_string());
+                        } else {
+                            //update all roots
+                            let mut new_roots = ext_roots.iter().map(|root| root.to_string() + "/" + part).collect::<Vec<String>>();
+                            ext_roots.clear();
+                            ext_roots.append(&mut new_roots);
+                        }
+                    }
+                }
+
+                ext_roots.iter().for_each(|ext_root| roots.push(Root::clone_with_path(ext_root.to_string(), root.clone())));
+            } else {
+                roots.push(root);
+            }
+        }
+
+        for root in roots.clone() {
             self.current_follow_symlinks = root.symlinks;
 
             let root_dir = Path::new(&root.path);
@@ -1800,5 +1849,9 @@ impl Searcher {
 
     fn is_video(&self, file_name: &str) -> bool {
         has_extension(file_name, &self.config.is_video)
+    }
+
+    fn looks_like_regexp(&self, s: &str) -> bool {
+        s.contains('*') || s.contains('[') || s.contains('?')
     }
 }

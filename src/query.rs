@@ -81,6 +81,13 @@ impl Root {
             regexp: false
         }
     }
+
+    pub fn clone_with_path(new_path: String, source: Root) -> Root {
+        Root {
+            path: new_path,
+            ..source
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]

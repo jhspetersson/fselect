@@ -183,7 +183,7 @@ impl Parser {
                                         } else if s == "dfs" {
                                             traversal = Dfs;
                                             mode = RootParsingMode::Options;
-                                        } else if s == "rx" || s.starts_with("regex") {
+                                        } else if s.starts_with("regex") {
                                             regexp = true;
                                             mode = RootParsingMode::Options;
                                         } else {
@@ -219,6 +219,10 @@ impl Parser {
                                     },
                                     _ => { }
                                 }
+                            },
+                            Lexem::Operator(s) if s.eq("rx") => {
+                                regexp = true;
+                                mode = RootParsingMode::Options;
                             },
                             Lexem::Comma => {
                                 if path.len() > 0 {

@@ -166,6 +166,7 @@ Path Options:
     dockerignore | docker           Search respects .dockerignore files found.
     dfs 	                        Depth-first search mode.
     bfs 	                        Breadth-first search mode. This is the default.
+    regexp | rx                     Use regular expressions to search within multiple roots.
 
 Column Options:
     name                            Returns the name of the file

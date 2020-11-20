@@ -222,6 +222,7 @@ When you put a directory to search at, you can specify some options.
 | dockerignore | Search respects `.dockerignore` files found. Synonym is `dock`. |
 | dfs | Depth-first search mode. |
 | bfs | Breadth-first search mode. This is the default. |
+| regexp | Use regular expressions to search within multiple roots. Synonym is `rx`. | 
 
 ### Operators
 

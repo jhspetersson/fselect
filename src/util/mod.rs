@@ -488,12 +488,15 @@ pub fn get_exif_metadata(entry: &DirEntry) -> Option<HashMap<String, String>> {
             let mut exif_info = HashMap::new();
 
             for field in reader.fields() {
-                let field_value = match field.value {
-                    exif::Value::Ascii(ref vec) if !vec.is_empty() => std::str::from_utf8(&vec[0]).unwrap().to_string(),
-                    _ => field.value.display_as(field.tag).to_string()
-                };
-
-                exif_info.insert(format!("{}", field.tag), field_value);
+                let field_tag = format!("{}", field.tag);
+                match field.value {
+                    exif::Value::Ascii(ref vec) if !vec.is_empty() => if let Ok(str_value) = std::str::from_utf8(&vec[0]) {
+                        exif_info.insert(field_tag, str_value.to_string());
+                    },
+                    _ =>  {
+                        exif_info.insert(field_tag, field.value.display_as(field.tag).to_string());
+                    }
+                }
             }
 
             return Some(exif_info);

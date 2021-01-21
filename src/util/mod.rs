@@ -436,9 +436,8 @@ fn get_mp4_dimensions(entry: &DirEntry) -> Option<(usize, usize)> {
 
         if let Ok(_) = fd.read_to_end(&mut buf) {
             let mut c = std::io::Cursor::new(&buf);
-            let mut context = mp4parse::MediaContext::new();
 
-            if let Ok(()) = mp4parse::read_mp4(&mut c, &mut context) {
+            if let Ok(context) = mp4parse::read_mp4(&mut c) {
                 for track in context.tracks {
                     match track.track_type {
                         mp4parse::TrackType::Video => {

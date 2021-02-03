@@ -2,6 +2,7 @@ use std::fs;
 use std::io::{Read, Write};
 
 use app_dirs::{AppInfo, AppDataType, app_root};
+use std::path::PathBuf;
 
 const APP_INFO: AppInfo = AppInfo {
     name: "fselect",
@@ -24,21 +25,29 @@ pub struct Config {
     pub is_image : Vec<String>,
     pub is_source : Vec<String>,
     pub is_video : Vec<String>,
+    #[serde(skip_serializing)]
+    save : bool,
 }
 
 impl Config {
     pub fn new() -> Result<Config, &'static str> {
-        let config_dir = app_root(AppDataType::UserConfig, &APP_INFO);
+        let mut config_file;
 
-        if config_dir.is_err() {
-            return Ok(Config::default());
-        }
+        if let Some(cf) = Config::get_current_dir_config() {
+            config_file = cf;
+        } else {
+            let config_dir = app_root(AppDataType::UserConfig, &APP_INFO);
 
-        let mut config_file = config_dir.unwrap().clone();
-        config_file.push(CONFIG_FILE);
+            if config_dir.is_err() {
+                return Ok(Config::default());
+            }
 
-        if !config_file.exists() {
-            return Ok(Config::default());
+            config_file = config_dir.unwrap().clone();
+            config_file.push(CONFIG_FILE);
+
+            if !config_file.exists() {
+                return Ok(Config::default());
+            }
         }
 
         if let Ok(mut file) = fs::File::open(&config_file) {
@@ -57,7 +66,23 @@ impl Config {
         Ok(Config::default())
     }
 
+    fn get_current_dir_config() -> Option<PathBuf> {
+        if let Ok(mut pb) = std::env::current_exe() {
+            pb.pop();
+            pb.push(CONFIG_FILE);
+            if pb.exists() {
+                return Some(pb);
+            }
+        }
+
+        None
+    }
+
     pub fn save(&self) {
+        if !self.save {
+            return;
+        }
+
         let config_dir = app_root(AppDataType::UserConfig, &APP_INFO);
 
         if config_dir.is_err() {
@@ -92,6 +117,7 @@ impl Config {
             is_image : vec![String::from(".bmp"), String::from(".gif"), String::from(".heic"), String::from(".jpeg"), String::from(".jpg"), String::from(".png"), String::from(".psb"), String::from(".psd"), String::from(".tiff"), String::from(".webp")],
             is_source : vec![String::from(".asm"), String::from(".bas"), String::from(".c"), String::from(".cc"), String::from(".ceylon"), String::from(".clj"), String::from(".coffee"), String::from(".cpp"), String::from(".cs"), String::from(".d"), String::from(".dart"), String::from(".elm"), String::from(".erl"), String::from(".go"), String::from(".groovy"), String::from(".h"), String::from(".hh"), String::from(".hpp"), String::from(".java"), String::from(".js"), String::from(".jsp"), String::from(".kt"), String::from(".kts"), String::from(".lua"), String::from(".nim"), String::from(".pas"), String::from(".php"), String::from(".pl"), String::from(".pm"), String::from(".py"), String::from(".rb"), String::from(".rs"), String::from(".scala"), String::from(".swift"), String::from(".tcl"), String::from(".vala"), String::from(".vb")],
             is_video : vec![String::from(".3gp"), String::from(".avi"), String::from(".flv"), String::from(".m4p"), String::from(".m4v"), String::from(".mkv"), String::from(".mov"), String::from(".mp4"), String::from(".mpeg"), String::from(".mpg"), String::from(".webm"), String::from(".wmv")],
+            save : true,
         }
     }
 }

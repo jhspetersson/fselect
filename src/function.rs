@@ -10,6 +10,7 @@ use std::str::FromStr;
 use chrono::Datelike;
 use chrono::DateTime;
 use chrono::Local;
+use rand::Rng;
 use serde::ser::{Serialize, Serializer};
 #[cfg(unix)]
 use xattr::FileExt;
@@ -218,6 +219,8 @@ pub enum Function {
 
     HasXattr,
     Xattr,
+
+    Random,
 }
 
 impl FromStr for Function {
@@ -271,6 +274,8 @@ impl FromStr for Function {
             "has_xattr" => Ok(Function::HasXattr),
             "xattr" => Ok(Function::Xattr),
 
+            "rand" | "random" => Ok(Function::Random),
+
             _ => {
                 let err = String::from("Unknown function ") + &function;
                 Err(err)
@@ -316,6 +321,7 @@ impl Function {
 
         match self {
             Function::Length
+            | Function::Random
             | Function::Day
             | Function::Month
             | Function::Year => true,
@@ -546,6 +552,28 @@ pub fn get_value(function: &Option<Function>,
                 }
 
             return Variant::empty(VariantType::String);
+        },
+        Some(Function::Random) => {
+            let mut rng = rand::thread_rng();
+
+            if function_arg.is_empty() {
+                return Variant::from_int(rng.gen_range(0..i64::MAX));
+            }
+
+            match function_arg.parse::<i64>() {
+                Ok(val) => {
+                    if function_args.is_empty() {
+                        return Variant::from_int(rng.gen_range(0..val));
+                    } else {
+                        let limit = function_args.get(0).unwrap();
+                        match limit.parse::<i64>() {
+                            Ok(limit) => return Variant::from_int(rng.gen_range(val..limit)),
+                            _ => panic!("Could not parse function argument")
+                        }
+                    }
+                },
+                _ => panic!("Could not parse function argument")
+            }
         },
         _ => {
             return Variant::empty(VariantType::String);

@@ -301,6 +301,7 @@ Functions:
         CONCAT                      Returns concatenated string of expression values
         CONCAT_WS                   Returns concatenated string of expression values with specified delimiter
         FORMAT_SIZE                 Returns file size formatted in specified units
+        RANDOM | RAND               Returns random integer (from zero to max int, from zero to arg, or from arg1 to arg2)
 
 Expressions:
     Operators:

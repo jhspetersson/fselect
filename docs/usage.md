@@ -204,6 +204,7 @@ Used for detecting Japanese symbols in file names and such.
 | CONCAT | Returns concatenated string of expression values | `select CONCAT('Name is ', name, ' size is ', fsize, '!!!') from /home/user/Downloads` |
 | CONCAT_WS | Returns concatenated string of expression values with specified delimiter | `select name, fsize, CONCAT_WS('x', width, height) from /home/user/Images` |
 | FORMAT_SIZE | Returns formatted size of a file in a given unit | `select name, FORMAT_SIZE(size, 'g') from /home/user/Downloads order by size desc limit 10` |
+| RANDOM or RAND | Returns random integer (from zero to max int, from zero to *arg*, or from *arg1* to *arg2*) | `select name, ' has random index ', RANDOM(100) from /home/user/Images depth 1` |
 
 ### Search roots
 

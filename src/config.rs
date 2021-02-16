@@ -1,8 +1,8 @@
 use std::fs;
 use std::io::{Read, Write};
+use std::path::PathBuf;
 
 use app_dirs::{AppInfo, AppDataType, app_root};
-use std::path::PathBuf;
 
 const APP_INFO: AppInfo = AppInfo {
     name: "fselect",
@@ -25,7 +25,7 @@ pub struct Config {
     pub is_image : Vec<String>,
     pub is_source : Vec<String>,
     pub is_video : Vec<String>,
-    #[serde(skip_serializing)]
+    #[serde(skip)]
     save : bool,
 }
 
@@ -50,6 +50,10 @@ impl Config {
             }
         }
 
+        Config::from(config_file)
+    }
+
+    pub fn from(config_file: PathBuf) -> Result<Config, &'static str> {
         if let Ok(mut file) = fs::File::open(&config_file) {
             let mut contents = String::new();
             if let Ok(_) = file.read_to_string(&mut contents) {
@@ -58,12 +62,12 @@ impl Config {
                 } else {
                     return Err("Could not parse config file. Using default settings.");
                 }
+            } else {
+                return Err("Could not read config file. Using default settings.");
             }
         } else {
             return Err("Could not open config file. Using default settings.");
         }
-
-        Ok(Config::default())
     }
 
     fn get_current_dir_config() -> Option<PathBuf> {

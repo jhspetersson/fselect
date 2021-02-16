@@ -11,6 +11,7 @@ extern crate xattr;
 
 use std::env;
 use std::io::Write;
+use std::path::PathBuf;
 
 use ansi_term::Colour::*;
 use atty::Stream;
@@ -36,7 +37,7 @@ use crate::util::error_message;
 use crate::util::str_to_bool;
 
 fn main() {
-    let config = match Config::new() {
+    let mut config = match Config::new() {
         Ok(cnf) => cnf,
         Err(err) => {
             eprintln!("{}", err);
@@ -70,7 +71,7 @@ fn main() {
     let mut args: Vec<String> = env::args().collect();
     args.remove(0);
 
-    let first_arg = args[0].to_ascii_lowercase();
+    let mut first_arg = args[0].to_ascii_lowercase();
 
     if first_arg.contains("version") || first_arg.starts_with("-v") {
         short_usage_info(no_color);
@@ -82,13 +83,33 @@ fn main() {
         return;
     }
 
-    if first_arg.starts_with("nocolor") || first_arg.starts_with("no-color") {
+    let mut interactive = false;
+
+    loop {
+        if first_arg.contains("nocolor") || first_arg.contains("no-color") {
+            no_color = true;
+        } else if first_arg.starts_with("-i") || first_arg.starts_with("--i") || first_arg.starts_with("/i") {
+            interactive = true;
+        } else if first_arg.starts_with("-c") || first_arg.starts_with("--config") || first_arg.starts_with("/c") {
+            let config_path = args[1].to_ascii_lowercase();
+            config = match Config::from(PathBuf::from(&config_path)) {
+                Ok(cnf) => cnf,
+                Err(err) => {
+                    eprintln!("{}", err);
+                    Config::default()
+                }
+            };
+
+            args.remove(0);
+        } else {
+            break;
+        }
+
         args.remove(0);
-        no_color = true;
+        first_arg = args[0].to_ascii_lowercase();
     }
 
-    let first_arg = args[0].to_ascii_lowercase();
-    let query = if first_arg.starts_with("-i") || first_arg.starts_with("--i") || first_arg.starts_with("/i") {
+    let query = if interactive {
         print!("query> ");
         std::io::stdout().flush().unwrap();
 

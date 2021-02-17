@@ -376,10 +376,16 @@ On Windows:
     
 Fresh config is filled with defaults, feel free to update it.
 
+If no config on the standard paths found, **fselect** checks its presence next to the executable. 
+You can also specify config location with runtime option, e.g.:
+
+    fselect --config /home/user_name/fselect_custom.toml name, size from /home/user_name/Music where is_audio = 1
+
 ### Command-line arguments
 
 | Argument | Meaning |
 | --- | --- |
+| `--config` or `-c` or `/config` | Specify config file location |
 | `--nocolor` or `--no-color` or `/nocolor` | Disable colors |
 | `--help` or `-h` or `/?` or `/h` | Show help and exit |
 

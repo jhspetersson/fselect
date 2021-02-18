@@ -519,6 +519,8 @@ impl Parser {
 
         if let Ok(Some(function_arg)) = self.parse_expr() {
             function_expr.left = Some(Box::from(function_arg));
+        } else {
+            return Ok(function_expr);
         }
 
         let mut args = vec![];
@@ -556,7 +558,10 @@ impl Parser {
                         Some(Lexem::RawString(ref ordering_field)) => {
                             let actual_field = match ordering_field.parse::<usize>() {
                                 Ok(idx) => fields[idx - 1].clone(),
-                                _ => Expr::field(Field::from_str(ordering_field)?),
+                                _ => {
+                                    self.drop_lexem();
+                                    self.parse_expr().unwrap().unwrap()
+                                },
                             };
                             order_by_fields.push(actual_field.clone());
                             order_by_directions.push(true);

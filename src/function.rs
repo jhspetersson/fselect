@@ -228,7 +228,7 @@ impl FromStr for Function {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let function = s.to_ascii_lowercase();
-
+//dbg!(&function);
         match function.as_str() {
             "lower" | "lcase" => Ok(Function::Lower),
             "upper" | "ucase" => Ok(Function::Upper),
@@ -555,7 +555,7 @@ pub fn get_value(function: &Option<Function>,
         },
         Some(Function::Random) => {
             let mut rng = rand::thread_rng();
-
+//dbg!("RANDOM VALUE");
             if function_arg.is_empty() {
                 return Variant::from_int(rng.gen_range(0..i64::MAX));
             }

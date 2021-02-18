@@ -378,6 +378,29 @@ mod tests {
     }
 
     #[test]
+    fn func_calls3() {
+        let mut lexer = Lexer::new("select name, rand() from . depth 1 order by rand() limit 10");
+
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("select"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("name"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::Comma));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("rand"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::Open));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::Close));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::From));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("."))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("depth"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("1"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::Order));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::By));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("rand"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::Open));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::Close));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::Limit));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("10"))));
+    }
+
+    #[test]
     fn agg_func_calls() {
         let mut lexer = Lexer::new("COUNT(*), MIN(size), AVG(size), MAX(size) from .");
 

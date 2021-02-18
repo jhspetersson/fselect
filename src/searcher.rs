@@ -805,35 +805,39 @@ impl Searcher {
                           file_info: &Option<FileInfo>,
                           file_map: &mut HashMap<String, String>,
                           column_expr: &Expr) -> Variant {
-        if let Some(ref left_expr) = column_expr.left {
-            let function = &column_expr.function.as_ref().unwrap();
+        let dummy = Expr::value(String::from(""));
+        let boxed_dummy = &Box::from(dummy);
 
-            if function.is_aggregate_function() {
-                let _ = self.get_column_expr_value(entry, file_info, file_map, left_expr);
-                let buffer_key = left_expr.to_string();
-                let aggr_result = function::get_aggregate_value(&column_expr.function,
-                                                     &self.raw_output_buffer,
-                                                     //left_expr.field.as_ref().unwrap().to_string().to_lowercase(),
-                                                     buffer_key,
-                                                     &column_expr.val);
-                return Variant::from_string(&aggr_result);
-            } else {
-                let function_arg = self.get_column_expr_value(entry, file_info, file_map, left_expr);
-                let mut function_args = vec![];
-                if let Some(args) = &column_expr.args {
-                    for arg in args {
-                        let arg_value = self.get_column_expr_value(entry, file_info, file_map, arg);
-                        function_args.push(arg_value.to_string());
-                    }
+        let left_expr = match &column_expr.left {
+            Some(left_expr) => left_expr,
+            _ => boxed_dummy
+        };
+
+        let function = &column_expr.function.as_ref().unwrap();
+
+        if function.is_aggregate_function() {
+            let _ = self.get_column_expr_value(entry, file_info, file_map, left_expr);
+            let buffer_key = left_expr.to_string();
+            let aggr_result = function::get_aggregate_value(&column_expr.function,
+                                                            &self.raw_output_buffer,
+                                                            //left_expr.field.as_ref().unwrap().to_string().to_lowercase(),
+                                                            buffer_key,
+                                                            &column_expr.val);
+            return Variant::from_string(&aggr_result);
+        } else {
+            let function_arg = self.get_column_expr_value(entry, file_info, file_map, left_expr);
+            let mut function_args = vec![];
+            if let Some(args) = &column_expr.args {
+                for arg in args {
+                    let arg_value = self.get_column_expr_value(entry, file_info, file_map, arg);
+                    function_args.push(arg_value.to_string());
                 }
-                let result = function::get_value(&column_expr.function, function_arg.to_string(), function_args, entry, file_info);
-                file_map.insert(column_expr.to_string(), result.to_string());
-
-                return result;
             }
-        }
+            let result = function::get_value(&column_expr.function, function_arg.to_string(), function_args, entry, file_info);
+            file_map.insert(column_expr.to_string(), result.to_string());
 
-        Variant::empty(VariantType::String)
+            return result;
+        }
     }
 
     fn update_file_metadata(&mut self, entry: &DirEntry) {

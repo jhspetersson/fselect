@@ -1,3 +1,4 @@
+use chrono::Date;
 use chrono::Datelike;
 use chrono::DateTime;
 use chrono::Duration;
@@ -114,4 +115,8 @@ pub fn to_local_datetime(dt: &zip::DateTime) -> DateTime<Local> {
 
 pub fn format_datetime(dt: &DateTime<Local>) -> String {
     format!("{}", dt.format("%Y-%m-%d %H:%M:%S"))
+}
+
+pub fn format_date(date: &Date<Local>) -> String {
+    format!("{}", date.format("%Y-%m-%d"))
 }

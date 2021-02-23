@@ -16,6 +16,7 @@ use serde::ser::{Serialize, Serializer};
 use xattr::FileExt;
 
 use crate::fileinfo::FileInfo;
+use crate::util::format_date;
 use crate::util::format_datetime;
 use crate::util::parse_datetime;
 use crate::util::parse_filesize;
@@ -210,6 +211,7 @@ pub enum Function {
     VarPop,
     VarSamp,
 
+    CurrentDate,
     Day,
     Month,
     Year,
@@ -228,7 +230,7 @@ impl FromStr for Function {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let function = s.to_ascii_lowercase();
-//dbg!(&function);
+
         match function.as_str() {
             "lower" | "lcase" => Ok(Function::Lower),
             "upper" | "ucase" => Ok(Function::Upper),
@@ -253,6 +255,7 @@ impl FromStr for Function {
             "coalesce" => Ok(Function::Coalesce),
             "format_size" | "format_filesize" => Ok(Function::FormatSize),
 
+            "current_date" | "curdate" => Ok(Function::CurrentDate),
             "day" => Ok(Function::Day),
             "month" => Ok(Function::Month),
             "year" => Ok(Function::Year),
@@ -461,6 +464,10 @@ pub fn get_value(function: &Option<Function>,
 
             return Variant::empty(VariantType::String);
         },
+        Some(Function::CurrentDate) => {
+            let now = Local::today();
+            return Variant::from_string(&format_date(&now));
+        },
         Some(Function::Year) => {
             match parse_datetime(&function_arg) {
                 Ok(date) => {
@@ -555,7 +562,7 @@ pub fn get_value(function: &Option<Function>,
         },
         Some(Function::Random) => {
             let mut rng = rand::thread_rng();
-//dbg!("RANDOM VALUE");
+
             if function_arg.is_empty() {
                 return Variant::from_int(rng.gen_range(0..i64::MAX));
             }

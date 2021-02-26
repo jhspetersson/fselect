@@ -281,6 +281,15 @@ impl Searcher {
                         let rx = Regex::new(&rx_string).unwrap();
                         let mut tmp = vec![];
 
+                        if ext_roots.is_empty() {
+                            let part = part.to_string();
+                            if part.starts_with("/") {
+                                ext_roots.push(String::from("/"));
+                            } else {
+                                ext_roots.push(String::from("./"));
+                            }
+                        }
+
                         for root in ext_roots.clone() {
                             let path = Path::new(&root);
 

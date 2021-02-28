@@ -264,6 +264,8 @@ impl Searcher {
     }
 
     pub fn list_search_results(&mut self) -> io::Result<()> {
+        let current_dir = std::env::current_dir().unwrap();
+
         let started = self.print_results_start();
         if !started {
             return Ok(());
@@ -286,19 +288,34 @@ impl Searcher {
                             if part.starts_with("/") {
                                 ext_roots.push(String::from("/"));
                             } else {
-                                ext_roots.push(String::from("./"));
+                                ext_roots.push(String::from(""));
                             }
                         }
 
                         for root in ext_roots.clone() {
-                            let path = Path::new(&root);
+                            let mut start_from_rx_dir = false;
+
+                            let mut path = Path::new(&root);
+
+                            if path == Path::new("") {
+                                path = current_dir.as_path();
+                                start_from_rx_dir = true;
+                            }
 
                             match path.read_dir() {
                                 Ok(read_result) => {
                                     for entry in read_result {
                                         if let Ok(entry) = entry {
-                                            if rx.is_match(entry.file_name().to_string_lossy().as_ref()) {
-                                                tmp.push(entry.path().to_string_lossy().to_string());
+                                            if let Ok(file_type) = entry.file_type() {
+                                                if file_type.is_dir() {
+                                                    if rx.is_match(entry.file_name().to_string_lossy().as_ref()) {
+                                                        if start_from_rx_dir {
+                                                            tmp.push(entry.file_name().to_string_lossy().to_string());
+                                                        } else {
+                                                            tmp.push(entry.path().to_string_lossy().to_string());
+                                                        }
+                                                    }
+                                                }
                                             }
                                         }
                                     }

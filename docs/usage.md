@@ -209,7 +209,7 @@ Used for detecting Japanese symbols in file names and such.
 
 ### Search roots
 
-    path [option N] [option] [option] [option...]
+    path [option N] [option] [option] [option...][, path2 [option...]]
     
 When you put a directory to search at, you can specify some options.
 

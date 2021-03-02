@@ -298,7 +298,7 @@ checksum = "3f9eec918d3f24069decb9af1554cad7c880e2da24a9afd88aca000531ab82c1"
 
 [[package]]
 name = "fselect"
-version = "0.7.2"
+version = "0.7.3"
 dependencies = [
  "ansi_term",
  "app_dirs",

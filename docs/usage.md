@@ -156,6 +156,16 @@ Used mostly for formatting results.
 | YEAR | Extract year of the date | `select year(name) from /home/user/Downloads` |
 | DOW or DAYOFWEEK | Returns day of the week (1 - Sunday, 2 - Monday, etc.) | `select name, modified, dow(modified) from /home/user/projects/FizzBuzz` |
 
+#### User functions
+
+These are only available on Unix platforms.
+
+| Function | Meaning |
+| CURRENT_UID  | Current real UID |
+| CURRENT_USER | Current real UID's name |
+| CURRENT_GID  | Current primary GID |
+| CURRENT_GROUP | Current primary GID's name |
+
 #### Xattr functions
 
 Used to check if particular xattr exists, or to get its value.

@@ -296,6 +296,11 @@ Functions:
         MONTH                       Returns month of the year
         YEAR                        Returns year of the date
         DOW | DAYOFWEEK             Returns day of the week (1 - Sunday, 2 - Monday, etc.)
+    User:
+        CURRENT_USER                Returns the current username (unix-only)
+        CURRENT_UID                 Returns the current real UID (unix-only)
+        CURRENT_GROUP               Returns the current primary groupname (unix-only)
+        CURRENT_GID                 Returns the current primary GID (unix-only)
     Xattr:
         HAS_XATTR                   Used to check if xattr exists
         XATTR                       Returns value of xattr

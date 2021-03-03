@@ -217,6 +217,15 @@ pub enum Function {
     Year,
     DayOfWeek,
 
+    #[cfg(unix)]
+    CurrentUid,
+    #[cfg(unix)]
+    CurrentUser,
+    #[cfg(unix)]
+    CurrentGid,
+    #[cfg(unix)]
+    CurrentGroup,
+
     Contains,
 
     HasXattr,
@@ -260,6 +269,15 @@ impl FromStr for Function {
             "month" => Ok(Function::Month),
             "year" => Ok(Function::Year),
             "dayofweek" | "dow" => Ok(Function::DayOfWeek),
+
+            #[cfg(unix)]
+            "current_uid" => Ok(Function::CurrentUid),
+            #[cfg(unix)]
+            "current_user" => Ok(Function::CurrentUser),
+            #[cfg(unix)]
+            "current_gid" => Ok(Function::CurrentGid),
+            #[cfg(unix)]
+            "current_group" => Ok(Function::CurrentGroup),
 
             "min" => Ok(Function::Min),
             "max" => Ok(Function::Max),
@@ -463,51 +481,65 @@ pub fn get_value(function: &Option<Function>,
             }
 
             return Variant::empty(VariantType::String);
-        },
+        }
         Some(Function::CurrentDate) => {
             let now = Local::today();
             return Variant::from_string(&format_date(&now));
-        },
-        Some(Function::Year) => {
-            match parse_datetime(&function_arg) {
-                Ok(date) => {
-                    return Variant::from_int(date.0.year() as i64);
-                },
-                _ => {
-                    return Variant::empty(VariantType::Int);
-                }
+        }
+        Some(Function::Year) => match parse_datetime(&function_arg) {
+            Ok(date) => {
+                return Variant::from_int(date.0.year() as i64);
+            }
+            _ => {
+                return Variant::empty(VariantType::Int);
             }
         },
-        Some(Function::Month) => {
-            match parse_datetime(&function_arg) {
-                Ok(date) => {
-                    return Variant::from_int(date.0.month() as i64);
-                },
-                _ => {
-                    return Variant::empty(VariantType::Int);
-                }
+        Some(Function::Month) => match parse_datetime(&function_arg) {
+            Ok(date) => {
+                return Variant::from_int(date.0.month() as i64);
+            }
+            _ => {
+                return Variant::empty(VariantType::Int);
             }
         },
-        Some(Function::Day) => {
-            match parse_datetime(&function_arg) {
-                Ok(date) => {
-                    return Variant::from_int(date.0.day() as i64);
-                },
-                _ => {
-                    return Variant::empty(VariantType::Int);
-                }
+        Some(Function::Day) => match parse_datetime(&function_arg) {
+            Ok(date) => {
+                return Variant::from_int(date.0.day() as i64);
+            }
+            _ => {
+                return Variant::empty(VariantType::Int);
             }
         },
-        Some(Function::DayOfWeek) => {
-            match parse_datetime(&function_arg) {
-                Ok(date) => {
-                    return Variant::from_int(date.0.weekday().number_from_sunday() as i64);
-                },
-                _ => {
-                    return Variant::empty(VariantType::Int);
-                }
+        Some(Function::DayOfWeek) => match parse_datetime(&function_arg) {
+            Ok(date) => {
+                return Variant::from_int(date.0.weekday().number_from_sunday() as i64);
+            }
+            _ => {
+                return Variant::empty(VariantType::Int);
             }
         },
+        #[cfg(unix)]
+        Some(Function::CurrentUid) => {
+            return Variant::from_int(users::get_current_uid() as i64);
+        }
+        #[cfg(unix)]
+        Some(Function::CurrentUser) => {
+            match users::get_current_username().and_then(|u| u.into_string().ok()) {
+                Some(s) => Variant::from_string(&s),
+                None => Variant::empty(VariantType::String),
+            }
+        }
+        #[cfg(unix)]
+        Some(Function::CurrentGid) => {
+            return Variant::from_int(users::get_current_gid() as i64);
+        }
+        #[cfg(unix)]
+        Some(Function::CurrentGroup) => {
+            match users::get_current_groupname().and_then(|u| u.into_string().ok()) {
+                Some(s) => Variant::from_string(&s),
+                None => Variant::empty(VariantType::String),
+            }
+        }
         Some(Function::Contains) => {
             if file_info.is_some() {
                 return Variant::empty(VariantType::Bool);
@@ -527,39 +559,39 @@ pub fn get_value(function: &Option<Function>,
             }
 
             return Variant::empty(VariantType::Bool);
-        },
+        }
         Some(Function::HasXattr) => {
             #[cfg(unix)]
-                {
-                    if let Some(entry) = entry {
-                        if let Ok(file) = File::open(&entry.path()) {
-                            if let Ok(xattr) = file.get_xattr(&function_arg) {
-                                return Variant::from_bool(xattr.is_some());
-                            }
+            {
+                if let Some(entry) = entry {
+                    if let Ok(file) = File::open(&entry.path()) {
+                        if let Ok(xattr) = file.get_xattr(&function_arg) {
+                            return Variant::from_bool(xattr.is_some());
                         }
                     }
                 }
+            }
 
             return Variant::empty(VariantType::Bool);
-        },
+        }
         Some(Function::Xattr) => {
             #[cfg(unix)]
-                {
-                    if let Some(entry) = entry {
-                        if let Ok(file) = File::open(&entry.path()) {
-                            if let Ok(xattr) = file.get_xattr(&function_arg) {
-                                if let Some(xattr) = xattr {
-                                    if let Ok(value) = String::from_utf8(xattr) {
-                                        return Variant::from_string(&value);
-                                    }
+            {
+                if let Some(entry) = entry {
+                    if let Ok(file) = File::open(&entry.path()) {
+                        if let Ok(xattr) = file.get_xattr(&function_arg) {
+                            if let Some(xattr) = xattr {
+                                if let Ok(value) = String::from_utf8(xattr) {
+                                    return Variant::from_string(&value);
                                 }
                             }
                         }
                     }
                 }
+            }
 
             return Variant::empty(VariantType::String);
-        },
+        }
         Some(Function::Random) => {
             let mut rng = rand::thread_rng();
 

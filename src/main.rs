@@ -2,19 +2,18 @@
 extern crate lazy_static;
 #[macro_use]
 extern crate serde_derive;
-#[macro_use]
-extern crate text_io;
 #[cfg(all(unix, feature = "users"))]
 extern crate users;
 #[cfg(unix)]
 extern crate xattr;
 
 use std::env;
-use std::io::Write;
 use std::path::PathBuf;
 
 use ansi_term::Colour::*;
 use atty::Stream;
+use rustyline::error::ReadlineError;
+use rustyline::Editor;
 
 mod config;
 mod expr;
@@ -116,16 +115,39 @@ fn main() {
         first_arg = args[0].to_ascii_lowercase();
     }
 
-    let query = if interactive {
-        print!("query> ");
-        std::io::stdout().flush().unwrap();
-
-        let input: String = read!("{}\n");
-        input.trim_end().to_string()
+    if interactive {
+        let mut rl = Editor::<()>::new();
+        loop {
+            let readline = rl.readline("query> ");
+            match readline {
+                Ok(query) => {
+                    rl.add_history_entry(query.as_str());
+                    exec_search(query, &config, no_color);
+                },
+                Err(ReadlineError::Interrupted) => {
+                    println!("CTRL-C");
+                    break
+                },
+                Err(ReadlineError::Eof) => {
+                    println!("CTRL-D");
+                    break
+                },
+                Err(err) => {
+                    let err = format!("{:?}", err);
+                    error_message("input", &err);
+                    break
+                }
+            }
+        }
     } else {
-        args.join(" ")
-    };
+        let query = args.join(" ");
+        exec_search(query, &config, no_color);
+    }
 
+    config.save();
+}
+
+fn exec_search(query: String, config: &Config, no_color: bool) {
     let mut p = Parser::new();
     let query = p.parse(&query);
 
@@ -139,8 +161,6 @@ fn main() {
         },
         Err(err) => error_message("query", &err)
     }
-
-    config.save();
 }
 
 fn short_usage_info(no_color: bool) {

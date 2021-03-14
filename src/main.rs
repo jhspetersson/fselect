@@ -329,8 +329,8 @@ Functions:
         CURRENT_GROUP               Returns the current primary groupname (unix-only)
         CURRENT_GID                 Returns the current primary GID (unix-only)
     Xattr:
-        HAS_XATTR                   Used to check if xattr exists
-        XATTR                       Returns value of xattr
+        HAS_XATTR                   Used to check if xattr exists (unix-only)
+        XATTR                       Returns value of xattr (unix-only)
     String:
         LENGTH | LEN                Returns length of string value
         LOWER | LCASE               Returns lowercase value

@@ -160,11 +160,12 @@ Used mostly for formatting results.
 
 These are only available on Unix platforms.
 
-| Function | Meaning |
-| CURRENT_UID  | Current real UID |
-| CURRENT_USER | Current real UID's name |
-| CURRENT_GID  | Current primary GID |
-| CURRENT_GROUP | Current primary GID's name |
+| Function | Meaning | Example |
+| --- | --- | --- |
+| CURRENT_UID  | Current real UID | `select CURRENT_UID()` |
+| CURRENT_USER | Current real UID's name | `select CURRENT_USER()` |
+| CURRENT_GID  | Current primary GID | `select CURRENT_GID()` |
+| CURRENT_GROUP | Current primary GID's name | `select CURRENT_GROUP()` |
 
 #### Xattr functions
 

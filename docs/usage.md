@@ -184,8 +184,8 @@ Used mostly for formatting results.
 | Function | Meaning | Example |
 | --- | --- | --- |
 | LENGTH or LEN | Length of string value | `select length(name) from /home/user/Downloads order by 1 desc limit 10` |
-| LOWER or LCASE | Convert value to lowercase | `select lower(name) from /home/user/Downloads` |
-| UPPER or UCASE | Convert value to uppercase | `select upper(name) from /home/user/Downloads` |
+| LOWER or LOWERCASE or LCASE | Convert value to lowercase | `select lower(name) from /home/user/Downloads` |
+| UPPER or UPPERCASE or UCASE | Convert value to uppercase | `select upper(name) from /home/user/Downloads` |
 | BASE64 | Encode value to Base64 | `select base64(name) from /home/user/Downloads` |
 | SUBSTRING or SUBSTR (str, pos, len) | Part of `str` value starting from `pos` of (optionally) `len` characters long. Negative `pos` means starting `pos` characters from the end of the string.  | `select substr(name, 1, 8) from /home/user/Downloads` |
 | REPLACE (str, from, to) | Replace all occurrences of `from` by `to` | `select replace(name, metallica, MetaLLicA) from /home/user/Music/Rock` |

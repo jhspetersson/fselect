@@ -243,8 +243,8 @@ impl FromStr for Function {
         let function = s.to_ascii_lowercase();
 
         match function.as_str() {
-            "lower" | "lcase" => Ok(Function::Lower),
-            "upper" | "ucase" => Ok(Function::Upper),
+            "lower" | "lowercase" | "lcase" => Ok(Function::Lower),
+            "upper" | "uppercase" | "ucase" => Ok(Function::Upper),
             "length" | "len" => Ok(Function::Length),
             "base64" => Ok(Function::Base64),
             "hex" => Ok(Function::Hex),

@@ -228,7 +228,9 @@ pub enum Function {
 
     Contains,
 
+    #[cfg(unix)]
     HasXattr,
+    #[cfg(unix)]
     Xattr,
 
     Random,
@@ -292,7 +294,9 @@ impl FromStr for Function {
 
             "contains" => Ok(Function::Contains),
 
+            #[cfg(unix)]
             "has_xattr" => Ok(Function::HasXattr),
+            #[cfg(unix)]
             "xattr" => Ok(Function::Xattr),
 
             "rand" | "random" => Ok(Function::Random),
@@ -560,30 +564,26 @@ pub fn get_value(function: &Option<Function>,
 
             return Variant::empty(VariantType::Bool);
         }
+        #[cfg(unix)]
         Some(Function::HasXattr) => {
-            #[cfg(unix)]
-            {
-                if let Some(entry) = entry {
-                    if let Ok(file) = File::open(&entry.path()) {
-                        if let Ok(xattr) = file.get_xattr(&function_arg) {
-                            return Variant::from_bool(xattr.is_some());
-                        }
+            if let Some(entry) = entry {
+                if let Ok(file) = File::open(&entry.path()) {
+                    if let Ok(xattr) = file.get_xattr(&function_arg) {
+                        return Variant::from_bool(xattr.is_some());
                     }
                 }
             }
 
             return Variant::empty(VariantType::Bool);
         }
+        #[cfg(unix)]
         Some(Function::Xattr) => {
-            #[cfg(unix)]
-            {
-                if let Some(entry) = entry {
-                    if let Ok(file) = File::open(&entry.path()) {
-                        if let Ok(xattr) = file.get_xattr(&function_arg) {
-                            if let Some(xattr) = xattr {
-                                if let Ok(value) = String::from_utf8(xattr) {
-                                    return Variant::from_string(&value);
-                                }
+            if let Some(entry) = entry {
+                if let Ok(file) = File::open(&entry.path()) {
+                    if let Ok(xattr) = file.get_xattr(&function_arg) {
+                        if let Some(xattr) = xattr {
+                            if let Ok(value) = String::from_utf8(xattr) {
+                                return Variant::from_string(&value);
                             }
                         }
                     }

@@ -37,11 +37,15 @@ impl Parser {
         let roots = self.parse_roots();
         let expr = self.parse_where()?;
         let (ordering_fields, ordering_asc) = self.parse_order_by(&fields)?;
-        let limit = self.parse_limit()?;
+        let mut limit = self.parse_limit()?;
         let output_format = self.parse_output_format()?;
 
         if self.is_something_left() {
             return Err(String::from("Could not parse tokens at the end of the query"));
+        }
+
+        if limit == 0 && fields.iter().all(|expr| expr.get_required_fields().is_empty()) {
+            limit = 1;
         }
 
         Ok(Query {

@@ -382,9 +382,8 @@ impl Parser {
     }
 
     fn parse_add_sub(&mut self) -> Result<Option<Expr>, String> {
-        let left = self.parse_mul_div()?;
+        let mut left = self.parse_mul_div()?;
 
-        let mut right: Option<Expr> = None;
         let mut op = None;
         loop {
             let lexem = self.get_lexem();
@@ -393,36 +392,32 @@ impl Parser {
                 match new_op {
                     Some(ArithmeticOp::Add) | Some(ArithmeticOp::Subtract) => {
                         let expr = self.parse_mul_div()?;
-                        op = new_op.clone();
-                        right = match right {
-                            Some(right) => Some(Expr::arithmetic_op(right, new_op.unwrap(), expr.clone().unwrap())),
+                        if op.is_none() {
+                            op = new_op.clone();
+                        }
+
+                        left = match left {
+                            Some(left) => Some(Expr::arithmetic_op(left, new_op.unwrap(), expr.clone().unwrap())),
                             None => expr
                         };
                     },
                     _ => {
                         self.drop_lexem();
 
-                        return match right {
-                            Some(right) => Ok(Some(Expr::arithmetic_op(left.unwrap(), op.unwrap(), right))),
-                            None => Ok(left)
-                        }
+                        return Ok(left);
                     }
                 }
             } else {
                 self.drop_lexem();
 
-                return match right {
-                    Some(right) => Ok(Some(Expr::arithmetic_op(left.unwrap(), op.unwrap(), right))),
-                    None => Ok(left)
-                }
+                return Ok(left);
             }
         }
     }
 
     fn parse_mul_div(&mut self) -> Result<Option<Expr>, String> {
-        let left = self.parse_paren()?;
+        let mut left = self.parse_paren()?;
 
-        let mut right: Option<Expr> = None;
         let mut op = None;
         loop {
             let lexem = self.get_lexem();
@@ -431,28 +426,25 @@ impl Parser {
                 match new_op {
                     Some(ArithmeticOp::Multiply) | Some(ArithmeticOp::Divide) => {
                         let expr = self.parse_paren()?;
-                        op = new_op.clone();
-                        right = match right {
-                            Some(right) => Some(Expr::arithmetic_op(right, new_op.unwrap(), expr.clone().unwrap())),
+                        if op.is_none() {
+                            op = new_op.clone();
+                        }
+
+                        left = match left {
+                            Some(left) => Some(Expr::arithmetic_op(left, new_op.unwrap(), expr.unwrap())),
                             None => expr
                         };
                     },
                     _ => {
                         self.drop_lexem();
 
-                        return match right {
-                            Some(right) => Ok(Some(Expr::arithmetic_op(left.unwrap(), op.unwrap(), right))),
-                            None => Ok(left)
-                        }
+                        return Ok(left);
                     }
                 }
             } else {
                 self.drop_lexem();
 
-                return match right {
-                    Some(right) => Ok(Some(Expr::arithmetic_op(left.unwrap(), op.unwrap(), right))),
-                    None => Ok(left)
-                }
+                return Ok(left);
             }
         }
     }
@@ -675,7 +667,7 @@ mod tests {
     fn simple_query() {
         let query = "select name, path ,size , fsize from /";
         let mut p = Parser::new();
-        let query = p.parse(&query).unwrap();
+        let query = p.parse(&query, false).unwrap();
 
         assert_eq!(query.fields, vec![Expr::field(Field::Name),
                                       Expr::field(Field::Path),
@@ -688,7 +680,7 @@ mod tests {
     fn query() {
         let query = "select name, path ,size , fsize from /test depth 2, /test2 archives,/test3 depth 3 archives , /test4 ,'/test5' gitignore , /test6 mindepth 3, /test7 archives DFS, /test8 dfs where name != 123 AND ( size gt 456 or fsize lte 758) or name = 'xxx' order by 2, size desc limit 50";
         let mut p = Parser::new();
-        let query = p.parse(&query).unwrap();
+        let query = p.parse(&query, false).unwrap();
 
         assert_eq!(query.fields, vec![Expr::field(Field::Name),
                                       Expr::field(Field::Path),
@@ -731,7 +723,7 @@ mod tests {
     fn query_with_not() {
         let query = "select name from /test where name not like '%.tmp'";
         let mut p = Parser::new();
-        let query = p.parse(&query).unwrap();
+        let query = p.parse(&query, false).unwrap();
 
         assert_eq!(query.fields, vec![Expr::field(Field::Name)]);
 
@@ -748,7 +740,7 @@ mod tests {
     fn broken_query() {
         let query = "select name, path ,size , fsize from / where name != 'foobar' order by size desc limit 10 into csv this is unexpected";
         let mut p = Parser::new();
-        let query = p.parse(&query);
+        let query = p.parse(&query, false);
 
         assert!(query.is_err());
     }

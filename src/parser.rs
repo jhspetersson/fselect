@@ -27,10 +27,14 @@ impl Parser {
         }
     }
 
-    pub fn parse(&mut self, query: &str) -> Result<Query, String> {
+    pub fn parse(&mut self, query: &str, debug: bool) -> Result<Query, String> {
         let mut lexer = Lexer::new(query);
         while let Some(lexem) = lexer.next_lexem() {
             self.lexems.push(lexem);
+        }
+
+        if debug {
+            dbg!(&self.lexems);
         }
 
         let fields = self.parse_fields()?;

@@ -25,6 +25,8 @@ pub struct Config {
     pub is_image : Vec<String>,
     pub is_source : Vec<String>,
     pub is_video : Vec<String>,
+    #[serde(skip_serializing)]
+    pub debug : bool,
     #[serde(skip)]
     save : bool,
 }
@@ -121,6 +123,7 @@ impl Config {
             is_image : vec![String::from(".bmp"), String::from(".gif"), String::from(".heic"), String::from(".jpeg"), String::from(".jpg"), String::from(".png"), String::from(".psb"), String::from(".psd"), String::from(".tiff"), String::from(".webp")],
             is_source : vec![String::from(".asm"), String::from(".bas"), String::from(".c"), String::from(".cc"), String::from(".ceylon"), String::from(".clj"), String::from(".coffee"), String::from(".cpp"), String::from(".cs"), String::from(".d"), String::from(".dart"), String::from(".elm"), String::from(".erl"), String::from(".go"), String::from(".groovy"), String::from(".h"), String::from(".hh"), String::from(".hpp"), String::from(".java"), String::from(".js"), String::from(".jsp"), String::from(".kt"), String::from(".kts"), String::from(".lua"), String::from(".nim"), String::from(".pas"), String::from(".php"), String::from(".pl"), String::from(".pm"), String::from(".py"), String::from(".rb"), String::from(".rs"), String::from(".scala"), String::from(".swift"), String::from(".tcl"), String::from(".vala"), String::from(".vb")],
             is_video : vec![String::from(".3gp"), String::from(".avi"), String::from(".flv"), String::from(".m4p"), String::from(".m4v"), String::from(".mkv"), String::from(".mov"), String::from(".mp4"), String::from(".mpeg"), String::from(".mpg"), String::from(".webm"), String::from(".wmv")],
+            debug : false,
             save : true,
         }
     }

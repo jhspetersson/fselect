@@ -149,7 +149,11 @@ fn main() {
 
 fn exec_search(query: String, config: &Config, no_color: bool) {
     let mut p = Parser::new();
-    let query = p.parse(&query);
+    let query = p.parse(&query, config.debug);
+
+    if config.debug {
+        dbg!(&query);
+    }
 
     match query {
         Ok(query) => {

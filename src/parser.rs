@@ -92,6 +92,12 @@ impl Parser {
                         }
                     }
                 },
+                Some(Lexem::Open) => {
+                    self.drop_lexem();
+                    if let Ok(Some(field)) = self.parse_expr() {
+                        fields.push(field);
+                    }
+                },
                 _ => {
                     self.drop_lexem();
                     break;

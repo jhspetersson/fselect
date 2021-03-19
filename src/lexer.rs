@@ -186,7 +186,7 @@ lazy_static! {
 
 fn looks_like_expression(s: &str) -> bool {
     !s.split(|c: char| !c.is_ascii_alphanumeric())
-        .any(|s| Field::from_str(s).is_err() && Function::from_str(s).is_err())
+        .any(|s| Field::from_str(s).is_err() && Function::from_str(s).is_err() && s.parse::<i64>().is_err())
 }
 
 fn looks_like_date(s: &str) -> bool {

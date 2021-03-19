@@ -44,7 +44,7 @@ impl Config {
                 return Ok(Config::default());
             }
 
-            config_file = config_dir.unwrap().clone();
+            config_file = config_dir.unwrap();
             config_file.push(CONFIG_FILE);
 
             if !config_file.exists() {
@@ -95,7 +95,7 @@ impl Config {
             return;
         }
 
-        let mut config_file = config_dir.unwrap().clone();
+        let mut config_file = config_dir.unwrap();
         config_file.push(CONFIG_FILE);
 
         if config_file.exists() {

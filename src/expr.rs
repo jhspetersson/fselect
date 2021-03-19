@@ -155,8 +155,8 @@ impl Expr {
             result.extend(right.get_required_fields());
         }
 
-        if let Some(ref field) = self.field {
-            result.insert(field.clone());
+        if let Some( field) = self.field {
+            result.insert(field);
         }
 
         if let Some(ref args) = self.args {

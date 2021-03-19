@@ -571,7 +571,7 @@ impl Parser {
                                     self.parse_expr().unwrap().unwrap()
                                 },
                             };
-                            order_by_fields.push(actual_field.clone());
+                            order_by_fields.push(actual_field);
                             order_by_directions.push(true);
                         },
                         Some(Lexem::DescendingOrder) => {

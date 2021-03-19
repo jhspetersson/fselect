@@ -5,7 +5,7 @@ use std::fmt::Error;
 
 use serde::ser::{Serialize, Serializer};
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Hash)]
 pub enum Field {
     Name,
     Path,

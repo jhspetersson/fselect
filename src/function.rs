@@ -26,6 +26,7 @@ use crate::util::str_to_bool;
 pub enum VariantType {
     String,
     Int,
+    Float,
     Bool,
     DateTime,
 }
@@ -36,6 +37,7 @@ pub struct Variant {
     empty: bool,
     string_value: String,
     int_value: Option<i64>,
+    float_value: Option<f64>,
     bool_value: bool,
     dt_from: Option<DateTime<Local>>,
     dt_to: Option<DateTime<Local>>,
@@ -48,6 +50,7 @@ impl Variant {
             empty: true,
             string_value: String::new(),
             int_value: None,
+            float_value: None,
             bool_value: false,
             dt_from: None,
             dt_to: None,
@@ -64,7 +67,21 @@ impl Variant {
             empty: false,
             string_value: format!("{}", value),
             int_value: Some(value),
+            float_value: Some(value as f64),
             bool_value: value == 1,
+            dt_from: None,
+            dt_to: None,
+        }
+    }
+
+    pub fn from_float(value: f64) -> Variant {
+        Variant {
+            value_type: VariantType::Float,
+            empty: false,
+            string_value: format!("{}", value),
+            int_value: Some(value as i64),
+            float_value: Some(value),
+            bool_value: value == 1.0,
             dt_from: None,
             dt_to: None,
         }
@@ -78,6 +95,7 @@ impl Variant {
             empty: false,
             string_value: value.to_owned(),
             int_value: None,
+            float_value: None,
             bool_value,
             dt_from: None,
             dt_to: None,
@@ -101,6 +119,7 @@ impl Variant {
             empty: false,
             string_value,
             int_value: None,
+            float_value: None,
             bool_value,
             dt_from: None,
             dt_to: None,
@@ -113,6 +132,7 @@ impl Variant {
             empty: false,
             string_value: match value { true => String::from("true"), _ => String::from("false") },
             int_value: match value { true => Some(1), _ => Some(0) },
+            float_value: None,
             bool_value: value,
             dt_from: None,
             dt_to: None,
@@ -125,6 +145,7 @@ impl Variant {
             empty: false,
             string_value: format_datetime(&value),
             int_value: Some(0),
+            float_value: None,
             bool_value: false,
             dt_from: Some(value),
             dt_to: Some(value),
@@ -139,12 +160,36 @@ impl Variant {
         match self.int_value {
             Some(i) => i,
             None => {
+                if self.float_value.is_some() {
+                    return self.float_value.unwrap() as i64;
+                }
+
                 let int_value = self.string_value.parse::<usize>();
                 match int_value {
                     Ok(i) => i as i64,
                     _ => match parse_filesize(&self.string_value) {
                         Some(size) => size as i64,
                         _ => 0
+                    }
+                }
+            }
+        }
+    }
+
+    pub fn to_float(&self) -> f64 {
+        if self.float_value.is_some() {
+            return self.float_value.unwrap();
+        }
+
+        match self.int_value {
+            Some(i) => i as f64,
+            None => {
+                let float_value = self.string_value.parse::<f64>();
+                match float_value {
+                    Ok(f) => f,
+                    _ => match parse_filesize(&self.string_value) {
+                        Some(size) => size as f64,
+                        _ => 0.0
                     }
                 }
             }

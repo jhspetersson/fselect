@@ -1814,6 +1814,19 @@ impl Searcher {
                         _ => false
                     }
                 },
+                VariantType::Float => {
+                    let val = value.to_float();
+                    let float_value = field_value.to_float();
+                    match op {
+                        Op::Eq | Op::Eeq => float_value == val,
+                        Op::Ne | Op::Ene => float_value != val,
+                        Op::Gt => float_value > val,
+                        Op::Gte => float_value >= val,
+                        Op::Lt => float_value < val,
+                        Op::Lte => float_value <= val,
+                        _ => false
+                    }
+                },
                 VariantType::Bool => {
                     let val = value.to_bool();
                     match op {

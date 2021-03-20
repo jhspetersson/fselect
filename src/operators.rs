@@ -86,12 +86,12 @@ impl ArithmeticOp {
 
     pub fn calc(&self, left: &Variant, right: &Variant) -> Variant {
         let result = match &self {
-            ArithmeticOp::Add => left.to_int() + right.to_int(),
-            ArithmeticOp::Subtract => left.to_int() - right.to_int(),
-            ArithmeticOp::Multiply => left.to_int() * right.to_int(),
-            ArithmeticOp::Divide => left.to_int() / right.to_int(),
+            ArithmeticOp::Add => left.to_float() + right.to_float(),
+            ArithmeticOp::Subtract => left.to_float() - right.to_float(),
+            ArithmeticOp::Multiply => left.to_float() * right.to_float(),
+            ArithmeticOp::Divide => left.to_float() / right.to_float(),
         };
 
-        return Variant::from_int(result);
+        return Variant::from_float(result);
     }
 }

@@ -27,6 +27,7 @@ use imagesize;
 use humansize::FileSize;
 use mp3_metadata;
 use mp3_metadata::MP3Metadata;
+use regex::Regex;
 use sha1::Digest;
 
 use crate::expr::Expr;
@@ -227,91 +228,135 @@ pub fn parse_filesize(s: &str) -> Option<u64> {
     }
 }
 
-pub fn format_filesize(size: u64, modifier: &str) -> String {
-    let modifier = modifier.to_ascii_lowercase();
+lazy_static! {
+    static ref FILE_SIZE_FORMAT_REGEX: Regex = Regex::new("(%\\.(?P<zeroes>\\d+))?(?P<space>\\s)?(?P<units>\\w+)?").unwrap();
+}
 
-    let formatter = match modifier.as_str() {
+pub fn format_filesize(size: u64, modifier: &str) -> String {
+    let mut modifier = modifier.to_ascii_lowercase();
+
+    let mut zeroes = -1;
+    let mut space = false;
+
+    match FILE_SIZE_FORMAT_REGEX.captures(&modifier) {
+        Some(cap) => {
+            zeroes = cap.name("zeroes").map_or(-1, |m| m.as_str().parse::<i32>().unwrap());
+            space = cap.name("space").map_or(false, |m| m.as_str() == " ");
+            modifier = cap.name("units").map_or(String::from(""), |m| m.as_str().to_string());
+        },
+        _ => {}
+    };
+
+    let fixed_at;
+    let mut format;
+
+    let conventional;
+    if modifier.contains("c") {
+        conventional = true;
+        modifier = modifier.replace("c", "");
+    } else {
+        conventional = false;
+    }
+
+    let decimal;
+    if modifier.contains("d") {
+        decimal = true;
+        modifier = modifier.replace("d", "");
+    } else {
+        decimal = false;
+    }
+
+    match modifier.as_str() {
         "b" | "byte" | "bytes" => {
-            humansize::file_size_opts::FileSizeOpts {
-                fixed_at: humansize::file_size_opts::FixedAt::Byte,
-                ..humansize::file_size_opts::BINARY
-            }
+            fixed_at = humansize::file_size_opts::FixedAt::Byte;
+            format = humansize::file_size_opts::BINARY;
         },
         "k" | "kib" | "kibibyte" | "kibibytes" => {
-            humansize::file_size_opts::FileSizeOpts {
-                fixed_at: humansize::file_size_opts::FixedAt::Kilo,
-                ..humansize::file_size_opts::BINARY
+            fixed_at = humansize::file_size_opts::FixedAt::Kilo;
+            format = humansize::file_size_opts::BINARY;
+            if zeroes == -1 {
+                zeroes = 0;
             }
         },
         "kb" => {
-            humansize::file_size_opts::FileSizeOpts {
-                fixed_at: humansize::file_size_opts::FixedAt::Kilo,
-                ..humansize::file_size_opts::DECIMAL
+            fixed_at = humansize::file_size_opts::FixedAt::Kilo;
+            format = humansize::file_size_opts::DECIMAL;
+            if zeroes == -1 {
+                zeroes = 0;
             }
         },
         "m" | "mib" | "mebibyte" | "mebibytes" => {
-            humansize::file_size_opts::FileSizeOpts {
-                fixed_at: humansize::file_size_opts::FixedAt::Mega,
-                ..humansize::file_size_opts::BINARY
+            fixed_at = humansize::file_size_opts::FixedAt::Mega;
+            format = humansize::file_size_opts::BINARY;
+            if zeroes == -1 {
+                zeroes = 0;
             }
         },
         "mb" => {
-            humansize::file_size_opts::FileSizeOpts {
-                fixed_at: humansize::file_size_opts::FixedAt::Mega,
-                ..humansize::file_size_opts::DECIMAL
+            fixed_at = humansize::file_size_opts::FixedAt::Mega;
+            format = humansize::file_size_opts::DECIMAL;
+            if zeroes == -1 {
+                zeroes = 0;
             }
         },
         "g" | "gib" | "gibibyte" | "gibibytes" => {
-            humansize::file_size_opts::FileSizeOpts {
-                fixed_at: humansize::file_size_opts::FixedAt::Giga,
-                ..humansize::file_size_opts::BINARY
-            }
+            fixed_at = humansize::file_size_opts::FixedAt::Giga;
+            format = humansize::file_size_opts::BINARY;
         },
         "gb" => {
-            humansize::file_size_opts::FileSizeOpts {
-                fixed_at: humansize::file_size_opts::FixedAt::Giga,
-                ..humansize::file_size_opts::DECIMAL
-            }
+            fixed_at = humansize::file_size_opts::FixedAt::Giga;
+            format = humansize::file_size_opts::DECIMAL;
         },
         "t" | "tib" | "tebibyte" | "tebibytes" => {
-            humansize::file_size_opts::FileSizeOpts {
-                fixed_at: humansize::file_size_opts::FixedAt::Tera,
-                ..humansize::file_size_opts::BINARY
-            }
+            fixed_at = humansize::file_size_opts::FixedAt::Tera;
+            format = humansize::file_size_opts::BINARY;
         },
         "tb" => {
-            humansize::file_size_opts::FileSizeOpts {
-                fixed_at: humansize::file_size_opts::FixedAt::Tera,
-                ..humansize::file_size_opts::DECIMAL
-            }
+            fixed_at = humansize::file_size_opts::FixedAt::Tera;
+            format = humansize::file_size_opts::DECIMAL;
         },
         "p" | "pib" | "pebibyte" | "pebibytes" => {
-            humansize::file_size_opts::FileSizeOpts {
-                fixed_at: humansize::file_size_opts::FixedAt::Peta,
-                ..humansize::file_size_opts::BINARY
-            }
+            fixed_at = humansize::file_size_opts::FixedAt::Peta;
+            format = humansize::file_size_opts::BINARY;
         },
         "pb" => {
-            humansize::file_size_opts::FileSizeOpts {
-                fixed_at: humansize::file_size_opts::FixedAt::Peta,
-                ..humansize::file_size_opts::DECIMAL
-            }
+            fixed_at = humansize::file_size_opts::FixedAt::Peta;
+            format = humansize::file_size_opts::DECIMAL;
         },
         "e" | "eib" | "exbibyte" | "exbibytes" => {
-            humansize::file_size_opts::FileSizeOpts {
-                fixed_at: humansize::file_size_opts::FixedAt::Peta,
-                ..humansize::file_size_opts::BINARY
-            }
+            fixed_at = humansize::file_size_opts::FixedAt::Peta;
+            format = humansize::file_size_opts::BINARY;
         },
         "eb" => {
-            humansize::file_size_opts::FileSizeOpts {
-                fixed_at: humansize::file_size_opts::FixedAt::Peta,
-                ..humansize::file_size_opts::DECIMAL
-            }
+            fixed_at = humansize::file_size_opts::FixedAt::Peta;
+            format = humansize::file_size_opts::DECIMAL;
+        },
+        "" => {
+            fixed_at = humansize::file_size_opts::FixedAt::No;
+            format = humansize::file_size_opts::BINARY;
         },
         _ => {
             panic!("Unknown file size modifier");
         }
+    };
+
+    if zeroes == -1 {
+        zeroes = 2;
+    }
+
+    if conventional {
+        format = humansize::file_size_opts::CONVENTIONAL;
+    }
+
+    if decimal {
+        format = humansize::file_size_opts::DECIMAL;
+    }
+
+    let formatter = humansize::file_size_opts::FileSizeOpts {
+        fixed_at,
+        decimal_places: zeroes as usize,
+        space,
+        ..format
     };
 
     match size.file_size(formatter) {

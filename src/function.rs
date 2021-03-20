@@ -523,10 +523,12 @@ pub fn get_value(function: &Option<Function>,
             }
 
             if let Ok(size) = function_arg.parse::<u64>() {
-                if let Some(modifier) = function_args.get(0) {
-                    let file_size = crate::util::format_filesize(size, modifier);
-                    return Variant::from_string(&file_size);
-                }
+                let modifier = match function_args.get(0) {
+                    Some(modifier) => modifier,
+                    _ => ""
+                };
+                let file_size = crate::util::format_filesize(size, modifier);
+                return Variant::from_string(&file_size);
             }
 
             return Variant::empty(VariantType::String);

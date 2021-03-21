@@ -215,8 +215,43 @@ Used for detecting Japanese symbols in file names and such.
 | COALESCE | Returns first nonempty expression value | `select name, size, COALESCE(sha256, '---') from /home/user/Downloads` |
 | CONCAT | Returns concatenated string of expression values | `select CONCAT('Name is ', name, ' size is ', fsize, '!!!') from /home/user/Downloads` |
 | CONCAT_WS | Returns concatenated string of expression values with specified delimiter | `select name, fsize, CONCAT_WS('x', width, height) from /home/user/Images` |
-| FORMAT_SIZE | Returns formatted size of a file in a given unit | `select name, FORMAT_SIZE(size, 'g') from /home/user/Downloads order by size desc limit 10` |
 | RANDOM or RAND | Returns random integer (from zero to max int, from zero to *arg*, or from *arg1* to *arg2*) | `select path from /home/user/Music order by RAND()` |
+| FORMAT_SIZE | Returns formatted size of a file | `select name, FORMAT_SIZE(size, '%.0') from /home/user/Downloads order by size desc limit 10` |
+
+Let's try `FORMAT_SIZE` with different format specifiers: 
+
+| Specifier | Meaning | Output |
+| --- | --- | --- |
+| `format_size(1678123)` | Default output | 1.60MiB |
+| `format_size(1678123, ' ')` | Put a space before units | 1.60 MiB |
+| `format_size(1678123, '%.0')` | Round up decimal part | 2MiB |
+| `format_size(1678123, '%.1')` | One place for decimal part | 1.6MiB |
+| `format_size(1678123, '%.2')` | Two places for decimal part | 1.60MiB |
+| `format_size(1678123, '%.2 ')` | Two places for decimal part, and put a space before units | 1.60 MiB |
+| `format_size(1678123, '%.2 d')` | Use decimal divider, e.g. 1000-based units, not 1024-based | 1.68 MB |
+| `format_size(1678123, '%.2 c')` | Use conventional format, e.g. 1024-based divider, but display 1000-based units | 1.60 MB |
+| `format_size(1678123, '%.2 k')` | Display file size in specified unit, this time in kibibytes | 1638.79 KiB |
+| `format_size(1678123, '%.2 ck')` | What is a kibibyte? Gimme conventional unit! | 1638.79 KB |
+| `format_size(1678123, '%.0 ck')` | And drop this decimal part! | 1639 KB |
+| `format_size(1678123, '%.0 kb')` | Use 1000-based kilobyte | 1678 KB |
+| `format_size(1678123, '%.0kb')` | Don't put a space | 1678KB |
+
+### File size units
+
+| Specifier | Meaning | Bytes |
+| --- | --- | --- |
+| `t` or `tib` | tebibyte | 1024 * 1024 * 1024 * 1024
+| `tb` | terabyte | 1000 * 1000 * 1000 * 1000
+| `g` or `gib` | gibibyte | 1024 * 1024 * 1024
+| `gb` | gigabyte | 1000 * 1000 * 1000
+| `m` or `mib` | mebibyte | 1024 * 1024
+| `mb` | megabyte | 1000 * 1000
+| `k` or `kib` | kibibyte | 1024
+| `kb` | kilobyte | 1000
+
+    fselect size, path from /home/user/tmp where size gt 2g
+    fselect fsize, path from /home/user/tmp where size = 5mib
+    fselect hsize, path from /home/user/tmp where size lt 8kb
 
 ### Search roots
 
@@ -251,23 +286,6 @@ When you put a directory to search at, you can specify some options.
 * `!=~` or `!~=` or `notrx`
 * `like`
 * `notlike`
-
-### File size units
-
-| Specifier | Meaning | Bytes |
-| --- | --- | --- |
-| `t` or `tib` | tebibyte | 1024 * 1024 * 1024 * 1024
-| `tb` | terabyte | 1000 * 1000 * 1000 * 1000
-| `g` or `gib` | gibibyte | 1024 * 1024 * 1024
-| `gb` | gigabyte | 1000 * 1000 * 1000
-| `m` or `mib` | mebibyte | 1024 * 1024
-| `mb` | megabyte | 1000 * 1000
-| `k` or `kib` | kibibyte | 1024
-| `kb` | kilobyte | 1000
-
-    fselect size, path from /home/user/tmp where size gt 2g
-    fselect fsize, path from /home/user/tmp where size = 5mib
-    fselect hsize, path from /home/user/tmp where size lt 8kb
 
 ### Date and time specifiers
 

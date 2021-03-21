@@ -266,12 +266,20 @@ pub fn format_filesize(size: u64, modifier: &str) -> String {
         decimal = false;
     }
 
+    let short_units;
+    if modifier.contains("s") {
+        short_units = true;
+        modifier = modifier.replace("s", "");
+    } else {
+        short_units = false;
+    }
+
     match modifier.as_str() {
-        "b" | "byte" | "bytes" => {
+        "b" | "byte" => {
             fixed_at = humansize::file_size_opts::FixedAt::Byte;
             format = humansize::file_size_opts::BINARY;
         },
-        "k" | "kib" | "kibibyte" | "kibibytes" => {
+        "k" | "kib" => {
             fixed_at = humansize::file_size_opts::FixedAt::Kilo;
             format = humansize::file_size_opts::BINARY;
             if zeroes == -1 {
@@ -285,7 +293,7 @@ pub fn format_filesize(size: u64, modifier: &str) -> String {
                 zeroes = 0;
             }
         },
-        "m" | "mib" | "mebibyte" | "mebibytes" => {
+        "m" | "mib" => {
             fixed_at = humansize::file_size_opts::FixedAt::Mega;
             format = humansize::file_size_opts::BINARY;
             if zeroes == -1 {
@@ -299,7 +307,7 @@ pub fn format_filesize(size: u64, modifier: &str) -> String {
                 zeroes = 0;
             }
         },
-        "g" | "gib" | "gibibyte" | "gibibytes" => {
+        "g" | "gib" => {
             fixed_at = humansize::file_size_opts::FixedAt::Giga;
             format = humansize::file_size_opts::BINARY;
         },
@@ -307,7 +315,7 @@ pub fn format_filesize(size: u64, modifier: &str) -> String {
             fixed_at = humansize::file_size_opts::FixedAt::Giga;
             format = humansize::file_size_opts::DECIMAL;
         },
-        "t" | "tib" | "tebibyte" | "tebibytes" => {
+        "t" | "tib" => {
             fixed_at = humansize::file_size_opts::FixedAt::Tera;
             format = humansize::file_size_opts::BINARY;
         },
@@ -315,7 +323,7 @@ pub fn format_filesize(size: u64, modifier: &str) -> String {
             fixed_at = humansize::file_size_opts::FixedAt::Tera;
             format = humansize::file_size_opts::DECIMAL;
         },
-        "p" | "pib" | "pebibyte" | "pebibytes" => {
+        "p" | "pib" => {
             fixed_at = humansize::file_size_opts::FixedAt::Peta;
             format = humansize::file_size_opts::BINARY;
         },
@@ -323,12 +331,12 @@ pub fn format_filesize(size: u64, modifier: &str) -> String {
             fixed_at = humansize::file_size_opts::FixedAt::Peta;
             format = humansize::file_size_opts::DECIMAL;
         },
-        "e" | "eib" | "exbibyte" | "exbibytes" => {
-            fixed_at = humansize::file_size_opts::FixedAt::Peta;
+        "e" | "eib" => {
+            fixed_at = humansize::file_size_opts::FixedAt::Exa;
             format = humansize::file_size_opts::BINARY;
         },
         "eb" => {
-            fixed_at = humansize::file_size_opts::FixedAt::Peta;
+            fixed_at = humansize::file_size_opts::FixedAt::Exa;
             format = humansize::file_size_opts::DECIMAL;
         },
         "" => {
@@ -359,10 +367,23 @@ pub fn format_filesize(size: u64, modifier: &str) -> String {
         ..format
     };
 
-    match size.file_size(formatter) {
+    let mut result = match size.file_size(formatter) {
         Ok(size) => size,
         _ => String::new()
+    };
+
+    if short_units {
+        result = result
+            .replace("iB", "")
+            .replace("KB", "K")
+            .replace("MB", "M")
+            .replace("GB", "G")
+            .replace("TB", "T")
+            .replace("PB", "P")
+            .replace("EB", "E");
     }
+
+    result
 }
 
 pub fn str_to_bool(val: &str) -> bool {

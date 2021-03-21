@@ -235,6 +235,8 @@ Let's try `FORMAT_SIZE` with different format specifiers:
 | `format_size(1678123, '%.0 ck')` | And drop this decimal part! | 1639 KB |
 | `format_size(1678123, '%.0 kb')` | Use 1000-based kilobyte | 1678 KB |
 | `format_size(1678123, '%.0kb')` | Don't put a space | 1678KB |
+| `format_size(1678123, '%.0s')` | Use short units | 2M |
+| `format_size(1678123, '%.0 s')` | Use short units with a space | 2 M |
 
 ### File size units
 

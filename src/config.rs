@@ -25,14 +25,18 @@ pub struct Config {
     pub is_image : Vec<String>,
     pub is_source : Vec<String>,
     pub is_video : Vec<String>,
-    #[serde(skip_serializing)]
+    #[serde(skip_serializing, default = "get_false")]
     pub debug : bool,
     #[serde(skip)]
     save : bool,
 }
 
+fn get_false() -> bool {
+    false
+}
+
 impl Config {
-    pub fn new() -> Result<Config, &'static str> {
+    pub fn new() -> Result<Config, String> {
         let mut config_file;
 
         if let Some(cf) = Config::get_current_dir_config() {
@@ -55,20 +59,19 @@ impl Config {
         Config::from(config_file)
     }
 
-    pub fn from(config_file: PathBuf) -> Result<Config, &'static str> {
+    pub fn from(config_file: PathBuf) -> Result<Config, String> {
         if let Ok(mut file) = fs::File::open(&config_file) {
             let mut contents = String::new();
             if let Ok(_) = file.read_to_string(&mut contents) {
-                if let Ok(config) = toml::from_str(&contents) {
-                    return Ok(config);
-                } else {
-                    return Err("Could not parse config file. Using default settings.");
+                match toml::from_str(&contents) {
+                    Ok(config) => Ok(config),
+                    Err(err) => Err(err.to_string())
                 }
             } else {
-                return Err("Could not read config file. Using default settings.");
+                Err("Could not read config file. Using default settings.".to_string())
             }
         } else {
-            return Err("Could not open config file. Using default settings.");
+            Err("Could not open config file. Using default settings.".to_string())
         }
     }
 
@@ -128,4 +131,3 @@ impl Config {
         }
     }
 }
-

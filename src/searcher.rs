@@ -17,7 +17,6 @@ use std::path::PathBuf;
 
 use chrono::{DateTime, Local};
 use csv;
-use humansize::{FileSize, file_size_opts};
 use lscolors::{LsColors, Style};
 use mp3_metadata;
 use mp3_metadata::MP3Metadata;
@@ -952,13 +951,13 @@ impl Searcher {
             Field::FormattedSize => {
                 match file_info {
                     Some(ref file_info) => {
-                        return Variant::from_string(&format!("{}", file_info.size.file_size(file_size_opts::BINARY).unwrap()));
+                        return Variant::from_string( &format_filesize(file_info.size, self.config.default_file_size_format.as_ref().unwrap_or(&String::new())));
                     },
                     _ => {
                         self.update_file_metadata(entry);
 
                         if let Some(ref attrs) = self.file_metadata {
-                            return Variant::from_string(&format!("{}", attrs.len().file_size(file_size_opts::BINARY).unwrap()));
+                            return Variant::from_string(&format_filesize(attrs.len(), self.config.default_file_size_format.as_ref().unwrap_or(&String::new())));
                         }
                     }
                 }

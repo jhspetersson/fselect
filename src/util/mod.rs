@@ -795,4 +795,25 @@ mod tests {
         let file_size = "1 kib";
         assert_eq!(parse_filesize(file_size), Some(1024));
     }
+
+    #[test]
+    fn test_format_filesize() {
+        let file_size = 1678123;
+
+        assert_eq!(format_filesize(file_size, ""), String::from("1.60MiB"));
+        assert_eq!(format_filesize(file_size, " "), String::from("1.60 MiB"));
+        assert_eq!(format_filesize(file_size, "%.0"), String::from("2MiB"));
+        assert_eq!(format_filesize(file_size, "%.1"), String::from("1.6MiB"));
+        assert_eq!(format_filesize(file_size, "%.2"), String::from("1.60MiB"));
+        assert_eq!(format_filesize(file_size, "%.2 "), String::from("1.60 MiB"));
+        assert_eq!(format_filesize(file_size, "%.2 d"), String::from("1.68 MB"));
+        assert_eq!(format_filesize(file_size, "%.2 c"), String::from("1.60 MB"));
+        assert_eq!(format_filesize(file_size, "%.2 k"), String::from("1638.79 KiB"));
+        assert_eq!(format_filesize(file_size, "%.2 ck"), String::from("1638.79 KB"));
+        assert_eq!(format_filesize(file_size, "%.0 ck"), String::from("1639 KB"));
+        assert_eq!(format_filesize(file_size, "%.0 kb"), String::from("1678 KB"));
+        assert_eq!(format_filesize(file_size, "%.0kb"), String::from("1678KB"));
+        assert_eq!(format_filesize(file_size, "%.0s"), String::from("2M"));
+        assert_eq!(format_filesize(file_size, "%.0 s"), String::from("2 M"));
+    }
 }

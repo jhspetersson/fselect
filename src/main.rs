@@ -78,7 +78,7 @@ fn main() {
     }
 
     if first_arg.contains("help") || first_arg.starts_with("-h") || first_arg.starts_with("/?") || first_arg.starts_with("/h") {
-        usage_info(no_color);
+        usage_info(config, no_color);
         return;
     }
 
@@ -195,18 +195,25 @@ fn help_hint() {
 For more detailed instructions please refer to the URL above or run fselect --help");
 }
 
-fn usage_info(no_color: bool) {
+fn usage_info(config: Config, no_color: bool) {
     short_usage_info(no_color);
 
-    println!("
+    let is_archive = config.is_archive.join(", ");
+    let is_audio = config.is_audio.join(", ");
+    let is_book = config.is_book.join(", ");
+    let is_doc = config.is_doc.join(", ");
+    let is_image = config.is_image.join(", ");
+    let is_source = config.is_source.join(", ");
+    let is_video = config.is_video.join(", ");
 
-Files Detected as Archives: .7z, .bz2, .bzip2, .gz, .gzip, .lz, .rar, .tar, .xz, .zip
-Files Detected as Audio: .aac, .aiff, .amr, .flac, .gsm, .m4a, .m4b, .m4p, .mp3, .ogg, .wav, .wma
-Files Detected as Book: .azw3, .chm, .djvu, .epub, .fb2, .mobi, .pdf
-Files Detected as Document: .accdb, .doc, .docm, .docx, .dot, .dotm, .dotx, .mdb, .ods, .odt, .pdf, .potm, .potx, .ppt, .pptm, .pptx, .rtf, .xlm, .xls, .xlsm, .xlsx, .xlt, .xltm, .xltx, .xps
-Files Detected as Image: .bmp, .gif, .heic, .jpeg, .jpg, .png, .psb, .psd, .tiff, .webp
-Files Detected as Source Code: .asm, .bas, .c, .cc, .ceylon, .clj, .coffee, .cpp, .cs, .d, .dart, .elm, .erl, .go, .groovy, .h, .hh, .hpp, .java, .js, .jsp, .kt, .kts, .lua, .nim, .pas, .php, .pl, .pm, .py, .rb, .rs, .scala, .swift, .tcl, .vala, .vb
-Files Detected as Video: .3gp, .avi, .flv, .m4p, .m4v, .mkv, .mov, .mp4, .mpeg, .mpg, .webm, .wmv
+    println!("
+Files Detected as Archives: {}
+Files Detected as Audio: {}
+Files Detected as Book: {}
+Files Detected as Document: {}
+Files Detected as Image: {}
+Files Detected as Source Code: {}
+Files Detected as Video: {}
 
 Path Options:
     mindepth N 	                    Minimum search depth. Default is unlimited. Depth 1 means skip one directory level and search further.
@@ -386,5 +393,5 @@ Format:
     csv                             Outputs each file with its column value(s) on a line with each column value delimited by a comma
     json                            Outputs a JSON array with JSON objects holding the column value(s) of each file
     html                            Outputs HTML document with table
-    ");
+    ", is_archive, is_audio, is_book, is_doc, is_image, is_source, is_video);
 }

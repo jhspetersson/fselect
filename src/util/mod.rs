@@ -386,9 +386,13 @@ pub fn format_filesize(size: u64, modifier: &str) -> String {
     result
 }
 
-pub fn str_to_bool(val: &str) -> bool {
+pub fn str_to_bool(val: &str) -> Option<bool> {
     let str_val = val.to_ascii_lowercase();
-    str_val.eq("true") || str_val.eq("1") || str_val.eq("y") || str_val.eq("yes")
+    match str_val.as_str() {
+        "true" | "1" | "yes" | "y" => Some(true),
+        "false" | "0" | "no" | "n" => Some(false),
+        _ => None
+    }
 }
 
 pub fn parse_unix_filename(s: &str) -> &str {

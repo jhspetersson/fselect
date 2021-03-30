@@ -45,7 +45,7 @@ fn main() {
     };
 
     let env_var_value = std::env::var("NO_COLOR").ok().unwrap_or(String::new());
-    let env_no_color = str_to_bool(&env_var_value);
+    let env_no_color = str_to_bool(&env_var_value).unwrap_or(false);
     let mut no_color = env_no_color || (config.no_color.is_some() && config.no_color.unwrap());
 
     #[cfg(windows)]

@@ -38,7 +38,7 @@ pub struct Variant {
     string_value: String,
     int_value: Option<i64>,
     float_value: Option<f64>,
-    bool_value: bool,
+    bool_value: Option<bool>,
     dt_from: Option<DateTime<Local>>,
     dt_to: Option<DateTime<Local>>,
 }
@@ -51,7 +51,7 @@ impl Variant {
             string_value: String::new(),
             int_value: None,
             float_value: None,
-            bool_value: false,
+            bool_value: None,
             dt_from: None,
             dt_to: None,
         }
@@ -68,7 +68,7 @@ impl Variant {
             string_value: format!("{}", value),
             int_value: Some(value),
             float_value: Some(value as f64),
-            bool_value: value == 1,
+            bool_value: None,
             dt_from: None,
             dt_to: None,
         }
@@ -81,29 +81,26 @@ impl Variant {
             string_value: format!("{}", value),
             int_value: Some(value as i64),
             float_value: Some(value),
-            bool_value: value == 1.0,
+            bool_value: None,
             dt_from: None,
             dt_to: None,
         }
     }
 
     pub fn from_string(value: &String) -> Variant {
-        let bool_value = str_to_bool(&value);
-
         Variant {
             value_type: VariantType::String,
             empty: false,
             string_value: value.to_owned(),
             int_value: None,
             float_value: None,
-            bool_value,
+            bool_value: None,
             dt_from: None,
             dt_to: None,
         }
     }
 
     pub fn from_signed_string(value: &String, minus: bool) -> Variant {
-        let bool_value = str_to_bool(&value);
         let string_value = match minus {
             true => {
                 let mut result = String::from("-");
@@ -120,7 +117,7 @@ impl Variant {
             string_value,
             int_value: None,
             float_value: None,
-            bool_value,
+            bool_value: None,
             dt_from: None,
             dt_to: None,
         }
@@ -133,7 +130,7 @@ impl Variant {
             string_value: match value { true => String::from("true"), _ => String::from("false") },
             int_value: match value { true => Some(1), _ => Some(0) },
             float_value: None,
-            bool_value: value,
+            bool_value: Some(value),
             dt_from: None,
             dt_to: None,
         }
@@ -146,7 +143,7 @@ impl Variant {
             string_value: format_datetime(&value),
             int_value: Some(0),
             float_value: None,
-            bool_value: false,
+            bool_value: None,
             dt_from: Some(value),
             dt_to: Some(value),
         }
@@ -197,7 +194,17 @@ impl Variant {
     }
 
     pub fn to_bool(&self) -> bool {
-        self.bool_value
+        if let Some(value) = self.bool_value {
+            value
+        } else if !self.string_value.is_empty() {
+            str_to_bool(&self.string_value).expect("Can't parse boolean value")
+        } else if let Some(int_value) = self.int_value {
+            int_value == 1
+        } else if let Some(float_value) = self.float_value {
+            float_value == 1.0
+        } else {
+            false
+        }
     }
 
     pub fn to_datetime(&self) -> (DateTime<Local>, DateTime<Local>) {

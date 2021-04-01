@@ -1,6 +1,8 @@
-use regex::Regex;
-use crate::field::Field;
 use std::str::FromStr;
+
+use regex::Regex;
+
+use crate::field::Field;
 use crate::function::Function;
 
 #[derive(Clone, PartialEq, Debug)]

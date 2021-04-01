@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::fmt::Display;
-use std::fmt::Formatter;
 use std::fmt::Error;
+use std::fmt::Formatter;
 use std::fs::DirEntry;
 use std::fs::File;
 use std::io::prelude::*;

@@ -9,9 +9,9 @@ use std::io::ErrorKind;
 use std::io::Write;
 use std::ops::Add;
 #[cfg(unix)]
-use std::os::unix::fs::MetadataExt;
-#[cfg(unix)]
 use std::os::unix::fs::DirEntryExt;
+#[cfg(unix)]
+use std::os::unix::fs::MetadataExt;
 use std::path::Path;
 use std::path::PathBuf;
 

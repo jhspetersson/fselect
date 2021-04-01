@@ -1,7 +1,7 @@
-use std::str::FromStr;
 use std::fmt::Display;
-use std::fmt::Formatter;
 use std::fmt::Error;
+use std::fmt::Formatter;
+use std::str::FromStr;
 
 use serde::ser::{Serialize, Serializer};
 

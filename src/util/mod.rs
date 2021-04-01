@@ -458,22 +458,22 @@ pub fn get_metadata(entry: &DirEntry, follow_symlinks: bool) -> Option<Metadata>
     None
 }
 
-fn is_image_dim_readable(file_name: &str) -> bool {
-    let extensions = vec![String::from(".bmp"), String::from(".gif"), String::from(".heic"), String::from(".heif"), String::from(".jpeg"), String::from(".jpg"), String::from(".png"), String::from(".psb"), String::from(".psd"), String::from(".tiff"), String::from(".webp")];
+lazy_static! {
+    static ref IMAGE_DIM_READABLE_EXTENSIONS: Vec<String> = vec![String::from(".bmp"), String::from(".gif"), String::from(".heic"), String::from(".heif"), String::from(".jpeg"), String::from(".jpg"), String::from(".png"), String::from(".psb"), String::from(".psd"), String::from(".tiff"), String::from(".webp")];
+    static ref MP4_DIM_READABLE_EXTENSIONS: Vec<String> = vec![String::from(".mp4")];
+    static ref MKV_DIM_READABLE_EXTENSIONS: Vec<String> = vec![String::from(".mkv")];
+}
 
-    has_extension(file_name, &extensions)
+fn is_image_dim_readable(file_name: &str) -> bool {
+    has_extension(file_name, &IMAGE_DIM_READABLE_EXTENSIONS)
 }
 
 fn is_mp4_dim_readable(file_name: &str) -> bool {
-    let extensions = vec![String::from(".mp4")];
-
-    has_extension(file_name, &extensions)
+    has_extension(file_name, &MP4_DIM_READABLE_EXTENSIONS)
 }
 
 fn is_mkv_dim_readable(file_name: &str) -> bool {
-    let extensions = vec![String::from(".mkv")];
-
-    has_extension(file_name, &extensions)
+    has_extension(file_name, &MKV_DIM_READABLE_EXTENSIONS)
 }
 
 pub fn get_dimensions(entry: &DirEntry) -> Option<(usize, usize)> {

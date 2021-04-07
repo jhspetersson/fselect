@@ -52,10 +52,19 @@ A statically precompiled [binary](https://github.com/jhspetersson/fselect/releas
 * Install [Chocolatey](https://chocolatey.org/install)
 * Run `choco install fselect`
 
-#### Mac
+#### Mac via Homebrew
 
 * Install [brew](https://brew.sh)
 * Run `brew install fselect`
+
+#### Mac via MacPorts
+
+* Install [MacPorts](https://www.macports.org)
+* Run:
+  ```
+  sudo port selfupdate
+  sudo port install fselect
+  ```
 
 ### Usage
 

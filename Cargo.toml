@@ -17,13 +17,13 @@ default = ["users"]
 
 [dependencies]
 ansi_term = "0.12"
-app_dirs = "1.2"
 atty = "0.2"
 base64 = "0.13"
 bytecount = "0.6"
 chrono = "0.4"
 chrono-english = "0.1"
 csv = "1.0"
+directories = "3.0"
 humansize = "1.1"
 imagesize = "0.8"
 kamadak-exif = "0.5"

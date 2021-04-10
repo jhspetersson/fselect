@@ -2,13 +2,10 @@ use std::fs;
 use std::io::{Read, Write};
 use std::path::PathBuf;
 
-use app_dirs::{AppInfo, AppDataType, app_root};
+use directories::ProjectDirs;
 
-const APP_INFO: AppInfo = AppInfo {
-    name: "fselect",
-    author: "jhspetersson",
-};
-
+const ORGANIZATION: &str = "jhspetersson";
+const APPLICATION: &str = "fselect";
 const CONFIG_FILE: &str = "config.toml";
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
@@ -40,12 +37,12 @@ impl Config {
     pub fn new() -> Result<Config, String> {
         let mut config_file;
 
-        if let Some(cf) = Config::get_current_dir_config() {
+        if let Some(cf) = Self::get_current_dir_config() {
             config_file = cf;
         } else {
-            let config_dir = app_root(AppDataType::UserConfig, &APP_INFO);
+            let config_dir = Self::get_project_dir();
 
-            if config_dir.is_err() {
+            if config_dir.is_none() {
                 return Ok(Config::default());
             }
 
@@ -88,18 +85,26 @@ impl Config {
         None
     }
 
+    fn get_project_dir() -> Option<PathBuf> {
+        match ProjectDirs::from("", ORGANIZATION, APPLICATION) {
+            Some(pd) => Some(pd.config_dir().parent().unwrap().to_path_buf()),
+            _ => None
+        }
+    }
+
     pub fn save(&self) {
         if !self.save {
             return;
         }
 
-        let config_dir = app_root(AppDataType::UserConfig, &APP_INFO);
+        let config_dir = Self::get_project_dir();
 
-        if config_dir.is_err() {
+        if config_dir.is_none() {
             return;
         }
 
         let mut config_file = config_dir.unwrap();
+        let _ = fs::create_dir_all(&config_file);
         config_file.push(CONFIG_FILE);
 
         if config_file.exists() {

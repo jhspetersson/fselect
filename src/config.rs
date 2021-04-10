@@ -88,7 +88,7 @@ impl Config {
     #[cfg(not(windows))]
     fn get_project_dir() -> Option<PathBuf> {
         match ProjectDirs::from("", ORGANIZATION, APPLICATION) {
-            Some(pd) => Some(pd.config_dir().unwrap().to_path_buf()),
+            Some(pd) => Some(pd.config_dir().to_path_buf()),
             _ => None
         }
     }

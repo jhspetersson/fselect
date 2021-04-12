@@ -148,6 +148,13 @@ pub fn error_message(source: &str, description: &str) {
     eprint!("{}: {}", source, description);
 }
 
+pub fn get_extension(s: &str) -> String {
+    match Path::new(s).extension() {
+        Some(ext) => ext.to_string_lossy().to_string(),
+        None => String::new()
+    }
+}
+
 pub fn parse_filesize(s: &str) -> Option<u64> {
     let string = s.to_string().to_ascii_lowercase().replace(" ", "");
     let length = string.len();
@@ -819,5 +826,14 @@ mod tests {
         assert_eq!(format_filesize(file_size, "%.0kb"), String::from("1678KB"));
         assert_eq!(format_filesize(file_size, "%.0s"), String::from("2M"));
         assert_eq!(format_filesize(file_size, "%.0 s"), String::from("2 M"));
+    }
+
+    #[test]
+    fn test_get_extension() {
+        assert_eq!(get_extension(".no_ext"), String::new());
+        assert_eq!(get_extension("no_ext"), String::new());
+        assert_eq!(get_extension("has_ext.foo"), String::from("foo"));
+        assert_eq!(get_extension("has_ext.foobar"), String::from("foobar"));
+        assert_eq!(get_extension("has.extension.foo"), String::from("foo"));
     }
 }

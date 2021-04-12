@@ -912,6 +912,16 @@ impl Searcher {
                     }
                 }
             },
+            Field::Extension => {
+                match file_info {
+                    Some(ref file_info) => {
+                        return Variant::from_string(&format!("[{}] {}", entry.file_name().to_string_lossy(), crate::util::get_extension(&file_info.name)));
+                    },
+                    _ => {
+                        return Variant::from_string(&format!("{}", crate::util::get_extension(&entry.file_name().to_string_lossy())));
+                    }
+                }
+            },
             Field::Path => {
                 match file_info {
                     Some(ref file_info) => {

@@ -10,6 +10,7 @@ pub enum Field {
     Name,
     Path,
     AbsPath,
+    Extension,
     Size,
     FormattedSize,
     Uid,
@@ -91,6 +92,7 @@ impl FromStr for Field {
 
         match field.as_str() {
             "name" => Ok(Field::Name),
+            "ext" | "extension" => Ok(Field::Extension),
             "path" => Ok(Field::Path),
             "abspath" => Ok(Field::AbsPath),
             "size" => Ok(Field::Size),
@@ -210,6 +212,7 @@ impl Field {
     pub fn is_available_for_archived_files(&self) -> bool {
         match self {
             Field::Name
+            | Field::Extension
             | Field::Path
             | Field::AbsPath
             | Field::Size

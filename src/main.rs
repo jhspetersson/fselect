@@ -107,9 +107,13 @@ fn main() {
         args.remove(0);
 
         if args.is_empty() {
-            short_usage_info(no_color);
-            help_hint();
-            return;
+            if !interactive {
+                short_usage_info(no_color);
+                help_hint();
+                return;
+            } else {
+                break;
+            }
         }
 
         first_arg = args[0].to_ascii_lowercase();

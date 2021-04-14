@@ -232,7 +232,8 @@ Path Options:
     regexp | rx                     Use regular expressions to search within multiple roots.
 
 Column Options:
-    name                            Returns the name of the file
+    name                            Returns the name (with extension) of the file
+    extension | ext                 Returns the extension of the file
     path                            Returns the path of the file
     abspath                         Returns the absolute path of the file
     size                            Returns the size of the file in bytes

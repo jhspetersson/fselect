@@ -52,6 +52,7 @@ Joins, unions, and subselects are not supported (yet?).
 ### Columns and fields
 
 * `name`
+* `extension` or `ext`  
 * `path`
 * `abspath`
 * `size`

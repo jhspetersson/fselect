@@ -227,6 +227,9 @@ Path Options:
     gitignore | git                 Search respects .gitignore files found.
     hgignore | hg                   Search respects .hgignore files found.
     dockerignore | docker           Search respects .dockerignore files found.
+    nogitignore | nogit             Disable .gitignore parsing during the search.
+    nohgignore | nohg               Disable .hgignore parsing during the search.
+    nodockerignore | nodocker       Disable .dockerignore parsing during the search.
     dfs 	                        Depth-first search mode.
     bfs 	                        Breadth-first search mode. This is the default.
     regexp | rx                     Use regular expressions to search within multiple roots.

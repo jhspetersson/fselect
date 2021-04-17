@@ -271,6 +271,9 @@ When you put a directory to search at, you can specify some options.
 | gitignore | Search respects `.gitignore` files found. Synonym is `git`. |
 | hgignore | Search respects `.hgignore` files found. Synonym is `hg`. |
 | dockerignore | Search respects `.dockerignore` files found. Synonym is `dock`. |
+| nogitignore | Disable `.gitignore` parsing during the search. Synonym is `nogit`. |
+| nohgignore | Disable `.hgignore` parsing during the search. Synonym is `nohg`. |
+| nodockerignore | Disable `.dockerignore` parsing during the search. Synonym is `nodock`. |
 | dfs | Depth-first search mode. |
 | bfs | Breadth-first search mode. This is the default. |
 | regexp | Use regular expressions to search within multiple roots. Synonym is `rx`. | 

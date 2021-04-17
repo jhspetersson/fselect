@@ -13,6 +13,8 @@ use crate::query::OutputFormat;
 use crate::query::Query;
 use crate::query::Root;
 use crate::query::TraversalMode::{Bfs, Dfs};
+use std::path::PathBuf;
+use directories::UserDirs;
 
 pub struct Parser {
     lexems: Vec<Lexem>,
@@ -161,6 +163,14 @@ impl Parser {
                                 match mode {
                                     RootParsingMode::From | RootParsingMode::Comma => {
                                         path = s.to_string();
+                                        if path.starts_with("~") {
+                                            let mut pb = PathBuf::from(path.clone());
+                                            pb = pb.components().skip(1).collect();
+                                            if let Some(ud) = UserDirs::new() {
+                                                pb = ud.home_dir().to_path_buf().join(pb);
+                                                path = pb.to_string_lossy().to_string();
+                                            }
+                                        }
                                         mode = RootParsingMode::Root;
                                     },
                                     RootParsingMode::Root | RootParsingMode::Options => {

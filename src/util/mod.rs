@@ -699,6 +699,13 @@ pub fn get_sha3_512_file_hash(entry: &DirEntry) -> String {
     String::new()
 }
 
+pub fn is_dir_empty(entry: &DirEntry) -> Option<bool> {
+    match fs::read_dir(&entry.path()) {
+        Ok(dir) => Some(!dir.into_iter().any(|_| true)),
+        _ => None
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

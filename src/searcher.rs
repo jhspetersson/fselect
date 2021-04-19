@@ -1247,6 +1247,26 @@ impl Searcher {
             Field::IsShebang => {
                 return Variant::from_bool(is_shebang(&entry.path()));
             },
+            Field::IsEmpty => {
+                match file_info {
+                    Some(ref file_info) => {
+                        return Variant::from_bool(file_info.size == 0);
+                    },
+                    _ => {
+                        self.update_file_metadata(entry);
+
+                        if let Some(ref attrs) = self.file_metadata {
+                            return match attrs.is_dir() {
+                                true =>  match is_dir_empty(entry) {
+                                    Some(result) => Variant::from_bool(result),
+                                    None => Variant::empty(VariantType::Bool)
+                                },
+                                false => Variant::from_bool(attrs.len() == 0)
+                            };
+                        }
+                    }
+                }
+            },
             Field::Width => {
                 if !self.file_dimensions_set {
                     self.file_dimensions_set = true;

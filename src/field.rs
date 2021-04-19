@@ -49,6 +49,7 @@ pub enum Field {
     IsHidden,
     HasXattrs,
     IsShebang,
+    IsEmpty,
     Width,
     Height,
     Duration,
@@ -133,6 +134,7 @@ impl FromStr for Field {
             "is_hidden" => Ok(Field::IsHidden),
             "has_xattrs" => Ok(Field::HasXattrs),
             "is_shebang" => Ok(Field::IsShebang),
+            "is_empty" => Ok(Field::IsEmpty),
             "width" => Ok(Field::Width),
             "height" => Ok(Field::Height),
             "mime" => Ok(Field::Mime),
@@ -240,6 +242,7 @@ impl Field {
             | Field::Suid
             | Field::Sgid
             | Field::IsHidden
+            | Field::IsEmpty
             | Field::Modified
             | Field::IsArchive
             | Field::IsAudio

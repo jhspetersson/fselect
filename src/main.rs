@@ -312,6 +312,7 @@ Column Options:
     duration                        Returns the duration of audio file in seconds
 
     is_shebang                      Returns a boolean signifying whether the file starts with a shebang (#!)
+    is_empty                        Returns a boolean signifying whether the file is empty or the directory is empty
     is_archive                      Returns a boolean signifying whether the file is an archival file
     is_audio                        Returns a boolean signifying whether the file is an audio file
     is_book                         Returns a boolean signifying whether the file is a book

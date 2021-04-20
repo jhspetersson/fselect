@@ -93,6 +93,7 @@ Joins, unions, and subselects are not supported (yet?).
 * `is_hidden`
 * `has_xattrs`
 * `is_shebang`
+* `is_empty`  
 * `width`
 * `height`
 * `duration`

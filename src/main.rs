@@ -269,18 +269,18 @@ Column Options:
     user_read                       Returns a boolean signifying whether the file can be read by the owner
     user_write                      Returns a boolean signifying whether the file can be written by the owner
     user_exec                       Returns a boolean signifying whether the file can be executed by the owner
-    user_all                        Returns a boolean signifying whether the file can be fully accecced by the owner
+    user_all                        Returns a boolean signifying whether the file can be fully accessed by the owner
 
     group                           Returns the name of the owner's group for this file
     group_read                      Returns a boolean signifying whether the file can be read by the owner's group
     group_write                     Returns a boolean signifying whether the file can be written by the owner's group
     group_exec                      Returns a boolean signifying whether the file can be executed by the owner's group
-    group_all                       Returns a boolean signifying whether the file can be fully accecced by the group
+    group_all                       Returns a boolean signifying whether the file can be fully accessed by the group
 
     other_read                      Returns a boolean signifying whether the file can be read by others
     other_write                     Returns a boolean signifying whether the file can be written by others
     other_exec                      Returns a boolean signifying whether the file can be executed by others
-    other_all                       Returns a boolean signifying whether the file can be fully accecced by the others
+    other_all                       Returns a boolean signifying whether the file can be fully accessed by the others
 
     suid                            Returns a boolean signifying whether the file permissions have a SUID bit set
     sgid                            Returns a boolean signifying whether the file permissions have a SGID bit set

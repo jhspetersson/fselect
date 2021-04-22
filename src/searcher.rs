@@ -944,6 +944,16 @@ impl Searcher {
                     }
                 }
             },
+            Field::Directory => {
+                let file_path = match file_info {
+                    Some(ref file_info) => file_info.name.clone(),
+                    _ => entry.path().to_string_lossy().to_string()
+                };
+                let pb = PathBuf::from(file_path);
+                if let Some(parent) = pb.parent() {
+                    return Variant::from_string(&parent.to_string_lossy().to_string());
+                }
+            },
             Field::Size => {
                 match file_info {
                     Some(ref file_info) => {

@@ -239,6 +239,7 @@ Column Options:
     extension | ext                 Returns the extension of the file
     path                            Returns the path of the file
     abspath                         Returns the absolute path of the file
+    directory | dirname | dir       Returns the directory of the file
     size                            Returns the size of the file in bytes
     fsize | hsize                   Returns the size of the file accompanied with the unit
     uid                             Returns the UID of the owner

@@ -954,6 +954,22 @@ impl Searcher {
                     return Variant::from_string(&parent.to_string_lossy().to_string());
                 }
             },
+            Field::AbsDir => {
+                let file_path = match file_info {
+                    Some(ref file_info) => file_info.name.clone(),
+                    _ => entry.path().to_string_lossy().to_string()
+                };
+                let pb = PathBuf::from(file_path);
+                if let Some(parent) = pb.parent() {
+                    if file_info.is_some() {
+                        return Variant::from_string(&parent.to_string_lossy().to_string());
+                    }
+
+                    if let Ok(path) = crate::util::canonical_path(&parent.to_path_buf()) {
+                        return Variant::from_string(&path);
+                    }
+                }
+            },
             Field::Size => {
                 match file_info {
                     Some(ref file_info) => {

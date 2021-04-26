@@ -58,6 +58,7 @@ Joins, unions, and subselects are not supported (yet?).
 | `path` | Returns the path of the file |
 | `abspath` | Returns the absolute path of the file |
 | `directory` or `dirname` or `dir` | Returns the directory of the file |
+| `absdir` | Returns the absolute directory of the file |
 | `size` |    Returns the size of the file in bytes |
 | `fsize` or `hsize` | Returns the size of the file accompanied with the unit |
 | `uid` | Returns the UID of the owner |

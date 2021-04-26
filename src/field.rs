@@ -12,6 +12,7 @@ pub enum Field {
     AbsPath,
     Extension,
     Directory,
+    AbsDir,
     Size,
     FormattedSize,
     Uid,
@@ -98,6 +99,7 @@ impl FromStr for Field {
             "path" => Ok(Field::Path),
             "abspath" => Ok(Field::AbsPath),
             "dir" | "directory" | "dirname" => Ok(Field::Directory),
+            "absdir" => Ok(Field::AbsDir),
             "size" => Ok(Field::Size),
             "fsize" | "hsize" => Ok(Field::FormattedSize),
             "uid" => Ok(Field::Uid),
@@ -220,6 +222,7 @@ impl Field {
             | Field::Path
             | Field::AbsPath
             | Field::Directory
+            | Field::AbsDir
             | Field::Size
             | Field::FormattedSize
             | Field::IsDir

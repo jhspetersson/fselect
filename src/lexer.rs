@@ -126,7 +126,7 @@ impl<'a> Lexer<'a> {
 
         let lexem = match mode {
             LexingMode::String => Some(Lexem::String(s)),
-            LexingMode::Operator => { self.after_operator = true; Some(Lexem::Operator(s)) },
+            LexingMode::Operator => Some(Lexem::Operator(s)),
             LexingMode::ArithmeticOperator => Some(Lexem::ArithmeticOperator(s)),
             LexingMode::Comma => Some(Lexem::Comma),
             LexingMode::Open => Some(Lexem::Open),
@@ -153,10 +153,10 @@ impl<'a> Lexer<'a> {
             _ => None
         };
 
-        match lexem {
-            Some(Lexem::Operator(_)) => {},
-            _ => self.after_operator = false
-        }
+        self.after_operator = match lexem {
+            Some(Lexem::Operator(_)) => true,
+            _ => false
+        };
 
         lexem
     }
@@ -483,5 +483,56 @@ mod tests {
         assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("mime"))));
         assert_eq!(lexer.next_lexem(), Some(Lexem::Operator(String::from("="))));
         assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("application/pkcs8+pem"))));
+    }
+
+    #[test]
+    fn raw_abs_path_after_eq() {
+        let mut lexer = Lexer::new("abspath,absdir,name where absdir = /home/user/docs");
+
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("abspath"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::Comma));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("absdir"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::Comma));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("name"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::Where));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("absdir"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::Operator(String::from("="))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("/home/user/docs"))));
+
+        let mut lexer = Lexer::new("abspath,absdir,name where absdir == /home/user/docs");
+
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("abspath"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::Comma));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("absdir"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::Comma));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("name"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::Where));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("absdir"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::Operator(String::from("=="))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("/home/user/docs"))));
+
+        let mut lexer = Lexer::new("abspath,absdir,name where absdir === /home/user/docs");
+
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("abspath"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::Comma));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("absdir"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::Comma));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("name"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::Where));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("absdir"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::Operator(String::from("==="))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("/home/user/docs"))));
+
+        let mut lexer = Lexer::new("abspath,absdir,name where absdir eq /home/user/docs");
+
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("abspath"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::Comma));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("absdir"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::Comma));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("name"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::Where));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("absdir"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::Operator(String::from("eq"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("/home/user/docs"))));
     }
 }

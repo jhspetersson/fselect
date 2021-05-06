@@ -160,78 +160,78 @@ pub fn parse_filesize(s: &str) -> Option<u64> {
     let length = string.len();
 
     if length > 1 && string.ends_with("k") {
-        match &string[..(length - 1)].parse::<f64>() {
-            Ok(size) => return Some((*size * 1024.0) as u64),
-            _ => return None
+        return match &string[..(length - 1)].parse::<f64>() {
+            Ok(size) => Some((*size * 1024.0) as u64),
+            _ => None
         }
     }
 
     if length > 2 && string.ends_with("kb") {
-        match &string[..(length - 2)].parse::<f64>() {
-            Ok(size) => return Some((*size * 1000.0) as u64),
-            _ => return None
+        return match &string[..(length - 2)].parse::<f64>() {
+            Ok(size) => Some((*size * 1000.0) as u64),
+            _ => None
         }
     }
 
     if length > 3 && string.ends_with("kib") {
-        match &string[..(length - 3)].parse::<f64>() {
-            Ok(size) => return Some((*size * 1024.0) as u64),
-            _ => return None
+        return match &string[..(length - 3)].parse::<f64>() {
+            Ok(size) => Some((*size * 1024.0) as u64),
+            _ => None
         }
     }
 
     if length > 1 && string.ends_with("m") {
-        match &string[..(length - 1)].parse::<f64>() {
-            Ok(size) => return Some((*size * 1024.0 * 1024.0) as u64),
-            _ => return None
+        return match &string[..(length - 1)].parse::<f64>() {
+            Ok(size) => Some((*size * 1024.0 * 1024.0) as u64),
+            _ => None
         }
     }
 
     if length > 2 && string.ends_with("mb") {
-        match &string[..(length - 2)].parse::<f64>() {
-            Ok(size) => return Some((*size * 1000.0 * 1000.0) as u64),
-            _ => return None
+        return match &string[..(length - 2)].parse::<f64>() {
+            Ok(size) => Some((*size * 1000.0 * 1000.0) as u64),
+            _ => None
         }
     }
 
     if length > 3 && string.ends_with("mib") {
-        match &string[..(length - 3)].parse::<f64>() {
-            Ok(size) => return Some((*size * 1024.0 * 1024.0) as u64),
-            _ => return None
+        return match &string[..(length - 3)].parse::<f64>() {
+            Ok(size) => Some((*size * 1024.0 * 1024.0) as u64),
+            _ => None
         }
     }
 
     if length > 1 && string.ends_with("g") {
-        match &string[..(length - 1)].parse::<f64>() {
-            Ok(size) => return Some((*size * 1024.0 * 1024.0 * 1024.0) as u64),
-            _ => return None
+        return match &string[..(length - 1)].parse::<f64>() {
+            Ok(size) => Some((*size * 1024.0 * 1024.0 * 1024.0) as u64),
+            _ => None
         }
     }
 
     if length > 2 && string.ends_with("gb") {
-        match &string[..(length - 2)].parse::<f64>() {
-            Ok(size) => return Some((*size * 1000.0 * 1000.0 * 1000.0) as u64),
-            _ => return None
+        return match &string[..(length - 2)].parse::<f64>() {
+            Ok(size) => Some((*size * 1000.0 * 1000.0 * 1000.0) as u64),
+            _ => None
         }
     }
 
     if length > 3 && string.ends_with("gib") {
-        match &string[..(length - 3)].parse::<f64>() {
-            Ok(size) => return Some((*size * 1024.0 * 1024.0 * 1024.0) as u64),
-            _ => return None
+        return match &string[..(length - 3)].parse::<f64>() {
+            Ok(size) => Some((*size * 1024.0 * 1024.0 * 1024.0) as u64),
+            _ => None
         }
     }
 
     if length > 1 && string.ends_with("b") {
-        match &string[..(length - 1)].parse::<u64>() {
-            Ok(size) => return Some(size * 1),
-            _ => return None
+        return match &string[..(length - 1)].parse::<u64>() {
+            Ok(size) => Some(size * 1),
+            _ => None
         }
     }
 
-    match string.parse::<u64>() {
-        Ok(size) => return Some(size),
-        _ => return None
+    return match string.parse::<u64>() {
+        Ok(size) => Some(size),
+        _ => None
     }
 }
 

@@ -1403,8 +1403,8 @@ impl Searcher {
                 self.update_file_exif_metadata(entry);
 
                 if let Some(ref exif_info) = self.file_exif_metadata {
-                    if let Some(exif_value) = exif_info.get("GPSLatitude") {
-                        return Variant::from_string(&exif_value);
+                    if let Some(exif_value) = exif_info.get("__Lat") {
+                        return Variant::from_float(exif_value.parse().unwrap_or(0.0));
                     }
                 }
             },
@@ -1412,8 +1412,8 @@ impl Searcher {
                 self.update_file_exif_metadata(entry);
 
                 if let Some(ref exif_info) = self.file_exif_metadata {
-                    if let Some(exif_value) = exif_info.get("GPSLongitude") {
-                        return Variant::from_string(&exif_value);
+                    if let Some(exif_value) = exif_info.get("__Lng") {
+                        return Variant::from_float(exif_value.parse().unwrap_or(0.0));
                     }
                 }
             },

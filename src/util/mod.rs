@@ -567,6 +567,9 @@ pub fn get_exif_metadata(entry: &DirEntry) -> Option<HashMap<String, String>> {
             for field in reader.fields() {
                 let field_tag = format!("{}", field.tag);
                 match field.value {
+                    exif::Value::Rational(ref vec) if !vec.is_empty() && (field_tag.eq("GPSLongitude") || field_tag.eq("GPSLatitude")) => {
+                        exif_info.insert(field_tag, vec.iter().map(|r| (r.num / r.denom).to_string()).collect::<Vec<String>>().join(";"));
+                    },
                     exif::Value::Ascii(ref vec) if !vec.is_empty() => if let Ok(str_value) = std::str::from_utf8(&vec[0]) {
                         exif_info.insert(field_tag, str_value.to_string());
                     },
@@ -576,11 +579,41 @@ pub fn get_exif_metadata(entry: &DirEntry) -> Option<HashMap<String, String>> {
                 }
             }
 
+            if exif_info.contains_key("GPSLongitude") && exif_info.contains_key("GPSLongitudeRef") {
+                let location = exif_info.get("GPSLongitude").unwrap().to_string();
+                let location_ref = exif_info.get("GPSLongitudeRef").unwrap().to_string();
+                if let Ok(coord) = parse_location_string(location, location_ref, "W") {
+                    exif_info.insert(String::from("__Lng"), coord.to_string());
+                }
+            }
+
+            if exif_info.contains_key("GPSLatitude") && exif_info.contains_key("GPSLatitudeRef") {
+                let location = exif_info.get("GPSLatitude").unwrap().to_string();
+                let location_ref = exif_info.get("GPSLatitudeRef").unwrap().to_string();
+                if let Ok(coord) = parse_location_string(location, location_ref, "S") {
+                    exif_info.insert(String::from("__Lat"), coord.to_string());
+                }
+            }
+
             return Some(exif_info);
         }
     }
 
     None
+}
+
+fn parse_location_string(s: String, location_ref: String, modifier_value: &str) -> Result<f32, ()> {
+    let parts = s.split(";").map(|p| p.to_string()).collect::<Vec<String>>();
+    if parts.len() == 3 {
+        let mut coord = parts[0].parse::<f32>().unwrap_or(0.0) + parts[1].parse::<f32>().unwrap_or(0.0) / 60.0 + parts[2].parse::<f32>().unwrap_or(0.0) / 3660.0;
+        if location_ref.eq(modifier_value) {
+            coord = -coord;
+        }
+
+        return Ok(coord);
+    }
+
+    return Err(());
 }
 
 pub fn is_shebang(path: &PathBuf) -> bool {

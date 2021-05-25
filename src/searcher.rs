@@ -1394,8 +1394,8 @@ impl Searcher {
                 self.update_file_exif_metadata(entry);
 
                 if let Some(ref exif_info) = self.file_exif_metadata {
-                    if let Some(exif_value) = exif_info.get("GPSAltitude") {
-                        return Variant::from_string(&exif_value);
+                    if let Some(exif_value) = exif_info.get("__Alt") {
+                        return Variant::from_float(exif_value.parse().unwrap_or(0.0));
                     }
                 }
             },

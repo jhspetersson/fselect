@@ -567,7 +567,7 @@ pub fn get_exif_metadata(entry: &DirEntry) -> Option<HashMap<String, String>> {
             for field in reader.fields() {
                 let field_tag = format!("{}", field.tag);
                 match field.value {
-                    exif::Value::Rational(ref vec) if !vec.is_empty() && (field_tag.eq("GPSLongitude") || field_tag.eq("GPSLatitude")) => {
+                    exif::Value::Rational(ref vec) if !vec.is_empty() && (field_tag.eq("GPSLongitude") || field_tag.eq("GPSLatitude") || field_tag.eq("GPSAltitude")) => {
                         exif_info.insert(field_tag, vec.iter().map(|r| (r.num / r.denom).to_string()).collect::<Vec<String>>().join(";"));
                     },
                     exif::Value::Ascii(ref vec) if !vec.is_empty() => if let Ok(str_value) = std::str::from_utf8(&vec[0]) {
@@ -593,6 +593,15 @@ pub fn get_exif_metadata(entry: &DirEntry) -> Option<HashMap<String, String>> {
                 if let Ok(coord) = parse_location_string(location, location_ref, "S") {
                     exif_info.insert(String::from("__Lat"), coord.to_string());
                 }
+            }
+
+            if exif_info.contains_key("GPSAltitude") && exif_info.contains_key("GPSAltitudeRef") {
+                let mut altitude = exif_info.get("GPSAltitude").unwrap().to_string().parse::<f32>().unwrap_or(0.0);
+                let altitude_ref = exif_info.get("GPSAltitudeRef").unwrap().to_string();
+                if altitude_ref.eq("1") {
+                    altitude = -altitude;
+                }
+                exif_info.insert(String::from("__Alt"), altitude.to_string());
             }
 
             return Some(exif_info);

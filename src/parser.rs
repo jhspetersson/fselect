@@ -762,4 +762,15 @@ mod tests {
 
         assert!(query.is_err());
     }
+
+    #[test]
+    fn path_with_spaces() {
+        let query = "select name from '/opt/Some Cool Dir/Test This'";
+        let mut p = Parser::new();
+        let query = p.parse(&query, false).unwrap();
+
+        assert_eq!(query.roots, vec![
+            Root::new(String::from("/opt/Some Cool Dir/Test This"), 0, 0, false, false, None, None, None, Bfs, false),
+        ]);
+    }
 }

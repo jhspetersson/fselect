@@ -233,6 +233,7 @@ pub enum Function {
     Upper,
     Length,
     Base64,
+    Bin,
     Hex,
     Oct,
 
@@ -299,6 +300,7 @@ impl FromStr for Function {
             "upper" | "uppercase" | "ucase" => Ok(Function::Upper),
             "length" | "len" => Ok(Function::Length),
             "base64" => Ok(Function::Base64),
+            "bin" => Ok(Function::Bin),
             "hex" => Ok(Function::Hex),
             "oct" => Ok(Function::Oct),
 
@@ -424,6 +426,12 @@ pub fn get_value(function: &Option<Function>,
         },
         Some(Function::Base64) => {
             return Variant::from_string(&base64::encode(&function_arg));
+        },
+        Some(Function::Bin) => {
+            return match function_arg.parse::<i64>() {
+                Ok(val) => Variant::from_string(&format!("{:b}", val)),
+                _ => Variant::empty(VariantType::String)
+            };
         },
         Some(Function::Hex) => {
             return match function_arg.parse::<i64>() {

@@ -215,6 +215,7 @@ Used for detecting Japanese symbols in file names and such.
 
 | Function | Meaning | Example |
 | --- | --- | --- |
+| BIN | Convert integer value to binary representation | `select name, size, bin(size) from /home/user/Downloads` |
 | HEX | Convert integer value to hexadecimal representation | `select name, size, hex(size), upper(hex(size)) from /home/user/Downloads` |
 | OCT | Convert integer value to octal representation | `select name, size, oct(size) from /home/user/Downloads` |
 | CONTAINS | `true` if file contains string, `false` if not | `select contains(TODO) from /home/user/Projects/foo/src` |

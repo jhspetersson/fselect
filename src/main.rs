@@ -370,6 +370,7 @@ Functions:
         CONTAINS_KATAKANA           Used to check if string value contains katakana symbols
         CONTAINS_KANJI              Used to check if string value contains kanji symbols
     Other:
+        BIN                         Returns binary representation of an integer value
         HEX                         Returns hexadecimal representation of an integer value
         OCT                         Returns octal representation of an integer value
         CONTAINS                    Returns true, if file contains string, false if not

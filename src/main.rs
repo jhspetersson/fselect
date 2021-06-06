@@ -383,9 +383,9 @@ Functions:
 Expressions:
     Operators:
         = | == | eq                 Used to check for equality between the column field and value
-        ===                         Used to check for strict equality between column field and value irregardless of any special regex characters
+        === | eeq                   Used to check for strict equality between column field and value irregardless of any special regex characters
         != | <> | ne                Used to check for inequality between column field and value
-        !==                         Used to check for inequality between column field and value irregardless of any special regex characters
+        !== | ene                   Used to check for inequality between column field and value irregardless of any special regex characters
         < | lt                      Used to check whether the column value is less than the value
         <= | lte | le               Used to check whether the column value is less than or equal to the value
         > | gt                      Used to check whether the column value is greater than the value

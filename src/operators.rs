@@ -27,8 +27,8 @@ impl Op {
         match text.to_lowercase().as_str() {
             "=" | "==" | "eq" => Some(Op::Eq),
             "!=" | "<>" | "ne" => Some(Op::Ne),
-            "===" => Some(Op::Eeq),
-            "!==" => Some(Op::Ene),
+            "===" | "eeq" => Some(Op::Eeq),
+            "!==" | "ene" => Some(Op::Ene),
             ">" | "gt" => Some(Op::Gt),
             ">=" | "gte" | "ge" => Some(Op::Gte),
             "<" | "lt" => Some(Op::Lt),

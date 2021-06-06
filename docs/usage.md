@@ -288,8 +288,8 @@ When you put a directory to search at, you can specify some options.
 
 * `=` or `==` or `eq`
 * `!=` or `<>` or `ne`
-* `===`
-* `!==`
+* `===` or `eeq`
+* `!==` or `ene`
 * `>` or `gt`
 * `>=` or `gte` or `ge`
 * `<` or `lt`

@@ -78,7 +78,7 @@ impl Parser {
                 },
                 Some(Lexem::String(ref s)) | Some(Lexem::RawString(ref s)) | Some(Lexem::ArithmeticOperator(ref s)) => {
                     if s.to_ascii_lowercase() != "select" {
-                        if s == "*" && fields.is_empty() {
+                        if s == "*" {
                             #[cfg(unix)]
                                 {
                                     fields.push(Expr::field(Field::Mode));
@@ -87,6 +87,7 @@ impl Parser {
                                 }
 
                             fields.push(Expr::field(Field::Size));
+                            fields.push(Expr::field(Field::Modified));
                             fields.push(Expr::field(Field::Path));
                         } else {
                             self.drop_lexem();

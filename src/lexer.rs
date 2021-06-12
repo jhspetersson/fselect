@@ -535,4 +535,25 @@ mod tests {
         assert_eq!(lexer.next_lexem(), Some(Lexem::Operator(String::from("eq"))));
         assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("/home/user/docs"))));
     }
+
+    #[test]
+    fn star_field() {
+        let mut lexer = Lexer::new("select modified,* from /test");
+
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("select"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("modified"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::Comma));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::ArithmeticOperator(String::from("*"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::From));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("/test"))));
+
+        let mut lexer = Lexer::new("select modified, * from /test limit 10");
+
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("select"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("modified"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::Comma));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::ArithmeticOperator(String::from("*"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::From));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("/test"))));
+    }
 }

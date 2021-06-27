@@ -236,6 +236,7 @@ pub enum Function {
     Bin,
     Hex,
     Oct,
+    Power,
 
     ContainsJapanese,
     ContainsHiragana,
@@ -303,6 +304,7 @@ impl FromStr for Function {
             "bin" => Ok(Function::Bin),
             "hex" => Ok(Function::Hex),
             "oct" => Ok(Function::Oct),
+            "power" | "pow" => Ok(Function::Power),
 
             "contains_japanese" | "japanese" => Ok(Function::ContainsJapanese),
             "contains_hiragana" | "hiragana" => Ok(Function::ContainsHiragana),
@@ -403,7 +405,8 @@ impl Function {
             | Function::Random
             | Function::Day
             | Function::Month
-            | Function::Year => true,
+            | Function::Year
+            | Function::Power => true,
             _ => false
         }
     }
@@ -442,6 +445,19 @@ pub fn get_value(function: &Option<Function>,
         Some(Function::Oct) => {
             return match function_arg.parse::<i64>() {
                 Ok(val) => Variant::from_string(&format!("{:o}", val)),
+                _ => Variant::empty(VariantType::String)
+            };
+        },
+        Some(Function::Power) => {
+            return match function_arg.parse::<f64>() {
+                Ok(val) => {
+                    let power = match function_args.get(0) {
+                        Some(power) => power.parse::<f64>().unwrap(),
+                        _ => 0.0
+                    };
+
+                    return Variant::from_float(val.powf(power));
+                },
                 _ => Variant::empty(VariantType::String)
             };
         },

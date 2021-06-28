@@ -218,6 +218,7 @@ Used for detecting Japanese symbols in file names and such.
 | BIN | Convert integer value to binary representation | `select name, size, bin(size) from /home/user/Downloads` |
 | HEX | Convert integer value to hexadecimal representation | `select name, size, hex(size), upper(hex(size)) from /home/user/Downloads` |
 | OCT | Convert integer value to octal representation | `select name, size, oct(size) from /home/user/Downloads` |
+| POWER or POW | Raise the value to the specified power | `select pow(2, 3)` |
 | CONTAINS | `true` if file contains string, `false` if not | `select contains(TODO) from /home/user/Projects/foo/src` |
 | COALESCE | Returns first nonempty expression value | `select name, size, COALESCE(sha256, '---') from /home/user/Downloads` |
 | CONCAT | Returns concatenated string of expression values | `select CONCAT('Name is ', name, ' size is ', fsize, '!!!') from /home/user/Downloads` |

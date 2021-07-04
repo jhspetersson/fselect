@@ -466,7 +466,7 @@ pub fn get_metadata(entry: &DirEntry, follow_symlinks: bool) -> Option<Metadata>
 }
 
 lazy_static! {
-    static ref IMAGE_DIM_READABLE_EXTENSIONS: Vec<String> = vec![String::from(".bmp"), String::from(".gif"), String::from(".heic"), String::from(".heif"), String::from(".jpeg"), String::from(".jpg"), String::from(".png"), String::from(".psb"), String::from(".psd"), String::from(".tiff"), String::from(".webp")];
+    static ref IMAGE_DIM_READABLE_EXTENSIONS: Vec<String> = vec![String::from(".bmp"), String::from(".gif"), String::from(".heic"), String::from(".heif"), String::from(".jpeg"), String::from(".jpg"), String::from(".jxl"), String::from(".png"), String::from(".psb"), String::from(".psd"), String::from(".tiff"), String::from(".webp")];
     static ref MP4_DIM_READABLE_EXTENSIONS: Vec<String> = vec![String::from(".mp4")];
     static ref MKV_DIM_READABLE_EXTENSIONS: Vec<String> = vec![String::from(".mkv")];
 }

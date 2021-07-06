@@ -292,13 +292,6 @@ pub fn mode_is_block_device(mode: u32) -> bool {
     mode & S_IFMT & S_IFBLK == S_IFMT & S_IFBLK
 }
 
-pub fn is_directory(meta: &Metadata) -> bool {
-    match get_mode_from_boxed_unix_int(meta) {
-        Some(mode) => mode_is_directory(mode),
-        None => false
-    }
-}
-
 pub fn mode_is_directory(mode: u32) -> bool {
     mode & S_IFMT & S_IFDIR == S_IFMT & S_IFDIR
 }

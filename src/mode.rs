@@ -32,6 +32,12 @@ pub fn format_mode(mode: u32) -> String {
 fn get_mode_unix(mode: u32) -> String {
     let mut s = String::new();
 
+    if mode_is_directory(mode) {
+        s.push('d')
+    } else {
+        s.push('-');
+    }
+
     // user
 
     if mode_user_read(mode) {
@@ -286,6 +292,17 @@ pub fn mode_is_block_device(mode: u32) -> bool {
     mode & S_IFMT & S_IFBLK == S_IFMT & S_IFBLK
 }
 
+pub fn is_directory(meta: &Metadata) -> bool {
+    match get_mode_from_boxed_unix_int(meta) {
+        Some(mode) => mode_is_directory(mode),
+        None => false
+    }
+}
+
+pub fn mode_is_directory(mode: u32) -> bool {
+    mode & S_IFMT & S_IFDIR == S_IFMT & S_IFDIR
+}
+
 pub fn is_socket(meta: &Metadata) -> bool {
     match get_mode_from_boxed_unix_int(meta) {
         Some(mode) => mode_is_socket(mode),
@@ -297,28 +314,29 @@ pub fn mode_is_socket(mode: u32) -> bool {
     mode & S_IFMT & S_IFSOCK == S_IFMT & S_IFSOCK
 }
 
-const S_IRUSR: u32 = 400;
-const S_IWUSR: u32 = 200;
-const S_IXUSR: u32 = 100;
+const S_IRUSR: u32 = 0o400;
+const S_IWUSR: u32 = 0o200;
+const S_IXUSR: u32 = 0o100;
 
-const S_IRGRP: u32 = 40;
-const S_IWGRP: u32 = 20;
-const S_IXGRP: u32 = 10;
+const S_IRGRP: u32 = 0o40;
+const S_IWGRP: u32 = 0o20;
+const S_IXGRP: u32 = 0o10;
 
-const S_IROTH: u32 = 4;
-const S_IWOTH: u32 = 2;
-const S_IXOTH: u32 = 1;
+const S_IROTH: u32 = 0o4;
+const S_IWOTH: u32 = 0o2;
+const S_IXOTH: u32 = 0o1;
 
-const S_ISUID: u32 = 4000;
-const S_ISGID: u32 = 2000;
+const S_ISUID: u32 = 0o4000;
+const S_ISGID: u32 = 0o2000;
 #[allow(unused)]
-const S_ISVTX: u32 = 1000;
+const S_ISVTX: u32 = 0o1000;
 
-const S_IFMT: u32 = 170000;
-const S_IFIFO: u32 = 10000;
-const S_IFCHR: u32 = 20000;
-const S_IFBLK: u32 = 60000;
-const S_IFSOCK: u32 = 140000;
+const S_IFMT: u32 = 0o170000;
+const S_IFBLK: u32 = 0o60000;
+const S_IFDIR: u32 = 0o40000;
+const S_IFCHR: u32 = 0o20000;
+const S_IFIFO: u32 = 0o10000;
+const S_IFSOCK: u32 = 0o140000;
 
 #[cfg(windows)]
 fn get_mode_windows(mode: u32) -> String {

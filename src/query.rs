@@ -26,6 +26,14 @@ impl Query {
 
         result
     }
+
+    pub fn is_ordered(&self) -> bool {
+        !self.ordering_fields.is_empty()
+    }
+
+    pub fn has_aggregate_column(&self) -> bool {
+        self.fields.iter().any(|ref f| f.has_aggregate_function())
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -63,7 +71,7 @@ impl Root {
             hgignore,
             dockerignore,
             traversal,
-            regexp
+            regexp,
         }
     }
 
@@ -78,7 +86,7 @@ impl Root {
             hgignore: None,
             dockerignore: None,
             traversal: Bfs,
-            regexp: false
+            regexp: false,
         }
     }
 
@@ -92,12 +100,18 @@ impl Root {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum TraversalMode {
-    Bfs, Dfs
+    Bfs,
+    Dfs,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum OutputFormat {
-    Tabs, Lines, List, Csv, Json, Html
+    Tabs,
+    Lines,
+    List,
+    Csv,
+    Json,
+    Html,
 }
 
 impl OutputFormat {

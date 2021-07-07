@@ -24,6 +24,7 @@ mod ignore;
 mod lexer;
 mod mode;
 mod operators;
+mod output;
 mod parser;
 mod query;
 mod searcher;

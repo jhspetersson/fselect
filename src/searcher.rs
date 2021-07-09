@@ -49,6 +49,7 @@ use crate::operators::Op;
 use crate::query::{Query, Root, TraversalMode};
 use crate::query::TraversalMode::Bfs;
 use crate::util::*;
+use crate::util::dimensions::get_dimensions;
 use crate::output::ResultsWriter;
 
 pub struct Searcher {
@@ -78,7 +79,7 @@ pub struct Searcher {
     file_line_count: Option<usize>,
     file_line_count_set: bool,
 
-    file_dimensions: Option<(usize, usize)>,
+    file_dimensions: Option<Dimensions>,
     file_dimensions_set: bool,
 
     file_mp3_metadata: Option<MP3Metadata>,
@@ -1187,21 +1188,21 @@ impl Searcher {
             Field::Width => {
                 if !self.file_dimensions_set {
                     self.file_dimensions_set = true;
-                    self.file_dimensions = get_dimensions(entry);
+                    self.file_dimensions = get_dimensions(entry.path());
                 }
 
-                if let Some((x, _)) = self.file_dimensions {
-                    return Variant::from_int(x as i64);
+                if let Some(Dimensions { width, .. }) = self.file_dimensions {
+                    return Variant::from_int(width as i64);
                 }
             },
             Field::Height => {
                 if !self.file_dimensions_set {
                     self.file_dimensions_set = true;
-                    self.file_dimensions = get_dimensions(entry);
+                    self.file_dimensions = get_dimensions(entry.path());
                 }
 
-                if let Some((_, y)) = self.file_dimensions {
-                    return Variant::from_int(y as i64);
+                if let Some(Dimensions { height, .. }) = self.file_dimensions {
+                    return Variant::from_int(height as i64);
                 }
             },
             Field::Duration => {

@@ -8,6 +8,7 @@ mod svg;
 use mp4::Mp4DimensionsExtractor;
 use mkv::MkvDimensionsExtractor;
 use image::ImageDimensionsExtractor;
+use self::svg::SvgDimensionsExtractor;
 use std::path::Path;
 
 #[derive(PartialEq, Eq, Clone, Debug)]
@@ -21,9 +22,10 @@ pub trait DimensionsExtractor {
     fn try_read_dimensions(&self, path: &Path) -> io::Result<Option<Dimensions>>;
 }
 
-const EXTRACTORS: [&dyn DimensionsExtractor; 3] = [
+const EXTRACTORS: [&dyn DimensionsExtractor; 4] = [
     &MkvDimensionsExtractor,
     &Mp4DimensionsExtractor,
+    &SvgDimensionsExtractor,
     &ImageDimensionsExtractor,
 ];
 
@@ -50,6 +52,19 @@ mod test {
         let path = PathBuf::from(path_string);
         assert!(under_test.supports_ext(path.extension().and_then(OsStr::to_str).unwrap()));
         assert_eq!(under_test.try_read_dimensions(&path)?, expected.clone());
+
+        Ok(())
+    }
+
+    pub(crate) fn test_fail<T: DimensionsExtractor>(under_test: T, test_res_path: &str, expected: std::io::ErrorKind) -> Result<(), Box<dyn Error>> {
+        let path_string = std::env::var("CARGO_MANIFEST_DIR")? + "/resources/test/" + test_res_path;
+        let path = PathBuf::from(path_string);
+        assert!(under_test.supports_ext(path.extension().and_then(OsStr::to_str).unwrap()));
+        let result = under_test.try_read_dimensions(&path);
+        assert_eq!(
+            result.map_err(|err| err.kind()),
+            Err(expected)
+        );
 
         Ok(())
     }

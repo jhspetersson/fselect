@@ -16,12 +16,10 @@ use std::path::Path;
 use std::path::PathBuf;
 
 use chrono::{DateTime, Local};
-use csv;
 use lscolors::{LsColors, Style};
 use mp3_metadata;
 use mp3_metadata::MP3Metadata;
 use regex::Regex;
-use serde_json;
 #[cfg(all(unix, feature = "users"))]
 use users::{Groups, Users, UsersCache};
 #[cfg(unix)]
@@ -49,14 +47,15 @@ use crate::mode;
 use crate::operators::LogicalOp;
 use crate::operators::Op;
 use crate::query::{Query, Root, TraversalMode};
-use crate::query::OutputFormat;
 use crate::query::TraversalMode::Bfs;
 use crate::util::*;
+use crate::output::ResultsWriter;
 
 pub struct Searcher {
     query: Query,
     config : Config,
     use_colors: bool,
+    results_writer: ResultsWriter,
     #[cfg(all(unix, feature = "users"))]
     user_cache: UsersCache,
     regex_cache: HashMap<String, Regex>,
@@ -93,10 +92,12 @@ impl Searcher {
     pub fn new(query: Query, config: Config, use_colors: bool) -> Self {
         let limit = query.limit;
 
+        let results_writer = ResultsWriter::new(&query.output_format);
         Searcher {
             query,
             config,
             use_colors,
+            results_writer,
             #[cfg(all(unix, feature = "users"))]
             user_cache: UsersCache::new(),
             regex_cache: HashMap::new(),
@@ -152,122 +153,20 @@ impl Searcher {
     }
 
     fn has_ordering(&self) -> bool {
-        !self.query.ordering_fields.is_empty()
+        self.query.is_ordered()
     }
 
     fn has_aggregate_column(&self) -> bool {
-        self.query.fields.iter().any(|ref f| f.has_aggregate_function())
-    }
-
-    fn print_results_start(&self) -> bool {
-        let res = match self.query.output_format {
-            OutputFormat::Json => Some(write!(std::io::stdout(), "[")),
-            OutputFormat::Html => Some(write!(std::io::stdout(), "<html><body><table>")),
-            _ => None
-        };
-
-        if let Some(Err(e)) = res {
-            if e.kind() == ErrorKind::BrokenPipe {
-                return false;
-            }
-        }
-
-        true
-    }
-
-    fn format_results_item(&self, record: String,
-                           mut output_value: String,
-                           records: &mut Vec<String>) -> String {
-        match self.query.output_format {
-            OutputFormat::Lines => {
-                output_value.push_str(&record);
-                output_value.push('\n');
-            },
-            OutputFormat::List => {
-                output_value.push_str(&record);
-                output_value.push('\0');
-            },
-            OutputFormat::Json => {
-                // use file_map later
-            },
-            OutputFormat::Tabs => {
-                output_value.push_str(&record);
-                output_value.push('\t');
-            },
-            OutputFormat::Csv => {
-                records.push(record);
-            },
-            OutputFormat::Html => {
-                output_value.push_str("<td>");
-                output_value.push_str(&record);
-                output_value.push_str("</td>");
-            }
-        }
-
-        output_value
-    }
-
-    fn format_results_row_begin(&self,
-                              mut output_value: String,
-                              _records: &Vec<String>,
-                              _file_map: &HashMap<String, String>) -> String {
-        match self.query.output_format {
-            OutputFormat::Html => {
-                output_value.push_str("<tr>");
-            },
-            _ => {}
-        }
-
-        output_value
-    }
-
-    fn format_results_row_end(&self,
-                              mut output_value: String,
-                              records: &Vec<String>,
-                              file_map: &HashMap<String, String>) -> String {
-        match self.query.output_format {
-            OutputFormat::Lines | OutputFormat::List => {},
-            OutputFormat::Tabs => {
-                output_value.pop();
-                output_value.push('\n');
-            },
-            OutputFormat::Csv => {
-                let mut csv_output = WritableBuffer::new();
-                {
-                    let mut csv_writer = csv::Writer::from_writer(&mut csv_output);
-                    let _ = csv_writer.write_record(records);
-                }
-                let result: String = csv_output.into();
-                output_value.push_str(result.as_ref());
-            },
-            OutputFormat::Json => {
-                if !self.is_buffered() && self.found > 1 {
-                    output_value.push(',');
-                }
-                output_value.push_str(&serde_json::to_string(&file_map).unwrap());
-            },
-            OutputFormat::Html => {
-                output_value.push_str("</tr>");
-            }
-        }
-
-        output_value
-    }
-
-    fn print_results_end(&self) {
-        match self.query.output_format {
-            OutputFormat::Json => { let _ = write!(std::io::stdout(), "]"); },
-            OutputFormat::Html => { let _ = write!(std::io::stdout(), "</table></body></html>"); },
-            _ => { }
-        }
+        self.query.has_aggregate_column()
     }
 
     pub fn list_search_results(&mut self) -> io::Result<()> {
         let current_dir = std::env::current_dir().unwrap();
 
-        let started = self.print_results_start();
-        if !started {
-            return Ok(());
+        if let Err(e) = self.results_writer.write_header(&mut std::io::stdout()) {
+            if e.kind() == ErrorKind::BrokenPipe {
+                return Ok(())
+            }
         }
 
         let mut roots = vec![];
@@ -395,23 +294,19 @@ impl Searcher {
         }
 
         if self.has_aggregate_column() {
-            let mut records = vec![];
-            let mut file_map = HashMap::new();
-            let mut output_value = String::new();
 
-            output_value = self.format_results_row_begin(output_value, &records, &file_map);
+            let mut buf = WritableBuffer::new();
+            let mut items: Vec<(String, String)> = Vec::new();
 
             for column_expr in &self.query.fields.clone() {
                 let record = format!("{}", self.get_column_expr_value(None, &None, &mut HashMap::new(), column_expr));
-                file_map.insert(column_expr.to_string().to_lowercase(), record.clone());
-
-                output_value = self.format_results_item(record, output_value, &mut records);
+                let field_name = column_expr.to_string().to_lowercase();
+                items.push((field_name, record));
             }
 
-            output_value = self.format_results_row_end(output_value, &records, &file_map);
+            self.results_writer.write_row(&mut buf, items)?;
 
-            let printed = write!(std::io::stdout(), "{}", output_value);
-            if let Err(e) = printed {
+            if let Err(e) = write!(std::io::stdout(), "{}", String::from(buf)) {
                 if e.kind() == ErrorKind::BrokenPipe {
                     return Ok(());
                 }
@@ -419,20 +314,16 @@ impl Searcher {
         } else if self.is_buffered() {
             let mut first = true;
             for piece in self.output_buffer.values() {
-                if let OutputFormat::Json = self.query.output_format {
-                    if first {
-                        first = false;
-                    } else {
-                        let printed = write!(std::io::stdout(), ",");
-                        if let Err(e) = printed {
-                            if e.kind() == ErrorKind::BrokenPipe {
-                                return Ok(());
-                            }
+                if first {
+                    first = false;
+                } else {
+                    if let Err(e) = self.results_writer.write_row_separator(&mut std::io::stdout()){
+                        if e.kind() == ErrorKind::BrokenPipe {
+                            return Ok(());
                         }
                     }
                 }
-                let printed = write!(std::io::stdout(), "{}", piece);
-                if let Err(e) = printed {
+                if let Err(e) = write!(std::io::stdout(), "{}", piece) {
                     if e.kind() == ErrorKind::BrokenPipe {
                         return Ok(());
                     }
@@ -440,7 +331,7 @@ impl Searcher {
             }
         }
 
-        self.print_results_end();
+        self.results_writer.write_footer(&mut std::io::stdout())?;
 
         Ok(())
     }
@@ -646,7 +537,7 @@ impl Searcher {
 
                             if pass_gitignore && pass_hgignore && pass_dockerignore {
                                 if min_depth == 0 || depth >= min_depth {
-                                    let checked = self.check_file(&entry, &None);
+                                    let checked = self.check_file(&entry, &None)?;
                                     if !checked {
                                         return Ok(());
                                     }
@@ -661,7 +552,7 @@ impl Searcher {
 
                                                     if let Ok(afile) = archive.by_index(i) {
                                                         let file_info = to_file_info(&afile);
-                                                        let checked = self.check_file(&entry, &Some(file_info));
+                                                        let checked = self.check_file(&entry, &Some(file_info))?;
                                                         if !checked {
                                                             return Ok(());
                                                         }
@@ -1568,40 +1459,42 @@ impl Searcher {
 
     fn check_file(&mut self,
                   entry: &DirEntry,
-                  file_info: &Option<FileInfo>) -> bool {
+                  file_info: &Option<FileInfo>) -> std::io::Result<bool> {
         self.clear_file_data();
 
         if let Some(ref expr) = self.query.expr.clone() {
             let result = self.conforms(entry, file_info, expr);
             if !result {
-                return true;
+                return Ok(true);
             }
         }
 
         self.found += 1;
 
-        let mut records = vec![];
         let mut file_map = HashMap::new();
 
-        let mut output_value = String::new();
+        let mut buf = WritableBuffer::new();
         let mut criteria = vec!["".to_string(); self.query.ordering_fields.len()];
 
         for field in self.query.get_all_fields() {
             file_map.insert(field.to_string(), self.get_field_value(entry, file_info, &field).to_string());
         }
 
-        output_value = self.format_results_row_begin(output_value, &records, &file_map);
+
+        if !self.is_buffered() && self.found > 1 {
+            self.results_writer.write_row_separator(&mut buf)?;
+        }
+
+        let mut items: Vec<(String, String)> = Vec::new();
 
         for field in self.query.fields.clone().iter() {
             let record = self.get_column_expr_value(Some(entry), file_info, &mut file_map, &field);
-            file_map.insert(field.to_string(), record.to_string().clone());
 
             let value = match self.use_colors && field.contains_colorized() {
                 true => self.colorize(&record.to_string()),
                 false => record.to_string()
             };
-
-            output_value = self.format_results_item(value, output_value, &mut records);
+            items.push((field.to_string(), value));
         }
 
         for (idx, field) in self.query.ordering_fields.clone().iter().enumerate() {
@@ -1611,24 +1504,23 @@ impl Searcher {
             }
         }
 
-        output_value = self.format_results_row_end(output_value, &records, &file_map);
+        self.results_writer.write_row(&mut buf, items)?;
 
         if self.is_buffered() {
-            self.output_buffer.insert(Criteria::new(self.query.ordering_fields.clone(), criteria, self.query.ordering_asc.clone()), output_value);
+            self.output_buffer.insert(Criteria::new(self.query.ordering_fields.clone(), criteria, self.query.ordering_asc.clone()), String::from(buf));
 
             if self.has_aggregate_column() {
                 self.raw_output_buffer.push(file_map);
             }
         } else {
-            let printed = write!(std::io::stdout(), "{}", output_value);
-            if let Err(e) = printed {
+            if let Err(e) = write!(std::io::stdout(), "{}", String::from(buf)) {
                 if e.kind() == ErrorKind::BrokenPipe {
-                    return false;
+                    return Ok(false);
                 }
             }
         }
 
-        true
+        Ok(true)
     }
 
     fn colorize(&mut self, value: &str) -> String {

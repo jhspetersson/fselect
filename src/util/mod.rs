@@ -3,6 +3,7 @@ mod glob;
 pub(crate) mod japanese;
 mod top_n;
 mod wbuf;
+pub mod dimensions;
 
 use std::cmp::Ordering;
 use std::collections::HashMap;
@@ -23,7 +24,6 @@ use std::string::ToString;
 
 use chrono::Local;
 use chrono::TimeZone;
-use imagesize;
 use humansize::FileSize;
 use mp3_metadata;
 use mp3_metadata::MP3Metadata;
@@ -42,6 +42,7 @@ pub use self::glob::convert_like_to_pattern;
 pub use self::glob::is_glob;
 pub use self::top_n::TopN;
 pub use self::wbuf::WritableBuffer;
+pub use dimensions::Dimensions;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd)]
 pub struct Criteria<T> where T: Display + ToString {
@@ -460,93 +461,6 @@ pub fn get_metadata(entry: &DirEntry, follow_symlinks: bool) -> Option<Metadata>
 
     if let Ok(metadata) = metadata {
         return Some(metadata);
-    }
-
-    None
-}
-
-lazy_static! {
-    static ref IMAGE_DIM_READABLE_EXTENSIONS: Vec<String> = vec![String::from(".bmp"), String::from(".gif"), String::from(".heic"), String::from(".heif"), String::from(".jpeg"), String::from(".jpg"), String::from(".jxl"), String::from(".png"), String::from(".psb"), String::from(".psd"), String::from(".tiff"), String::from(".webp")];
-    static ref MP4_DIM_READABLE_EXTENSIONS: Vec<String> = vec![String::from(".mp4")];
-    static ref MKV_DIM_READABLE_EXTENSIONS: Vec<String> = vec![String::from(".mkv")];
-}
-
-fn is_image_dim_readable(file_name: &str) -> bool {
-    has_extension(file_name, &IMAGE_DIM_READABLE_EXTENSIONS)
-}
-
-fn is_mp4_dim_readable(file_name: &str) -> bool {
-    has_extension(file_name, &MP4_DIM_READABLE_EXTENSIONS)
-}
-
-fn is_mkv_dim_readable(file_name: &str) -> bool {
-    has_extension(file_name, &MKV_DIM_READABLE_EXTENSIONS)
-}
-
-pub fn get_dimensions(entry: &DirEntry) -> Option<(usize, usize)> {
-    let file_name = entry.file_name().to_string_lossy().to_string();
-
-    if is_image_dim_readable(&file_name) {
-        return get_img_dimensions(entry);
-    }
-
-    if is_mp4_dim_readable(&file_name) {
-        return get_mp4_dimensions(entry);
-    }
-
-    if is_mkv_dim_readable(&file_name) {
-        return get_mkv_dimensions(entry);
-    }
-
-    None
-}
-
-fn get_img_dimensions(entry: &DirEntry) -> Option<(usize, usize)> {
-    match imagesize::size(entry.path()) {
-        Ok(dimensions) => Some((dimensions.width, dimensions.height)),
-        _ => None
-    }
-}
-
-fn get_mp4_dimensions(entry: &DirEntry) -> Option<(usize, usize)> {
-    if let Ok(mut fd) = File::open(entry.path().as_path()) {
-        let mut buf = Vec::new();
-
-        if let Ok(_) = fd.read_to_end(&mut buf) {
-            let mut c = std::io::Cursor::new(&buf);
-
-            if let Ok(context) = mp4parse::read_mp4(&mut c) {
-                for track in context.tracks {
-                    match track.track_type {
-                        mp4parse::TrackType::Video => {
-                            if let Some(tkhd) = track.tkhd {
-                                return Some(((tkhd.width / 65536) as usize, (tkhd.height / 65536) as usize));
-                            }
-                        },
-                        _ => { }
-                    }
-                }
-            }
-        }
-    }
-
-    None
-}
-
-fn get_mkv_dimensions(entry: &DirEntry) -> Option<(usize, usize)> {
-    if let Ok(fd) = File::open(entry.path().as_path()) {
-        if let Ok(matroska) = matroska::Matroska::open(fd) {
-            for track in matroska.tracks {
-                match track.tracktype {
-                    matroska::Tracktype::Video => {
-                        if let matroska::Settings::Video(settings) = track.settings {
-                            return Some((settings.pixel_width as usize, settings.pixel_height as usize));
-                        }
-                    },
-                    _ => { }
-                }
-            }
-        }
     }
 
     None

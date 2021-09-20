@@ -32,6 +32,8 @@ pub fn format_mode(mode: u32) -> String {
 fn get_mode_unix(mode: u32) -> String {
     let mut s = String::new();
 
+    // directory
+
     if mode_is_directory(mode) {
         s.push('d')
     } else {
@@ -292,6 +294,7 @@ pub fn mode_is_block_device(mode: u32) -> bool {
     mode & S_IFMT & S_IFBLK == S_IFMT & S_IFBLK
 }
 
+#[cfg(unix)]
 pub fn mode_is_directory(mode: u32) -> bool {
     mode & S_IFMT & S_IFDIR == S_IFMT & S_IFDIR
 }
@@ -326,6 +329,7 @@ const S_ISVTX: u32 = 0o1000;
 
 const S_IFMT: u32 = 0o170000;
 const S_IFBLK: u32 = 0o60000;
+#[cfg(unix)]
 const S_IFDIR: u32 = 0o40000;
 const S_IFCHR: u32 = 0o20000;
 const S_IFIFO: u32 = 0o10000;

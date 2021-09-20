@@ -32,12 +32,19 @@ pub fn format_mode(mode: u32) -> String {
 fn get_mode_unix(mode: u32) -> String {
     let mut s = String::new();
 
-    // directory
+    // link
 
-    if mode_is_directory(mode) {
-        s.push('d')
+    if mode_is_link(mode) {
+        s.push('l')
     } else {
-        s.push('-');
+
+        // directory
+
+        if mode_is_directory(mode) {
+            s.push('d')
+        } else {
+            s.push('-');
+        }
     }
 
     // user
@@ -299,6 +306,11 @@ pub fn mode_is_directory(mode: u32) -> bool {
     mode & S_IFMT & S_IFDIR == S_IFMT & S_IFDIR
 }
 
+#[cfg(unix)]
+pub fn mode_is_link(mode: u32) -> bool {
+    mode & S_IFMT & S_IFLNK == S_IFMT & S_IFLNK
+}
+
 pub fn is_socket(meta: &Metadata) -> bool {
     match get_mode_from_boxed_unix_int(meta) {
         Some(mode) => mode_is_socket(mode),
@@ -333,6 +345,8 @@ const S_IFBLK: u32 = 0o60000;
 const S_IFDIR: u32 = 0o40000;
 const S_IFCHR: u32 = 0o20000;
 const S_IFIFO: u32 = 0o10000;
+#[cfg(unix)]
+const S_IFLNK: u32 = 0o120000;
 const S_IFSOCK: u32 = 0o140000;
 
 #[cfg(windows)]

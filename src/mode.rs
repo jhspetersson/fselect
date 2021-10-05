@@ -32,19 +32,20 @@ pub fn format_mode(mode: u32) -> String {
 fn get_mode_unix(mode: u32) -> String {
     let mut s = String::new();
 
-    // link
-
-    if mode_is_link(mode) {
+    if mode_is_block_device(mode) {
+        s.push('b')
+    } else if mode_is_char_device(mode) {
+        s.push('c')
+    } else if mode_is_link(mode) {
         s.push('l')
+    } else if mode_is_socket(mode) {
+        s.push('s')
+    } else if mode_is_pipe(mode) {
+        s.push('p')
+    } else if mode_is_directory(mode) {
+        s.push('d')
     } else {
-
-        // directory
-
-        if mode_is_directory(mode) {
-            s.push('d')
-        } else {
-            s.push('-');
-        }
+        s.push('-')
     }
 
     // user
@@ -52,19 +53,27 @@ fn get_mode_unix(mode: u32) -> String {
     if mode_user_read(mode) {
         s.push('r')
     } else {
-        s.push('-');
+        s.push('-')
     }
 
     if mode_user_write(mode) {
         s.push('w')
     } else {
-        s.push('-');
+        s.push('-')
     }
 
     if mode_user_exec(mode) {
-        s.push('x')
+        if mode_suid(mode) {
+            s.push('s')
+        } else {
+            s.push('x')
+        }
     } else {
-        s.push('-');
+        if mode_suid(mode) {
+            s.push('S')
+        } else {
+            s.push('-')
+        }
     }
 
     // group
@@ -72,19 +81,27 @@ fn get_mode_unix(mode: u32) -> String {
     if mode_group_read(mode) {
         s.push('r')
     } else {
-        s.push('-');
+        s.push('-')
     }
 
     if mode_group_write(mode) {
         s.push('w')
     } else {
-        s.push('-');
+        s.push('-')
     }
 
     if mode_group_exec(mode) {
-        s.push('x')
+        if mode_sgid(mode) {
+            s.push('s')
+        } else {
+            s.push('x')
+        }
     } else {
-        s.push('-');
+        if mode_sgid(mode) {
+            s.push('S')
+        } else {
+            s.push('-')
+        }
     }
 
     // other
@@ -92,19 +109,27 @@ fn get_mode_unix(mode: u32) -> String {
     if mode_other_read(mode) {
         s.push('r')
     } else {
-        s.push('-');
+        s.push('-')
     }
 
     if mode_other_write(mode) {
         s.push('w')
     } else {
-        s.push('-');
+        s.push('-')
     }
 
     if mode_other_exec(mode) {
-        s.push('x')
+        if mode_sticky(mode) {
+            s.push('t')
+        } else {
+            s.push('x')
+        }
     } else {
-        s.push('-');
+        if mode_sticky(mode) {
+            s.push('T')
+        } else {
+            s.push('-')
+        }
     }
 
     s
@@ -268,6 +293,11 @@ pub fn mode_sgid(mode: u32) -> bool {
     mode & S_IFMT & S_ISGID == S_IFMT & S_ISGID
 }
 
+#[cfg(unix)]
+pub fn mode_sticky(mode: u32) -> bool {
+    mode & S_IFMT & S_ISVTX == S_IFMT & S_ISVTX
+}
+
 pub fn is_pipe(meta: &Metadata) -> bool {
     match get_mode_from_boxed_unix_int(meta) {
         Some(mode) => mode_is_pipe(mode),
@@ -336,7 +366,7 @@ const S_IXOTH: u32 = 0o1;
 
 const S_ISUID: u32 = 0o4000;
 const S_ISGID: u32 = 0o2000;
-#[allow(unused)]
+#[cfg(unix)]
 const S_ISVTX: u32 = 0o1000;
 
 const S_IFMT: u32 = 0o170000;

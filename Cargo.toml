@@ -53,3 +53,20 @@ xattr = "0.2"
 
 [profile.release]
 lto = true
+
+[package.metadata.deb]
+section = "utility"
+extended-description = """\
+* SQL-like (not real SQL, but highly relaxed!) grammar easily understandable by humans\
+* complex queries\
+* aggregate, statistics, date, and other functions\
+* search within archives\
+* .gitignore, .hgignore, and .dockerignore support (experimental)\
+* search by width and height of images, EXIF metadata\
+* search by MP3 info\
+* search by extended file attributes\
+* search by file hashes\
+* search by MIME type\
+* shortcuts to common file types\
+* interactive mode\
+* various output formatting (CSV, JSON, and others)"""

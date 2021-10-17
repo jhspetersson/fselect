@@ -271,13 +271,13 @@ pub enum Function {
     Year,
     DayOfWeek,
 
-    #[cfg(unix)]
+    #[cfg(all(unix, feature = "users"))]
     CurrentUid,
-    #[cfg(unix)]
+    #[cfg(all(unix, feature = "users"))]
     CurrentUser,
-    #[cfg(unix)]
+    #[cfg(all(unix, feature = "users"))]
     CurrentGid,
-    #[cfg(unix)]
+    #[cfg(all(unix, feature = "users"))]
     CurrentGroup,
 
     Contains,
@@ -328,13 +328,13 @@ impl FromStr for Function {
             "year" => Ok(Function::Year),
             "dayofweek" | "dow" => Ok(Function::DayOfWeek),
 
-            #[cfg(unix)]
+            #[cfg(all(unix, feature = "users"))]
             "current_uid" => Ok(Function::CurrentUid),
-            #[cfg(unix)]
+            #[cfg(all(unix, feature = "users"))]
             "current_user" => Ok(Function::CurrentUser),
-            #[cfg(unix)]
+            #[cfg(all(unix, feature = "users"))]
             "current_gid" => Ok(Function::CurrentGid),
-            #[cfg(unix)]
+            #[cfg(all(unix, feature = "users"))]
             "current_group" => Ok(Function::CurrentGroup),
 
             "min" => Ok(Function::Min),
@@ -600,22 +600,22 @@ pub fn get_value(function: &Option<Function>,
                 return Variant::empty(VariantType::Int);
             }
         },
-        #[cfg(unix)]
+        #[cfg(all(unix, feature = "users"))]
         Some(Function::CurrentUid) => {
             return Variant::from_int(users::get_current_uid() as i64);
         }
-        #[cfg(unix)]
+        #[cfg(all(unix, feature = "users"))]
         Some(Function::CurrentUser) => {
             match users::get_current_username().and_then(|u| u.into_string().ok()) {
                 Some(s) => Variant::from_string(&s),
                 None => Variant::empty(VariantType::String),
             }
         }
-        #[cfg(unix)]
+        #[cfg(all(unix, feature = "users"))]
         Some(Function::CurrentGid) => {
             return Variant::from_int(users::get_current_gid() as i64);
         }
-        #[cfg(unix)]
+        #[cfg(all(unix, feature = "users"))]
         Some(Function::CurrentGroup) => {
             match users::get_current_groupname().and_then(|u| u.into_string().ok()) {
                 Some(s) => Variant::from_string(&s),

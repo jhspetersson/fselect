@@ -1080,30 +1080,26 @@ impl Searcher {
                     }
                 }
             },
+            #[cfg(all(unix, feature = "users"))]
             Field::User => {
-                #[cfg(all(unix, feature = "users"))]
-                {
-                    self.update_file_metadata(entry);
+                self.update_file_metadata(entry);
 
-                    if let Some(ref attrs) = self.file_metadata {
-                        if let Some(uid) = mode::get_uid(attrs) {
-                            if let Some(user) = self.user_cache.get_user_by_uid(uid) {
-                                return Variant::from_string(&user.name().to_string_lossy().to_string());
-                            }
+                if let Some(ref attrs) = self.file_metadata {
+                    if let Some(uid) = mode::get_uid(attrs) {
+                        if let Some(user) = self.user_cache.get_user_by_uid(uid) {
+                            return Variant::from_string(&user.name().to_string_lossy().to_string());
                         }
                     }
                 }
             },
+            #[cfg(all(unix, feature = "users"))]
             Field::Group => {
-                #[cfg(all(unix, feature = "users"))]
-                {
-                    self.update_file_metadata(entry);
+                self.update_file_metadata(entry);
 
-                    if let Some(ref attrs) = self.file_metadata {
-                        if let Some(gid) = mode::get_gid(attrs) {
-                            if let Some(group) = self.user_cache.get_group_by_gid(gid) {
-                                return Variant::from_string(&group.name().to_string_lossy().to_string());
-                            }
+                if let Some(ref attrs) = self.file_metadata {
+                    if let Some(gid) = mode::get_gid(attrs) {
+                        if let Some(group) = self.user_cache.get_group_by_gid(gid) {
+                            return Variant::from_string(&group.name().to_string_lossy().to_string());
                         }
                     }
                 }

@@ -17,7 +17,9 @@ pub enum Field {
     FormattedSize,
     Uid,
     Gid,
+    #[cfg(all(unix, feature = "users"))]
     User,
+    #[cfg(all(unix, feature = "users"))]
     Group,
     Created,
     Accessed,
@@ -104,7 +106,9 @@ impl FromStr for Field {
             "fsize" | "hsize" => Ok(Field::FormattedSize),
             "uid" => Ok(Field::Uid),
             "gid" => Ok(Field::Gid),
+            #[cfg(all(unix, feature = "users"))]
             "user" => Ok(Field::User),
+            #[cfg(all(unix, feature = "users"))]
             "group" => Ok(Field::Group),
             "created" => Ok(Field::Created),
             "accessed" => Ok(Field::Accessed),

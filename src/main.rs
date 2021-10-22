@@ -235,6 +235,9 @@ Path Options:
     bfs 	                        Breadth-first search mode. This is the default.
     regexp | rx                     Use regular expressions to search within multiple roots.
 
+Regex syntax:
+    {}
+
 Column Options:
     name                            Returns the name (with extension) of the file
     extension | ext                 Returns the extension of the file
@@ -407,5 +410,5 @@ Format:
     csv                             Outputs each file with its column value(s) on a line with each column value delimited by a comma
     json                            Outputs a JSON array with JSON objects holding the column value(s) of each file
     html                            Outputs HTML document with table
-    ", is_archive, is_audio, is_book, is_doc, is_image, is_source, is_video);
+    ", is_archive, is_audio, is_book, is_doc, is_image, is_source, is_video, Cyan.underline().paint("https://docs.rs/regex/1.5.4/regex/#syntax"));
 }

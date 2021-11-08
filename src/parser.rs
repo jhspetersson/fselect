@@ -372,6 +372,17 @@ impl Parser {
     }
 
     fn parse_cond(&mut self) -> Result<Option<Expr>, String> {
+        let mut negate = false;
+
+        loop {
+            if let Some(Lexem::Not) = self.get_lexem() {
+                negate = !negate;
+            } else {
+                self.drop_lexem();
+                break;
+            }
+        }
+
         let left = self.parse_add_sub()?;
 
         let mut not = false;
@@ -387,7 +398,7 @@ impl Parser {
         };
 
         let lexem = self.get_lexem();
-        match lexem {
+        let result = match lexem {
             Some(Lexem::Operator(s)) => {
                 let right = self.parse_add_sub()?;
                 let op = Op::from_with_not(s, not);
@@ -397,7 +408,15 @@ impl Parser {
                 self.drop_lexem();
                 Ok(left)
             }
+        };
+
+        if negate {
+            if let Ok(Some(expr)) = result {
+                return Ok(Some(Self::negate_expr_op(&expr)));
+            }
         }
+
+        result
     }
 
     fn parse_add_sub(&mut self) -> Result<Option<Expr>, String> {
@@ -676,6 +695,24 @@ impl Parser {
     fn drop_lexem(&mut self) {
         self.index -= 1;
     }
+
+    fn negate_expr_op(expr: &Expr) -> Expr {
+        let mut result = expr.clone();
+
+        if let Some(left) = &expr.left {
+            result.left = Some(Box::from(Self::negate_expr_op(&left)));
+        }
+
+        if let &Some(op) = &expr.op {
+            result.op = Some(Op::negate(op));
+        }
+
+        if let Some(right) = &expr.right {
+            result.right = Some(Box::from(Self::negate_expr_op(&right)));
+        }
+
+        result
+    }
 }
 
 #[cfg(test)]
@@ -749,6 +786,71 @@ mod tests {
         assert_eq!(query.roots, vec![
             Root::new(String::from("/test"), 0, 0, false, false, None, None, None, Bfs, false),
         ]);
+
+        let expr = Expr::op(Expr::field(Field::Name), Op::NotLike, Expr::value(String::from("%.tmp")));
+
+        assert_eq!(query.expr, Some(expr));
+    }
+
+    #[test]
+    fn query_with_single_not() {
+        let query = "select name from /test where not name like '%.tmp'";
+        let mut p = Parser::new();
+        let query = p.parse(&query, false).unwrap();
+
+        assert_eq!(query.fields, vec![Expr::field(Field::Name)]);
+
+        assert_eq!(query.roots, vec![
+            Root::new(String::from("/test"), 0, 0, false, false, None, None, None, Bfs, false),
+        ]);
+
+        let expr = Expr::op(Expr::field(Field::Name), Op::NotLike, Expr::value(String::from("%.tmp")));
+
+        assert_eq!(query.expr, Some(expr));
+    }
+
+    #[test]
+    fn query_with_multiple_not() {
+        let query = "select name from /test where not name like '%.tmp' and not name like '%.tst'";
+        let mut p = Parser::new();
+        let query = p.parse(&query, false).unwrap();
+
+        let left = Expr::op(Expr::field(Field::Name), Op::NotLike, Expr::value(String::from("%.tmp")));
+        let right = Expr::op(Expr::field(Field::Name), Op::NotLike, Expr::value(String::from("%.tst")));
+        let expr = Expr::logical_op(left, LogicalOp::And, right);
+
+        assert_eq!(query.expr, Some(expr));
+    }
+
+    #[test]
+    fn query_with_multiple_not_paren() {
+        let query = "select name from /test where (not name like '%.tmp') and (not name like '%.tst')";
+        let mut p = Parser::new();
+        let query = p.parse(&query, false).unwrap();
+
+        let left = Expr::op(Expr::field(Field::Name), Op::NotLike, Expr::value(String::from("%.tmp")));
+        let right = Expr::op(Expr::field(Field::Name), Op::NotLike, Expr::value(String::from("%.tst")));
+        let expr = Expr::logical_op(left, LogicalOp::And, right);
+
+        assert_eq!(query.expr, Some(expr));
+    }
+
+    #[test]
+    fn query_double_not() {
+        let query = "select name from /test where not not name like '%.tmp'";
+        let mut p = Parser::new();
+        let query = p.parse(&query, false).unwrap();
+
+        let expr = Expr::op(Expr::field(Field::Name), Op::Like, Expr::value(String::from("%.tmp")));
+
+        assert_eq!(query.expr, Some(expr));
+    }
+
+    #[test]
+    fn query_triple_not() {
+        let query = "select name from /test where not not not name like '%.tmp'";
+        let mut p = Parser::new();
+        let query = p.parse(&query, false).unwrap();
 
         let expr = Expr::op(Expr::field(Field::Name), Op::NotLike, Expr::value(String::from("%.tmp")));
 

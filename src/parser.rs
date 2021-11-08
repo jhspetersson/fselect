@@ -47,8 +47,11 @@ impl Parser {
         let output_format = self.parse_output_format()?;
 
         if self.is_something_left() {
-            dbg!(fields);
-            dbg!(roots);
+            if debug {
+                dbg!(fields);
+                dbg!(roots);
+            }
+
             return Err(String::from("Could not parse tokens at the end of the query"));
         }
 

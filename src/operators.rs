@@ -75,6 +75,7 @@ pub enum ArithmeticOp {
     Subtract,
     Divide,
     Multiply,
+    Modulo,
 }
 
 impl ArithmeticOp {
@@ -84,6 +85,7 @@ impl ArithmeticOp {
             "-" | "minus"  => Some(ArithmeticOp::Subtract),
             "*" | "mul" => Some(ArithmeticOp::Multiply),
             "/" | "div" => Some(ArithmeticOp::Divide),
+            "%" | "mod" => Some(ArithmeticOp::Modulo),
             _ => None
         }
     }
@@ -94,6 +96,7 @@ impl ArithmeticOp {
             ArithmeticOp::Subtract => left.to_float() - right.to_float(),
             ArithmeticOp::Multiply => left.to_float() * right.to_float(),
             ArithmeticOp::Divide => left.to_float() / right.to_float(),
+            ArithmeticOp::Modulo => left.to_float() % right.to_float(),
         };
 
         return Variant::from_float(result);

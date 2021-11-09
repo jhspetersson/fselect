@@ -146,7 +146,7 @@ impl<'a> Lexer<'a> {
                     "into" => Some(Lexem::Into),
                     "eq" | "ne" | "gt" | "lt" | "ge" | "le" | "gte" | "lte" |
                     "regexp" | "rx" | "like" => Some(Lexem::Operator(s)),
-                    "mul" | "div" | "plus" | "minus" => Some(Lexem::ArithmeticOperator(s)),
+                    "mul" | "div" | "mod" | "plus" | "minus" => Some(Lexem::ArithmeticOperator(s)),
                     _ => Some(Lexem::RawString(s)),
                 }
             },
@@ -164,7 +164,7 @@ impl<'a> Lexer<'a> {
     fn is_arithmetic_op_char(&self, c: char) -> bool {
         match c {
             '+' | '-' => self.before_from || self.after_where,
-            '*' | '/' => (self.before_from || self.after_where) && !self.after_open && !self.after_operator,
+            '*' | '/' | '%' => (self.before_from || self.after_where) && !self.after_open && !self.after_operator,
             _ => false
         }
     }

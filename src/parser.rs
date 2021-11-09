@@ -465,7 +465,7 @@ impl Parser {
             if let Some(Lexem::ArithmeticOperator(s)) = lexem {
                 let new_op = ArithmeticOp::from(s);
                 match new_op {
-                    Some(ArithmeticOp::Multiply) | Some(ArithmeticOp::Divide) => {
+                    Some(ArithmeticOp::Multiply) | Some(ArithmeticOp::Divide) | Some(ArithmeticOp::Modulo)  => {
                         let expr = self.parse_paren()?;
                         if op.is_none() {
                             op = new_op.clone();

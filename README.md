@@ -47,10 +47,15 @@ More is under way!
 
 A statically precompiled [binary](https://github.com/jhspetersson/fselect/releases/download/0.7.7/fselect-x86_64-win.zip) is available at Github downloads.
 
-#### Windows from Chocolatey
+#### Windows via Chocolatey
 
 * Install [Chocolatey](https://chocolatey.org/install)
 * Run `choco install fselect`
+
+#### Windows via Sccop
+
+* Install [Scoop](https://scoop.sh)
+* Run `scoop install fselect`
 
 #### Mac via Homebrew
 

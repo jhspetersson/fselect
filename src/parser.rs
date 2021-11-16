@@ -401,7 +401,7 @@ impl Parser {
         };
 
         let lexem = self.next_lexem();
-        let result = match lexem {
+        let mut result = match lexem {
             Some(Lexem::Operator(s)) => {
                 let right = self.parse_add_sub()?;
                 let op = Op::from_with_not(s, not);
@@ -413,8 +413,16 @@ impl Parser {
             }
         };
 
+        if let Ok(Some(expr)) = result.clone() {
+            if let Some(field) = expr.field {
+                if expr.left.is_none() && expr.right.is_none() && field.is_boolean_field() {
+                    result = Ok(Some(Expr::op(Expr::field(field), Op::Eq, Expr::value(String::from("true")))));
+                }
+            }
+        }
+
         if negate {
-            if let Ok(Some(expr)) = result {
+            if let Ok(Some(expr)) = result.clone() {
                 return Ok(Some(Self::negate_expr_op(&expr)));
             }
         }
@@ -883,5 +891,18 @@ mod tests {
         assert_eq!(query.roots, vec![
             Root::new(String::from("/opt/Some Cool Dir/Test This"), 0, 0, false, false, None, None, None, Bfs, false),
         ]);
+    }
+
+    #[test]
+    fn simple_boolean_syntax() {
+        let query = "select name from /home/user where is_audio or is_video";
+        let mut p = Parser::new();
+        let query = p.parse(&query, false).unwrap();
+
+        let query2 = "select name from /home/user where is_audio = true or is_video = true";
+        let mut p2 = Parser::new();
+        let query2 = p2.parse(&query2, false).unwrap();
+
+        assert_eq!(query.expr, query2.expr);
     }
 }

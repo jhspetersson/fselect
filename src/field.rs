@@ -219,6 +219,46 @@ impl Field {
         }
     }
 
+    pub fn is_boolean_field(&self) -> bool {
+        match self {
+            Field::IsDir
+            | Field::IsFile
+            | Field::UserRead
+            | Field::UserWrite
+            | Field::UserExec
+            | Field::UserAll
+            | Field::GroupRead
+            | Field::GroupWrite
+            | Field::GroupExec
+            | Field::GroupAll
+            | Field::OtherRead
+            | Field::OtherWrite
+            | Field::OtherExec
+            | Field::OtherAll
+            | Field::Suid
+            | Field::Sgid
+            | Field::IsSymlink
+            | Field::IsPipe
+            | Field::IsCharacterDevice
+            | Field::IsBlockDevice
+            | Field::IsSocket
+            | Field::IsHidden
+            | Field::HasXattrs
+            | Field::IsEmpty
+            | Field::IsShebang
+            | Field::IsBinary
+            | Field::IsText
+            | Field::IsArchive
+            | Field::IsAudio
+            | Field::IsBook
+            | Field::IsDoc
+            | Field::IsImage
+            | Field::IsSource
+            | Field::IsVideo => true,
+            _ => false
+        }
+    }
+
     pub fn is_available_for_archived_files(&self) -> bool {
         match self {
             Field::Name

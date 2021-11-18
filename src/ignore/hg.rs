@@ -126,11 +126,14 @@ fn convert_hgignore_pattern(pattern: &str, file_path: &Path, syntax: &Syntax) ->
     }
 }
 
+lazy_static! {
+    static ref HG_CONVERT_REPLACE_REGEX: Regex = Regex::new("(\\*\\*|\\?|\\.|\\*)").unwrap();
+}
+
 fn convert_hgignore_glob(glob: &str, file_path: &Path) -> Result<Regex, Error> {
     #[cfg(not(windows))]
         {
-            let replace_regex = Regex::new("(\\*\\*|\\?|\\.|\\*|\\[|\\]|\\(|\\)|\\^|\\$)").unwrap();
-            let mut pattern = replace_regex.replace_all(&glob, |c: &Captures| {
+            let mut pattern = HG_CONVERT_REPLACE_REGEX.replace_all(&glob, |c: &Captures| {
                 match c.index(0) {
                     "**" => ".*",
                     "." => "\\.",
@@ -155,8 +158,7 @@ fn convert_hgignore_glob(glob: &str, file_path: &Path) -> Result<Regex, Error> {
 
     #[cfg(windows)]
         {
-            let replace_regex = Regex::new("(\\*\\*|\\?|\\.|\\*|\\[|\\]|\\(|\\)|\\^|\\$)").unwrap();
-            let mut pattern = replace_regex.replace_all(&glob, |c: &Captures| {
+            let mut pattern = HG_CONVERT_REPLACE_REGEX.replace_all(&glob, |c: &Captures| {
                 match c.index(0) {
                     "**" => ".*",
                     "." => "\\.",

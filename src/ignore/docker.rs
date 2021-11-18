@@ -93,9 +93,12 @@ fn convert_dockerignore_pattern(pattern: &str, file_path: &Path) -> Result<Docke
     }
 }
 
+lazy_static! {
+    static ref DOCKER_CONVERT_REPLACE_REGEX: Regex = Regex::new("(\\*\\*|\\?|\\.|\\*)").unwrap();
+}
+
 fn convert_dockerignore_glob(glob: &str, file_path: &Path) -> Result<Regex, Error> {
-    let replace_regex = Regex::new("(\\*\\*|\\?|\\.|\\*)").unwrap();
-    let mut pattern = replace_regex.replace_all(&glob, |c: &Captures| {
+    let mut pattern = DOCKER_CONVERT_REPLACE_REGEX.replace_all(&glob, |c: &Captures| {
         match c.index(0) {
             "**" => ".*",
             "." => "\\.",

@@ -216,14 +216,17 @@ Shortcuts to common file extensions:
     fselect path from /home/user where is_archive = true
     fselect path, mime from /home/user where is_audio = 1
     fselect path, mime from /home/user where is_book != false
-    fselect path from /home/user where is_doc != 1
-    fselect path from /home/user where is_image = false
-    fselect path from /home/user where is_video != true
+
+Even simpler way of using boolean columns:
+
+    fselect path from /home/user where is_doc
+    fselect path from /home/user where is_image
+    fselect path from /home/user where is_video
     
 Find files with dangerous permissions:
     
-    fselect mode, path from /home/user where other_write = true or other_exec = true
-    fselect mode, path from /home/user where other_all = true
+    fselect mode, path from /home/user where other_write or other_exec
+    fselect mode, path from /home/user where other_all
     
 Simple glob-like expressions or even regular expressions on file mode are possible:
     
@@ -240,9 +243,9 @@ Or by owner's or group's name:
 
 Find special files:
 
-    fselect name from /usr/bin where suid = true
-    fselect path from /tmp where is_pipe = true
-    fselect path from /tmp where is_socket = 1
+    fselect name from /usr/bin where suid
+    fselect path from /tmp where is_pipe
+    fselect path from /tmp where is_socket
     
 Find files with xattrs, check if particular xattr exists, or get its value:
 

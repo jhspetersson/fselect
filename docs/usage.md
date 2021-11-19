@@ -45,6 +45,8 @@ If you are on Windows, feel free to omit most of the quotes.
 
 Commas for column separation aren't needed as well. Column aliasing (with or without `as` keyword) is not supported.
 
+`where` section can contain short syntax conditions for boolean columns (like `is_audio` or `other_write`).
+
 `into` keyword specifies output format, not output table.
 
 Joins, unions, and subselects are not supported (yet?).

@@ -34,7 +34,6 @@ pub enum VariantType {
 #[derive(Debug)]
 pub struct Variant {
     value_type: VariantType,
-    empty: bool,
     string_value: String,
     int_value: Option<i64>,
     float_value: Option<f64>,
@@ -47,7 +46,6 @@ impl Variant {
     pub fn empty(value_type: VariantType) -> Variant {
         Variant {
             value_type,
-            empty: true,
             string_value: String::new(),
             int_value: None,
             float_value: None,
@@ -64,7 +62,6 @@ impl Variant {
     pub fn from_int(value: i64) -> Variant {
         Variant {
             value_type: VariantType::Int,
-            empty: false,
             string_value: format!("{}", value),
             int_value: Some(value),
             float_value: Some(value as f64),
@@ -77,7 +74,6 @@ impl Variant {
     pub fn from_float(value: f64) -> Variant {
         Variant {
             value_type: VariantType::Float,
-            empty: false,
             string_value: format!("{}", value),
             int_value: Some(value as i64),
             float_value: Some(value),
@@ -90,7 +86,6 @@ impl Variant {
     pub fn from_string(value: &String) -> Variant {
         Variant {
             value_type: VariantType::String,
-            empty: false,
             string_value: value.to_owned(),
             int_value: None,
             float_value: None,
@@ -113,7 +108,6 @@ impl Variant {
 
         Variant {
             value_type: VariantType::String,
-            empty: false,
             string_value,
             int_value: None,
             float_value: None,
@@ -126,7 +120,6 @@ impl Variant {
     pub fn from_bool(value: bool) -> Variant {
         Variant {
             value_type: VariantType::Bool,
-            empty: false,
             string_value: match value { true => String::from("true"), _ => String::from("false") },
             int_value: match value { true => Some(1), _ => Some(0) },
             float_value: None,
@@ -139,7 +132,6 @@ impl Variant {
     pub fn from_datetime(value: DateTime<Local>) -> Variant {
         Variant {
             value_type: VariantType::DateTime,
-            empty: false,
             string_value: format_datetime(&value),
             int_value: Some(0),
             float_value: None,

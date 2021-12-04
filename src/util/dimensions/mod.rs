@@ -51,7 +51,7 @@ mod test {
         let path_string = std::env::var("CARGO_MANIFEST_DIR")? + "/resources/test/" + test_res_path;
         let path = PathBuf::from(path_string);
         assert!(under_test.supports_ext(path.extension().and_then(OsStr::to_str).unwrap()));
-        assert_eq!(under_test.try_read_dimensions(&path)?, expected.clone());
+        assert_eq!(under_test.try_read_dimensions(&path)?, expected);
 
         Ok(())
     }

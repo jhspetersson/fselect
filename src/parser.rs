@@ -168,9 +168,9 @@ impl Parser {
                                     RootParsingMode::From | RootParsingMode::Comma => {
                                         path = s.to_string();
                                         if path.starts_with("~") {
-                                            let mut pb = PathBuf::from(path.clone());
-                                            pb = pb.components().skip(1).collect();
                                             if let Some(ud) = UserDirs::new() {
+                                                let mut pb = PathBuf::from(path.clone());
+                                                pb = pb.components().skip(1).collect();
                                                 pb = ud.home_dir().to_path_buf().join(pb);
                                                 path = pb.to_string_lossy().to_string();
                                             }

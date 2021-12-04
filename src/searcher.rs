@@ -439,7 +439,7 @@ impl Searcher {
             let mut path = PathBuf::from(canonical_path);
 
             loop {
-                let dockerignore_file = path.clone().join(".dockerignore");
+                let dockerignore_file = path.join(".dockerignore");
 
                 if dockerignore_file.is_file() {
                     self.update_dockerignore_filters(&mut path);

@@ -40,16 +40,24 @@ impl Parser {
         }
 
         let fields = self.parse_fields()?;
-        let roots = self.parse_roots();
+        let mut roots = self.parse_roots();
         let expr = self.parse_where()?;
         let (ordering_fields, ordering_asc) = self.parse_order_by(&fields)?;
         let mut limit = self.parse_limit()?;
         let output_format = self.parse_output_format()?;
 
+        if roots.is_empty() {
+            roots = self.parse_roots();
+        }
+
+        if roots.is_empty() {
+            roots.push(Root::default());
+        }
+
         if self.there_are_remaining_lexems() {
             if debug {
-                dbg!(fields);
-                dbg!(roots);
+                dbg!(&fields);
+                dbg!(&roots);
             }
 
             return Err(String::from("Could not parse tokens at the end of the query"));
@@ -128,8 +136,7 @@ impl Parser {
         let mut roots: Vec<Root> = Vec::new();
         let mut mode = RootParsingMode::Unknown;
 
-        let lexem = self.next_lexem();
-        match lexem {
+        match self.next_lexem() {
             Some(ref lexem) => {
                 match lexem {
                     &Lexem::From => {
@@ -137,13 +144,10 @@ impl Parser {
                     },
                     _ => {
                         self.drop_lexem();
-                        roots.push(Root::default());
                     }
                 }
             },
-            None => {
-                roots.push(Root::default());
-            }
+            _ => { }
         }
 
         if let RootParsingMode::From = mode {
@@ -904,5 +908,22 @@ mod tests {
         let query2 = p2.parse(&query2, false).unwrap();
 
         assert_eq!(query.expr, query2.expr);
+    }
+
+    #[test]
+    fn from_at_the_end_of_the_query() {
+        let query = "select name where not name like '%.tmp' from /test gitignore mindepth 2";
+        let mut p = Parser::new();
+        let query = p.parse(&query, false).unwrap();
+
+        assert_eq!(query.fields, vec![Expr::field(Field::Name)]);
+
+        assert_eq!(query.roots, vec![
+            Root::new(String::from("/test"), 2, 0, false, false, Some(true), None, None, Bfs, false),
+        ]);
+
+        let expr = Expr::op(Expr::field(Field::Name), Op::NotLike, Expr::value(String::from("%.tmp")));
+
+        assert_eq!(query.expr, Some(expr));
     }
 }

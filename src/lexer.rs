@@ -163,8 +163,8 @@ impl<'a> Lexer<'a> {
 
     fn is_arithmetic_op_char(&self, c: char) -> bool {
         match c {
-            '+' | '-' => self.before_from || self.after_where,
-            '*' | '/' | '%' => (self.before_from || self.after_where) && !self.after_open && !self.after_operator,
+            '+' | '-' => self.before_from,
+            '*' | '/' | '%' => self.before_from && !self.after_open && !self.after_operator,
             _ => false
         }
     }

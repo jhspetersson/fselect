@@ -2,13 +2,13 @@ use crate::output::ResultsFormatter;
 
 pub const LINES_FORMATTER: FlatWriter = FlatWriter {
     record_separator: '\n',
-    line_separator: None,
+    line_separator: Some('\n'),
 };
 
 
 pub const LIST_FORMATTER: FlatWriter = FlatWriter {
     record_separator: '\0',
-    line_separator: None,
+    line_separator: Some('\0'),
 };
 
 
@@ -32,8 +32,11 @@ impl ResultsFormatter for FlatWriter {
         None
     }
 
-    fn format_element(&mut self, _: &str, record: &str) -> Option<String> {
-        Some(format!("{}{}", record, self.record_separator))
+    fn format_element(&mut self, _: &str, record: &str, is_last: bool) -> Option<String> {
+        match is_last {
+            true => Some(format!("{}", record)),
+            false => Some(format!("{}{}", record, self.record_separator))
+        }
     }
 
     fn row_ended(&mut self) -> Option<String> {
@@ -66,6 +69,6 @@ mod test {
     #[test]
     fn test_tab() {
         let result = write_test_items(&mut TABS_FORMATTER);
-        assert_eq!("foo_value\tBAR value\t\n123\t\t\n", result);
+        assert_eq!("foo_value\tBAR value\n123\t\n", result);
     }
 }

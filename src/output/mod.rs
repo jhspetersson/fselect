@@ -13,7 +13,7 @@ mod csv;
 pub trait ResultsFormatter {
     fn header(&mut self) -> Option<String>;
     fn row_started(&mut self) -> Option<String>;
-    fn format_element(&mut self, name: &str, record: &str) -> Option<String>;
+    fn format_element(&mut self, name: &str, record: &str, is_last: bool) -> Option<String>;
     fn row_ended(&mut self) -> Option<String>;
     fn footer(&mut self) -> Option<String>;
 
@@ -43,8 +43,9 @@ impl ResultsWriter {
 
     pub fn write_row(&mut self, writer: &mut dyn Write, values: Vec<(String, String)>) -> std::io::Result<()> {
         self.write_row_start(writer)?;
-        for (name, value) in values {
-            self.write_row_item(writer, &name, &value)?;
+        let len = values.len();
+        for (pos, (name, value)) in values.iter().enumerate() {
+            self.write_row_item(writer, &name, &value, pos == len - 1)?;
         }
         self.write_row_end(writer)
     }
@@ -58,8 +59,8 @@ impl ResultsWriter {
         self.formatter.row_started()
             .map_or(Ok(()), |value| write!(writer, "{}", value))
     }
-    fn write_row_item(&mut self, writer: &mut dyn Write, name: &str, value: &str) -> std::io::Result<()> {
-        self.formatter.format_element(name, value)
+    fn write_row_item(&mut self, writer: &mut dyn Write, name: &str, value: &str, is_last: bool) -> std::io::Result<()> {
+        self.formatter.format_element(name, value, is_last)
             .map_or(Ok(()), |value| write!(writer, "{}", value))
     }
 
@@ -89,13 +90,13 @@ mod test {
         let mut result = String::from("");
         under_test.header().and_then(|s| Some(result.push_str(&s)));
         under_test.row_started().and_then(|s| Some(result.push_str(&s)));
-        under_test.format_element("foo", "foo_value").and_then(|s| Some(result.push_str(&s)));
-        under_test.format_element("bar", "BAR value").and_then(|s| Some(result.push_str(&s)));
+        under_test.format_element("foo", "foo_value", false).and_then(|s| Some(result.push_str(&s)));
+        under_test.format_element("bar", "BAR value", true).and_then(|s| Some(result.push_str(&s)));
         under_test.row_ended().and_then(|s| Some(result.push_str(&s)));
         under_test.row_separator().and_then(|s| Some(result.push_str(&s)));
         under_test.row_started().and_then(|s| Some(result.push_str(&s)));
-        under_test.format_element("foo", "123").and_then(|s| Some(result.push_str(&s)));
-        under_test.format_element("bar", "").and_then(|s| Some(result.push_str(&s)));
+        under_test.format_element("foo", "123", false).and_then(|s| Some(result.push_str(&s)));
+        under_test.format_element("bar", "", true).and_then(|s| Some(result.push_str(&s)));
         under_test.row_ended().and_then(|s| Some(result.push_str(&s)));
         under_test.footer().and_then(|s| Some(result.push_str(&s)));
         result

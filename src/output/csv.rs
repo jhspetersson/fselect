@@ -15,7 +15,7 @@ impl ResultsFormatter for CsvFormatter {
         None
     }
 
-    fn format_element(&mut self, _: &str, record: &str) -> Option<String> {
+    fn format_element(&mut self, _: &str, record: &str, _is_last: bool) -> Option<String> {
         self.records.push(record.to_owned());
         None
     }

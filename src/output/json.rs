@@ -15,7 +15,7 @@ impl ResultsFormatter for JsonFormatter {
         None
     }
 
-    fn format_element(&mut self, name: &str, record: &str) -> Option<String> {
+    fn format_element(&mut self, name: &str, record: &str, _is_last: bool) -> Option<String> {
         self.file_map.insert(name.to_owned(), record.to_owned());
         None
     }

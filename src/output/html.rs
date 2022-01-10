@@ -11,7 +11,7 @@ impl ResultsFormatter for HtmlFormatter {
         Some("<tr>".to_owned())
     }
 
-    fn format_element(&mut self, _: &str, record: &str) -> Option<String> {
+    fn format_element(&mut self, _: &str, record: &str, _is_last: bool) -> Option<String> {
         Some(format!("<td>{}</td>", record))
     }
 

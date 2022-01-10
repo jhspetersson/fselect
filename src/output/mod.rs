@@ -37,7 +37,7 @@ impl ResultsWriter {
     }
 
     pub fn write_row_separator(&mut self, writer: &mut dyn Write) -> std::io::Result<()> {
-        self.formatter.row_started()
+        self.formatter.row_separator()
             .map_or(Ok(()), |value| write!(writer, "{}", value))
     }
 

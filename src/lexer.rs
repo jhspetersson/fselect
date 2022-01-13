@@ -15,6 +15,8 @@ pub enum Lexem {
     String(String),
     Open,
     Close,
+    CurlyOpen,
+    CurlyClose,
     ArithmeticOperator(String),
     And,
     Or,
@@ -87,7 +89,7 @@ impl<'a> Lexer<'a> {
                             if maybe_expr {
                                 break;
                             }
-                        } else if c == ' ' || c == ',' || c == '(' || c == ')' || self.is_op_char(c) {
+                        } else if c == ' ' || c == ',' || is_paren_char(c) || self.is_op_char(c) {
                             break
                         }
                     }
@@ -101,8 +103,8 @@ impl<'a> Lexer<'a> {
                         ' ' => {},
                         '\'' => mode = LexingMode::String,
                         ',' => mode = LexingMode::Comma,
-                        '(' => mode = LexingMode::Open,
-                        ')' => mode = LexingMode::Close,
+                        '(' | '{' => { s.push(c); mode = LexingMode::Open },
+                        ')' | '}' => { s.push(c); mode = LexingMode::Close },
                         _ => {
                             mode = if self.is_op_char(c) {
                                 LexingMode::Operator
@@ -129,8 +131,10 @@ impl<'a> Lexer<'a> {
             LexingMode::Operator => Some(Lexem::Operator(s)),
             LexingMode::ArithmeticOperator => Some(Lexem::ArithmeticOperator(s)),
             LexingMode::Comma => Some(Lexem::Comma),
-            LexingMode::Open => Some(Lexem::Open),
-            LexingMode::Close => Some(Lexem::Close),
+            LexingMode::Open if &s == "(" => { s.clear(); Some(Lexem::Open) },
+            LexingMode::Open if &s == "{" => { s.clear(); Some(Lexem::CurlyOpen) },
+            LexingMode::Close if &s == ")" => { s.clear(); Some(Lexem::Close) },
+            LexingMode::Close if &s == "}" => { s.clear(); Some(Lexem::CurlyClose) },
             LexingMode::RawString => {
                 match s.to_lowercase().as_str() {
                     "from" => { self.before_from = false; Some(Lexem::From) },
@@ -181,6 +185,9 @@ impl<'a> Lexer<'a> {
     }
 }
 
+fn is_paren_char(c: char) -> bool {
+    c == '(' || c == ')' || c == '{' || c == '}'
+}
 
 lazy_static! {
     static ref DATE_ALIKE_REGEX: Regex = Regex::new("(\\d{4})-?(\\d{2})?").unwrap();

@@ -108,7 +108,7 @@ impl Parser {
                         }
                     }
                 },
-                Some(Lexem::Open) => {
+                Some(Lexem::Open) | Some(Lexem::CurlyOpen) => {
                     self.drop_lexem();
                     if let Ok(Some(field)) = self.parse_expr() {
                         fields.push(field);
@@ -503,16 +503,27 @@ impl Parser {
     }
 
     fn parse_paren(&mut self) -> Result<Option<Expr>, String> {
-        if let Some(Lexem::Open) = self.next_lexem() {
-            let result = self.parse_expr();
-            if let Some(Lexem::Close) = self.next_lexem() {
-                result
-            } else {
-                Err("Unmatched parenthesis".to_string())
+        match self.next_lexem() {
+            Some(Lexem::Open) => {
+                let result = self.parse_expr();
+                if let Some(Lexem::Close) = self.next_lexem() {
+                    result
+                } else {
+                    Err("Unmatched parenthesis".to_string())
+                }
+            },
+            Some(Lexem::CurlyOpen) => {
+                let result = self.parse_expr();
+                if let Some(Lexem::CurlyClose) = self.next_lexem() {
+                    result
+                } else {
+                    Err("Unmatched parenthesis".to_string())
+                }
+            },
+            _ => {
+                self.drop_lexem();
+                self.parse_func_scalar()
             }
-        } else {
-            self.drop_lexem();
-            self.parse_func_scalar()
         }
     }
 
@@ -565,7 +576,7 @@ impl Parser {
         let mut function_expr = Expr::function(function);
 
         if let Some(lexem) = self.next_lexem() {
-            if lexem != Lexem::Open {
+            if lexem != Lexem::Open && lexem != Lexem::CurlyOpen {
                 return Err("Error in function expression".to_string());
             }
         }

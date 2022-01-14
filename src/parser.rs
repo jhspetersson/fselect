@@ -422,6 +422,11 @@ impl Parser {
                 if expr.left.is_none() && expr.right.is_none() && field.is_boolean_field() {
                     result = Ok(Some(Expr::op(Expr::field(field), Op::Eq, Expr::value(String::from("true")))));
                 }
+            } else if let Some(function) = expr.function {
+                if expr.left.is_some() && expr.right.is_none() && (expr.args.is_none() || expr.args.unwrap().is_empty()) && function.is_boolean_function() {
+                    let func_expr = Expr::function_left(function, *expr.left.unwrap());
+                    result = Ok(Some(Expr::op(func_expr, Op::Eq, Expr::value(String::from("true")))));
+                }
             }
         }
 
@@ -915,6 +920,19 @@ mod tests {
         let query = p.parse(&query, false).unwrap();
 
         let query2 = "select name from /home/user where is_audio = true or is_video = true";
+        let mut p2 = Parser::new();
+        let query2 = p2.parse(&query2, false).unwrap();
+
+        assert_eq!(query.expr, query2.expr);
+    }
+
+    #[test]
+    fn simple_boolean_function_syntax() {
+        let query = "select name from /home/user where CONTAINS('foobar') or CONTAINS('bazz')";
+        let mut p = Parser::new();
+        let query = p.parse(&query, false).unwrap();
+
+        let query2 = "select name from /home/user where CONTAINS('foobar') = true or CONTAINS('bazz') = true";
         let mut p2 = Parser::new();
         let query2 = p2.parse(&query2, false).unwrap();
 

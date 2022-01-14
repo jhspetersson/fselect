@@ -402,6 +402,23 @@ impl Function {
             _ => false
         }
     }
+
+    pub fn is_boolean_function(&self) -> bool {
+        #[cfg(unix)]
+        if self == Function::HasXattr {
+            return true;
+        }
+
+        match self {
+            Function::Contains
+            | Function::ContainsHiragana
+            | Function::ContainsKatakana
+            | Function::ContainsKana
+            | Function::ContainsKanji
+            | Function::ContainsJapanese => true,
+            _ => false
+        }
+    }
 }
 
 pub fn get_value(function: &Option<Function>,

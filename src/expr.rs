@@ -99,6 +99,21 @@ impl Expr {
         }
     }
 
+    pub fn function_left(function: Function, left: Expr) -> Expr {
+        Expr {
+            left: Some(Box::new(left)),
+            arithmetic_op: None,
+            logical_op: None,
+            op: None,
+            right: None,
+            minus: false,
+            field: None,
+            function: Some(function),
+            args: Some(vec![]),
+            val: None,
+        }
+    }
+
     pub fn value(value: String) -> Expr {
         Expr {
             left: None,

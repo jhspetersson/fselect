@@ -2,7 +2,7 @@
 Find files with SQL-like queries
 
 [![Crates.io](https://img.shields.io/crates/v/fselect.svg)](https://crates.io/crates/fselect)
-[![Build Status](https://travis-ci.org/jhspetersson/fselect.svg?branch=master)](https://travis-ci.org/jhspetersson/fselect)
+[![build](https://github.com/jhspetersson/fselect/actions/workflows/rust.yml/badge.svg)](https://github.com/jhspetersson/fselect/actions/workflows/rust.yml)
 
 ### Why use fselect?
 

@@ -405,7 +405,7 @@ impl Function {
 
     pub fn is_boolean_function(&self) -> bool {
         #[cfg(unix)]
-        if self == Function::HasXattr {
+        if self == &Function::HasXattr {
             return true;
         }
 

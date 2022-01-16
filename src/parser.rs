@@ -580,9 +580,14 @@ impl Parser {
     fn parse_function(&mut self, function: Function) -> Result<Expr, String> {
         let mut function_expr = Expr::function(function);
 
+        let mut curly_mode = false;
         if let Some(lexem) = self.next_lexem() {
             if lexem != Lexem::Open && lexem != Lexem::CurlyOpen {
                 return Err("Error in function expression".to_string());
+            }
+
+            if lexem == Lexem::CurlyOpen {
+                curly_mode = true;
             }
         }
 
@@ -604,7 +609,7 @@ impl Parser {
                         }
                     }
                 },
-                Some(lexem) if lexem == Lexem::Close => {
+                Some(lexem) if (lexem == Lexem::Close && !curly_mode) || (lexem == Lexem::CurlyClose && curly_mode) => {
                     function_expr.args = Some(args);
                     return Ok(function_expr);
                 },
@@ -954,5 +959,18 @@ mod tests {
         let expr = Expr::op(Expr::field(Field::Name), Op::NotLike, Expr::value(String::from("%.tmp")));
 
         assert_eq!(query.expr, Some(expr));
+    }
+
+    #[test]
+    fn use_curly_braces() {
+        let query = "select name, (1 + 2) from /home/user limit 1";
+        let mut p = Parser::new();
+        let query = p.parse(&query, false).unwrap();
+
+        let query2 = "select name, {1 + 2} from /home/user limit 1";
+        let mut p2 = Parser::new();
+        let query2 = p2.parse(&query2, false).unwrap();
+
+        assert_eq!(query.expr, query2.expr);
     }
 }

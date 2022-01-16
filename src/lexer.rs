@@ -137,7 +137,7 @@ impl<'a> Lexer<'a> {
             LexingMode::Close if &s == "}" => { s.clear(); Some(Lexem::CurlyClose) },
             LexingMode::RawString => {
                 match s.to_lowercase().as_str() {
-                    "from" => { self.before_from = false; Some(Lexem::From) },
+                    "from" => { self.before_from = false; self.after_where = false; Some(Lexem::From) },
                     "where" => { self.after_where = true; Some(Lexem::Where) },
                     "or" => Some(Lexem::Or),
                     "and" => Some(Lexem::And),

@@ -112,9 +112,9 @@ More complex query:
 
     fselect "name from /tmp where (name = *.tmp and size = 0) or (name = *.cfg and size > 1000000)"
     
-Aggregate functions:
+Aggregate functions (you can use curly braces if you want, and even combine them with the regular parentheses):
 
-    fselect "MIN(size), MAX(size), AVG(size), SUM(size), COUNT(*) from /home/user/Downloads"
+    fselect "MIN(size), MAX{size}, AVG(size), SUM{size}, COUNT(*) from /home/user/Downloads"
     
 Formatting functions:
 

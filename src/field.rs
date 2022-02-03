@@ -206,7 +206,8 @@ impl Field {
             | Field::Width | Field::Height
             | Field::LineCount
             | Field::Duration
-            | Field::Bitrate | Field::Freq | Field::Year => true,
+            | Field::Bitrate | Field::Freq | Field::Year
+            | Field::ExifGpsLatitude | Field::ExifGpsLongitude | Field::ExifGpsAltitude => true,
             _ => false
         }
     }

@@ -230,6 +230,7 @@ pub enum Function {
     Hex,
     Oct,
     Power,
+    Sqrt,
 
     ContainsJapanese,
     ContainsHiragana,
@@ -299,6 +300,7 @@ impl FromStr for Function {
             "hex" => Ok(Function::Hex),
             "oct" => Ok(Function::Oct),
             "power" | "pow" => Ok(Function::Power),
+            "sqrt" => Ok(Function::Sqrt),
 
             "contains_japanese" | "japanese" => Ok(Function::ContainsJapanese),
             "contains_hiragana" | "hiragana" => Ok(Function::ContainsHiragana),
@@ -400,7 +402,8 @@ impl Function {
             | Function::Day
             | Function::Month
             | Function::Year
-            | Function::Power => true,
+            | Function::Power
+            | Function::Sqrt => true,
             _ => false
         }
     }
@@ -471,6 +474,14 @@ pub fn get_value(function: &Option<Function>,
                     };
 
                     return Variant::from_float(val.powf(power));
+                },
+                _ => Variant::empty(VariantType::String)
+            };
+        },
+        Some(Function::Sqrt) => {
+            return match function_arg.parse::<f64>() {
+                Ok(val) => {
+                    return Variant::from_float(val.sqrt());
                 },
                 _ => Variant::empty(VariantType::String)
             };

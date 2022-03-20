@@ -379,6 +379,7 @@ Functions:
         HEX                         Returns hexadecimal representation of an integer value
         OCT                         Returns octal representation of an integer value
         POWER | POW                 Raise the value to the specified power
+        SQRT                        Returns square root of the value
         CONTAINS                    Returns true, if file contains string, false if not
         COALESCE                    Returns first nonempty expression value
         CONCAT                      Returns concatenated string of expression values

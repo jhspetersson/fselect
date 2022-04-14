@@ -206,7 +206,11 @@ Search by image dimensions:
 Find square images:
     
     fselect path from /home/user/Photos where width = height
+
+Find images with a known name part but unknown extension:
     
+    fselect path from /home/user/projects where name = "*RDS*" and width gte 1
+
 Find old-school rap MP3 files:
 
     fselect duration, path from /home/user/music where genre = Rap and bitrate = 320 and mp3_year lt 2000  

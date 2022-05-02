@@ -87,6 +87,8 @@ pub struct Searcher {
 
     file_exif_metadata: Option<HashMap<String, String>>,
     file_exif_metadata_set: bool,
+
+    pub error_count: i32,
 }
 
 impl Searcher {
@@ -129,6 +131,8 @@ impl Searcher {
 
             file_exif_metadata: None,
             file_exif_metadata_set: false,
+
+            error_count: 0,
         }
     }
 
@@ -219,7 +223,10 @@ impl Searcher {
                                         }
                                     }
                                 },
-                                Err(e) => path_error_message(&path, e)
+                                Err(e) => {
+                                    self.error_count += 1;
+                                    path_error_message(&path, e)
+                                }
                             }
                         }
 
@@ -492,6 +499,7 @@ impl Searcher {
         let canonical_path = crate::util::canonical_path(&dir.to_path_buf());
 
         if canonical_path.is_err() {
+            self.error_count += 1;
             error_message(&dir.to_string_lossy(), String::from("could not canonicalize path: ").add(canonical_path.err().unwrap().as_str()).as_str());
             return Ok(());
         }
@@ -594,6 +602,7 @@ impl Searcher {
                                                         false);
 
                                                     if result.is_err() {
+                                                        self.error_count += 1;
                                                         path_error_message(&path, result.err().unwrap());
                                                     }
                                                 } else {
@@ -602,18 +611,21 @@ impl Searcher {
                                             }
                                         }
                                     } else {
+                                        self.error_count += 1;
                                         path_error_message(&path, result.err().unwrap());
                                     }
                                 }
                             }
                         },
                         Err(err) => {
+                            self.error_count += 1;
                             path_error_message(dir, err);
                         }
                     }
                 }
             },
             Err(err) => {
+                self.error_count += 1;
                 path_error_message(dir, err);
             }
         }
@@ -634,6 +646,7 @@ impl Searcher {
                     false);
 
                 if result.is_err() {
+                    self.error_count += 1;
                     path_error_message(&path, result.err().unwrap());
                 }
             }

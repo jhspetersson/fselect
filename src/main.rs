@@ -120,6 +120,8 @@ fn main() {
         first_arg = args[0].to_ascii_lowercase();
     }
 
+    let mut exit_value = None::<i32>;
+
     if interactive {
         let mut rl = Editor::<()>::new();
         loop {
@@ -146,13 +148,17 @@ fn main() {
         }
     } else {
         let query = args.join(" ");
-        exec_search(query, &config, no_color);
+        exit_value = Some(exec_search(query, &config, no_color));
     }
 
     config.save();
+
+    if let Some(exit_value) = exit_value {
+        std::process::exit(exit_value);
+    }
 }
 
-fn exec_search(query: String, config: &Config, no_color: bool) {
+fn exec_search(query: String, config: &Config, no_color: bool) -> i32 {
     let mut p = Parser::new();
     let query = p.parse(&query, config.debug);
 
@@ -166,9 +172,15 @@ fn exec_search(query: String, config: &Config, no_color: bool) {
             let use_colors = !no_color && is_terminal;
 
             let mut searcher = Searcher::new(query, config.clone(), use_colors);
-            searcher.list_search_results().unwrap()
+            searcher.list_search_results().unwrap();
+
+            let error_count = searcher.error_count;
+            match error_count {
+                0 => 0,
+                _ => 1
+            }
         },
-        Err(err) => error_message("query", &err)
+        Err(err) => { error_message("query", &err); 2 }
     }
 }
 

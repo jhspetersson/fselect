@@ -451,3 +451,11 @@ You can also specify config location with runtime option, e.g.:
 ### Environment variables
 
 **fselect** respects `NO_COLOR` [environment variable](https://no-color.org).
+
+### Exit values
+
+| Value | Meaning |
+| --- | --- |
+| 0 | everything OK |
+| 1 | I/O error has occurred during any directory listing or file reading |
+| 2 | error during parsing of the search query |

@@ -52,7 +52,7 @@ A statically precompiled [binary](https://github.com/jhspetersson/fselect/releas
 * Install [Chocolatey](https://chocolatey.org/install)
 * Run `choco install fselect`
 
-#### Windows via Sccop
+#### Windows via Scoop
 
 * Install [Scoop](https://scoop.sh)
 * Run `scoop install fselect`

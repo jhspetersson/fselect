@@ -280,4 +280,4 @@ MIT/Apache-2.0
 
 ---
 
-Supported by [JetBrains IDEA](https://www.jetbrains.com/?from=fselect) open source license
+Supported by [JetBrains IDEA](https://jb.gg/OpenSourceSupport) open source license

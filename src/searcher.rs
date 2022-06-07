@@ -1362,9 +1362,11 @@ impl Searcher {
                 }
             },
             Field::Mime => {
-                let mime = tree_magic::from_filepath(&entry.path());
+                if let Some(mime) = tree_magic_mini::from_filepath(&entry.path()) {
+                    return Variant::from_string(&String::from(mime));
+                }
 
-                return Variant::from_string(&mime);
+                return Variant::empty(VariantType::String);
             },
             Field::IsBinary => {
                 self.update_file_metadata(entry);
@@ -1375,10 +1377,12 @@ impl Searcher {
                     }
                 }
 
-                let mime = tree_magic::from_filepath(&entry.path());
-                let is_binary = !is_text_mime(&mime);
+                if let Some(mime) = tree_magic_mini::from_filepath(&entry.path()) {
+                    let is_binary = !is_text_mime(mime);
+                    return Variant::from_bool(is_binary);
+                }
 
-                return Variant::from_bool(is_binary);
+                return Variant::from_bool(false);
             },
             Field::IsText => {
                 self.update_file_metadata(entry);
@@ -1389,10 +1393,12 @@ impl Searcher {
                     }
                 }
 
-                let mime = tree_magic::from_filepath(&entry.path());
-                let is_text = is_text_mime(&mime);
+                if let Some(mime) = tree_magic_mini::from_filepath(&entry.path()) {
+                    let is_text = is_text_mime(mime);
+                    return Variant::from_bool(is_text);
+                }
 
-                return Variant::from_bool(is_text);
+                return Variant::from_bool(false);
             },
             Field::IsArchive => {
                 let is_archive = match file_info {

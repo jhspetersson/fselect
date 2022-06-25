@@ -9,6 +9,7 @@ extern crate xattr;
 
 use std::env;
 use std::path::PathBuf;
+use std::process::ExitCode;
 
 use ansi_term::Colour::*;
 use atty::Stream;
@@ -36,7 +37,7 @@ use crate::searcher::Searcher;
 use crate::util::error_message;
 use crate::util::str_to_bool;
 
-fn main() {
+fn main() -> ExitCode {
     let mut config = match Config::new() {
         Ok(cnf) => cnf,
         Err(err) => {
@@ -65,7 +66,7 @@ fn main() {
     if env::args().len() == 1 {
         short_usage_info(no_color);
         help_hint();
-        return;
+        return ExitCode::SUCCESS;
     }
 
     let mut args: Vec<String> = env::args().collect();
@@ -75,12 +76,12 @@ fn main() {
 
     if first_arg.contains("version") || first_arg.starts_with("-v") {
         short_usage_info(no_color);
-        return;
+        return ExitCode::SUCCESS;
     }
 
     if first_arg.contains("help") || first_arg.starts_with("-h") || first_arg.starts_with("/?") || first_arg.starts_with("/h") {
         usage_info(config, no_color);
-        return;
+        return ExitCode::SUCCESS;
     }
 
     let mut interactive = false;
@@ -111,7 +112,7 @@ fn main() {
             if !interactive {
                 short_usage_info(no_color);
                 help_hint();
-                return;
+                return ExitCode::SUCCESS;
             } else {
                 break;
             }
@@ -120,7 +121,7 @@ fn main() {
         first_arg = args[0].to_ascii_lowercase();
     }
 
-    let mut exit_value = None::<i32>;
+    let mut exit_value = None::<u8>;
 
     if interactive {
         let mut rl = Editor::<()>::new();
@@ -154,11 +155,13 @@ fn main() {
     config.save();
 
     if let Some(exit_value) = exit_value {
-        std::process::exit(exit_value);
+        return ExitCode::from(exit_value);
     }
+
+    ExitCode::SUCCESS
 }
 
-fn exec_search(query: String, config: &Config, no_color: bool) -> i32 {
+fn exec_search(query: String, config: &Config, no_color: bool) -> u8 {
     let mut p = Parser::new();
     let query = p.parse(&query, config.debug);
 

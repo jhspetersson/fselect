@@ -124,27 +124,34 @@ fn main() -> ExitCode {
     let mut exit_value = None::<u8>;
 
     if interactive {
-        let mut rl = Editor::<()>::new();
-        loop {
-            let readline = rl.readline("query> ");
-            match readline {
-                Ok(query) => {
-                    rl.add_history_entry(query.as_str());
-                    exec_search(query, &config, no_color);
-                },
-                Err(ReadlineError::Interrupted) => {
-                    println!("CTRL-C");
-                    break
-                },
-                Err(ReadlineError::Eof) => {
-                    println!("CTRL-D");
-                    break
-                },
-                Err(err) => {
-                    let err = format!("{:?}", err);
-                    error_message("input", &err);
-                    break
+        match Editor::<()>::new() {
+            Ok(mut rl) => {
+                loop {
+                    let readline = rl.readline("query> ");
+                    match readline {
+                        Ok(query) => {
+                            rl.add_history_entry(query.as_str());
+                            exec_search(query, &config, no_color);
+                        },
+                        Err(ReadlineError::Interrupted) => {
+                            println!("CTRL-C");
+                            break
+                        },
+                        Err(ReadlineError::Eof) => {
+                            println!("CTRL-D");
+                            break
+                        },
+                        Err(err) => {
+                            let err = format!("{:?}", err);
+                            error_message("input", &err);
+                            break
+                        }
+                    }
                 }
+            },
+            _ => {
+                error_message("editor", "couldn't open line editor");
+                exit_value = Some(2);
             }
         }
     } else {

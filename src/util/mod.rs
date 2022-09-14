@@ -24,7 +24,7 @@ use std::string::ToString;
 
 use chrono::Local;
 use chrono::TimeZone;
-use humansize::FileSize;
+use humansize;
 use mp3_metadata;
 use mp3_metadata::MP3Metadata;
 use regex::Regex;
@@ -284,72 +284,72 @@ pub fn format_filesize(size: u64, modifier: &str) -> String {
 
     match modifier.as_str() {
         "b" | "byte" => {
-            fixed_at = humansize::file_size_opts::FixedAt::Byte;
-            format = humansize::file_size_opts::BINARY;
+            fixed_at = Some(humansize::FixedAt::Base);
+            format = humansize::BINARY;
         },
         "k" | "kib" => {
-            fixed_at = humansize::file_size_opts::FixedAt::Kilo;
-            format = humansize::file_size_opts::BINARY;
+            fixed_at = Some(humansize::FixedAt::Kilo);
+            format = humansize::BINARY;
             if zeroes == -1 {
                 zeroes = 0;
             }
         },
         "kb" => {
-            fixed_at = humansize::file_size_opts::FixedAt::Kilo;
-            format = humansize::file_size_opts::DECIMAL;
+            fixed_at = Some(humansize::FixedAt::Kilo);
+            format = humansize::DECIMAL;
             if zeroes == -1 {
                 zeroes = 0;
             }
         },
         "m" | "mib" => {
-            fixed_at = humansize::file_size_opts::FixedAt::Mega;
-            format = humansize::file_size_opts::BINARY;
+            fixed_at = Some(humansize::FixedAt::Mega);
+            format = humansize::BINARY;
             if zeroes == -1 {
                 zeroes = 0;
             }
         },
         "mb" => {
-            fixed_at = humansize::file_size_opts::FixedAt::Mega;
-            format = humansize::file_size_opts::DECIMAL;
+            fixed_at = Some(humansize::FixedAt::Mega);
+            format = humansize::DECIMAL;
             if zeroes == -1 {
                 zeroes = 0;
             }
         },
         "g" | "gib" => {
-            fixed_at = humansize::file_size_opts::FixedAt::Giga;
-            format = humansize::file_size_opts::BINARY;
+            fixed_at = Some(humansize::FixedAt::Giga);
+            format = humansize::BINARY;
         },
         "gb" => {
-            fixed_at = humansize::file_size_opts::FixedAt::Giga;
-            format = humansize::file_size_opts::DECIMAL;
+            fixed_at = Some(humansize::FixedAt::Giga);
+            format = humansize::DECIMAL;
         },
         "t" | "tib" => {
-            fixed_at = humansize::file_size_opts::FixedAt::Tera;
-            format = humansize::file_size_opts::BINARY;
+            fixed_at = Some(humansize::FixedAt::Tera);
+            format = humansize::BINARY;
         },
         "tb" => {
-            fixed_at = humansize::file_size_opts::FixedAt::Tera;
-            format = humansize::file_size_opts::DECIMAL;
+            fixed_at = Some(humansize::FixedAt::Tera);
+            format = humansize::DECIMAL;
         },
         "p" | "pib" => {
-            fixed_at = humansize::file_size_opts::FixedAt::Peta;
-            format = humansize::file_size_opts::BINARY;
+            fixed_at = Some(humansize::FixedAt::Peta);
+            format = humansize::BINARY;
         },
         "pb" => {
-            fixed_at = humansize::file_size_opts::FixedAt::Peta;
-            format = humansize::file_size_opts::DECIMAL;
+            fixed_at = Some(humansize::FixedAt::Peta);
+            format = humansize::DECIMAL;
         },
         "e" | "eib" => {
-            fixed_at = humansize::file_size_opts::FixedAt::Exa;
-            format = humansize::file_size_opts::BINARY;
+            fixed_at = Some(humansize::FixedAt::Exa);
+            format = humansize::BINARY;
         },
         "eb" => {
-            fixed_at = humansize::file_size_opts::FixedAt::Exa;
-            format = humansize::file_size_opts::DECIMAL;
+            fixed_at = Some(humansize::FixedAt::Exa);
+            format = humansize::DECIMAL;
         },
         "" => {
-            fixed_at = humansize::file_size_opts::FixedAt::No;
-            format = humansize::file_size_opts::BINARY;
+            fixed_at = None;
+            format = humansize::BINARY;
         },
         _ => {
             panic!("Unknown file size modifier");
@@ -361,24 +361,20 @@ pub fn format_filesize(size: u64, modifier: &str) -> String {
     }
 
     if conventional {
-        format = humansize::file_size_opts::CONVENTIONAL;
+        format = humansize::WINDOWS;
     }
 
     if decimal {
-        format = humansize::file_size_opts::DECIMAL;
+        format = humansize::DECIMAL;
     }
 
-    let formatter = humansize::file_size_opts::FileSizeOpts {
-        fixed_at,
-        decimal_places: zeroes as usize,
-        space,
-        ..format
-    };
+    let format_options = humansize::FormatSizeOptions::from(format)
+        .fixed_at(fixed_at)
+        .decimal_places(zeroes as usize)
+        .space_after_value(space);
 
-    let mut result = match size.file_size(formatter) {
-        Ok(size) => size,
-        _ => String::new()
-    };
+    let mut result = humansize::format_size(size, format_options)
+        .replace("kB", "KB");
 
     if short_units {
         result = result

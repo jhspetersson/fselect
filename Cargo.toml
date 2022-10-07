@@ -16,7 +16,6 @@ edition = "2021"
 default = ["users"]
 
 [dependencies]
-ansi_term = "0.12"
 atty = "0.2"
 base64 = "0.13"
 bytecount = "0.6"
@@ -32,6 +31,7 @@ lscolors = "0.12"
 matroska = "0.18"
 mp3-metadata = "0.3"
 mp4parse = "0.12"
+nu-ansi-term = "0.46"
 rand = "0.8"
 regex = "1.1"
 rustyline = "10.0.0"

@@ -11,8 +11,8 @@ use std::env;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use ansi_term::Colour::*;
 use atty::Stream;
+use nu_ansi_term::Color::*;
 use rustyline::error::ReadlineError;
 use rustyline::Editor;
 
@@ -53,7 +53,7 @@ fn main() -> ExitCode {
     #[cfg(windows)]
     {
         if !no_color {
-            let res = ansi_term::enable_ansi_support();
+            let res = nu_ansi_term::enable_ansi_support();
             let win_init_ok = match res {
                 Ok(()) => true,
                 Err(203) => true,

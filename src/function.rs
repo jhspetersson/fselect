@@ -16,7 +16,7 @@ use serde::ser::{Serialize, Serializer};
 use xattr::FileExt;
 
 use crate::fileinfo::FileInfo;
-use crate::util::format_date;
+use crate::util::{capitalize, format_date};
 use crate::util::format_datetime;
 use crate::util::parse_datetime;
 use crate::util::parse_filesize;
@@ -223,6 +223,7 @@ impl Display for Variant {
 pub enum Function {
     Lower,
     Upper,
+    InitCap,
     Length,
     ToBase64,
     FromBase64,
@@ -294,6 +295,7 @@ impl FromStr for Function {
             "lower" | "lowercase" | "lcase" => Ok(Function::Lower),
             "upper" | "uppercase" | "ucase" => Ok(Function::Upper),
             "length" | "len" => Ok(Function::Length),
+            "initcap" => Ok(Function::InitCap),
             "to_base64" | "base64" => Ok(Function::ToBase64),
             "from_base64" => Ok(Function::FromBase64),
             "bin" => Ok(Function::Bin),
@@ -437,6 +439,10 @@ pub fn get_value(function: &Option<Function>,
         },
         Some(Function::Upper) => {
             return Variant::from_string(&function_arg.to_uppercase());
+        },
+        Some(Function::InitCap) => {
+            let result = function_arg.split_whitespace().map(|s| capitalize(&s.to_lowercase())).collect::<Vec<_>>().join(" ");
+            return Variant::from_string(&result);
         },
         Some(Function::Length) => {
             return Variant::from_int(function_arg.chars().count() as i64);

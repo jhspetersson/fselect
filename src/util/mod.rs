@@ -399,6 +399,14 @@ pub fn str_to_bool(val: &str) -> Option<bool> {
     }
 }
 
+pub fn capitalize(s: &str) -> String {
+    let mut c = s.chars();
+    match c.next() {
+        Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+        None => String::new()
+    }
+}
+
 pub fn parse_unix_filename(s: &str) -> &str {
     let last_slash = s.rfind('/');
     match last_slash {
@@ -796,5 +804,13 @@ mod tests {
         assert_eq!(get_extension("has_ext.foo"), String::from("foo"));
         assert_eq!(get_extension("has_ext.foobar"), String::from("foobar"));
         assert_eq!(get_extension("has.extension.foo"), String::from("foo"));
+    }
+
+    #[test]
+    fn test_capitalize() {
+        assert_eq!(capitalize(""), String::new());
+        assert_eq!(capitalize("test"), String::from("Test"));
+        assert_eq!(capitalize("some test"), String::from("Some test"));
+        assert_eq!(capitalize("превед медвед"), String::from("Превед медвед"));
     }
 }

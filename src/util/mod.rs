@@ -22,8 +22,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::string::ToString;
 
-use chrono::Local;
-use chrono::TimeZone;
+use chrono::{Datelike, Local, Timelike};
 use humansize;
 use mp3_metadata;
 use mp3_metadata::MP3Metadata;
@@ -104,7 +103,7 @@ impl<T> Criteria<T> where T: Display {
 
     #[inline]
     fn cmp_at_datetimes(&self, other: &Self, i: usize) -> Ordering where T: Ord {
-        let default = Local.ymd(1970, 1, 1).and_hms(0, 0, 0);
+        let default = Local::now().naive_local().with_year(1970).unwrap().with_month(1).unwrap().with_day(1).unwrap().with_hour(0).unwrap().with_minute(0).unwrap().with_second(0).unwrap();
         let a = parse_datetime(&self.values[i].to_string()).unwrap_or((default, default)).0;
         let b = parse_datetime(&other.values[i].to_string()).unwrap_or((default, default)).0;
 

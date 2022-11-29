@@ -8,8 +8,8 @@ use std::io::prelude::*;
 use std::str::FromStr;
 
 use chrono::Datelike;
-use chrono::DateTime;
 use chrono::Local;
+use chrono::NaiveDateTime;
 use rand::Rng;
 use serde::ser::{Serialize, Serializer};
 #[cfg(unix)]
@@ -38,8 +38,8 @@ pub struct Variant {
     int_value: Option<i64>,
     float_value: Option<f64>,
     bool_value: Option<bool>,
-    dt_from: Option<DateTime<Local>>,
-    dt_to: Option<DateTime<Local>>,
+    dt_from: Option<NaiveDateTime>,
+    dt_to: Option<NaiveDateTime>,
 }
 
 impl Variant {
@@ -129,7 +129,7 @@ impl Variant {
         }
     }
 
-    pub fn from_datetime(value: DateTime<Local>) -> Variant {
+    pub fn from_datetime(value: NaiveDateTime) -> Variant {
         Variant {
             value_type: VariantType::DateTime,
             string_value: format_datetime(&value),
@@ -199,7 +199,7 @@ impl Variant {
         }
     }
 
-    pub fn to_datetime(&self) -> (DateTime<Local>, DateTime<Local>) {
+    pub fn to_datetime(&self) -> (NaiveDateTime, NaiveDateTime) {
         if self.dt_from.is_none() {
             match parse_datetime(&self.string_value) {
                 Ok((dt_from, dt_to)) => {
@@ -596,7 +596,7 @@ pub fn get_value(function: &Option<Function>,
             return Variant::empty(VariantType::String);
         }
         Some(Function::CurrentDate) => {
-            let now = Local::today();
+            let now = Local::now().date_naive();
             return Variant::from_string(&format_date(&now));
         }
         Some(Function::Year) => match parse_datetime(&function_arg) {

@@ -1,9 +1,9 @@
-use chrono::Date;
 use chrono::Datelike;
-use chrono::DateTime;
 use chrono::Duration;
 use chrono::Local;
 use chrono::LocalResult;
+use chrono::NaiveDate;
+use chrono::NaiveDateTime;
 use chrono::Timelike;
 use chrono::TimeZone;
 use chrono_english::{parse_date_string,Dialect};
@@ -13,19 +13,19 @@ lazy_static! {
     static ref DATE_REGEX: Regex = Regex::new("(\\d{4})(-|:)(\\d{1,2})(-|:)(\\d{1,2}) ?(\\d{1,2})?:?(\\d{1,2})?:?(\\d{1,2})?").unwrap();
 }
 
-pub fn parse_datetime(s: &str) -> Result<(DateTime<Local>, DateTime<Local>), String> {
+pub fn parse_datetime(s: &str) -> Result<(NaiveDateTime, NaiveDateTime), String> {
     if s == "today" {
-        let date = Local::now().date();
-        let start = date.and_hms(0, 0, 0);
-        let finish = date.and_hms(23, 59, 59);
+        let date = Local::now().date_naive();
+        let start = date.and_hms_opt(0, 0, 0).unwrap();
+        let finish = date.and_hms_opt(23, 59, 59).unwrap();
 
         return Ok((start, finish));
     }
 
     if s == "yesterday" {
-        let date = Local::now().date() - Duration::days(1);
-        let start = date.and_hms(0, 0, 0);
-        let finish = date.and_hms(23, 59, 59);
+        let date = Local::now().date_naive() - Duration::days(1);
+        let start = date.and_hms_opt(0, 0, 0).unwrap();
+        let finish = date.and_hms_opt(23, 59, 59).unwrap();
 
         return Ok((start, finish));
     }
@@ -75,10 +75,10 @@ pub fn parse_datetime(s: &str) -> Result<(DateTime<Local>, DateTime<Local>), Str
                 }
             }
 
-            match Local.ymd_opt(year, month, day) {
+            match Local.with_ymd_and_hms(year, month, day, 0, 0, 0) {
                 LocalResult::Single(date) => {
-                    let start = date.and_hms(hour_start, min_start, sec_start);
-                    let finish = date.and_hms(hour_finish, min_finish, sec_finish);
+                    let start = date.naive_local().with_hour(hour_start).unwrap().with_minute(min_start).unwrap().with_second(sec_start).unwrap();
+                    let finish = date.naive_local().with_hour(hour_finish).unwrap().with_minute(min_finish).unwrap().with_second(sec_finish).unwrap();
 
                     Ok((start, finish))
                 },
@@ -89,10 +89,10 @@ pub fn parse_datetime(s: &str) -> Result<(DateTime<Local>, DateTime<Local>), Str
             if s.len() >= 5 {
                 match parse_date_string(s, Local::now(), Dialect::Uk) {
                     Ok(date_time) => {
+                        let date_time = date_time.naive_local();
                         let finish;
                         if date_time.hour() == 0 && date_time.minute() == 0 && date_time.second() == 0 {
-                            finish = Local.ymd(date_time.year(), date_time.month(), date_time.day())
-                                .and_hms(23, 59, 59);
+                            finish = date_time.with_hour(23).unwrap().with_minute(59).unwrap().with_second(59).unwrap();
                         } else {
                             finish = date_time;
                         }
@@ -108,15 +108,20 @@ pub fn parse_datetime(s: &str) -> Result<(DateTime<Local>, DateTime<Local>), Str
     }
 }
 
-pub fn to_local_datetime(dt: &zip::DateTime) -> DateTime<Local> {
-    Local.ymd(dt.year() as i32, dt.month() as u32, dt.day() as u32)
-        .and_hms(dt.hour() as u32, dt.minute() as u32, dt.second() as u32)
+pub fn to_local_datetime(dt: &zip::DateTime) -> NaiveDateTime {
+    Local::now().naive_local()
+        .with_year(dt.year() as i32).unwrap()
+        .with_month(dt.month() as u32).unwrap()
+        .with_day(dt.day() as u32).unwrap()
+        .with_hour(dt.hour() as u32).unwrap()
+        .with_minute(dt.minute() as u32).unwrap()
+        .with_second(dt.second() as u32).unwrap()
 }
 
-pub fn format_datetime(dt: &DateTime<Local>) -> String {
+pub fn format_datetime(dt: &NaiveDateTime) -> String {
     format!("{}", dt.format("%Y-%m-%d %H:%M:%S"))
 }
 
-pub fn format_date(date: &Date<Local>) -> String {
+pub fn format_date(date: &NaiveDate) -> String {
     format!("{}", date.format("%Y-%m-%d"))
 }

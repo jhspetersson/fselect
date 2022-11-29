@@ -1123,7 +1123,7 @@ impl Searcher {
                 if let Some(ref attrs) = self.file_metadata {
                     if let Ok(sdt) = attrs.created() {
                         let dt: DateTime<Local> = DateTime::from(sdt);
-                        return Variant::from_datetime(dt);
+                        return Variant::from_datetime(dt.naive_local());
                     }
                 }
             },
@@ -1133,14 +1133,14 @@ impl Searcher {
                 if let Some(ref attrs) = self.file_metadata {
                     if let Ok(sdt) = attrs.accessed() {
                         let dt: DateTime<Local> = DateTime::from(sdt);
-                        return Variant::from_datetime(dt);
+                        return Variant::from_datetime(dt.naive_local());
                     }
                 }
             },
             Field::Modified => {
                 match file_info {
                     Some(ref file_info) => {
-                        let dt: DateTime<Local> = to_local_datetime(&file_info.modified);
+                        let dt = to_local_datetime(&file_info.modified);
                         return Variant::from_datetime(dt);
                     },
                     _ => {
@@ -1149,7 +1149,7 @@ impl Searcher {
                         if let Some(ref attrs) = self.file_metadata {
                             if let Ok(sdt) = attrs.modified() {
                                 let dt: DateTime<Local> = DateTime::from(sdt);
-                                return Variant::from_datetime(dt);
+                                return Variant::from_datetime(dt.naive_local());
                             }
                         }
                     }

@@ -27,7 +27,7 @@ humansize = "2.0"
 imagesize = "0.10"
 kamadak-exif = "0.5"
 lazy_static = "1.3"
-lscolors = "0.12"
+lscolors = "0.13"
 matroska = "0.19"
 mp3-metadata = "0.3"
 mp4parse = "0.12"
@@ -49,7 +49,7 @@ zip = "0.6"
 
 [target.'cfg(unix)'.dependencies]
 users = { version = "0.11", optional = true }
-xattr = "0.2"
+xattr = "1.0"
 
 [profile.release]
 lto = true

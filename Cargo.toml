@@ -17,7 +17,7 @@ default = ["users"]
 
 [dependencies]
 atty = "0.2"
-base64 = "0.13"
+base64 = "0.20"
 bytecount = "0.6"
 chrono = "0.4"
 chrono-english = "0.1"
@@ -41,7 +41,7 @@ serde_json = "1.0"
 sha-1 = "0.10"
 sha2 = "0.10"
 sha3 = "0.10"
-svg = "0.12"
+svg = "0.13"
 toml = "0.5"
 tree_magic_mini = { version = "3.0", features = [ "tree_magic_db" ] }
 wana_kana = "2.0"

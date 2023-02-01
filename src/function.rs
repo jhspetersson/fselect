@@ -11,6 +11,7 @@ use chrono::Datelike;
 use chrono::Local;
 use chrono::NaiveDateTime;
 use rand::Rng;
+use rbase64;
 use serde::ser::{Serialize, Serializer};
 #[cfg(unix)]
 use xattr::FileExt;
@@ -448,10 +449,10 @@ pub fn get_value(function: &Option<Function>,
             return Variant::from_int(function_arg.chars().count() as i64);
         },
         Some(Function::ToBase64) => {
-            return Variant::from_string(&base64::encode(&function_arg));
+            return Variant::from_string(&rbase64::encode((&function_arg).as_ref()));
         },
         Some(Function::FromBase64) => {
-            return Variant::from_string(&String::from_utf8(base64::decode(&function_arg).unwrap_or(vec![])).unwrap_or(String::new()));
+            return Variant::from_string(&String::from_utf8_lossy(&rbase64::decode(&function_arg).unwrap_or(vec![])).to_string());
         },
         Some(Function::Bin) => {
             return match function_arg.parse::<i64>() {

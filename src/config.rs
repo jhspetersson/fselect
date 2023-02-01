@@ -120,10 +120,10 @@ impl Config {
             return;
         }
 
-        let toml = toml::to_vec(&self).unwrap();
+        let toml = toml::to_string_pretty(&self).unwrap();
 
         if let Ok(mut file) = fs::File::create(&config_file) {
-            let _ = file.write_all(&toml);
+            let _ = file.write_all(&toml.as_bytes());
         }
     }
 

@@ -14,7 +14,7 @@ use std::process::ExitCode;
 use atty::Stream;
 use nu_ansi_term::Color::*;
 use rustyline::error::ReadlineError;
-use rustyline::Editor;
+use rustyline::DefaultEditor;
 
 mod config;
 mod expr;
@@ -124,13 +124,13 @@ fn main() -> ExitCode {
     let mut exit_value = None::<u8>;
 
     if interactive {
-        match Editor::<()>::new() {
+        match DefaultEditor::new() {
             Ok(mut rl) => {
                 loop {
                     let readline = rl.readline("query> ");
                     match readline {
                         Ok(query) => {
-                            rl.add_history_entry(query.as_str());
+                            let _ = rl.add_history_entry(query.as_str());
                             exec_search(query, &config, no_color);
                         },
                         Err(ReadlineError::Interrupted) => {

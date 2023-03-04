@@ -282,6 +282,8 @@ pub enum Function {
     HasXattr,
     #[cfg(unix)]
     Xattr,
+    #[cfg(linux)]
+    HasCapabilities,
 
     Random,
 }
@@ -353,6 +355,8 @@ impl FromStr for Function {
             "has_xattr" => Ok(Function::HasXattr),
             #[cfg(unix)]
             "xattr" => Ok(Function::Xattr),
+            #[cfg(linux)]
+            "has_capabilities" | "has_caps" => Ok(Function::HasCapabilities),
 
             "rand" | "random" => Ok(Function::Random),
 
@@ -414,6 +418,11 @@ impl Function {
     pub fn is_boolean_function(&self) -> bool {
         #[cfg(unix)]
         if self == &Function::HasXattr {
+            return true;
+        }
+
+        #[cfg(linux)]
+        if self == &Function::HasCapabilities {
             return true;
         }
 
@@ -701,6 +710,18 @@ pub fn get_value(function: &Option<Function>,
             }
 
             return Variant::empty(VariantType::String);
+        }
+        #[cfg(linux)]
+        Some(Function::HasCapabilities) => {
+            if let Some(entry) = entry {
+                if let Ok(file) = File::open(&entry.path()) {
+                    if let Ok(xattr) = file.get_xattr("security.capability") {
+                        return Variant::from_bool(xattr.is_some());
+                    }
+                }
+            }
+
+            return Variant::empty(VariantType::Bool);
         }
         Some(Function::Random) => {
             let mut rng = rand::thread_rng();

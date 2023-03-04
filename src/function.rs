@@ -282,7 +282,7 @@ pub enum Function {
     HasXattr,
     #[cfg(unix)]
     Xattr,
-    #[cfg(linux)]
+    #[cfg(target_os = "linux")]
     HasCapabilities,
 
     Random,
@@ -355,7 +355,7 @@ impl FromStr for Function {
             "has_xattr" => Ok(Function::HasXattr),
             #[cfg(unix)]
             "xattr" => Ok(Function::Xattr),
-            #[cfg(linux)]
+            #[cfg(target_os = "linux")]
             "has_capabilities" | "has_caps" => Ok(Function::HasCapabilities),
 
             "rand" | "random" => Ok(Function::Random),
@@ -421,7 +421,7 @@ impl Function {
             return true;
         }
 
-        #[cfg(linux)]
+        #[cfg(target_os = "linux")]
         if self == &Function::HasCapabilities {
             return true;
         }
@@ -711,7 +711,7 @@ pub fn get_value(function: &Option<Function>,
 
             return Variant::empty(VariantType::String);
         }
-        #[cfg(linux)]
+        #[cfg(target_os = "linux")]
         Some(Function::HasCapabilities) => {
             if let Some(entry) = entry {
                 if let Ok(file) = File::open(&entry.path()) {

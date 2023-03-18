@@ -9,7 +9,7 @@ pub struct MkvDimensionsExtractor;
 
 impl DimensionsExtractor for MkvDimensionsExtractor {
     fn supports_ext(&self, ext_lowercase: &str) -> bool {
-        "mkv" == ext_lowercase
+        "mkv" == ext_lowercase || "webm" == ext_lowercase
     }
 
     fn try_read_dimensions(&self, path: &Path) -> io::Result<Option<Dimensions>> {

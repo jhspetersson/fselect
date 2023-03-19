@@ -1,3 +1,4 @@
+pub(crate) mod capabilities;
 mod datetime;
 mod glob;
 pub(crate) mod japanese;

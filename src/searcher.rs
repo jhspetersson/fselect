@@ -1171,6 +1171,19 @@ impl Searcher {
                         return Variant::from_bool(false);
                     }
             },
+            Field::Capabilities => {
+                #[cfg(target_os = "linux")]
+                    {
+                        if let Ok(file) = fs::File::open(&entry.path()) {
+                            if let Ok(Some(caps_xattr)) = file.get_xattr("security.capability") {
+                                let caps_string = crate::util::capabilities::parse_capabilities(caps_xattr);
+                                return Variant::from_string(&caps_string);
+                            }
+                        }
+                    }
+
+                return Variant::empty(VariantType::String);
+            },
             Field::IsShebang => {
                 return Variant::from_bool(is_shebang(&entry.path()));
             },

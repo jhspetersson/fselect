@@ -1,3 +1,4 @@
+#[cfg(target_os = "linux")]
 pub(crate) mod capabilities;
 mod datetime;
 mod glob;

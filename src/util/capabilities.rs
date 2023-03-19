@@ -1,3 +1,4 @@
+#[cfg(target_os = "linux")]
 macro_rules! check_cap {
     ($cap_name: ident, $code: expr, $permitted: ident, $inherited: ident, $effective: ident, $result: ident) => {
         if let Some(str_result) = check_capability($permitted, $inherited, 1 << $code) {
@@ -6,6 +7,7 @@ macro_rules! check_cap {
     }
 }
 
+#[cfg(target_os = "linux")]
 pub fn parse_capabilities(caps: Vec<u8>) -> String {
     if caps.len() < 12 {
         return String::new();
@@ -69,6 +71,7 @@ pub fn parse_capabilities(caps: Vec<u8>) -> String {
     result.join(" ")
 }
 
+#[cfg(target_os = "linux")]
 fn check_capability(perm: u32, inh: u32, cap: u32) -> Option<String> {
     if inh & cap == cap && perm & cap == cap {
         Some(String::from("ip"))

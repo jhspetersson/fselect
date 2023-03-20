@@ -285,6 +285,7 @@ Column Options:
     is_socket                       Returns a boolean signifying whether the file path is a socket file
     is_hidden                       Returns a boolean signifying whether the file is a hidden file (e.g., files that start with a dot on *nix)
     has_xattrs                      Returns a boolean signifying whether the file has extended attributes
+    capabilities | caps             Returns a string describing Linux capabilities assigned to a file
 
     device (Linux only)             Returns the code of device the file is stored on
     inode (Linux only)              Returns the number of inode

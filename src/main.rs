@@ -380,7 +380,8 @@ Functions:
     Xattr:
         HAS_XATTR                   Used to check if xattr exists (unix-only)
         XATTR                       Returns value of xattr (unix-only)
-        HAS_CAPABILITIES | HAS_CAPS Check if Linux capability exists for the file
+        HAS_CAPABILITIES | HAS_CAPS Check if any Linux capability exists for the file
+        HAS_CAPABILITY or HAS_CAP   Check if given Linux capability exists for the file
     String:
         LENGTH | LEN                Returns length of string value
         LOWER | LOWERCASE | LCASE   Returns lowercase value

@@ -183,11 +183,12 @@ These are only available on Unix platforms when `users` feature has been enabled
 Used to check if particular xattr exists, or to get its value.
 Supported platforms are Linux, MacOS, FreeBSD, and NetBSD. 
 
-| Function                     | Meaning                                       | Example                                               |
-|------------------------------|-----------------------------------------------|-------------------------------------------------------|
-| HAS_XATTR                    | Check if xattr exists                         | `select "name, has_xattr(user.test) from /home/user"` |
-| XATTR                        | Get value of xattr                            | `select "name, xattr(user.test) from /home/user"`     |
-| HAS_CAPABILITIES or HAS_CAPS | Check if Linux capability exists for the file | `select "name, has_caps() from /home/user"`  |
+| Function                      | Meaning                                             | Example                                               |
+|-------------------------------|-----------------------------------------------------|-------------------------------------------------------|
+| HAS_XATTR                     | Check if xattr exists                               | `select "name, has_xattr(user.test) from /home/user"` |
+| XATTR                         | Get value of xattr                                  | `select "name, xattr(user.test) from /home/user"`     |
+| HAS_CAPABILITIES or HAS_CAPS  | Check if any Linux capability exists for the file   | `select "name, has_caps() from /home/user"`           |
+| HAS_CAPABILITY or HAS_CAP     | Check if given Linux capability exists for the file | `select "name, has_cap('cap_bpf') from /home/user"`   |
 
 #### String functions
 

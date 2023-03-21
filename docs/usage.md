@@ -38,6 +38,7 @@ Directories to search at are listed with comma separators.
 In a real SQL such syntax would make a cross product. Here it means just search at A, next at B, and so on.
 
 You can use curly braces instead of the regular parentheses! This helps to avoid a few of shell pitfalls a little bit.
+Functions with no arguments don't require parentheses at all.
 
 String literals don't really need quotes. 
 You will need to put them just in case you query something with spaces inside. 

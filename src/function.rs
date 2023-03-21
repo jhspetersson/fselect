@@ -731,7 +731,7 @@ pub fn get_value(function: &Option<Function>,
         Some(Function::HasCapability) => {
             if let Some(entry) = entry {
                 if let Ok(file) = File::open(&entry.path()) {
-                    if let Ok(caps_xattr) = file.get_xattr("security.capability") {
+                    if let Ok(Some(caps_xattr)) = file.get_xattr("security.capability") {
                         let caps_string = crate::util::capabilities::parse_capabilities(caps_xattr);
                         return Variant::from_bool(caps_string.contains(&function_arg));
                     }

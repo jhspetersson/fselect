@@ -99,9 +99,9 @@ impl Expr {
         }
     }
 
-    pub fn function_left(function: Function, left: Expr) -> Expr {
+    pub fn function_left(function: Function, left: Option<Box<Expr>>) -> Expr {
         Expr {
-            left: Some(Box::new(left)),
+            left,
             arithmetic_op: None,
             logical_op: None,
             op: None,

@@ -423,8 +423,8 @@ impl Parser {
                     result = Ok(Some(Expr::op(Expr::field(field), Op::Eq, Expr::value(String::from("true")))));
                 }
             } else if let Some(function) = expr.function {
-                if expr.left.is_some() && expr.right.is_none() && (expr.args.is_none() || expr.args.unwrap().is_empty()) && function.is_boolean_function() {
-                    let func_expr = Expr::function_left(function, *expr.left.unwrap());
+                if expr.right.is_none() && (expr.args.is_none() || expr.args.unwrap().is_empty()) && function.is_boolean_function() {
+                    let func_expr = Expr::function_left(function, expr.left);
                     result = Ok(Some(Expr::op(func_expr, Op::Eq, Expr::value(String::from("true")))));
                 }
             }

@@ -578,11 +578,16 @@ impl Parser {
     }
 
     fn parse_function(&mut self, function: Function) -> Result<Expr, String> {
+        let is_boolean_function = function.is_boolean_function();
         let mut function_expr = Expr::function(function);
 
         let mut curly_mode = false;
         if let Some(lexem) = self.next_lexem() {
             if lexem != Lexem::Open && lexem != Lexem::CurlyOpen {
+                if is_boolean_function {
+                   return Ok(function_expr);
+                }
+
                 return Err("Error in function expression".to_string());
             }
 
@@ -938,6 +943,33 @@ mod tests {
         let query = p.parse(&query, false).unwrap();
 
         let query2 = "select name from /home/user where CONTAINS('foobar') = true or CONTAINS('bazz') = true";
+        let mut p2 = Parser::new();
+        let query2 = p2.parse(&query2, false).unwrap();
+
+        assert_eq!(query.expr, query2.expr);
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn simple_function_without_args_syntax_in_where() {
+        let query = "select name, caps from /home/user where HAS_CAPS()";
+        let mut p = Parser::new();
+        let query = p.parse(&query, false).unwrap();
+
+        let query2 = "select name, caps from /home/user where HAS_CAPS";
+        let mut p2 = Parser::new();
+        let query2 = p2.parse(&query2, false).unwrap();
+
+        assert_eq!(query.expr, query2.expr);
+    }
+
+    #[test]
+    fn simple_function_without_args_syntax() {
+        let query = "select CURDATE()";
+        let mut p = Parser::new();
+        let query = p.parse(&query, false).unwrap();
+
+        let query2 = "select CURDATE";
         let mut p2 = Parser::new();
         let query2 = p2.parse(&query2, false).unwrap();
 

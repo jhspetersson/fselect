@@ -284,6 +284,8 @@ pub enum Function {
     Xattr,
     #[cfg(target_os = "linux")]
     HasCapabilities,
+    #[cfg(target_os = "linux")]
+    HasCapability,
 
     Random,
 }
@@ -357,6 +359,8 @@ impl FromStr for Function {
             "xattr" => Ok(Function::Xattr),
             #[cfg(target_os = "linux")]
             "has_capabilities" | "has_caps" => Ok(Function::HasCapabilities),
+            #[cfg(target_os = "linux")]
+            "has_capability" | "has_cap" => Ok(Function::HasCapability),
 
             "rand" | "random" => Ok(Function::Random),
 
@@ -422,7 +426,7 @@ impl Function {
         }
 
         #[cfg(target_os = "linux")]
-        if self == &Function::HasCapabilities {
+        if self == &Function::HasCapabilities || self == &Function::HasCapability {
             return true;
         }
 
@@ -715,8 +719,21 @@ pub fn get_value(function: &Option<Function>,
         Some(Function::HasCapabilities) => {
             if let Some(entry) = entry {
                 if let Ok(file) = File::open(&entry.path()) {
-                    if let Ok(xattr) = file.get_xattr("security.capability") {
-                        return Variant::from_bool(xattr.is_some());
+                    if let Ok(caps_xattr) = file.get_xattr("security.capability") {
+                        return Variant::from_bool(caps_xattr.is_some());
+                    }
+                }
+            }
+
+            return Variant::empty(VariantType::Bool);
+        }
+        #[cfg(target_os = "linux")]
+        Some(Function::HasCapability) => {
+            if let Some(entry) = entry {
+                if let Ok(file) = File::open(&entry.path()) {
+                    if let Ok(caps_xattr) = file.get_xattr("security.capability") {
+                        let caps_string = crate::util::capabilities::parse_capabilities(caps_xattr);
+                        return Variant::from_bool(caps_string.contains(&function_arg));
                     }
                 }
             }

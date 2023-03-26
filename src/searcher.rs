@@ -52,9 +52,9 @@ use crate::util::*;
 use crate::util::dimensions::get_dimensions;
 use crate::output::ResultsWriter;
 
-pub struct Searcher {
+pub struct Searcher<'a> {
     query: Query,
-    config : Config,
+    config : &'a Config,
     use_colors: bool,
     results_writer: ResultsWriter,
     #[cfg(all(unix, feature = "users"))]
@@ -91,8 +91,8 @@ pub struct Searcher {
     pub error_count: i32,
 }
 
-impl Searcher {
-    pub fn new(query: Query, config: Config, use_colors: bool) -> Self {
+impl <'a> Searcher<'a> {
+    pub fn new(query: Query, config: &'a Config, use_colors: bool) -> Self {
         let limit = query.limit;
 
         let results_writer = ResultsWriter::new(&query.output_format);

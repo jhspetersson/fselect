@@ -178,7 +178,7 @@ impl <'a> Searcher<'a> {
                 let mut ext_roots: Vec<String> = vec![];
                 let parts = root.path.split('/').collect::<Vec<&str>>();
                 for part in parts {
-                    if self.looks_like_regexp(part) {
+                    if looks_like_regexp(part) {
                         let rx_string = format!("^{}$", part);
                         let rx = Regex::new(&rx_string).unwrap();
                         let mut tmp = vec![];
@@ -1732,9 +1732,5 @@ impl <'a> Searcher<'a> {
 
     fn is_video(&self, file_name: &str) -> bool {
         has_extension(file_name, &self.config.is_video)
-    }
-
-    fn looks_like_regexp(&self, s: &str) -> bool {
-        s.contains('*') || s.contains('[') || s.contains('?')
     }
 }

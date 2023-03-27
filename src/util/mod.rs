@@ -428,6 +428,10 @@ pub fn has_extension(file_name: &str, extensions: &Vec<String>) -> bool {
     false
 }
 
+pub fn looks_like_regexp(s: &str) -> bool {
+    s.contains('*') || s.contains('[') || s.contains('?')
+}
+
 pub fn is_text_mime(mime: &str) -> bool {
     mime.starts_with("text/") ||
     mime.contains("+xml") ||

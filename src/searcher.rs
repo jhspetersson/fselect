@@ -53,7 +53,7 @@ use crate::util::dimensions::get_dimensions;
 use crate::output::ResultsWriter;
 
 pub struct Searcher<'a> {
-    query: Query,
+    query: &'a Query,
     config : &'a Config,
     use_colors: bool,
     results_writer: ResultsWriter,
@@ -92,7 +92,7 @@ pub struct Searcher<'a> {
 }
 
 impl <'a> Searcher<'a> {
-    pub fn new(query: Query, config: &'a Config, use_colors: bool) -> Self {
+    pub fn new(query: &'a Query, config: &'a Config, use_colors: bool) -> Self {
         let limit = query.limit;
 
         let results_writer = ResultsWriter::new(&query.output_format);
@@ -250,7 +250,7 @@ impl <'a> Searcher<'a> {
             }
         }
 
-        for root in roots.clone() {
+        for root in roots {
             self.current_follow_symlinks = root.symlinks;
 
             let root_dir = Path::new(&root.path);
@@ -1491,7 +1491,7 @@ impl <'a> Searcher<'a> {
                   file_info: &Option<FileInfo>) -> std::io::Result<bool> {
         self.clear_file_data();
 
-        if let Some(ref expr) = self.query.expr.clone() {
+        if let Some(ref expr) = self.query.expr {
             let result = self.conforms(entry, file_info, expr);
             if !result {
                 return Ok(true);

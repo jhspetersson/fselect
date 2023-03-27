@@ -181,7 +181,7 @@ fn exec_search(query: String, config: &mut Config, no_color: bool) -> u8 {
             let is_terminal = atty::is(Stream::Stdout);
             let use_colors = !no_color && is_terminal;
 
-            let mut searcher = Searcher::new(query, config, use_colors);
+            let mut searcher = Searcher::new(&query, config, use_colors);
             searcher.list_search_results().unwrap();
 
             let error_count = searcher.error_count;

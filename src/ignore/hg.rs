@@ -22,6 +22,43 @@ impl HgignoreFilter {
     }
 }
 
+pub fn search_upstream_hgignore(hgignore_filters: &mut Vec<HgignoreFilter>, dir: &Path) {
+    if let Ok(canonical_path) = crate::util::canonical_path(&dir.to_path_buf()) {
+        let mut path = std::path::PathBuf::from(canonical_path);
+
+        loop {
+            let hgignore_file = path.clone().join(".hgignore");
+            let hg_directory = path.clone().join(".hg");
+
+            if hgignore_file.is_file() && hg_directory.is_dir() {
+                update_hgignore_filters(hgignore_filters, &mut path);
+                return;
+            }
+
+            let parent_found = path.pop();
+
+            if !parent_found {
+                return;
+            }
+        }
+    }
+}
+
+fn update_hgignore_filters(hgignore_filters: &mut Vec<HgignoreFilter>, path: &Path) {
+    let hgignore_file = path.join(".hgignore");
+    if hgignore_file.is_file() {
+        let regexes = parse_hgignore(&hgignore_file, &path);
+        match regexes {
+            Ok(ref regexes) => {
+                hgignore_filters.append(&mut regexes.clone());
+            },
+            Err(err) => {
+                eprintln!("{}: {}", path.to_string_lossy(), err);
+            }
+        }
+    }
+}
+
 pub fn matches_hgignore_filter(hgignore_filters: &Vec<HgignoreFilter>, file_name: &str) -> bool {
     let mut matched = false;
 
@@ -52,7 +89,7 @@ impl Syntax {
     }
 }
 
-pub fn parse_hgignore(file_path: &Path, dir_path: &Path) -> Result<Vec<HgignoreFilter>, String> {
+fn parse_hgignore(file_path: &Path, dir_path: &Path) -> Result<Vec<HgignoreFilter>, String> {
     let mut result = vec![];
     let mut err = String::new();
 

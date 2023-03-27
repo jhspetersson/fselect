@@ -23,6 +23,42 @@ impl DockerignoreFilter {
     }
 }
 
+pub fn search_upstream_dockerignore(dockerignore_filters: &mut Vec<DockerignoreFilter>, dir: &Path) {
+    if let Ok(canonical_path) = crate::util::canonical_path(&dir.to_path_buf()) {
+        let mut path = std::path::PathBuf::from(canonical_path);
+
+        loop {
+            let dockerignore_file = path.join(".dockerignore");
+
+            if dockerignore_file.is_file() {
+                update_dockerignore_filters(dockerignore_filters, &mut path);
+                return;
+            }
+
+            let parent_found = path.pop();
+
+            if !parent_found {
+                return;
+            }
+        }
+    }
+}
+
+fn update_dockerignore_filters(dockerignore_filters: &mut Vec<DockerignoreFilter>, path: &Path) {
+    let dockerignore_file = path.join(".dockerignore");
+    if dockerignore_file.is_file() {
+        let regexes = parse_dockerignore(&dockerignore_file, &path);
+        match regexes {
+            Ok(ref regexes) => {
+                dockerignore_filters.append(&mut regexes.clone());
+            },
+            Err(err) => {
+                eprintln!("{}: {}", path.to_string_lossy(), err);
+            }
+        }
+    }
+}
+
 pub fn matches_dockerignore_filter(dockerignore_filters: &Vec<DockerignoreFilter>, file_name: &str) -> bool {
     let mut matched = false;
 
@@ -43,7 +79,7 @@ pub fn matches_dockerignore_filter(dockerignore_filters: &Vec<DockerignoreFilter
     matched
 }
 
-pub fn parse_dockerignore(file_path: &Path, dir_path: &Path) -> Result<Vec<DockerignoreFilter>, String> {
+fn parse_dockerignore(file_path: &Path, dir_path: &Path) -> Result<Vec<DockerignoreFilter>, String> {
     let mut result = vec![];
     let mut err = String::new();
 

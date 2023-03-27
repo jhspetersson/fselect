@@ -1,7 +1,8 @@
+use std::collections::HashMap;
 use std::fs::File;
 use std::ops::Add;
 use std::ops::Index;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use regex::Captures;
 use regex::Error;
@@ -18,6 +19,66 @@ impl GitignoreFilter {
     fn new(regex: Regex, only_dir: bool, negate: bool) -> GitignoreFilter {
         GitignoreFilter {
             regex, only_dir, negate
+        }
+    }
+}
+
+pub fn search_upstream_gitignore(gitignore_map: &mut HashMap<PathBuf, Vec<GitignoreFilter>>, dir: &Path) {
+    if let Ok(canonical_path) = crate::util::canonical_path(&dir.to_path_buf()) {
+        let mut path = PathBuf::from(canonical_path);
+
+        loop {
+            let parent_found = path.pop();
+
+            if !parent_found {
+                return;
+            }
+
+            update_gitignore_map(gitignore_map, &mut path);
+        }
+    }
+}
+
+pub fn update_gitignore_map(gitignore_map: &mut HashMap<PathBuf, Vec<GitignoreFilter>>, path: &Path) {
+    let gitignore_file = path.join(".gitignore");
+    if gitignore_file.is_file() {
+        let regexes = parse_gitignore(&gitignore_file, &path);
+        gitignore_map.insert(path.to_path_buf(), regexes);
+    }
+}
+
+pub fn get_gitignore_filters(gitignore_map: &mut HashMap<PathBuf, Vec<GitignoreFilter>>, dir: &Path) -> Vec<GitignoreFilter> {
+    let mut result = vec![];
+
+    for (dir_path, regexes) in &mut *gitignore_map {
+        if dir.to_path_buf() == *dir_path {
+            for ref mut rx in regexes {
+                result.push(rx.clone());
+            }
+
+            return result;
+        }
+    }
+
+    let mut path = dir.to_path_buf();
+
+    loop {
+        let parent_found = path.pop();
+
+        if !parent_found {
+            return result;
+        }
+
+        for (dir_path, regexes) in &mut *gitignore_map {
+            if path == *dir_path {
+                let mut tmp = vec![];
+                for ref mut rx in regexes {
+                    tmp.push(rx.clone());
+                }
+                tmp.append(&mut result);
+                result.clear();
+                result.append(&mut tmp);
+            }
         }
     }
 }
@@ -62,7 +123,7 @@ fn convert_file_name_for_matcher(file_name: &str) -> String {
     }
 }
 
-pub fn parse_gitignore(file_path: &Path, dir_path: &Path) -> Vec<GitignoreFilter> {
+fn parse_gitignore(file_path: &Path, dir_path: &Path) -> Vec<GitignoreFilter> {
     let mut result = vec![];
 
     let git_dir = dir_path.join(".git");

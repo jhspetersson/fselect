@@ -34,15 +34,12 @@ use crate::fileinfo::to_file_info;
 use crate::function;
 use crate::function::Variant;
 use crate::function::VariantType;
-use crate::ignore::docker::DockerignoreFilter;
+use crate::ignore::docker::{DockerignoreFilter, search_upstream_dockerignore};
 use crate::ignore::docker::matches_dockerignore_filter;
-use crate::ignore::docker::parse_dockerignore;
-use crate::ignore::git::GitignoreFilter;
+use crate::ignore::git::{get_gitignore_filters, GitignoreFilter, search_upstream_gitignore, update_gitignore_map};
 use crate::ignore::git::matches_gitignore_filter;
-use crate::ignore::git::parse_gitignore;
-use crate::ignore::hg::HgignoreFilter;
+use crate::ignore::hg::{HgignoreFilter, search_upstream_hgignore};
 use crate::ignore::hg::matches_hgignore_filter;
-use crate::ignore::hg::parse_hgignore;
 use crate::mode;
 use crate::operators::LogicalOp;
 use crate::operators::Op;
@@ -263,15 +260,15 @@ impl <'a> Searcher<'a> {
             let traversal_mode = root.traversal;
 
             if apply_gitignore {
-                self.search_upstream_gitignore(&root_dir);
+                search_upstream_gitignore(&mut self.gitignore_map, &root_dir);
             }
 
             if apply_hgignore {
-                self.search_upstream_hgignore(&root_dir);
+                search_upstream_hgignore(&mut self.hgignore_filters, &root_dir);
             }
 
             if apply_dockerignore {
-                self.search_upstream_dockerignore(&root_dir);
+                search_upstream_dockerignore(&mut self.dockerignore_filters, &root_dir);
             }
 
             self.dir_queue.clear();
@@ -344,139 +341,6 @@ impl <'a> Searcher<'a> {
         Ok(())
     }
 
-    fn search_upstream_gitignore(&mut self, dir: &Path) {
-        if let Ok(canonical_path) = crate::util::canonical_path(&dir.to_path_buf()) {
-            let mut path = PathBuf::from(canonical_path);
-
-            loop {
-                let parent_found = path.pop();
-
-                if !parent_found {
-                    return;
-                }
-
-                self.update_gitignore_map(&mut path);
-            }
-        }
-    }
-
-    fn update_gitignore_map(&mut self, path: &Path) {
-        let gitignore_file = path.join(".gitignore");
-        if gitignore_file.is_file() {
-            let regexes = parse_gitignore(&gitignore_file, &path);
-            self.gitignore_map.insert(path.to_path_buf(), regexes);
-        }
-    }
-
-    fn get_gitignore_filters(&self, dir: &Path) -> Vec<GitignoreFilter> {
-        let mut result = vec![];
-
-        for (dir_path, regexes) in &self.gitignore_map {
-            if dir.to_path_buf() == *dir_path {
-                for ref mut rx in regexes {
-                    result.push(rx.clone());
-                }
-
-                return result;
-            }
-        }
-
-        let mut path = dir.to_path_buf();
-
-        loop {
-            let parent_found = path.pop();
-
-            if !parent_found {
-                return result;
-            }
-
-            for (dir_path, regexes) in &self.gitignore_map {
-                if path == *dir_path {
-                    let mut tmp = vec![];
-                    for ref mut rx in regexes {
-                        tmp.push(rx.clone());
-                    }
-                    tmp.append(&mut result);
-                    result.clear();
-                    result.append(&mut tmp);
-                }
-            }
-        }
-    }
-
-    fn search_upstream_hgignore(&mut self, dir: &Path) {
-        if let Ok(canonical_path) = crate::util::canonical_path(&dir.to_path_buf()) {
-            let mut path = PathBuf::from(canonical_path);
-
-            loop {
-                let hgignore_file = path.clone().join(".hgignore");
-                let hg_directory = path.clone().join(".hg");
-
-                if hgignore_file.is_file() && hg_directory.is_dir() {
-                    self.update_hgignore_filters(&mut path);
-                    return;
-                }
-
-                let parent_found = path.pop();
-
-                if !parent_found {
-                    return;
-                }
-            }
-        }
-    }
-
-    fn update_hgignore_filters(&mut self, path: &Path) {
-        let hgignore_file = path.join(".hgignore");
-        if hgignore_file.is_file() {
-            let regexes = parse_hgignore(&hgignore_file, &path);
-            match regexes {
-                Ok(ref regexes) => {
-                    self.hgignore_filters.append(&mut regexes.clone());
-                },
-                Err(err) => {
-                    eprintln!("{}: {}", path.to_string_lossy(), err);
-                }
-            }
-        }
-    }
-
-    fn search_upstream_dockerignore(&mut self, dir: &Path) {
-        if let Ok(canonical_path) = crate::util::canonical_path(&dir.to_path_buf()) {
-            let mut path = PathBuf::from(canonical_path);
-
-            loop {
-                let dockerignore_file = path.join(".dockerignore");
-
-                if dockerignore_file.is_file() {
-                    self.update_dockerignore_filters(&mut path);
-                    return;
-                }
-
-                let parent_found = path.pop();
-
-                if !parent_found {
-                    return;
-                }
-            }
-        }
-    }
-
-    fn update_dockerignore_filters(&mut self, path: &Path) {
-        let dockerignore_file = path.join(".dockerignore");
-        if dockerignore_file.is_file() {
-            let regexes = parse_dockerignore(&dockerignore_file, &path);
-            match regexes {
-                Ok(ref regexes) => {
-                    self.dockerignore_filters.append(&mut regexes.clone());
-                },
-                Err(err) => {
-                    eprintln!("{}: {}", path.to_string_lossy(), err);
-                }
-            }
-        }
-    }
-
     fn visit_dir(&mut self,
                  dir: &Path,
                  min_depth: u32,
@@ -518,8 +382,8 @@ impl <'a> Searcher<'a> {
 
         if apply_gitignore {
             let canonical_path = PathBuf::from(canonical_path);
-            self.update_gitignore_map(&canonical_path);
-            gitignore_filters = Some(self.get_gitignore_filters(&canonical_path));
+            update_gitignore_map(&mut self.gitignore_map, &canonical_path);
+            gitignore_filters = Some(get_gitignore_filters(&mut self.gitignore_map, &canonical_path));
         }
 
         match fs::read_dir(dir) {

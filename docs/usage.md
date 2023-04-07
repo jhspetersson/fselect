@@ -4,7 +4,7 @@ Find files with SQL-like queries
 
 ### Basic usage
 
-    fselect [ARGS] COLUMN[, COLUMN...] [from ROOT[, ROOT...]] [where EXPR] [order by COLUMNS] [limit N] [into FORMAT]
+    fselect [ARGS] COLUMN[, COLUMN...] [from ROOT[, ROOT...]] [where EXPR] [group by COLUMNS] [order by COLUMNS] [limit N] [into FORMAT]
 
 You write SQL-like query, that's it.
 

@@ -73,7 +73,7 @@ A statically precompiled [binary](https://github.com/jhspetersson/fselect/releas
 
 ### Usage
 
-    fselect [ARGS] COLUMN[, COLUMN...] [from ROOT[, ROOT...]] [where EXPR] [order by COLUMNS] [limit N] [into FORMAT]
+    fselect [ARGS] COLUMN[, COLUMN...] [from ROOT[, ROOT...]] [where EXPR] [group by COLUMNS] [order by COLUMNS] [limit N] [into FORMAT]
 
 ### Interactive mode
 
@@ -258,6 +258,10 @@ Find files with xattrs, check if particular xattr exists, or get its value:
 Include arbitrary text as columns:
 
     fselect "name, ' has size of ', size, ' bytes'"
+
+Group results:
+
+    fselect "ext, count(*) from /tmp group by ext"            
 
 Order results:
 

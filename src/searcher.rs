@@ -59,6 +59,7 @@ pub struct Searcher<'a> {
     regex_cache: HashMap<String, Regex>,
     found: u32,
     raw_output_buffer: Vec<HashMap<String, String>>,
+    partitioned_output_buffer: HashMap<Vec<String>, Vec<HashMap<String, String>>>,
     output_buffer: TopN<Criteria<String>, String>,
     gitignore_map: HashMap<PathBuf, Vec<GitignoreFilter>>,
     hgignore_filters: Vec<HgignoreFilter>,
@@ -103,6 +104,7 @@ impl <'a> Searcher<'a> {
             regex_cache: HashMap::new(),
             found: 0,
             raw_output_buffer: vec![],
+            partitioned_output_buffer: HashMap::new(),
             output_buffer: if limit == 0 { TopN::limitless() } else { TopN::new(limit) },
             gitignore_map: HashMap::new(),
             hgignore_filters: vec![],
@@ -299,21 +301,49 @@ impl <'a> Searcher<'a> {
         }
 
         if self.has_aggregate_column() {
+            if !self.query.grouping_fields.is_empty() {
+                if self.partitioned_output_buffer.is_empty() {
+                    self.partitioned_output_buffer = self.partition_output_buffer();
+                }
 
-            let mut buf = WritableBuffer::new();
-            let mut items: Vec<(String, String)> = Vec::new();
+                let group_keys: Vec<String> = self.query.grouping_fields.iter().map(|f| f.to_string()).collect();
+                let buffer_partitions = self.partitioned_output_buffer.clone();
 
-            for column_expr in &self.query.fields.clone() {
-                let record = format!("{}", self.get_column_expr_value(None, &None, &mut HashMap::new(), column_expr));
-                let field_name = column_expr.to_string().to_lowercase();
-                items.push((field_name, record));
-            }
+                buffer_partitions.iter().for_each(|f| {
+                    let mut buf = WritableBuffer::new();
+                    let mut items: Vec<(String, String)> = Vec::new();
 
-            self.results_writer.write_row(&mut buf, items)?;
+                    let mut file_map = HashMap::new();
+                    for (i, k) in group_keys.clone().into_iter().enumerate() {
+                        file_map.insert(k, f.0.get(i).unwrap().clone());
+                    }
 
-            if let Err(e) = write!(std::io::stdout(), "{}", String::from(buf)) {
-                if e.kind() == ErrorKind::BrokenPipe {
-                    return Ok(());
+                    for column_expr in &self.query.fields.clone() {
+                        let record = format!("{}", self.get_column_expr_value(None, &None, &mut file_map, Some(f.1), column_expr));
+                        let field_name = column_expr.to_string().to_lowercase();
+                        items.push((field_name, record));
+                    }
+
+                    let _ = self.results_writer.write_row(&mut buf, items);
+
+                    let _ = write!(std::io::stdout(), "{}", String::from(buf));
+                })
+            } else {
+                let mut buf = WritableBuffer::new();
+                let mut items: Vec<(String, String)> = Vec::new();
+
+                for column_expr in &self.query.fields.clone() {
+                    let record = format!("{}", self.get_column_expr_value(None, &None, &mut HashMap::new(), None, column_expr));
+                    let field_name = column_expr.to_string().to_lowercase();
+                    items.push((field_name, record));
+                }
+
+                self.results_writer.write_row(&mut buf, items)?;
+
+                if let Err(e) = write!(std::io::stdout(), "{}", String::from(buf)) {
+                    if e.kind() == ErrorKind::BrokenPipe {
+                        return Ok(());
+                    }
                 }
             }
         } else if self.is_buffered() {
@@ -546,9 +576,10 @@ impl <'a> Searcher<'a> {
                              entry: Option<&DirEntry>,
                              file_info: &Option<FileInfo>,
                              file_map: &mut HashMap<String, String>,
+                             buffer_data: Option<&Vec<HashMap<String, String>>>,
                              column_expr: &Expr) -> Variant {
         if let Some(ref _function) = column_expr.function {
-            let result = self.get_function_value(entry, file_info, file_map, column_expr);
+            let result = self.get_function_value(entry, file_info, file_map, buffer_data, column_expr);
             file_map.insert(column_expr.to_string(), result.to_string());
             return result;
         }
@@ -574,11 +605,11 @@ impl <'a> Searcher<'a> {
         let result;
 
         if let Some(ref left) = column_expr.left {
-            let left_result = self.get_column_expr_value(entry, file_info, file_map, left);
+            let left_result = self.get_column_expr_value(entry, file_info, file_map, buffer_data, left);
 
             if let Some(ref op) = column_expr.arithmetic_op {
                 if let Some(ref right) = column_expr.right {
-                    let right_result = self.get_column_expr_value(entry, file_info, file_map, right);
+                    let right_result = self.get_column_expr_value(entry, file_info, file_map, buffer_data, right);
                     result = op.calc(&left_result, &right_result);
                     file_map.insert(column_expr.to_string(), result.to_string());
                 } else {
@@ -598,6 +629,7 @@ impl <'a> Searcher<'a> {
                           entry: Option<&DirEntry>,
                           file_info: &Option<FileInfo>,
                           file_map: &mut HashMap<String, String>,
+                          buffer_data: Option<&Vec<HashMap<String, String>>>,
                           column_expr: &Expr) -> Variant {
         let dummy = Expr::value(String::from(""));
         let boxed_dummy = &Box::from(dummy);
@@ -610,20 +642,23 @@ impl <'a> Searcher<'a> {
         let function = &column_expr.function.as_ref().unwrap();
 
         if function.is_aggregate_function() {
-            let _ = self.get_column_expr_value(entry, file_info, file_map, left_expr);
+            if entry.is_some() {
+                return Variant::empty(VariantType::Float);
+            }
+
+            let _ = self.get_column_expr_value(entry, file_info, file_map, buffer_data, left_expr);
             let buffer_key = left_expr.to_string();
             let aggr_result = function::get_aggregate_value(&column_expr.function,
-                                                            &self.raw_output_buffer,
-                                                            //left_expr.field.as_ref().unwrap().to_string().to_lowercase(),
+                                                            buffer_data.unwrap_or(&self.raw_output_buffer),
                                                             buffer_key,
                                                             &column_expr.val);
             return Variant::from_string(&aggr_result);
         } else {
-            let function_arg = self.get_column_expr_value(entry, file_info, file_map, left_expr);
+            let function_arg = self.get_column_expr_value(entry, file_info, file_map, buffer_data, left_expr);
             let mut function_args = vec![];
             if let Some(args) = &column_expr.args {
                 for arg in args {
-                    let arg_value = self.get_column_expr_value(entry, file_info, file_map, arg);
+                    let arg_value = self.get_column_expr_value(entry, file_info, file_map, buffer_data, arg);
                     function_args.push(arg_value.to_string());
                 }
             }
@@ -632,6 +667,22 @@ impl <'a> Searcher<'a> {
 
             return result;
         }
+    }
+
+    fn partition_output_buffer(&self) -> HashMap<Vec<String>, Vec<HashMap<String, String>>> {
+        let group_fields: Vec<String> = self.query.grouping_fields.iter().map(|ref expr| expr.to_string()).collect();
+        let mut result: HashMap<Vec<String>, Vec<HashMap<String, String>>> = HashMap::new();
+
+        self.raw_output_buffer.iter().for_each(|item| {
+            let key: Vec<String> = group_fields.iter().map(|f| item.get(f).unwrap_or(&String::new()).clone()).collect();
+            if result.contains_key(&key) {
+                result.get_mut(&key).unwrap().push(item.clone());
+            } else {
+                result.insert(key, vec![item.clone()]);
+            }
+        });
+
+        result
     }
 
     fn update_file_metadata(&mut self, entry: &DirEntry) {
@@ -1381,7 +1432,7 @@ impl <'a> Searcher<'a> {
         let mut items: Vec<(String, String)> = Vec::new();
 
         for field in self.query.fields.clone().iter() {
-            let record = self.get_column_expr_value(Some(entry), file_info, &mut file_map, &field);
+            let record = self.get_column_expr_value(Some(entry), file_info, &mut file_map, None, &field);
 
             let value = match self.use_colors && field.contains_colorized() {
                 true => self.colorize(&record.to_string()),
@@ -1390,10 +1441,19 @@ impl <'a> Searcher<'a> {
             items.push((field.to_string(), value));
         }
 
+        for field in self.query.grouping_fields.iter() {
+            match file_map.get(&field.to_string()) {
+                None => {
+                    self.get_column_expr_value(Some(entry), file_info, &mut file_map, None, &field);
+                },
+                _ => {}
+            }
+        }
+
         for (idx, field) in self.query.ordering_fields.clone().iter().enumerate() {
             criteria[idx] = match file_map.get(&field.to_string()) {
                 Some(record) => record.clone(),
-                None => self.get_column_expr_value(Some(entry), file_info, &mut file_map, &field).to_string()
+                None => self.get_column_expr_value(Some(entry), file_info, &mut file_map, None, &field).to_string()
             }
         }
 
@@ -1495,8 +1555,8 @@ impl <'a> Searcher<'a> {
                 }
             }
         } else if let Some(ref op) = expr.op {
-            let field_value = self.get_column_expr_value(Some(entry), file_info, &mut HashMap::new(), expr.left.as_ref().unwrap());
-            let value = self.get_column_expr_value(Some(entry), file_info, &mut HashMap::new(), expr.right.as_ref().unwrap());
+            let field_value = self.get_column_expr_value(Some(entry), file_info, &mut HashMap::new(), None, expr.left.as_ref().unwrap());
+            let value = self.get_column_expr_value(Some(entry), file_info, &mut HashMap::new(), None, expr.right.as_ref().unwrap());
 
             result = match field_value.get_type() {
                 VariantType::String => {

@@ -21,6 +21,7 @@ pub enum Lexem {
     And,
     Or,
     Not,
+    Group,
     Order,
     By,
     DescendingOrder,
@@ -142,6 +143,7 @@ impl<'a> Lexer<'a> {
                     "or" => Some(Lexem::Or),
                     "and" => Some(Lexem::And),
                     "not" if self.after_where => Some(Lexem::Not),
+                    "group" => Some(Lexem::Group),
                     "order" => Some(Lexem::Order),
                     "by" => Some(Lexem::By),
                     "asc" => self.next_lexem(),
@@ -562,5 +564,21 @@ mod tests {
         assert_eq!(lexer.next_lexem(), Some(Lexem::ArithmeticOperator(String::from("*"))));
         assert_eq!(lexer.next_lexem(), Some(Lexem::From));
         assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("/test"))));
+    }
+
+    #[test]
+    fn group_by() {
+        let mut lexer = Lexer::new("select AVG(size) from /test group by mime");
+
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("select"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("AVG"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::Open));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("size"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::Close));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::From));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("/test"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::Group));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::By));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("mime"))));
     }
 }

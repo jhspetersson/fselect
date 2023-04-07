@@ -10,6 +10,7 @@ pub struct Query {
     pub fields: Vec<Expr>,
     pub roots: Vec<Root>,
     pub expr: Option<Expr>,
+    pub grouping_fields: Rc<Vec<Expr>>,
     pub ordering_fields: Rc<Vec<Expr>>,
     pub ordering_asc: Rc<Vec<bool>>,
     pub limit: u32,

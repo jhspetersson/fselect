@@ -42,6 +42,7 @@ impl Parser {
         let fields = self.parse_fields()?;
         let mut roots = self.parse_roots();
         let expr = self.parse_where()?;
+        let grouping_fields = self.parse_group_by()?;
         let (ordering_fields, ordering_asc) = self.parse_order_by(&fields)?;
         let mut limit = self.parse_limit()?;
         let output_format = self.parse_output_format()?;
@@ -71,6 +72,7 @@ impl Parser {
             fields,
             roots,
             expr,
+            grouping_fields: Rc::new(grouping_fields),
             ordering_fields: Rc::new(ordering_fields),
             ordering_asc: Rc::new(ordering_asc),
             limit,
@@ -625,6 +627,35 @@ impl Parser {
         }
     }
 
+    fn parse_group_by(&mut self) -> Result<Vec<Expr>, String> {
+        let mut group_by_fields: Vec<Expr> = vec![];
+
+        if let Some(Lexem::Group) = self.next_lexem() {
+            if let Some(Lexem::By) = self.next_lexem() {
+                loop {
+                    match self.next_lexem() {
+                        Some(Lexem::Comma) => {},
+                        Some(Lexem::RawString(_)) => {
+                            self.drop_lexem();
+                            let group_field = self.parse_expr().unwrap().unwrap();
+                            group_by_fields.push(group_field);
+                        },
+                        _ => {
+                            self.drop_lexem();
+                            break;
+                        },
+                    }
+                }
+            } else {
+                self.drop_lexem();
+            }
+        } else {
+            self.drop_lexem();
+        }
+
+        Ok(group_by_fields)
+    }
+
     fn parse_order_by(&mut self, fields: &Vec<Expr>) -> Result<(Vec<Expr>, Vec<bool>), String> {
         let mut order_by_fields: Vec<Expr> = vec![];
         let mut order_by_directions: Vec<bool> = vec![];
@@ -1004,5 +1035,20 @@ mod tests {
         let query2 = p2.parse(&query2, false).unwrap();
 
         assert_eq!(query.expr, query2.expr);
+    }
+
+    #[test]
+    fn query_with_group_by() {
+        let query = "select AVG(size) from /test group by mime";
+        let mut p = Parser::new();
+        let query = p.parse(&query, false).unwrap();
+
+        assert_eq!(query.fields, vec![Expr::function_left(Function::Avg, Some(Box::new(Expr::field(Field::Size))))]);
+
+        assert_eq!(query.roots, vec![
+            Root::new(String::from("/test"), 0, 0, false, false, None, None, None, Bfs, false),
+        ]);
+
+        assert_eq!(query.grouping_fields, Rc::new(vec![Expr::field(Field::Mime)]));
     }
 }

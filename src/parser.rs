@@ -19,13 +19,17 @@ use directories::UserDirs;
 pub struct Parser {
     lexems: Vec<Lexem>,
     index: usize,
+    roots_parsed: bool,
+    where_parsed: bool,
 }
 
 impl Parser {
     pub fn new() -> Parser {
         Parser {
             lexems: vec![],
-            index: 0
+            index: 0,
+            roots_parsed: false,
+            where_parsed: false,
         }
     }
 
@@ -41,7 +45,9 @@ impl Parser {
 
         let fields = self.parse_fields()?;
         let mut roots = self.parse_roots();
+        self.roots_parsed = true;
         let expr = self.parse_where()?;
+        self.where_parsed = true;
         let grouping_fields = self.parse_group_by()?;
         let (ordering_fields, ordering_asc) = self.parse_order_by(&fields)?;
         let mut limit = self.parse_limit()?;
@@ -421,11 +427,11 @@ impl Parser {
 
         if let Ok(Some(expr)) = result.clone() {
             if let Some(field) = expr.field {
-                if expr.left.is_none() && expr.right.is_none() && field.is_boolean_field() {
+                if expr.left.is_none() && expr.right.is_none() && field.is_boolean_field() && self.roots_parsed && !self.where_parsed {
                     result = Ok(Some(Expr::op(Expr::field(field), Op::Eq, Expr::value(String::from("true")))));
                 }
             } else if let Some(function) = expr.function {
-                if expr.right.is_none() && (expr.args.is_none() || expr.args.unwrap().is_empty()) && function.is_boolean_function() {
+                if expr.right.is_none() && (expr.args.is_none() || expr.args.unwrap().is_empty()) && function.is_boolean_function() && self.roots_parsed && !self.where_parsed {
                     let func_expr = Expr::function_left(function, expr.left);
                     result = Ok(Some(Expr::op(func_expr, Op::Eq, Expr::value(String::from("true")))));
                 }

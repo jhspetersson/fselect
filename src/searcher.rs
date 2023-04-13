@@ -1485,7 +1485,7 @@ impl <'a> Searcher<'a> {
             style = self.lscolors.style_for_path(Path::new(&value));
         }
 
-        let ansi_style = style.map(Style::to_ansi_term_style).unwrap_or_default();
+        let ansi_style = style.map(Style::to_nu_ansi_term_style).unwrap_or_default();
 
         format!("{}", ansi_style.paint(value))
     }

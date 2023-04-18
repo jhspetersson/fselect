@@ -367,7 +367,8 @@ Functions:
         VAR_POP | VARIANCE          Population variance
         VAR_SAMP                    Sample variance
     Date:
-        CURRENT_DATE | CURDATE      Returns current date
+        CURRENT_DATE | CUR_DATE |
+        CURDATE                     Returns current date
         DAY                         Returns day of the month
         MONTH                       Returns month of the year
         YEAR                        Returns year of the date

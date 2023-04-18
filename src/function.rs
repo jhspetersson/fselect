@@ -325,7 +325,7 @@ impl FromStr for Function {
             "coalesce" => Ok(Function::Coalesce),
             "format_size" | "format_filesize" => Ok(Function::FormatSize),
 
-            "current_date" | "curdate" => Ok(Function::CurrentDate),
+            "current_date" | "cur_date" | "curdate" => Ok(Function::CurrentDate),
             "day" => Ok(Function::Day),
             "month" => Ok(Function::Month),
             "year" => Ok(Function::Year),

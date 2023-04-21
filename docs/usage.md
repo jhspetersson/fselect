@@ -349,7 +349,7 @@ Other operators assume exact date and time, which could be specified in a more f
 
 ### Regular expressions ###
 
-[Rust flavor regular expressions](https://docs.rs/regex/1.5.4/regex/#syntax) are used.
+[Rust flavor regular expressions](https://docs.rs/regex/latest/regex/index.html#syntax) are used.
 
 ### MIME and file types
 

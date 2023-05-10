@@ -9,6 +9,8 @@ use regex::Captures;
 use regex::Error;
 use regex::Regex;
 
+use crate::util::error_exit;
+
 #[derive(Clone, Debug)]
 pub struct DockerignoreFilter {
     pub regex: Regex,
@@ -140,7 +142,7 @@ fn convert_dockerignore_glob(glob: &str, file_path: &Path) -> Result<Regex, Erro
             "." => "\\.",
             "*" => "[^/]*",
             "?" => "[^/]",
-            _ => panic!("Error parsing pattern")
+            _ => error_exit(".dockerignore", "Error parsing pattern")
         }.to_string()
     }).to_string();
 

@@ -150,6 +150,11 @@ pub fn error_message(source: &str, description: &str) {
     eprint!("{}: {}", source, description);
 }
 
+pub fn error_exit(source: &str, description: &str) -> ! {
+    error_message(source, description);
+    std::process::exit(2);
+}
+
 pub fn get_extension(s: &str) -> String {
     match Path::new(s).extension() {
         Some(ext) => ext.to_string_lossy().to_string(),
@@ -352,9 +357,7 @@ pub fn format_filesize(size: u64, modifier: &str) -> String {
             fixed_at = None;
             format = humansize::BINARY;
         },
-        _ => {
-            panic!("Unknown file size modifier");
-        }
+        _ => error_exit("Unknown file size modifier", modifier.as_str())
     };
 
     if zeroes == -1 {

@@ -8,6 +8,8 @@ use regex::Captures;
 use regex::Error;
 use regex::Regex;
 
+use crate::util::error_exit;
+
 #[derive(Clone, Debug)]
 pub struct GitignoreFilter {
     pub regex: Regex,
@@ -210,7 +212,7 @@ fn convert_gitignore_glob(glob: &str, file_path: &Path) -> Result<Regex, Error> 
             "." => "\\.",
             "*" => "[^/]*",
             "?" => "[^/]+",
-            _ => panic!("Error parsing pattern")
+            _ => error_exit(".gitignore", "Error parsing pattern")
         }.to_string()
     }).to_string();
 

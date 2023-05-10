@@ -1627,9 +1627,7 @@ impl <'a> Searcher<'a> {
                                             self.regex_cache.insert(val, regex.clone());
                                             return regex.is_match(&field_value.to_string());
                                         },
-                                        _ => {
-                                            panic!("Incorrect regex expression")
-                                        }
+                                        _ => error_exit("Incorrect regex expression", val.as_str())
                                     }
                                 }
                             }
@@ -1647,9 +1645,7 @@ impl <'a> Searcher<'a> {
                                             self.regex_cache.insert(val, regex.clone());
                                             return !regex.is_match(&field_value.to_string());
                                         },
-                                        _ => {
-                                            panic!("Incorrect regex expression")
-                                        }
+                                        _ => error_exit("Incorrect regex expression", val.as_str())
                                     }
                                 }
                             }
@@ -1668,9 +1664,7 @@ impl <'a> Searcher<'a> {
                                             self.regex_cache.insert(val, regex.clone());
                                             return regex.is_match(&field_value.to_string());
                                         },
-                                        _ => {
-                                            panic!("Incorrect LIKE expression")
-                                        }
+                                        _ => error_exit("Incorrect LIKE expression", val.as_str())
                                     }
                                 }
                             }
@@ -1689,9 +1683,7 @@ impl <'a> Searcher<'a> {
                                             self.regex_cache.insert(val, regex.clone());
                                             return !regex.is_match(&field_value.to_string());
                                         },
-                                        _ => {
-                                            panic!("Incorrect LIKE expression")
-                                        }
+                                        _ => error_exit("Incorrect LIKE expression", val.as_str())
                                     }
                                 }
                             }

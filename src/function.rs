@@ -17,7 +17,7 @@ use serde::ser::{Serialize, Serializer};
 use xattr::FileExt;
 
 use crate::fileinfo::FileInfo;
-use crate::util::{capitalize, error_message, format_date};
+use crate::util::{capitalize, error_exit, format_date};
 use crate::util::format_datetime;
 use crate::util::parse_datetime;
 use crate::util::parse_filesize;
@@ -206,10 +206,7 @@ impl Variant {
                 Ok((dt_from, dt_to)) => {
                     return (dt_from, dt_to);
                 },
-                _ => {
-                    error_message("Can't parse datetime", &self.string_value);
-                    std::process::exit(2);
-                }
+                _ => error_exit("Can't parse datetime", &self.string_value)
             }
         }
 
@@ -758,11 +755,11 @@ pub fn get_value(function: &Option<Function>,
                         let limit = function_args.get(0).unwrap();
                         match limit.parse::<i64>() {
                             Ok(limit) => return Variant::from_int(rng.gen_range(val..limit)),
-                            _ => panic!("Could not parse function argument")
+                            _ => error_exit("Could not parse limit argument of RANDOM function", limit.as_str())
                         }
                     }
                 },
-                _ => panic!("Could not parse function argument")
+                _ => error_exit("Could not parse an argument of RANDOM function", function_arg.as_str())
             }
         },
         _ => {

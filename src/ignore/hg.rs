@@ -8,6 +8,7 @@ use std::path::Path;
 use regex::Captures;
 use regex::Error;
 use regex::Regex;
+use crate::util::error_exit;
 
 #[derive(Clone, Debug)]
 pub struct HgignoreFilter {
@@ -182,7 +183,7 @@ fn convert_hgignore_glob(glob: &str, file_path: &Path) -> Result<Regex, Error> {
                     ")" => "\\)",
                     "^" => "\\^",
                     "$" => "\\$",
-                    _ => panic!("Error parsing pattern")
+                    _ => error_exit(".hgignore", "Error parsing pattern")
                 }.to_string()
             }).to_string();
 
@@ -207,7 +208,7 @@ fn convert_hgignore_glob(glob: &str, file_path: &Path) -> Result<Regex, Error> {
                     ")" => "\\)",
                     "^" => "\\^",
                     "$" => "\\$",
-                    _ => panic!("Error parsing pattern")
+                    _ => error_exit(".hgignore", "Error parsing pattern")
                 }.to_string()
             }).to_string();
 

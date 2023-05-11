@@ -7,7 +7,7 @@ use std::path::Path;
 pub struct ImageDimensionsExtractor;
 
 impl ImageDimensionsExtractor {
-    const EXTENSIONS: [&'static str; 12] = [
+    const EXTENSIONS: [&'static str; 13] = [
         "bmp",
         "gif",
         "heic",
@@ -18,6 +18,7 @@ impl ImageDimensionsExtractor {
         "png",
         "psb",
         "psd",
+        "tga",
         "tiff",
         "webp"
     ];

@@ -8,10 +8,10 @@ extern crate users;
 extern crate xattr;
 
 use std::env;
+use std::io::{IsTerminal, stdout};
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use atty::Stream;
 use nu_ansi_term::Color::*;
 use rustyline::error::ReadlineError;
 use rustyline::DefaultEditor;
@@ -178,7 +178,7 @@ fn exec_search(query: String, config: &mut Config, no_color: bool) -> u8 {
 
     match query {
         Ok(query) => {
-            let is_terminal = atty::is(Stream::Stdout);
+            let is_terminal = stdout().is_terminal();
             let use_colors = !no_color && is_terminal;
 
             let mut searcher = Searcher::new(&query, config, use_colors);

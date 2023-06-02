@@ -16,7 +16,6 @@ edition = "2021"
 default = ["users"]
 
 [dependencies]
-atty = "0.2"
 bytecount = "0.6"
 chrono = "0.4"
 chrono-english = "0.1"
@@ -29,7 +28,7 @@ lazy_static = "1.3"
 lscolors = { version = "0.14", features = [ "nu-ansi-term" ] }
 matroska = "0.23"
 mp3-metadata = "0.3"
-mp4parse = "0.12"
+mp4parse = "0.17"
 nu-ansi-term = "0.47"
 rand = "0.8"
 rbase64 = "2.0"

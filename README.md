@@ -47,6 +47,11 @@ More is under way!
 
 A statically precompiled [binary](https://github.com/jhspetersson/fselect/releases/download/0.8.3/fselect-x86_64-win.zip) is available at Github downloads.
 
+#### Windows via winget
+
+* Install [winget](https://github.com/microsoft/winget-cli)
+* Run `winget install -e --id fselect.fselect`
+
 #### Windows via Chocolatey
 
 * Install [Chocolatey](https://chocolatey.org/install)

@@ -40,6 +40,11 @@ impl Query {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Root {
     pub path: String,
+    pub options: RootOptions,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct RootOptions {
     pub min_depth: u32,
     pub max_depth: u32,
     pub archives: bool,
@@ -51,19 +56,32 @@ pub struct Root {
     pub regexp: bool,
 }
 
-impl Root {
-    pub fn new(path: String,
-               min_depth: u32,
-               max_depth: u32,
-               archives: bool,
-               symlinks: bool,
-               gitignore: Option<bool>,
-               hgignore: Option<bool>,
-               dockerignore: Option<bool>,
-               traversal: TraversalMode,
-               regexp: bool) -> Root {
-        Root {
-            path,
+impl RootOptions {
+    pub fn new() -> RootOptions {
+        RootOptions {
+            min_depth: 0,
+            max_depth: 0,
+            archives: false,
+            symlinks: false,
+            gitignore: None,
+            hgignore: None,
+            dockerignore: None,
+            traversal: Bfs,
+            regexp: false,
+        }
+    }
+
+    #[cfg(test)]
+    pub fn from(min_depth: u32,
+                max_depth: u32,
+                archives: bool,
+                symlinks: bool,
+                gitignore: Option<bool>,
+                hgignore: Option<bool>,
+                dockerignore: Option<bool>,
+                traversal: TraversalMode,
+                regexp: bool) -> RootOptions {
+        RootOptions {
             min_depth,
             max_depth,
             archives,
@@ -75,19 +93,20 @@ impl Root {
             regexp,
         }
     }
+}
 
-    pub fn default() -> Root {
+impl Root {
+    pub fn new(path: String, options: RootOptions) -> Root {
+        Root {
+            path,
+            options,
+        }
+    }
+
+    pub fn default(options: Option<RootOptions>) -> Root {
         Root {
             path: String::from("."),
-            min_depth: 0,
-            max_depth: 0,
-            archives: false,
-            symlinks: false,
-            gitignore: None,
-            hgignore: None,
-            dockerignore: None,
-            traversal: Bfs,
-            regexp: false,
+            options: options.unwrap_or_else(|| RootOptions::new()),
         }
     }
 

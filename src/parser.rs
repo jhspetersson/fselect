@@ -9,7 +9,7 @@ use crate::function::Function;
 use crate::operators::ArithmeticOp;
 use crate::operators::LogicalOp;
 use crate::operators::Op;
-use crate::query::OutputFormat;
+use crate::query::{OutputFormat, RootOptions};
 use crate::query::Query;
 use crate::query::Root;
 use crate::query::TraversalMode::{Bfs, Dfs};
@@ -45,6 +45,7 @@ impl Parser {
 
         let fields = self.parse_fields()?;
         let mut roots = self.parse_roots();
+        let root_options = self.parse_root_options();
         self.roots_parsed = true;
         let expr = self.parse_where()?;
         self.where_parsed = true;
@@ -58,7 +59,7 @@ impl Parser {
         }
 
         if roots.is_empty() {
-            roots.push(Root::default());
+            roots.push(Root::default(root_options));
         }
 
         if self.there_are_remaining_lexems() {
@@ -112,6 +113,11 @@ impl Parser {
                             fields.push(Expr::field(Field::Path));
                         } else {
                             self.drop_lexem();
+
+                            if Self::is_root_option_keyword(s) {
+                                break;
+                            }
+
                             if let Ok(Some(field)) = self.parse_expr() {
                                 fields.push(field);
                             }
@@ -140,7 +146,7 @@ impl Parser {
 
     fn parse_roots(&mut self) -> Vec<Root> {
         enum RootParsingMode {
-            Unknown, From, Root, MinDepth, Depth, Options, Comma
+            Unknown, From, Root, Comma
         }
 
         let mut roots: Vec<Root> = Vec::new();
@@ -162,15 +168,7 @@ impl Parser {
 
         if let RootParsingMode::From = mode {
             let mut path: String = String::from("");
-            let mut min_depth: u32 = 0;
-            let mut depth: u32 = 0;
-            let mut archives = false;
-            let mut symlinks = false;
-            let mut gitignore = None;
-            let mut hgignore = None;
-            let mut dockerignore = None;
-            let mut traversal = Bfs;
-            let mut regexp = false;
+            let mut root_options = RootOptions::new();
 
             loop {
                 let lexem = self.next_lexem();
@@ -191,97 +189,19 @@ impl Parser {
                                         }
                                         mode = RootParsingMode::Root;
                                     },
-                                    RootParsingMode::Root | RootParsingMode::Options => {
-                                        let s = s.to_ascii_lowercase();
-                                        if s == "mindepth" {
-                                            mode = RootParsingMode::MinDepth;
-                                        } else if s == "maxdepth" || s == "depth" {
-                                            mode = RootParsingMode::Depth;
-                                        } else if s.starts_with("arc") {
-                                            archives = true;
-                                            mode = RootParsingMode::Options;
-                                        } else if s.starts_with("sym") {
-                                            symlinks = true;
-                                            mode = RootParsingMode::Options;
-                                        } else if s.starts_with("git") {
-                                            gitignore = Some(true);
-                                            mode = RootParsingMode::Options;
-                                        } else if s.starts_with("hg") {
-                                            hgignore = Some(true);
-                                            mode = RootParsingMode::Options;
-                                        } else if s.starts_with("dock") {
-                                            dockerignore = Some(true);
-                                            mode = RootParsingMode::Options;
-                                        } else if s.starts_with("nogit") {
-                                            gitignore = Some(false);
-                                            mode = RootParsingMode::Options;
-                                        } else if s.starts_with("nohg") {
-                                            hgignore = Some(false);
-                                            mode = RootParsingMode::Options;
-                                        } else if s.starts_with("nodock") {
-                                            dockerignore = Some(false);
-                                            mode = RootParsingMode::Options;
-                                        } else if s == "bfs" {
-                                            traversal = Bfs;
-                                            mode = RootParsingMode::Options;
-                                        } else if s == "dfs" {
-                                            traversal = Dfs;
-                                            mode = RootParsingMode::Options;
-                                        } else if s.starts_with("regex") {
-                                            regexp = true;
-                                            mode = RootParsingMode::Options;
-                                        } else {
-                                            self.drop_lexem();
-                                            break;
-                                        }
-                                    },
-                                    RootParsingMode::MinDepth => {
-                                        let d: Result<u32, _> = s.parse();
-                                        match d {
-                                            Ok(d) => {
-                                                min_depth = d;
-                                                mode = RootParsingMode::Options;
-                                            },
-                                            _ => {
-                                                self.drop_lexem();
-                                                break;
-                                            }
-                                        }
-                                    },
-                                    RootParsingMode::Depth => {
-                                        let d: Result<u32, _> = s.parse();
-                                        match d {
-                                            Ok(d) => {
-                                                depth = d;
-                                                mode = RootParsingMode::Options;
-                                            },
-                                            _ => {
-                                                self.drop_lexem();
-                                                break;
-                                            }
-                                        }
+                                    RootParsingMode::Root => {
+                                        self.drop_lexem();
+                                        root_options = self.parse_root_options().unwrap_or_else(|| RootOptions::new());
                                     },
                                     _ => { }
                                 }
                             },
-                            Lexem::Operator(s) if s.eq("rx") => {
-                                regexp = true;
-                                mode = RootParsingMode::Options;
-                            },
                             Lexem::Comma => {
                                 if path.len() > 0 {
-                                    roots.push(Root::new(path, min_depth, depth, archives, symlinks, gitignore, hgignore, dockerignore, traversal, regexp));
+                                    roots.push(Root::new(path, root_options));
 
                                     path = String::from("");
-                                    min_depth = 0;
-                                    depth = 0;
-                                    archives = false;
-                                    symlinks = false;
-                                    gitignore = None;
-                                    hgignore = None;
-                                    dockerignore = None;
-                                    traversal = Bfs;
-                                    regexp = false;
+                                    root_options = RootOptions::new();
 
                                     mode = RootParsingMode::Comma;
                                 } else {
@@ -291,7 +211,7 @@ impl Parser {
                             },
                             _ => {
                                 if path.len() > 0 {
-                                    roots.push(Root::new(path, min_depth, depth, archives, symlinks, gitignore, hgignore, dockerignore, traversal, regexp));
+                                    roots.push(Root::new(path, root_options));
                                 }
 
                                 self.drop_lexem();
@@ -301,7 +221,7 @@ impl Parser {
                     },
                     None => {
                         if path.len() > 0 {
-                            roots.push(Root::new(path, min_depth, depth, archives, symlinks, gitignore, hgignore, dockerignore, traversal, regexp));
+                            roots.push(Root::new(path, root_options));
                         }
                         break;
                     }
@@ -310,6 +230,151 @@ impl Parser {
         }
 
         roots
+    }
+
+    fn parse_root_options(&mut self) -> Option<RootOptions> {
+        enum RootParsingMode {
+            Unknown, Options, MinDepth, Depth
+        }
+
+        let mut mode = RootParsingMode::Unknown;
+
+        let mut min_depth: u32 = 0;
+        let mut max_depth: u32 = 0;
+        let mut archives = false;
+        let mut symlinks = false;
+        let mut gitignore = None;
+        let mut hgignore = None;
+        let mut dockerignore = None;
+        let mut traversal = Bfs;
+        let mut regexp = false;
+
+        loop {
+            let lexem = self.next_lexem();
+            match lexem {
+                Some(ref lexem) => {
+                    match lexem {
+                        Lexem::String(ref s) | Lexem::RawString(ref s) => {
+                            match mode {
+                                RootParsingMode::Unknown | RootParsingMode::Options => {
+                                    let s = s.to_ascii_lowercase();
+                                    if s == "mindepth" {
+                                        mode = RootParsingMode::MinDepth;
+                                    } else if s == "maxdepth" || s == "depth" {
+                                        mode = RootParsingMode::Depth;
+                                    } else if s.starts_with("arc") {
+                                        archives = true;
+                                        mode = RootParsingMode::Options;
+                                    } else if s.starts_with("sym") {
+                                        symlinks = true;
+                                        mode = RootParsingMode::Options;
+                                    } else if s.starts_with("git") {
+                                        gitignore = Some(true);
+                                        mode = RootParsingMode::Options;
+                                    } else if s.starts_with("hg") {
+                                        hgignore = Some(true);
+                                        mode = RootParsingMode::Options;
+                                    } else if s.starts_with("dock") {
+                                        dockerignore = Some(true);
+                                        mode = RootParsingMode::Options;
+                                    } else if s.starts_with("nogit") {
+                                        gitignore = Some(false);
+                                        mode = RootParsingMode::Options;
+                                    } else if s.starts_with("nohg") {
+                                        hgignore = Some(false);
+                                        mode = RootParsingMode::Options;
+                                    } else if s.starts_with("nodock") {
+                                        dockerignore = Some(false);
+                                        mode = RootParsingMode::Options;
+                                    } else if s == "bfs" {
+                                        traversal = Bfs;
+                                        mode = RootParsingMode::Options;
+                                    } else if s == "dfs" {
+                                        traversal = Dfs;
+                                        mode = RootParsingMode::Options;
+                                    } else if s.starts_with("regex") {
+                                        regexp = true;
+                                        mode = RootParsingMode::Options;
+                                    } else {
+                                        self.drop_lexem();
+                                        break;
+                                    }
+                                },
+                                RootParsingMode::MinDepth => {
+                                    let d: Result<u32, _> = s.parse();
+                                    match d {
+                                        Ok(d) => {
+                                            min_depth = d;
+                                            mode = RootParsingMode::Options;
+                                        },
+                                        _ => {
+                                            self.drop_lexem();
+                                            break;
+                                        }
+                                    }
+                                },
+                                RootParsingMode::Depth => {
+                                    let d: Result<u32, _> = s.parse();
+                                    match d {
+                                        Ok(d) => {
+                                            max_depth = d;
+                                            mode = RootParsingMode::Options;
+                                        },
+                                        _ => {
+                                            self.drop_lexem();
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        Lexem::Operator(s) if s.eq("rx") => {
+                            regexp = true;
+                            mode = RootParsingMode::Options;
+                        },
+                        _ => {
+                            self.drop_lexem();
+                            break
+                        }
+                    }
+                },
+                None => {
+                    break;
+                }
+            }
+        }
+
+        match mode {
+            RootParsingMode::Unknown => None,
+            _ => Some(RootOptions {
+                min_depth,
+                max_depth,
+                archives,
+                symlinks,
+                gitignore,
+                hgignore,
+                dockerignore,
+                traversal,
+                regexp,
+            })
+        }
+    }
+
+    fn is_root_option_keyword(s: &str) -> bool {
+        s.to_ascii_lowercase() == "depth"
+        || s.to_ascii_lowercase() == "mindepth"
+        || s.to_ascii_lowercase() == "maxdepth"
+        || s.starts_with("arc")
+        || s.starts_with("sym")
+        || s.starts_with("git")
+        || s.starts_with("hg")
+        || s.starts_with("dock")
+        || s.starts_with("nogit")
+        || s.starts_with("nohg")
+        || s.starts_with("nodock")
+        || s == "bfs"
+        || s == "dfs"
+        || s.starts_with("regex")
     }
 
     /*
@@ -830,14 +895,14 @@ mod tests {
         ]);
 
         assert_eq!(query.roots, vec![
-            Root::new(String::from("/test"), 0, 2, false, false, None, None, None, Bfs, false),
-            Root::new(String::from("/test2"), 0, 0, true, false, None, None, None, Bfs, false),
-            Root::new(String::from("/test3"), 0, 3, true, false, None, None, None, Bfs, false),
-            Root::new(String::from("/test4"), 0, 0, false, false, None, None, None, Bfs, false),
-            Root::new(String::from("/test5"), 0, 0, false, false, Some(true), None, None, Bfs, false),
-            Root::new(String::from("/test6"), 3, 0, false, false, None, None, None, Bfs, false),
-            Root::new(String::from("/test7"), 0, 0, true, false, None, None, None, Dfs, false),
-            Root::new(String::from("/test8"), 0, 0, false, false, None, None, None, Dfs, false),
+            Root::new(String::from("/test"), RootOptions::from(0, 2, false, false, None, None, None, Bfs, false)),
+            Root::new(String::from("/test2"), RootOptions::from(0, 0, true, false, None, None, None, Bfs, false)),
+            Root::new(String::from("/test3"), RootOptions::from(0, 3, true, false, None, None, None, Bfs, false)),
+            Root::new(String::from("/test4"), RootOptions::from(0, 0, false, false, None, None, None, Bfs, false)),
+            Root::new(String::from("/test5"), RootOptions::from(0, 0, false, false, Some(true), None, None, Bfs, false)),
+            Root::new(String::from("/test6"), RootOptions::from(3, 0, false, false, None, None, None, Bfs, false)),
+            Root::new(String::from("/test7"), RootOptions::from(0, 0, true, false, None, None, None, Dfs, false)),
+            Root::new(String::from("/test8"), RootOptions::from(0, 0, false, false, None, None, None, Dfs, false)),
         ]);
 
         let expr = Expr::logical_op(
@@ -869,7 +934,7 @@ mod tests {
         assert_eq!(query.fields, vec![Expr::field(Field::Name)]);
 
         assert_eq!(query.roots, vec![
-            Root::new(String::from("/test"), 0, 0, false, false, None, None, None, Bfs, false),
+            Root::new(String::from("/test"), RootOptions::from(0, 0, false, false, None, None, None, Bfs, false)),
         ]);
 
         let expr = Expr::op(Expr::field(Field::Name), Op::NotLike, Expr::value(String::from("%.tmp")));
@@ -886,7 +951,7 @@ mod tests {
         assert_eq!(query.fields, vec![Expr::field(Field::Name)]);
 
         assert_eq!(query.roots, vec![
-            Root::new(String::from("/test"), 0, 0, false, false, None, None, None, Bfs, false),
+            Root::new(String::from("/test"), RootOptions::from(0, 0, false, false, None, None, None, Bfs, false)),
         ]);
 
         let expr = Expr::op(Expr::field(Field::Name), Op::NotLike, Expr::value(String::from("%.tmp")));
@@ -958,7 +1023,7 @@ mod tests {
         let query = p.parse(&query, false).unwrap();
 
         assert_eq!(query.roots, vec![
-            Root::new(String::from("/opt/Some Cool Dir/Test This"), 0, 0, false, false, None, None, None, Bfs, false),
+            Root::new(String::from("/opt/Some Cool Dir/Test This"), RootOptions::from(0, 0, false, false, None, None, None, Bfs, false)),
         ]);
     }
 
@@ -1024,12 +1089,34 @@ mod tests {
         assert_eq!(query.fields, vec![Expr::field(Field::Name)]);
 
         assert_eq!(query.roots, vec![
-            Root::new(String::from("/test"), 2, 0, false, false, Some(true), None, None, Bfs, false),
+            Root::new(String::from("/test"), RootOptions::from(2, 0, false, false, Some(true), None, None, Bfs, false)),
         ]);
 
         let expr = Expr::op(Expr::field(Field::Name), Op::NotLike, Expr::value(String::from("%.tmp")));
 
         assert_eq!(query.expr, Some(expr));
+    }
+
+    #[test]
+    fn query_with_implicit_root() {
+        let query = "select name, size";
+        let mut p = Parser::new();
+        let query = p.parse(&query, false).unwrap();
+
+        assert_eq!(query.roots, vec![
+            Root::new(String::from("."), RootOptions::new()),
+        ]);
+    }
+
+    #[test]
+    fn query_with_implicit_root_and_root_options() {
+        let query = "select name, size depth 2";
+        let mut p = Parser::new();
+        let query = p.parse(&query, false).unwrap();
+
+        assert_eq!(query.roots, vec![
+            Root::new(String::from("."), RootOptions::from(0, 2, false, false, None, None, None, Bfs, false)),
+        ]);
     }
 
     #[test]
@@ -1054,7 +1141,7 @@ mod tests {
         assert_eq!(query.fields, vec![Expr::function_left(Function::Avg, Some(Box::new(Expr::field(Field::Size))))]);
 
         assert_eq!(query.roots, vec![
-            Root::new(String::from("/test"), 0, 0, false, false, None, None, None, Bfs, false),
+            Root::new(String::from("/test"), RootOptions::from(0, 0, false, false, None, None, None, Bfs, false)),
         ]);
 
         assert_eq!(query.grouping_fields, Rc::new(vec![Expr::field(Field::Mime)]));

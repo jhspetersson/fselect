@@ -176,7 +176,7 @@ impl <'a> Searcher<'a> {
         let mut roots = vec![];
 
         for root in self.query.roots.clone() {
-            if root.regexp {
+            if root.options.regexp {
                 let mut ext_roots: Vec<String> = vec![];
                 let parts = root.path.split('/').collect::<Vec<&str>>();
                 for part in parts {
@@ -250,16 +250,16 @@ impl <'a> Searcher<'a> {
         }
 
         for root in roots {
-            self.current_follow_symlinks = root.symlinks;
+            self.current_follow_symlinks = root.options.symlinks;
 
             let root_dir = Path::new(&root.path);
-            let min_depth = root.min_depth;
-            let max_depth = root.max_depth;
-            let search_archives = root.archives;
-            let apply_gitignore = root.gitignore.unwrap_or(self.config.gitignore.unwrap_or(false));
-            let apply_hgignore = root.hgignore.unwrap_or(self.config.hgignore.unwrap_or(false));
-            let apply_dockerignore = root.dockerignore.unwrap_or(self.config.dockerignore.unwrap_or(false));
-            let traversal_mode = root.traversal;
+            let min_depth = root.options.min_depth;
+            let max_depth = root.options.max_depth;
+            let search_archives = root.options.archives;
+            let apply_gitignore = root.options.gitignore.unwrap_or(self.config.gitignore.unwrap_or(false));
+            let apply_hgignore = root.options.hgignore.unwrap_or(self.config.hgignore.unwrap_or(false));
+            let apply_dockerignore = root.options.dockerignore.unwrap_or(self.config.dockerignore.unwrap_or(false));
+            let traversal_mode = root.options.traversal;
 
             if apply_gitignore {
                 search_upstream_gitignore(&mut self.gitignore_map, &root_dir);

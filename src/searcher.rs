@@ -48,6 +48,7 @@ use crate::query::TraversalMode::Bfs;
 use crate::util::*;
 use crate::util::dimensions::get_dimensions;
 use crate::output::ResultsWriter;
+use crate::util::duration::get_duration;
 
 pub struct Searcher<'a> {
     query: &'a Query,
@@ -79,6 +80,9 @@ pub struct Searcher<'a> {
 
     file_dimensions: Option<Dimensions>,
     file_dimensions_set: bool,
+
+    file_duration: Option<crate::util::Duration>,
+    file_duration_set: bool,
 
     file_mp3_metadata: Option<MP3Metadata>,
     file_mp3_metadata_set: bool,
@@ -125,6 +129,9 @@ impl <'a> Searcher<'a> {
             file_dimensions: None,
             file_dimensions_set: false,
 
+            file_duration: None,
+            file_duration_set: false,
+
             file_mp3_metadata: None,
             file_mp3_metadata_set: false,
 
@@ -144,6 +151,9 @@ impl <'a> Searcher<'a> {
 
         self.file_dimensions_set = false;
         self.file_dimensions = None;
+
+        self.file_duration_set = false;
+        self.file_duration = None;
 
         self.file_mp3_metadata_set = false;
         self.file_mp3_metadata = None;
@@ -1143,10 +1153,15 @@ impl <'a> Searcher<'a> {
                 }
             },
             Field::Duration => {
-                self.update_file_mp3_metadata(entry);
+                if !self.file_duration_set {
+                    self.update_file_mp3_metadata(entry);
 
-                if let Some(ref mp3_info) = self.file_mp3_metadata {
-                    return Variant::from_int(mp3_info.duration.as_secs() as i64);
+                    self.file_duration_set = true;
+                    self.file_duration = get_duration(entry.path(), &self.file_mp3_metadata);
+                }
+
+                if let Some(Duration { length, .. }) = self.file_duration {
+                    return Variant::from_int(length as i64);
                 }
             },
             Field::Bitrate => {

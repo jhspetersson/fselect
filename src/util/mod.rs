@@ -6,6 +6,7 @@ pub(crate) mod japanese;
 mod top_n;
 mod wbuf;
 pub mod dimensions;
+pub mod duration;
 
 use std::cmp::Ordering;
 use std::collections::HashMap;
@@ -44,6 +45,7 @@ pub use self::glob::is_glob;
 pub use self::top_n::TopN;
 pub use self::wbuf::WritableBuffer;
 pub use dimensions::Dimensions;
+pub use duration::Duration;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd)]
 pub struct Criteria<T> where T: Display + ToString {

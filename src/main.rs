@@ -11,10 +11,12 @@ use std::env;
 use std::io::{IsTerminal, stdout};
 use std::path::PathBuf;
 use std::process::ExitCode;
+use std::time::Duration;
 
 use nu_ansi_term::Color::*;
 use rustyline::error::ReadlineError;
 use rustyline::DefaultEditor;
+use update_notifier::check_version;
 
 mod config;
 mod expr;
@@ -163,6 +165,16 @@ fn main() -> ExitCode {
 
     if let Some(exit_value) = exit_value {
         return ExitCode::from(exit_value);
+    }
+
+    let check_updates = check_version(env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"), Duration::from_secs(60 * 60 * 24));
+
+    match check_updates {
+        Ok(_) => (),
+        Err(e) => {
+            error_message("update_notifier", &e.to_string()); 
+            return ExitCode::FAILURE
+        },
     }
 
     ExitCode::SUCCESS

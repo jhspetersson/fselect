@@ -11,10 +11,12 @@ use std::env;
 use std::io::{IsTerminal, stdout};
 use std::path::PathBuf;
 use std::process::ExitCode;
+use std::time::Duration;
 
 use nu_ansi_term::Color::*;
 use rustyline::error::ReadlineError;
 use rustyline::DefaultEditor;
+use update_informer::{registry, Check};
 
 mod config;
 mod expr;
@@ -163,6 +165,14 @@ fn main() -> ExitCode {
 
     if let Some(exit_value) = exit_value {
         return ExitCode::from(exit_value);
+    }
+
+    let name = env!("CARGO_PKG_NAME");
+    let version = env!("CARGO_PKG_VERSION");
+    let informer = update_informer::new(registry::Crates, name, version).interval(Duration::from_secs(60 * 60));
+
+    if let Some(version) = informer.check_version().ok().flatten()  {
+        println!("\n A New version is available! : {}", version);
     }
 
     ExitCode::SUCCESS

@@ -43,6 +43,7 @@ sha3 = "0.10"
 svg = "0.13"
 toml = "0.7"
 tree_magic_mini = { version = "3.0", features = [ "tree_magic_db" ] }
+update-informer = "1.1.0"
 wana_kana = "3.0"
 zip = "0.6"
 

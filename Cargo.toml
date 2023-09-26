@@ -13,7 +13,8 @@ license = "MIT/Apache-2.0"
 edition = "2021"
 
 [features]
-default = ["users"]
+default = ["users", "update-notifications"]
+update-notifications = ["dep:update-informer"]
 
 [dependencies]
 bytecount = "0.6"
@@ -43,7 +44,7 @@ sha3 = "0.10"
 svg = "0.13"
 toml = "0.8"
 tree_magic_mini = { version = "3.0", features = [ "tree_magic_db" ] }
-update-informer = "1.1.0"
+update-informer = { version = "1.1.0", optional = true }
 wana_kana = "3.0"
 zip = "0.6"
 

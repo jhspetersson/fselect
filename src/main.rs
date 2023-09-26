@@ -11,11 +11,13 @@ use std::env;
 use std::io::{IsTerminal, stdout};
 use std::path::PathBuf;
 use std::process::ExitCode;
+#[cfg(feature = "update-notifications")]
 use std::time::Duration;
 
 use nu_ansi_term::Color::*;
 use rustyline::error::ReadlineError;
 use rustyline::DefaultEditor;
+#[cfg(feature = "update-notifications")]
 use update_informer::{registry, Check};
 
 mod config;
@@ -163,16 +165,19 @@ fn main() -> ExitCode {
 
     config.save();
 
-    if let Some(exit_value) = exit_value {
-        return ExitCode::from(exit_value);
+    #[cfg(feature = "update-notifications")]
+    if stdout().is_terminal() {
+        let name = env!("CARGO_PKG_NAME");
+        let version = env!("CARGO_PKG_VERSION");
+        let informer = update_informer::new(registry::Crates, name, version).interval(Duration::from_secs(60 * 60));
+
+        if let Some(version) = informer.check_version().ok().flatten()  {
+            println!("\nNew version is available! : {}", version);
+        }
     }
 
-    let name = env!("CARGO_PKG_NAME");
-    let version = env!("CARGO_PKG_VERSION");
-    let informer = update_informer::new(registry::Crates, name, version).interval(Duration::from_secs(60 * 60));
-
-    if let Some(version) = informer.check_version().ok().flatten()  {
-        println!("\n A New version is available! : {}", version);
+    if let Some(exit_value) = exit_value {
+        return ExitCode::from(exit_value);
     }
 
     ExitCode::SUCCESS

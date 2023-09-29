@@ -166,7 +166,7 @@ fn main() -> ExitCode {
     config.save();
 
     #[cfg(feature = "update-notifications")]
-    if stdout().is_terminal() {
+    if config.check_for_updates.unwrap_or(false) && stdout().is_terminal() {
         let name = env!("CARGO_PKG_NAME");
         let version = env!("CARGO_PKG_VERSION");
         let informer = update_informer::new(registry::Crates, name, version).interval(Duration::from_secs(60 * 60));

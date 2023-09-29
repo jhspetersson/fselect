@@ -23,6 +23,7 @@ pub struct Config {
     pub is_source : Vec<String>,
     pub is_video : Vec<String>,
     pub default_file_size_format : Option<String>,
+    pub check_for_updates: Option<bool>,
     #[serde(skip_serializing, default = "get_false")]
     pub debug : bool,
     #[serde(skip)]
@@ -142,6 +143,7 @@ impl Config {
             is_source : vec![String::from(".asm"), String::from(".bas"), String::from(".c"), String::from(".cc"), String::from(".ceylon"), String::from(".clj"), String::from(".coffee"), String::from(".cpp"), String::from(".cs"), String::from(".d"), String::from(".dart"), String::from(".elm"), String::from(".erl"), String::from(".go"), String::from(".groovy"), String::from(".h"), String::from(".hh"), String::from(".hpp"), String::from(".java"), String::from(".jl"), String::from(".js"), String::from(".jsp"), String::from(".jsx"), String::from(".kt"), String::from(".kts"), String::from(".lua"), String::from(".nim"), String::from(".pas"), String::from(".php"), String::from(".pl"), String::from(".pm"), String::from(".py"), String::from(".rb"), String::from(".rs"), String::from(".scala"), String::from(".sol"), String::from(".swift"), String::from(".tcl"), String::from(".ts"), String::from(".vala"), String::from(".vb"), String::from(".zig")],
             is_video : vec![String::from(".3gp"), String::from(".avi"), String::from(".flv"), String::from(".m4p"), String::from(".m4v"), String::from(".mkv"), String::from(".mov"), String::from(".mp4"), String::from(".mpeg"), String::from(".mpg"), String::from(".webm"), String::from(".wmv")],
             default_file_size_format : Some(String::new()),
+            check_for_updates : Some(false),
             debug : false,
             save : true,
         }

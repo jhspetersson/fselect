@@ -13,7 +13,7 @@ license = "MIT/Apache-2.0"
 edition = "2021"
 
 [features]
-default = ["users", "update-notifications"]
+default = ["uzers", "update-notifications"]
 update-notifications = ["dep:update-informer"]
 
 [dependencies]
@@ -49,7 +49,7 @@ wana_kana = "3.0"
 zip = "0.6"
 
 [target.'cfg(unix)'.dependencies]
-users = { version = "0.11", optional = true }
+uzers = { version = "0.11", optional = true }
 xattr = "1.0"
 
 [profile.release]

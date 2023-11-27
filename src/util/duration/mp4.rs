@@ -24,7 +24,7 @@ impl DurationExtractor for Mp4DurationExtractor {
             .and_then(|ref track| {
                 track.tkhd.as_ref().map(|tkhd| {
                     Duration {
-                        length: tkhd.duration as usize
+                        length: (tkhd.duration / 1000) as usize
                     }
                 })
             }))

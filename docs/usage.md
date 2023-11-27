@@ -223,20 +223,20 @@ Used for detecting Japanese symbols in file names and such.
 
 #### Other functions
 
-| Function | Meaning | Example |
-| --- | --- | --- |
-| BIN | Convert integer value to binary representation | `select name, size, bin(size) from /home/user/Downloads` |
-| HEX | Convert integer value to hexadecimal representation | `select name, size, hex(size), upper(hex(size)) from /home/user/Downloads` |
-| OCT | Convert integer value to octal representation | `select name, size, oct(size) from /home/user/Downloads` |
-| POWER or POW | Raise the value to the specified power | `select pow(2, 3)` |
-| SQRT | Returns square root of the value | `select sqrt(25)` |
-| CONTAINS | `true` if file contains string, `false` if not | `select contains(TODO) from /home/user/Projects/foo/src` |
-| COALESCE | Returns first nonempty expression value | `select name, size, COALESCE(sha256, '---') from /home/user/Downloads` |
-| CONCAT | Returns concatenated string of expression values | `select CONCAT('Name is ', name, ' size is ', fsize, '!!!') from /home/user/Downloads` |
-| CONCAT_WS | Returns concatenated string of expression values with specified delimiter | `select name, fsize, CONCAT_WS('x', width, height) from /home/user/Images` |
+| Function | Meaning                                                                                     | Example |
+| --- |---------------------------------------------------------------------------------------------| --- |
+| BIN | Convert integer value to binary representation                                              | `select name, size, bin(size) from /home/user/Downloads` |
+| HEX | Convert integer value to hexadecimal representation                                         | `select name, size, hex(size), upper(hex(size)) from /home/user/Downloads` |
+| OCT | Convert integer value to octal representation                                               | `select name, size, oct(size) from /home/user/Downloads` |
+| POWER or POW | Raise the value to the specified power                                                      | `select pow(2, 3)` |
+| SQRT | Returns square root of the value                                                            | `select sqrt(25)` |
+| CONTAINS | `true` if file contains string, `false` if not                                              | `select contains(TODO) from /home/user/Projects/foo/src` |
+| COALESCE | Returns first nonempty expression value                                                     | `select name, size, COALESCE(sha256, '---') from /home/user/Downloads` |
+| CONCAT | Returns concatenated string of expression values                                            | `select CONCAT('Name is ', name, ' size is ', fsize, '!!!') from /home/user/Downloads` |
+| CONCAT_WS | Returns concatenated string of expression values with specified delimiter                   | `select name, fsize, CONCAT_WS('x', width, height) from /home/user/Images` |
 | RANDOM or RAND | Returns random integer (from zero to max int, from zero to *arg*, or from *arg1* to *arg2*) | `select path from /home/user/Music order by RAND()` |
-| FORMAT_TIME or PRETTY_TIME | Returns human-redable durations like "2min 26s". | `select format_time(duration) from /home/user/Music` |
-| FORMAT_SIZE | Returns formatted size of a file | `select name, FORMAT_SIZE(size, '%.0') from /home/user/Downloads order by size desc limit 10` |
+| FORMAT_TIME or PRETTY_TIME | Returns human-readable durations of time in seconds like *2min 26s*                         | `select format_time(duration) from /home/user/Music` |
+| FORMAT_SIZE | Returns formatted size of a file                                                            | `select name, FORMAT_SIZE(size, '%.0') from /home/user/Downloads order by size desc limit 10` |
 
 Let's try `FORMAT_SIZE` with different format specifiers: 
 

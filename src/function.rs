@@ -6,6 +6,7 @@ use std::fs::DirEntry;
 use std::fs::File;
 use std::io::prelude::*;
 use std::str::FromStr;
+use std::time::Duration;
 
 use chrono::Datelike;
 use chrono::Local;
@@ -15,6 +16,8 @@ use rbase64;
 use serde::ser::{Serialize, Serializer};
 #[cfg(unix)]
 use xattr::FileExt;
+
+use human_time::ToHumanTimeString;
 
 use crate::fileinfo::FileInfo;
 use crate::util::{capitalize, error_exit, format_date};
@@ -249,6 +252,7 @@ pub enum Function {
     RTrim,
     Coalesce,
     FormatSize,
+    FormatTime,
 
     Min,
     Max,
@@ -324,6 +328,7 @@ impl FromStr for Function {
             "rtrim" => Ok(Function::RTrim),
             "coalesce" => Ok(Function::Coalesce),
             "format_size" | "format_filesize" => Ok(Function::FormatSize),
+            "format_time" | "pretty_time" => Ok(Function::FormatTime),
 
             "current_date" | "cur_date" | "curdate" => Ok(Function::CurrentDate),
             "day" => Ok(Function::Day),
@@ -608,6 +613,15 @@ pub fn get_value(function: &Option<Function>,
             }
 
             return Variant::empty(VariantType::String);
+        }
+        Some(Function::FormatTime) => {
+            if function_arg.is_empty() {
+                return Variant::empty(VariantType::String);
+            }
+
+            let seconds = function_arg.parse::<u64>().unwrap();
+            let formated = Duration::from_secs(seconds).to_human_time_string();
+            return Variant::from_string(&formated);
         }
         Some(Function::CurrentDate) => {
             let now = Local::now().date_naive();

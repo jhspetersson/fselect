@@ -235,6 +235,7 @@ Used for detecting Japanese symbols in file names and such.
 | CONCAT | Returns concatenated string of expression values | `select CONCAT('Name is ', name, ' size is ', fsize, '!!!') from /home/user/Downloads` |
 | CONCAT_WS | Returns concatenated string of expression values with specified delimiter | `select name, fsize, CONCAT_WS('x', width, height) from /home/user/Images` |
 | RANDOM or RAND | Returns random integer (from zero to max int, from zero to *arg*, or from *arg1* to *arg2*) | `select path from /home/user/Music order by RAND()` |
+| FORMAT_TIME or PRETTY_TIME | Returns human-redable durations like "2min 26s". | `select format_time(duration) from /home/user/Music` |
 | FORMAT_SIZE | Returns formatted size of a file | `select name, FORMAT_SIZE(size, '%.0') from /home/user/Downloads order by size desc limit 10` |
 
 Let's try `FORMAT_SIZE` with different format specifiers: 

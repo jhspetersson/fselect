@@ -620,8 +620,8 @@ pub fn get_value(function: &Option<Function>,
             }
 
             let seconds = function_arg.parse::<u64>().unwrap();
-            let formated = Duration::from_secs(seconds).to_human_time_string();
-            return Variant::from_string(&formated);
+            let formatted = Duration::from_secs(seconds).to_human_time_string();
+            return Variant::from_string(&formatted);
         }
         Some(Function::CurrentDate) => {
             let now = Local::now().date_naive();

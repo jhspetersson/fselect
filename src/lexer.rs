@@ -151,7 +151,8 @@ impl<'a> Lexer<'a> {
                     "limit" => Some(Lexem::Limit),
                     "into" => Some(Lexem::Into),
                     "eq" | "ne" | "gt" | "lt" | "ge" | "le" | "gte" | "lte" |
-                    "regexp" | "rx" | "like" => Some(Lexem::Operator(s)),
+                    "regexp" | "rx" | "like" |
+                    "between" => Some(Lexem::Operator(s)),
                     "mul" | "div" | "mod" | "plus" | "minus" => Some(Lexem::ArithmeticOperator(s)),
                     _ => Some(Lexem::RawString(s)),
                 }
@@ -580,5 +581,21 @@ mod tests {
         assert_eq!(lexer.next_lexem(), Some(Lexem::Group));
         assert_eq!(lexer.next_lexem(), Some(Lexem::By));
         assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("mime"))));
+    }
+
+    #[test]
+    fn between_op() {
+        let mut lexer = Lexer::new("select name from /home/user where size between 1000000 and 2000000");
+
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("select"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("name"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::From));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("/home/user"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::Where));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("size"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::Operator(String::from("between"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("1000000"))));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::And));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString(String::from("2000000"))));
     }
 }

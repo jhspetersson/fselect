@@ -481,6 +481,21 @@ impl Parser {
 
         let lexem = self.next_lexem();
         let mut result = match lexem {
+            Some(Lexem::Operator(s)) if s.as_str() == "between" => {
+                let left_between = self.parse_add_sub()?;
+
+                let and_lexem = self.next_lexem();
+                if and_lexem.is_none() || and_lexem.unwrap() != Lexem::And {
+                    return Err(String::from("Error parsing BETWEEN operator"))
+                }
+
+                let right_between = self.parse_add_sub()?;
+
+                let left_expr = Expr::op(left.clone().unwrap(), match not { false => Op::Gte, true => Op::Lte }, left_between.unwrap());
+                let right_expr = Expr::op(left.unwrap(), match not { false => Op::Lte, true => Op::Gte }, right_between.unwrap());
+
+                Ok(Some(Expr::logical_op(left_expr, match not { false => LogicalOp::And, true => LogicalOp::Or }, right_expr)))
+            },
             Some(Lexem::Operator(s)) => {
                 let right = self.parse_add_sub()?;
                 let op = Op::from_with_not(s, not);
@@ -1145,5 +1160,18 @@ mod tests {
         ]);
 
         assert_eq!(query.grouping_fields, Rc::new(vec![Expr::field(Field::Mime)]));
+    }
+
+    #[test]
+    fn query_with_between() {
+        let query = "select name, size from /test where size between 5mb and 6mb";
+        let mut p = Parser::new();
+        let query = p.parse(&query, false).unwrap();
+
+        let query2 = "select name, size from /test where size gte 5mb and size lte 6mb";
+        let mut p2 = Parser::new();
+        let query2 = p2.parse(&query2, false).unwrap();
+
+        assert_eq!(query.expr, query2.expr);
     }
 }

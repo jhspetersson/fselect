@@ -311,6 +311,7 @@ When you put a directory to search at, you can specify some options.
 * `!=~` or `!~=` or `notrx`
 * `like`
 * `notlike`
+* `between`
 
 ### Arithmetic operators
 

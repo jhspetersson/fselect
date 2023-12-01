@@ -112,6 +112,7 @@ Specify file size, get absolute path, and add it to the results:
     fselect size, abspath from ./tmp where size gt 2g
     fselect fsize, abspath from ./tmp where size = 5m
     fselect hsize, abspath from ./tmp where size lt 8k
+    fselect name, size from ./tmp where size between 5mb and 6mb
     
 More complex query:
 

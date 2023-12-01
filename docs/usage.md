@@ -430,7 +430,7 @@ Duration is measured in seconds.
 
 ### Configuration file
 
-**fselect** tries to create a new configuration file if one doesn't exists.
+**fselect** tries to create a new configuration file if one doesn't exist.
 
 Usual location on Linux:
 
@@ -446,6 +446,15 @@ If no config on the standard paths found, **fselect** checks its presence next t
 You can also specify config location with runtime option, e.g.:
 
     fselect --config /home/user_name/fselect_custom.toml name, size from /home/user_name/Music where is_audio = 1
+
+#### Check for updates
+
+**fselect** can be built with `update-notifications` feature, that enables automatic check for updates.
+This check is disabled by default. To enable it, put
+
+    check_for_updates = true
+
+into the config file.
 
 ### Command-line arguments
 

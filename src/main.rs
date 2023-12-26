@@ -133,6 +133,9 @@ fn main() -> ExitCode {
                 loop {
                     let readline = rl.readline("query> ");
                     match readline {
+                        Ok(cmd) if cmd.to_ascii_lowercase().trim() == "quit" || cmd.to_ascii_lowercase().trim() == "exit" => {
+                            break
+                        },
                         Ok(query) => {
                             let _ = rl.add_history_entry(query.as_str());
                             exec_search(query, &mut config, no_color);

@@ -28,8 +28,8 @@ pub fn search_upstream_hgignore(hgignore_filters: &mut Vec<HgignoreFilter>, dir:
         let mut path = std::path::PathBuf::from(canonical_path);
 
         loop {
-            let hgignore_file = path.clone().join(".hgignore");
-            let hg_directory = path.clone().join(".hg");
+            let hgignore_file = path.join(".hgignore");
+            let hg_directory = path.join(".hg");
 
             if hgignore_file.is_file() && hg_directory.is_dir() {
                 update_hgignore_filters(hgignore_filters, &mut path);

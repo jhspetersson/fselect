@@ -437,7 +437,7 @@ impl Parser {
                 Some(Lexem::And) => {
                     let expr = self.parse_cond()?;
                     right = match right {
-                        Some(right) => Some(Expr::logical_op(right, LogicalOp::And, expr.clone().unwrap())),
+                        Some(right) => Some(Expr::logical_op(right, LogicalOp::And, expr.unwrap())),
                         None => expr
                     };
                 },
@@ -521,7 +521,7 @@ impl Parser {
         }
 
         if negate {
-            if let Ok(Some(expr)) = result.clone() {
+            if let Ok(Some(expr)) = result {
                 return Ok(Some(Self::negate_expr_op(&expr)));
             }
         }
@@ -545,7 +545,7 @@ impl Parser {
                         }
 
                         left = match left {
-                            Some(left) => Some(Expr::arithmetic_op(left, new_op.unwrap(), expr.clone().unwrap())),
+                            Some(left) => Some(Expr::arithmetic_op(left, new_op.unwrap(), expr.unwrap())),
                             None => expr
                         };
                     },

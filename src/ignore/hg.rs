@@ -48,10 +48,10 @@ pub fn search_upstream_hgignore(hgignore_filters: &mut Vec<HgignoreFilter>, dir:
 fn update_hgignore_filters(hgignore_filters: &mut Vec<HgignoreFilter>, path: &Path) {
     let hgignore_file = path.join(".hgignore");
     if hgignore_file.is_file() {
-        let regexes = parse_hgignore(&hgignore_file, &path);
+        let mut regexes = parse_hgignore(&hgignore_file, &path);
         match regexes {
-            Ok(ref regexes) => {
-                hgignore_filters.append(&mut regexes.clone());
+            Ok(ref mut regexes) => {
+                hgignore_filters.append(regexes);
             },
             Err(err) => {
                 eprintln!("{}: {}", path.to_string_lossy(), err);

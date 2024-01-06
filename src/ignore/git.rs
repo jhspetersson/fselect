@@ -50,17 +50,11 @@ pub fn update_gitignore_map(gitignore_map: &mut HashMap<PathBuf, Vec<GitignoreFi
 }
 
 pub fn get_gitignore_filters(gitignore_map: &mut HashMap<PathBuf, Vec<GitignoreFilter>>, dir: &Path) -> Vec<GitignoreFilter> {
-    let mut result = vec![];
-
-    for (dir_path, regexes) in &mut *gitignore_map {
-        if dir.to_path_buf() == *dir_path {
-            for ref mut rx in regexes {
-                result.push(rx.clone());
-            }
-
-            return result;
-        }
+    if let Some(regexes) = gitignore_map.get(&dir.to_path_buf()) {
+        return regexes.to_vec();
     }
+
+    let mut result = vec![];
 
     let mut path = dir.to_path_buf();
 
@@ -71,16 +65,8 @@ pub fn get_gitignore_filters(gitignore_map: &mut HashMap<PathBuf, Vec<GitignoreF
             return result;
         }
 
-        for (dir_path, regexes) in &mut *gitignore_map {
-            if path == *dir_path {
-                let mut tmp = vec![];
-                for ref mut rx in regexes {
-                    tmp.push(rx.clone());
-                }
-                tmp.append(&mut result);
-                result.clear();
-                result.append(&mut tmp);
-            }
+        if let Some(regexes) = gitignore_map.get(&path) {
+            result = vec![regexes.to_vec(), result].concat();
         }
     }
 }

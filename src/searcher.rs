@@ -905,7 +905,7 @@ impl <'a> Searcher<'a> {
                     {
                         self.update_file_metadata(entry);
 
-                        if let Some(ref attrs) = self.file_metadata {
+                        if let Some(ref attrs) = self.fms.file_metadata {
                             return Variant::from_int(attrs.dev() as i64);
                         }
                     }
@@ -917,7 +917,7 @@ impl <'a> Searcher<'a> {
                     {
                         self.update_file_metadata(entry);
 
-                        if let Some(ref attrs) = self.file_metadata {
+                        if let Some(ref attrs) = self.fms.file_metadata {
                             return Variant::from_int(attrs.ino() as i64);
                         }
                     }
@@ -929,7 +929,7 @@ impl <'a> Searcher<'a> {
                     {
                         self.update_file_metadata(entry);
 
-                        if let Some(ref attrs) = self.file_metadata {
+                        if let Some(ref attrs) = self.fms.file_metadata {
                             return Variant::from_int(attrs.blocks() as i64);
                         }
                     }
@@ -941,7 +941,7 @@ impl <'a> Searcher<'a> {
                     {
                         self.update_file_metadata(entry);
 
-                        if let Some(ref attrs) = self.file_metadata {
+                        if let Some(ref attrs) = self.fms.file_metadata {
                             return Variant::from_int(attrs.nlink() as i64);
                         }
                     }

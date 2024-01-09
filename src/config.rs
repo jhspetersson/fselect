@@ -8,6 +8,14 @@ const ORGANIZATION: &str = "jhspetersson";
 const APPLICATION: &str = "fselect";
 const CONFIG_FILE: &str = "config.toml";
 
+macro_rules! vec_of_strings {
+    ($($str:literal),*) => {
+        vec![
+            $(String::from($str)),*
+        ]
+    }
+}
+
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct Config {
     pub no_color : Option<bool>,
@@ -134,18 +142,30 @@ impl Config {
             gitignore : Some(false),
             hgignore : Some(false),
             dockerignore : Some(false),
-            is_zip_archive : vec![String::from(".zip"), String::from(".jar"), String::from(".war"), String::from(".ear")],
-            is_archive : vec![String::from(String::from(".7z")), String::from(String::from(".bz2")), String::from(String::from(".bzip2")), String::from(String::from(".gz")), String::from(String::from(".gzip")), String::from(String::from(".lz")), String::from(String::from(".rar")), String::from(String::from(".tar")), String::from(".xz"), String::from(".zip")],
-            is_audio : vec![String::from(".aac"), String::from(".aiff"), String::from(".amr"), String::from(".flac"), String::from(".gsm"), String::from(".m4a"), String::from(".m4b"), String::from(".m4p"), String::from(".mp3"), String::from(".ogg"), String::from(".wav"), String::from(".wma")],
-            is_book : vec![String::from(".azw3"), String::from(".chm"), String::from(".djvu"), String::from(".epub"), String::from(".fb2"), String::from(".mobi"), String::from(".pdf")],
-            is_doc : vec![String::from(".accdb"), String::from(".doc"), String::from(".docm"), String::from(".docx"), String::from(".dot"), String::from(".dotm"), String::from(".dotx"), String::from(".mdb"), String::from(".odp"), String::from(".ods"), String::from(".odt"), String::from(".pdf"), String::from(".potm"), String::from(".potx"), String::from(".ppt"), String::from(".pptm"), String::from(".pptx"), String::from(".rtf"), String::from(".xlm"), String::from(".xls"), String::from(".xlsm"), String::from(".xlsx"), String::from(".xlt"), String::from(".xltm"), String::from(".xltx"), String::from(".xps")],
-            is_image : vec![String::from(".bmp"), String::from(".exr"), String::from(".gif"), String::from(".heic"), String::from(".jpeg"), String::from(".jpg"), String::from(".jxl"), String::from(".png"), String::from(".psb"), String::from(".psd"),  String::from(".svg"), String::from(".tga"), String::from(".tiff"), String::from(".webp")],
-            is_source : vec![String::from(".asm"), String::from(".bas"), String::from(".c"), String::from(".cc"), String::from(".ceylon"), String::from(".clj"), String::from(".coffee"), String::from(".cpp"), String::from(".cs"), String::from(".d"), String::from(".dart"), String::from(".elm"), String::from(".erl"), String::from(".go"), String::from(".gradle"), String::from(".groovy"), String::from(".h"), String::from(".hh"), String::from(".hpp"), String::from(".java"), String::from(".jl"), String::from(".js"), String::from(".jsp"), String::from(".jsx"), String::from(".kt"), String::from(".kts"), String::from(".lua"), String::from(".nim"), String::from(".pas"), String::from(".php"), String::from(".pl"), String::from(".pm"), String::from(".py"), String::from(".rb"), String::from(".rs"), String::from(".scala"), String::from(".sol"), String::from(".swift"), String::from(".tcl"), String::from(".ts"), String::from(".tsx"), String::from(".vala"), String::from(".vb"), String::from(".zig")],
-            is_video : vec![String::from(".3gp"), String::from(".avi"), String::from(".flv"), String::from(".m4p"), String::from(".m4v"), String::from(".mkv"), String::from(".mov"), String::from(".mp4"), String::from(".mpeg"), String::from(".mpg"), String::from(".webm"), String::from(".wmv")],
+            is_zip_archive : vec_of_strings![".zip", ".jar", ".war", ".ear"],
+            is_archive : vec_of_strings![".7z", ".bz2", ".bzip2", ".gz", ".gzip", ".lz", ".rar", ".tar", ".xz", ".zip"],
+            is_audio : vec_of_strings![".aac", ".aiff", ".amr", ".flac", ".gsm", ".m4a", ".m4b", ".m4p", ".mp3", ".ogg", ".wav", ".wma"],
+            is_book : vec_of_strings![".azw3", ".chm", ".djvu", ".epub", ".fb2", ".mobi", ".pdf"],
+            is_doc : vec_of_strings![".accdb", ".doc", ".docm", ".docx", ".dot", ".dotm", ".dotx", ".mdb", ".odp", ".ods", ".odt", ".pdf", ".potm", ".potx", ".ppt", ".pptm", ".pptx", ".rtf", ".xlm", ".xls", ".xlsm", ".xlsx", ".xlt", ".xltm", ".xltx", ".xps"],
+            is_image : vec_of_strings![".bmp", ".exr", ".gif", ".heic", ".jpeg", ".jpg", ".jxl", ".png", ".psb", ".psd",  ".svg", ".tga", ".tiff", ".webp"],
+            is_source : vec_of_strings![".asm", ".bas", ".c", ".cc", ".ceylon", ".clj", ".coffee", ".cpp", ".cs", ".d", ".dart", ".elm", ".erl", ".go", ".gradle", ".groovy", ".h", ".hh", ".hpp", ".java", ".jl", ".js", ".jsp", ".jsx", ".kt", ".kts", ".lua", ".nim", ".pas", ".php", ".pl", ".pm", ".py", ".rb", ".rs", ".scala", ".sol", ".swift", ".tcl", ".ts", ".tsx", ".vala", ".vb", ".zig"],
+            is_video : vec_of_strings![".3gp", ".avi", ".flv", ".m4p", ".m4v", ".mkv", ".mov", ".mp4", ".mpeg", ".mpg", ".webm", ".wmv"],
             default_file_size_format : Some(String::new()),
             check_for_updates : Some(false),
             debug : false,
             save : true,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_config() {
+        let config = Config::default();
+
+        assert!(config.is_source.contains(&String::from(".rs")));
     }
 }

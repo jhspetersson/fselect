@@ -252,13 +252,13 @@ fn usage_info(config: Config, no_color: bool) {
     let is_video = config.is_video.join(", ");
 
     println!("
-Files Detected as Archives: {}
-Files Detected as Audio: {}
-Files Detected as Book: {}
-Files Detected as Document: {}
-Files Detected as Image: {}
-Files Detected as Source Code: {}
-Files Detected as Video: {}
+Files Detected as Archives: {is_archive}
+Files Detected as Audio: {is_audio}
+Files Detected as Book: {is_book}
+Files Detected as Document: {is_doc}
+Files Detected as Image: {is_image}
+Files Detected as Source Code: {is_source}
+Files Detected as Video: {is_video}
 
 Path Options:
     mindepth N 	                    Minimum search depth. Default is unlimited. Depth 1 means skip one directory level and search further.
@@ -459,5 +459,5 @@ Format:
     csv                             Outputs each file with its column value(s) on a line with each column value delimited by a comma
     json                            Outputs a JSON array with JSON objects holding the column value(s) of each file
     html                            Outputs HTML document with table
-    ", is_archive, is_audio, is_book, is_doc, is_image, is_source, is_video, Cyan.underline().paint("https://docs.rs/regex/1.5.4/regex/#syntax"));
+    ", Cyan.underline().paint("https://docs.rs/regex/1.10.2/regex/#syntax"));
 }

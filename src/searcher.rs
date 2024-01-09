@@ -903,7 +903,7 @@ impl <'a> Searcher<'a> {
             Field::Device => {
                 #[cfg(unix)]
                     {
-                        self.update_file_metadata(entry);
+                        self.fms.update_file_metadata(entry);
 
                         if let Some(ref attrs) = self.fms.file_metadata {
                             return Variant::from_int(attrs.dev() as i64);
@@ -915,7 +915,7 @@ impl <'a> Searcher<'a> {
             Field::Inode => {
                 #[cfg(unix)]
                     {
-                        self.update_file_metadata(entry);
+                        self.fms.update_file_metadata(entry);
 
                         if let Some(ref attrs) = self.fms.file_metadata {
                             return Variant::from_int(attrs.ino() as i64);
@@ -927,7 +927,7 @@ impl <'a> Searcher<'a> {
             Field::Blocks => {
                 #[cfg(unix)]
                     {
-                        self.update_file_metadata(entry);
+                        self.fms.update_file_metadata(entry);
 
                         if let Some(ref attrs) = self.fms.file_metadata {
                             return Variant::from_int(attrs.blocks() as i64);
@@ -939,7 +939,7 @@ impl <'a> Searcher<'a> {
             Field::Hardlinks => {
                 #[cfg(unix)]
                     {
-                        self.update_file_metadata(entry);
+                        self.fms.update_file_metadata(entry);
 
                         if let Some(ref attrs) = self.fms.file_metadata {
                             return Variant::from_int(attrs.nlink() as i64);

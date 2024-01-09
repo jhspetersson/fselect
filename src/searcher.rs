@@ -1,19 +1,14 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs;
-use std::fs::{DirEntry, FileType};
-use std::fs::Metadata;
+use std::fs::{DirEntry, FileType, Metadata};
 #[cfg(unix)]
 use std::fs::symlink_metadata;
 use std::io;
-use std::io::ErrorKind;
-use std::io::Write;
+use std::io::{ErrorKind, Write};
 use std::ops::Add;
 #[cfg(unix)]
-use std::os::unix::fs::DirEntryExt;
-#[cfg(unix)]
-use std::os::unix::fs::MetadataExt;
-use std::path::Path;
-use std::path::PathBuf;
+use std::os::unix::fs::{DirEntryExt, MetadataExt};
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use chrono::{DateTime, Local};
@@ -30,26 +25,128 @@ use zip;
 use crate::config::Config;
 use crate::expr::Expr;
 use crate::field::Field;
-use crate::fileinfo::FileInfo;
-use crate::fileinfo::to_file_info;
+use crate::fileinfo::{FileInfo, to_file_info};
 use crate::function;
-use crate::function::Variant;
-use crate::function::VariantType;
-use crate::ignore::docker::{DockerignoreFilter, search_upstream_dockerignore};
-use crate::ignore::docker::matches_dockerignore_filter;
-use crate::ignore::git::{get_gitignore_filters, GitignoreFilter, search_upstream_gitignore, update_gitignore_map};
-use crate::ignore::git::matches_gitignore_filter;
-use crate::ignore::hg::{HgignoreFilter, search_upstream_hgignore};
-use crate::ignore::hg::matches_hgignore_filter;
+use crate::function::{Variant, VariantType};
+use crate::ignore::docker::{DockerignoreFilter, matches_dockerignore_filter, search_upstream_dockerignore};
+use crate::ignore::git::{get_gitignore_filters, GitignoreFilter, matches_gitignore_filter, search_upstream_gitignore, update_gitignore_map};
+use crate::ignore::hg::{HgignoreFilter, matches_hgignore_filter, search_upstream_hgignore};
 use crate::mode;
-use crate::operators::LogicalOp;
-use crate::operators::Op;
+use crate::operators::{LogicalOp, Op};
+use crate::output::ResultsWriter;
 use crate::query::{Query, Root, TraversalMode};
 use crate::query::TraversalMode::Bfs;
 use crate::util::*;
 use crate::util::dimensions::get_dimensions;
-use crate::output::ResultsWriter;
 use crate::util::duration::get_duration;
+
+struct FileMetadataState {
+    file_metadata_set: bool,
+    file_metadata: Option<Metadata>,
+
+    line_count_set: bool,
+    line_count: Option<usize>,
+
+    dimensions_set: bool,
+    dimensions: Option<Dimensions>,
+
+    duration_set: bool,
+    duration: Option<Duration>,
+
+    mp3_metadata_set: bool,
+    mp3_metadata: Option<MP3Metadata>,
+
+    exif_metadata_set: bool,
+    exif_metadata: Option<HashMap<String, String>>,
+}
+
+impl FileMetadataState {
+    fn new() -> FileMetadataState {
+        FileMetadataState {
+            file_metadata_set: false,
+            file_metadata: None,
+
+            line_count_set: false,
+            line_count: None,
+
+            dimensions_set: false,
+            dimensions: None,
+
+            duration_set: false,
+            duration: None,
+
+            mp3_metadata_set: false,
+            mp3_metadata: None,
+
+            exif_metadata_set: false,
+            exif_metadata: None,
+        }
+    }
+
+    fn clear(&mut self) {
+        self.file_metadata_set = false;
+        self.file_metadata = None;
+
+        self.line_count_set = false;
+        self.line_count = None;
+
+        self.dimensions_set = false;
+        self.dimensions = None;
+
+        self.duration_set = false;
+        self.duration = None;
+
+        self.mp3_metadata_set = false;
+        self.mp3_metadata = None;
+
+        self.exif_metadata_set = false;
+        self.exif_metadata = None;
+    }
+
+    fn update_file_metadata(&mut self, entry: &DirEntry, follow_symlinks: bool) {
+        if !self.file_metadata_set {
+            self.file_metadata_set = true;
+            self.file_metadata = get_metadata(entry, follow_symlinks);
+        }
+    }
+
+    fn update_line_count(&mut self, entry: &DirEntry) {
+        if !self.line_count_set {
+            self.line_count_set = true;
+            self.line_count = get_line_count(entry);
+        }
+    }
+
+    fn update_mp3_metadata(&mut self, entry: &DirEntry) {
+        if !self.mp3_metadata_set {
+            self.mp3_metadata_set = true;
+            self.mp3_metadata = get_mp3_metadata(entry);
+        }
+    }
+
+    fn update_exif_metadata(&mut self, entry: &DirEntry) {
+        if !self.exif_metadata_set {
+            self.exif_metadata_set = true;
+            self.exif_metadata = get_exif_metadata(entry);
+        }
+    }
+
+    fn update_dimensions(&mut self, entry: &DirEntry) {
+        if !self.dimensions_set {
+            self.dimensions_set = true;
+            self.dimensions = get_dimensions(entry.path());
+        }
+    }
+
+    fn update_duration(&mut self, entry: &DirEntry) {
+        if !self.duration_set {
+            self.update_mp3_metadata(entry);
+
+            self.duration_set = true;
+            self.duration = get_duration(entry.path(), &self.mp3_metadata);
+        }
+    }
+}
 
 pub struct Searcher<'a> {
     query: &'a Query,
@@ -73,23 +170,7 @@ pub struct Searcher<'a> {
     dir_queue: Box<VecDeque<PathBuf>>,
     current_follow_symlinks: bool,
 
-    file_metadata: Option<Metadata>,
-    file_metadata_set: bool,
-
-    file_line_count: Option<usize>,
-    file_line_count_set: bool,
-
-    file_dimensions: Option<Dimensions>,
-    file_dimensions_set: bool,
-
-    file_duration: Option<crate::util::Duration>,
-    file_duration_set: bool,
-
-    file_mp3_metadata: Option<MP3Metadata>,
-    file_mp3_metadata_set: bool,
-
-    file_exif_metadata: Option<HashMap<String, String>>,
-    file_exif_metadata_set: bool,
+    fms: FileMetadataState,
 
     pub error_count: i32,
 }
@@ -121,46 +202,10 @@ impl <'a> Searcher<'a> {
             dir_queue: Box::from(VecDeque::new()),
             current_follow_symlinks: false,
 
-            file_metadata: None,
-            file_metadata_set: false,
-
-            file_line_count: None,
-            file_line_count_set: false,
-
-            file_dimensions: None,
-            file_dimensions_set: false,
-
-            file_duration: None,
-            file_duration_set: false,
-
-            file_mp3_metadata: None,
-            file_mp3_metadata_set: false,
-
-            file_exif_metadata: None,
-            file_exif_metadata_set: false,
+            fms: FileMetadataState::new(),
 
             error_count: 0,
         }
-    }
-
-    fn clear_file_data(&mut self) {
-        self.file_metadata_set = false;
-        self.file_metadata = None;
-
-        self.file_line_count = None;
-        self.file_line_count_set = false;
-
-        self.file_dimensions_set = false;
-        self.file_dimensions = None;
-
-        self.file_duration_set = false;
-        self.file_duration = None;
-
-        self.file_mp3_metadata_set = false;
-        self.file_mp3_metadata = None;
-
-        self.file_exif_metadata_set = false;
-        self.file_exif_metadata = None;
     }
 
     pub fn is_buffered(&self) -> bool {
@@ -696,34 +741,6 @@ impl <'a> Searcher<'a> {
         result
     }
 
-    fn update_file_metadata(&mut self, entry: &DirEntry) {
-        if !self.file_metadata_set {
-            self.file_metadata_set = true;
-            self.file_metadata = get_metadata(entry, self.current_follow_symlinks);
-        }
-    }
-
-    fn update_file_line_count(&mut self, entry: &DirEntry) {
-        if !self.file_line_count_set {
-            self.file_line_count_set = true;
-            self.file_line_count = crate::util::get_line_count(entry);
-        }
-    }
-
-    fn update_file_mp3_metadata(&mut self, entry: &DirEntry) {
-        if !self.file_mp3_metadata_set {
-            self.file_mp3_metadata_set = true;
-            self.file_mp3_metadata = get_mp3_metadata(entry);
-        }
-    }
-
-    fn update_file_exif_metadata(&mut self, entry: &DirEntry) {
-        if !self.file_exif_metadata_set {
-            self.file_exif_metadata_set = true;
-            self.file_exif_metadata = get_exif_metadata(entry);
-        }
-    }
-
     fn get_field_value(&mut self,
                        entry: &DirEntry,
                        file_info: &Option<FileInfo>,
@@ -807,9 +824,9 @@ impl <'a> Searcher<'a> {
                         return Variant::from_int(file_info.size as i64);
                     },
                     _ => {
-                        self.update_file_metadata(entry);
+                        self.fms.update_file_metadata(entry, self.current_follow_symlinks);
 
-                        if let Some(ref attrs) = self.file_metadata {
+                        if let Some(ref attrs) = self.fms.file_metadata {
                             return Variant::from_int(attrs.len() as i64);
                         }
                     }
@@ -821,9 +838,9 @@ impl <'a> Searcher<'a> {
                         return Variant::from_string( &format_filesize(file_info.size, self.config.default_file_size_format.as_ref().unwrap_or(&String::new())));
                     },
                     _ => {
-                        self.update_file_metadata(entry);
+                        self.fms.update_file_metadata(entry, self.current_follow_symlinks);
 
-                        if let Some(ref attrs) = self.file_metadata {
+                        if let Some(ref attrs) = self.fms.file_metadata {
                             return Variant::from_string(&format_filesize(attrs.len(), self.config.default_file_size_format.as_ref().unwrap_or(&String::new())));
                         }
                     }
@@ -835,9 +852,9 @@ impl <'a> Searcher<'a> {
                         return Variant::from_bool(file_info.name.ends_with('/') || file_info.name.ends_with('\\'));
                     },
                     _ => {
-                        self.update_file_metadata(entry);
+                        self.fms.update_file_metadata(entry, self.current_follow_symlinks);
 
-                        if let Some(ref attrs) = self.file_metadata {
+                        if let Some(ref attrs) = self.fms.file_metadata {
                             return Variant::from_bool(attrs.is_dir());
                         }
                     }
@@ -849,9 +866,9 @@ impl <'a> Searcher<'a> {
                         return Variant::from_bool(!file_info.name.ends_with('/'));
                     },
                     _ => {
-                        self.update_file_metadata(entry);
+                        self.fms.update_file_metadata(entry, self.current_follow_symlinks);
 
-                        if let Some(ref attrs) = self.file_metadata {
+                        if let Some(ref attrs) = self.fms.file_metadata {
                             return Variant::from_bool(attrs.is_file());
                         }
                     }
@@ -863,9 +880,9 @@ impl <'a> Searcher<'a> {
                         return Variant::from_bool(false);
                     },
                     _ => {
-                        self.update_file_metadata(entry);
+                        self.fms.update_file_metadata(entry, self.current_follow_symlinks);
 
-                        if let Some(ref attrs) = self.file_metadata {
+                        if let Some(ref attrs) = self.fms.file_metadata {
                             return Variant::from_bool(attrs.file_type().is_symlink());
                         }
                     }
@@ -939,9 +956,9 @@ impl <'a> Searcher<'a> {
                         }
                     },
                     _ => {
-                        self.update_file_metadata(entry);
+                        self.fms.update_file_metadata(entry, self.current_follow_symlinks);
 
-                        if let Some(ref attrs) = self.file_metadata {
+                        if let Some(ref attrs) = self.fms.file_metadata {
                             return Variant::from_string(&mode::get_mode(attrs));
                         }
                     }
@@ -995,25 +1012,25 @@ impl <'a> Searcher<'a> {
                         return Variant::from_bool(is_hidden(&file_info.name, &None, true));
                     },
                     _ => {
-                        self.update_file_metadata(entry);
+                        self.fms.update_file_metadata(entry, self.current_follow_symlinks);
 
-                        return Variant::from_bool(is_hidden(&entry.file_name().to_string_lossy(), &self.file_metadata, false));
+                        return Variant::from_bool(is_hidden(&entry.file_name().to_string_lossy(), &self.fms.file_metadata, false));
                     }
                 }
             },
             Field::Uid => {
-                self.update_file_metadata(entry);
+                self.fms.update_file_metadata(entry, self.current_follow_symlinks);
 
-                if let Some(ref attrs) = self.file_metadata {
+                if let Some(ref attrs) = self.fms.file_metadata {
                     if let Some(uid) = mode::get_uid(attrs) {
                         return Variant::from_int(uid as i64);
                     }
                 }
             },
             Field::Gid => {
-                self.update_file_metadata(entry);
+                self.fms.update_file_metadata(entry, self.current_follow_symlinks);
 
-                if let Some(ref attrs) = self.file_metadata {
+                if let Some(ref attrs) = self.fms.file_metadata {
                     if let Some(gid) = mode::get_gid(attrs) {
                         return Variant::from_int(gid as i64);
                     }
@@ -1021,9 +1038,9 @@ impl <'a> Searcher<'a> {
             },
             #[cfg(all(unix, feature = "users"))]
             Field::User => {
-                self.update_file_metadata(entry);
+                self.fms.update_file_metadata(entry, self.current_follow_symlinks);
 
-                if let Some(ref attrs) = self.file_metadata {
+                if let Some(ref attrs) = self.fms.file_metadata {
                     if let Some(uid) = mode::get_uid(attrs) {
                         if let Some(user) = self.user_cache.get_user_by_uid(uid) {
                             return Variant::from_string(&user.name().to_string_lossy().to_string());
@@ -1033,9 +1050,9 @@ impl <'a> Searcher<'a> {
             },
             #[cfg(all(unix, feature = "users"))]
             Field::Group => {
-                self.update_file_metadata(entry);
+                self.fms.update_file_metadata(entry, self.current_follow_symlinks);
 
-                if let Some(ref attrs) = self.file_metadata {
+                if let Some(ref attrs) = self.fms.file_metadata {
                     if let Some(gid) = mode::get_gid(attrs) {
                         if let Some(group) = self.user_cache.get_group_by_gid(gid) {
                             return Variant::from_string(&group.name().to_string_lossy().to_string());
@@ -1044,9 +1061,9 @@ impl <'a> Searcher<'a> {
                 }
             },
             Field::Created => {
-                self.update_file_metadata(entry);
+                self.fms.update_file_metadata(entry, self.current_follow_symlinks);
 
-                if let Some(ref attrs) = self.file_metadata {
+                if let Some(ref attrs) = self.fms.file_metadata {
                     if let Ok(sdt) = attrs.created() {
                         let dt: DateTime<Local> = DateTime::from(sdt);
                         return Variant::from_datetime(dt.naive_local());
@@ -1054,9 +1071,9 @@ impl <'a> Searcher<'a> {
                 }
             },
             Field::Accessed => {
-                self.update_file_metadata(entry);
+                self.fms.update_file_metadata(entry, self.current_follow_symlinks);
 
-                if let Some(ref attrs) = self.file_metadata {
+                if let Some(ref attrs) = self.fms.file_metadata {
                     if let Ok(sdt) = attrs.accessed() {
                         let dt: DateTime<Local> = DateTime::from(sdt);
                         return Variant::from_datetime(dt.naive_local());
@@ -1070,9 +1087,9 @@ impl <'a> Searcher<'a> {
                         return Variant::from_datetime(dt);
                     },
                     _ => {
-                        self.update_file_metadata(entry);
+                        self.fms.update_file_metadata(entry, self.current_follow_symlinks);
 
-                        if let Some(ref attrs) = self.file_metadata {
+                        if let Some(ref attrs) = self.fms.file_metadata {
                             if let Ok(sdt) = attrs.modified() {
                                 let dt: DateTime<Local> = DateTime::from(sdt);
                                 return Variant::from_datetime(dt.naive_local());
@@ -1119,9 +1136,9 @@ impl <'a> Searcher<'a> {
                         return Variant::from_bool(file_info.size == 0);
                     },
                     _ => {
-                        self.update_file_metadata(entry);
+                        self.fms.update_file_metadata(entry, self.current_follow_symlinks);
 
-                        if let Some(ref attrs) = self.file_metadata {
+                        if let Some(ref attrs) = self.fms.file_metadata {
                             return match attrs.is_dir() {
                                 true =>  match is_dir_empty(entry) {
                                     Some(result) => Variant::from_bool(result),
@@ -1134,100 +1151,89 @@ impl <'a> Searcher<'a> {
                 }
             },
             Field::Width => {
-                if !self.file_dimensions_set {
-                    self.file_dimensions_set = true;
-                    self.file_dimensions = get_dimensions(entry.path());
-                }
+                self.fms.update_dimensions(entry);
 
-                if let Some(Dimensions { width, .. }) = self.file_dimensions {
+                if let Some(Dimensions { width, .. }) = self.fms.dimensions {
                     return Variant::from_int(width as i64);
                 }
             },
             Field::Height => {
-                if !self.file_dimensions_set {
-                    self.file_dimensions_set = true;
-                    self.file_dimensions = get_dimensions(entry.path());
-                }
+                self.fms.update_dimensions(entry);
 
-                if let Some(Dimensions { height, .. }) = self.file_dimensions {
+                if let Some(Dimensions { height, .. }) = self.fms.dimensions {
                     return Variant::from_int(height as i64);
                 }
             },
             Field::Duration => {
-                if !self.file_duration_set {
-                    self.update_file_mp3_metadata(entry);
+                self.fms.update_duration(entry);
 
-                    self.file_duration_set = true;
-                    self.file_duration = get_duration(entry.path(), &self.file_mp3_metadata);
-                }
-
-                if let Some(Duration { length, .. }) = self.file_duration {
+                if let Some(Duration { length, .. }) = self.fms.duration {
                     return Variant::from_int(length as i64);
                 }
             },
             Field::Bitrate => {
-                self.update_file_mp3_metadata(entry);
+                self.fms.update_mp3_metadata(entry);
 
-                if let Some(ref mp3_info) = self.file_mp3_metadata {
+                if let Some(ref mp3_info) = self.fms.mp3_metadata {
                     return Variant::from_int(mp3_info.frames[0].bitrate as i64);
                 }
             },
             Field::Freq => {
-                self.update_file_mp3_metadata(entry);
+                self.fms.update_mp3_metadata(entry);
 
-                if let Some(ref mp3_info) = self.file_mp3_metadata {
+                if let Some(ref mp3_info) = self.fms.mp3_metadata {
                     return Variant::from_int(mp3_info.frames[0].sampling_freq as i64);
                 }
             },
             Field::Title => {
-                self.update_file_mp3_metadata(entry);
+                self.fms.update_mp3_metadata(entry);
 
-                if let Some(ref mp3_info) = self.file_mp3_metadata {
+                if let Some(ref mp3_info) = self.fms.mp3_metadata {
                     if let Some(ref mp3_tag) = mp3_info.tag {
                         return Variant::from_string(&mp3_tag.title);
                     }
                 }
             },
             Field::Artist => {
-                self.update_file_mp3_metadata(entry);
+                self.fms.update_mp3_metadata(entry);
 
-                if let Some(ref mp3_info) = self.file_mp3_metadata {
+                if let Some(ref mp3_info) = self.fms.mp3_metadata {
                     if let Some(ref mp3_tag) = mp3_info.tag {
                         return Variant::from_string(&mp3_tag.artist);
                     }
                 }
             },
             Field::Album => {
-                self.update_file_mp3_metadata(entry);
+                self.fms.update_mp3_metadata(entry);
 
-                if let Some(ref mp3_info) = self.file_mp3_metadata {
+                if let Some(ref mp3_info) = self.fms.mp3_metadata {
                     if let Some(ref mp3_tag) = mp3_info.tag {
                         return Variant::from_string(&mp3_tag.album);
                     }
                 }
             },
             Field::Year => {
-                self.update_file_mp3_metadata(entry);
+                self.fms.update_mp3_metadata(entry);
 
-                if let Some(ref mp3_info) = self.file_mp3_metadata {
+                if let Some(ref mp3_info) = self.fms.mp3_metadata {
                     if let Some(ref mp3_tag) = mp3_info.tag {
                         return Variant::from_int(mp3_tag.year as i64);
                     }
                 }
             },
             Field::Genre => {
-                self.update_file_mp3_metadata(entry);
+                self.fms.update_mp3_metadata(entry);
 
-                if let Some(ref mp3_info) = self.file_mp3_metadata {
+                if let Some(ref mp3_info) = self.fms.mp3_metadata {
                     if let Some(ref mp3_tag) = mp3_info.tag {
                         return Variant::from_string(&format!("{:?}", mp3_tag.genre));
                     }
                 }
             },
             Field::ExifDateTime => {
-                self.update_file_exif_metadata(entry);
+                self.fms.update_exif_metadata(entry);
 
-                if let Some(ref exif_info) = self.file_exif_metadata {
+                if let Some(ref exif_info) = self.fms.exif_metadata {
                     if let Some(exif_value) = exif_info.get("DateTime") {
                         if let Ok(exif_datetime) = parse_datetime(&exif_value) {
                             return Variant::from_datetime(exif_datetime.0);
@@ -1236,72 +1242,72 @@ impl <'a> Searcher<'a> {
                 }
             },
             Field::ExifGpsAltitude => {
-                self.update_file_exif_metadata(entry);
+                self.fms.update_exif_metadata(entry);
 
-                if let Some(ref exif_info) = self.file_exif_metadata {
+                if let Some(ref exif_info) = self.fms.exif_metadata {
                     if let Some(exif_value) = exif_info.get("__Alt") {
                         return Variant::from_float(exif_value.parse().unwrap_or(0.0));
                     }
                 }
             },
             Field::ExifGpsLatitude => {
-                self.update_file_exif_metadata(entry);
+                self.fms.update_exif_metadata(entry);
 
-                if let Some(ref exif_info) = self.file_exif_metadata {
+                if let Some(ref exif_info) = self.fms.exif_metadata {
                     if let Some(exif_value) = exif_info.get("__Lat") {
                         return Variant::from_float(exif_value.parse().unwrap_or(0.0));
                     }
                 }
             },
             Field::ExifGpsLongitude => {
-                self.update_file_exif_metadata(entry);
+                self.fms.update_exif_metadata(entry);
 
-                if let Some(ref exif_info) = self.file_exif_metadata {
+                if let Some(ref exif_info) = self.fms.exif_metadata {
                     if let Some(exif_value) = exif_info.get("__Lng") {
                         return Variant::from_float(exif_value.parse().unwrap_or(0.0));
                     }
                 }
             },
             Field::ExifMake => {
-                self.update_file_exif_metadata(entry);
+                self.fms.update_exif_metadata(entry);
 
-                if let Some(ref exif_info) = self.file_exif_metadata {
+                if let Some(ref exif_info) = self.fms.exif_metadata {
                     if let Some(exif_value) = exif_info.get("Make") {
                         return Variant::from_string(&exif_value);
                     }
                 }
             },
             Field::ExifModel => {
-                self.update_file_exif_metadata(entry);
+                self.fms.update_exif_metadata(entry);
 
-                if let Some(ref exif_info) = self.file_exif_metadata {
+                if let Some(ref exif_info) = self.fms.exif_metadata {
                     if let Some(exif_value) = exif_info.get("Model") {
                         return Variant::from_string(&exif_value);
                     }
                 }
             },
             Field::ExifSoftware => {
-                self.update_file_exif_metadata(entry);
+                self.fms.update_exif_metadata(entry);
 
-                if let Some(ref exif_info) = self.file_exif_metadata {
+                if let Some(ref exif_info) = self.fms.exif_metadata {
                     if let Some(exif_value) = exif_info.get("Software") {
                         return Variant::from_string(&exif_value);
                     }
                 }
             },
             Field::ExifVersion => {
-                self.update_file_exif_metadata(entry);
+                self.fms.update_exif_metadata(entry);
 
-                if let Some(ref exif_info) = self.file_exif_metadata {
+                if let Some(ref exif_info) = self.fms.exif_metadata {
                     if let Some(exif_value) = exif_info.get("ExifVersion") {
                         return Variant::from_string(&exif_value);
                     }
                 }
             },
             Field::LineCount => {
-                self.update_file_line_count(entry);
+                self.fms.update_line_count(entry);
 
-                if let Some(line_count) = self.file_line_count {
+                if let Some(line_count) = self.fms.line_count {
                     return Variant::from_int(line_count as i64);
                 }
             },
@@ -1313,9 +1319,9 @@ impl <'a> Searcher<'a> {
                 return Variant::empty(VariantType::String);
             },
             Field::IsBinary => {
-                self.update_file_metadata(entry);
+                self.fms.update_file_metadata(entry, self.current_follow_symlinks);
 
-                if let Some(ref meta) = self.file_metadata {
+                if let Some(ref meta) = self.fms.file_metadata {
                     if meta.is_dir() {
                         return Variant::from_bool(false);
                     }
@@ -1329,9 +1335,9 @@ impl <'a> Searcher<'a> {
                 return Variant::from_bool(false);
             },
             Field::IsText => {
-                self.update_file_metadata(entry);
+                self.fms.update_file_metadata(entry, self.current_follow_symlinks);
 
-                if let Some(ref meta) = self.file_metadata {
+                if let Some(ref meta) = self.fms.file_metadata {
                     if meta.is_dir() {
                         return Variant::from_bool(false);
                     }
@@ -1419,8 +1425,8 @@ impl <'a> Searcher<'a> {
 
     fn check_file(&mut self,
                   entry: &DirEntry,
-                  file_info: &Option<FileInfo>) -> std::io::Result<bool> {
-        self.clear_file_data();
+                  file_info: &Option<FileInfo>) -> io::Result<bool> {
+        self.fms.clear();
 
         if let Some(ref expr) = self.query.expr {
             let result = self.conforms(entry, file_info, expr);
@@ -1495,7 +1501,7 @@ impl <'a> Searcher<'a> {
     fn colorize(&mut self, value: &str) -> String {
         let style;
 
-        if let Some(ref metadata) = self.file_metadata {
+        if let Some(ref metadata) = self.fms.file_metadata {
             style = self.lscolors.style_for_path_with_metadata(Path::new(&value), Some(metadata));
         } else {
             style = self.lscolors.style_for_path(Path::new(&value));
@@ -1518,9 +1524,9 @@ impl <'a> Searcher<'a> {
                 }
             },
             _ => {
-                self.update_file_metadata(entry);
+                self.fms.update_file_metadata(entry, self.current_follow_symlinks);
 
-                if let Some(ref attrs) = self.file_metadata {
+                if let Some(ref attrs) = self.fms.file_metadata {
                     return Variant::from_bool(mode_func_boxed(attrs));
                 }
             }

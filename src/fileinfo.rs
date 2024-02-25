@@ -1,4 +1,3 @@
-use zip;
 use zip::DateTime;
 
 pub struct FileInfo {

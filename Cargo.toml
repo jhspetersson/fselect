@@ -13,8 +13,9 @@ license = "MIT/Apache-2.0"
 edition = "2021"
 
 [features]
-default = ["uzers", "update-notifications"]
+default = ["users", "update-notifications"]
 update-notifications = ["dep:update-informer"]
+users = ["dep:uzers"]
 
 [dependencies]
 bytecount = "0.6"

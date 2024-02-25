@@ -13,14 +13,12 @@ use std::rc::Rc;
 
 use chrono::{DateTime, Local};
 use lscolors::{LsColors, Style};
-use mp3_metadata;
 use mp3_metadata::MP3Metadata;
 use regex::Regex;
 #[cfg(all(unix, feature = "users"))]
-use users::{Groups, Users, UsersCache};
+use uzers::{Groups, Users, UsersCache};
 #[cfg(unix)]
 use xattr::FileExt;
-use zip;
 
 use crate::config::Config;
 use crate::expr::Expr;

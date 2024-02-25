@@ -23,11 +23,8 @@ use std::io::Read;
 use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
-use std::string::ToString;
 
 use chrono::{Datelike, Local, Timelike};
-use humansize;
-use mp3_metadata;
 use mp3_metadata::MP3Metadata;
 use regex::Regex;
 use sha1::Digest;

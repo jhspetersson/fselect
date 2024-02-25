@@ -12,7 +12,6 @@ use chrono::Datelike;
 use chrono::Local;
 use chrono::NaiveDateTime;
 use rand::Rng;
-use rbase64;
 use serde::ser::{Serialize, Serializer};
 #[cfg(unix)]
 use xattr::FileExt;
@@ -661,22 +660,22 @@ pub fn get_value(function: &Option<Function>,
         },
         #[cfg(all(unix, feature = "users"))]
         Some(Function::CurrentUid) => {
-            return Variant::from_int(users::get_current_uid() as i64);
+            return Variant::from_int(uzers::get_current_uid() as i64);
         }
         #[cfg(all(unix, feature = "users"))]
         Some(Function::CurrentUser) => {
-            match users::get_current_username().and_then(|u| u.into_string().ok()) {
+            match uzers::get_current_username().and_then(|u| u.into_string().ok()) {
                 Some(s) => Variant::from_string(&s),
                 None => Variant::empty(VariantType::String),
             }
         }
         #[cfg(all(unix, feature = "users"))]
         Some(Function::CurrentGid) => {
-            return Variant::from_int(users::get_current_gid() as i64);
+            return Variant::from_int(uzers::get_current_gid() as i64);
         }
         #[cfg(all(unix, feature = "users"))]
         Some(Function::CurrentGroup) => {
-            match users::get_current_groupname().and_then(|u| u.into_string().ok()) {
+            match uzers::get_current_groupname().and_then(|u| u.into_string().ok()) {
                 Some(s) => Variant::from_string(&s),
                 None => Variant::empty(VariantType::String),
             }

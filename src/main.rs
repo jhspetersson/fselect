@@ -3,7 +3,7 @@ extern crate lazy_static;
 #[macro_use]
 extern crate serde_derive;
 #[cfg(all(unix, feature = "users"))]
-extern crate users;
+extern crate uzers;
 #[cfg(unix)]
 extern crate xattr;
 

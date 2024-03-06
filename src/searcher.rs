@@ -1753,9 +1753,9 @@ impl <'a> Searcher<'a> {
                 },
                 VariantType::DateTime => {
                     let (start, finish) = value.to_datetime();
-                    let start = start.timestamp();
-                    let finish = finish.timestamp();
-                    let dt = field_value.to_datetime().0.timestamp();
+                    let start = start.and_utc().timestamp();
+                    let finish = finish.and_utc().timestamp();
+                    let dt = field_value.to_datetime().0.and_utc().timestamp();
                     match op {
                         Op::Eeq => dt == start,
                         Op::Ene => dt != start,

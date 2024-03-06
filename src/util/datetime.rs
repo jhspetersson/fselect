@@ -23,7 +23,7 @@ pub fn parse_datetime(s: &str) -> Result<(NaiveDateTime, NaiveDateTime), String>
     }
 
     if s == "yesterday" {
-        let date = Local::now().date_naive() - Duration::days(1);
+        let date = Local::now().date_naive() - Duration::try_days(1).unwrap();
         let start = date.and_hms_opt(0, 0, 0).unwrap();
         let finish = date.and_hms_opt(23, 59, 59).unwrap();
 

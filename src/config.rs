@@ -145,7 +145,7 @@ impl Config {
             is_zip_archive : vec_of_strings![".zip", ".jar", ".war", ".ear"],
             is_archive : vec_of_strings![".7z", ".bz2", ".bzip2", ".gz", ".gzip", ".lz", ".rar", ".tar", ".xz", ".zip"],
             is_audio : vec_of_strings![".aac", ".aiff", ".amr", ".flac", ".gsm", ".m4a", ".m4b", ".m4p", ".mp3", ".ogg", ".wav", ".wma"],
-            is_book : vec_of_strings![".azw3", ".chm", ".djvu", ".epub", ".fb2", ".mobi", ".pdf"],
+            is_book : vec_of_strings![".azw3", ".chm", ".djv", ".djvu", ".epub", ".fb2", ".mobi", ".pdf"],
             is_doc : vec_of_strings![".accdb", ".doc", ".docm", ".docx", ".dot", ".dotm", ".dotx", ".mdb", ".odp", ".ods", ".odt", ".pdf", ".potm", ".potx", ".ppt", ".pptm", ".pptx", ".rtf", ".xlm", ".xls", ".xlsm", ".xlsx", ".xlt", ".xltm", ".xltx", ".xps"],
             is_image : vec_of_strings![".bmp", ".exr", ".gif", ".heic", ".jpeg", ".jpg", ".jxl", ".png", ".psb", ".psd",  ".svg", ".tga", ".tiff", ".webp"],
             is_source : vec_of_strings![".asm", ".bas", ".c", ".cc", ".ceylon", ".clj", ".coffee", ".cpp", ".cs", ".d", ".dart", ".elm", ".erl", ".go", ".gradle", ".groovy", ".h", ".hh", ".hpp", ".java", ".jl", ".js", ".jsp", ".jsx", ".kt", ".kts", ".lua", ".nim", ".pas", ".php", ".pl", ".pm", ".py", ".rb", ".rs", ".scala", ".sol", ".swift", ".tcl", ".ts", ".tsx", ".vala", ".vb", ".zig"],

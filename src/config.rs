@@ -30,6 +30,7 @@ pub struct Config {
     pub is_image : Vec<String>,
     pub is_source : Vec<String>,
     pub is_video : Vec<String>,
+    pub is_font : Vec<String>,
     pub default_file_size_format : Option<String>,
     pub check_for_updates: Option<bool>,
     #[serde(skip_serializing, default = "get_false")]
@@ -150,6 +151,7 @@ impl Config {
             is_image : vec_of_strings![".bmp", ".exr", ".gif", ".heic", ".jpeg", ".jpg", ".jxl", ".png", ".psb", ".psd",  ".svg", ".tga", ".tiff", ".webp"],
             is_source : vec_of_strings![".asm", ".bas", ".c", ".cc", ".ceylon", ".clj", ".coffee", ".cpp", ".cs", ".d", ".dart", ".elm", ".erl", ".go", ".gradle", ".groovy", ".h", ".hh", ".hpp", ".java", ".jl", ".js", ".jsp", ".jsx", ".kt", ".kts", ".lua", ".nim", ".pas", ".php", ".pl", ".pm", ".py", ".rb", ".rs", ".scala", ".sol", ".swift", ".tcl", ".ts", ".tsx", ".vala", ".vb", ".zig"],
             is_video : vec_of_strings![".3gp", ".avi", ".flv", ".m4p", ".m4v", ".mkv", ".mov", ".mp4", ".mpeg", ".mpg", ".webm", ".wmv"],
+            is_font : vec_of_strings![".eot", ".fon", ".otc", ".otf", ".ttc", ".ttf", ".woff", ".woff2"],
             default_file_size_format : Some(String::new()),
             check_for_updates : Some(false),
             debug : false,

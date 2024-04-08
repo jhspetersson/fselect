@@ -1404,6 +1404,14 @@ impl <'a> Searcher<'a> {
 
                 return Variant::from_bool(is_video);
             },
+            Field::IsFont => {
+                let is_font = match file_info {
+                    Some(file_info) => self.is_font(&file_info.name),
+                    None => self.is_font(&entry.file_name().to_string_lossy())
+                };
+
+                return Variant::from_bool(is_font);
+            },
             Field::Sha1 => {
                 return Variant::from_string(&crate::util::get_sha1_file_hash(&entry));
             },
@@ -1804,5 +1812,9 @@ impl <'a> Searcher<'a> {
 
     fn is_video(&self, file_name: &str) -> bool {
         has_extension(file_name, &self.config.is_video)
+    }
+
+    fn is_font(&self, file_name: &str) -> bool {
+        has_extension(file_name, &self.config.is_font)
     }
 }

@@ -364,10 +364,10 @@ Column Options:
     is_audio                        Returns a boolean signifying whether the file is an audio file
     is_book                         Returns a boolean signifying whether the file is a book
     is_doc                          Returns a boolean signifying whether the file is a document
+    is_font                         Returns a boolean signifying whether the file is a font file
     is_image                        Returns a boolean signifying whether the file is an image
     is_source                       Returns a boolean signifying whether the file is source code
     is_video                        Returns a boolean signifying whether the file is a video file
-    is_font                         Returns a boolean signifying whether the file is a font file
 
     sha1                            Returns SHA-1 digest of a file
     sha2_256 | sha256               Returns SHA2-256 digest of a file

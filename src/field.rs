@@ -81,10 +81,10 @@ pub enum Field {
     IsAudio,
     IsBook,
     IsDoc,
+    IsFont,
     IsImage,
     IsSource,
     IsVideo,
-    IsFont,
     Sha1,
     Sha256,
     Sha512,
@@ -172,10 +172,10 @@ impl FromStr for Field {
             "is_audio" => Ok(Field::IsAudio),
             "is_book" => Ok(Field::IsBook),
             "is_doc" => Ok(Field::IsDoc),
+            "is_font" => Ok(Field::IsFont),
             "is_image" => Ok(Field::IsImage),
             "is_source" => Ok(Field::IsSource),
             "is_video" => Ok(Field::IsVideo),
-            "is_font" => Ok(Field::IsFont),
             "sha1" => Ok(Field::Sha1),
             "sha2_256" | "sha256" => Ok(Field::Sha256),
             "sha2_512" | "sha512" => Ok(Field::Sha512),
@@ -257,6 +257,7 @@ impl Field {
             | Field::IsAudio
             | Field::IsBook
             | Field::IsDoc
+            | Field::IsFont
             | Field::IsImage
             | Field::IsSource
             | Field::IsVideo => true,
@@ -303,6 +304,7 @@ impl Field {
             | Field::IsAudio
             | Field::IsBook
             | Field::IsDoc
+            | Field::IsFont
             | Field::IsImage
             | Field::IsSource
             | Field::IsVideo

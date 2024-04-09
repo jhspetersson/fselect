@@ -80,11 +80,11 @@ Joins, unions, and subselects are not supported (yet?).
 | `is_socket`                                  | Returns a boolean signifying whether the file path is a socket file                                        |                                                               |
 | `is_hidden`                                  | Returns a boolean signifying whether the file is a hidden file (e.g., files that start with a dot on *nix) |                                                               |
 | `has_xattrs`                                 | Returns a boolean signifying whether the file has extended attributes                                      |                                                               |
-| `capabilities` or `caps`                     | Returns a string describing Linux capabilities assigned to a file                                          | Available only on Linux                                        |
-| `device`                                     | (Linux only) Returns the code of device the file is stored on                                              |                                                               |
-| `inode`                                      | (Linux only) Returns the number of inode                                                                   |                                                               |
-| `blocks`                                     | (Linux only) Returns the number of blocks (256 bytes) the file occupies                                    |                                                               |
-| `hardlinks`                                  | (Linux only) Returns the number of hardlinks of the file                                                   |                                                               |
+| `capabilities` or `caps`                     | Returns a string describing Linux capabilities assigned to a file                                          | Available only on Linux                                       |
+| `device`                                     | Returns the code of device the file is stored on                                                           | Available only on Linux                                       |
+| `inode`                                      | Returns the number of inode                                                                                | Available only on Linux                                       |
+| `blocks`                                     | Returns the number of blocks (256 bytes) the file occupies                                                 | Available only on Linux                                       |
+| `hardlinks`                                  | Returns the number of hardlinks of the file                                                                | Available only on Linux                                       |
 | `mode`                                       | Returns the permissions of the owner, group, and everybody (similar to the first field in `ls -la`)        |                                                               |
 | `user`                                       | Returns the name of the owner for this file                                                                | Available only on *nix platforms with `users` feature enabled |
 | `user_read`                                  | Returns a boolean signifying whether the file can be read by the owner                                     |                                                               |
@@ -126,14 +126,14 @@ Joins, unions, and subselects are not supported (yet?).
 | `duration`                                   | Returns the duration of audio file in seconds                                                              |                                                               |
 | `is_shebang`                                 | Returns a boolean signifying whether the file starts with a shebang (#!)                                   |                                                               |
 | `is_empty`                                   | Returns a boolean signifying whether the file is empty or the directory is empty                           |                                                               |
-| `is_archive`                                 | Returns a boolean signifying whether the file is an archival file [(default extensions)](#ext_archive)     |                                                               |
-| `is_audio`                                   | Returns a boolean signifying whether the file is an audio file [(default extensions)](#ext_audio)            |                                                               |
-| `is_book`                                    | Returns a boolean signifying whether the file is a book [(default extensions)](#ext_book)                    |                                                               |
-| `is_doc`                                     | Returns a boolean signifying whether the file is a document [(default extensions)](#ext_doc)                 |                                                               |
-| `is_font`                                    | Returns a boolean signifying whether the file is a font [(default extensions)](#ext_font)                    |                                                               |
-| `is_image`                                   | Returns a boolean signifying whether the file is an image [(default extensions)](#ext_image)                 |                                                               |
-| `is_source`                                  | Returns a boolean signifying whether the file is source code [(default extensions)](#ext_source)             |                                                               |
-| `is_video`                                   | Returns a boolean signifying whether the file is a video file [(default extensions)](#ext_video)             |                                                               |
+| `is_archive`                                 | Returns a boolean signifying whether the file is an archival file                                          | [default extensions](#ext_archive)                            |
+| `is_audio`                                   | Returns a boolean signifying whether the file is an audio file                                             | [default extensions](#ext_audio)                              |
+| `is_book`                                    | Returns a boolean signifying whether the file is a book                                                    | [default extensions](#ext_book)                               |
+| `is_doc`                                     | Returns a boolean signifying whether the file is a document                                                | [default extensions](#ext_doc)                                |
+| `is_font`                                    | Returns a boolean signifying whether the file is a font                                                    | [default extensions](#ext_font)                               |
+| `is_image`                                   | Returns a boolean signifying whether the file is an image                                                  | [default extensions](#ext_image)                              |
+| `is_source`                                  | Returns a boolean signifying whether the file is source code                                               | [default extensions](#ext_source)                             |
+| `is_video`                                   | Returns a boolean signifying whether the file is a video file                                              | [default extensions](#ext_video)                              |
 | `sha1`                                       | Returns SHA-1 digest of a file                                                                             |                                                               |
 | `sha2_256` or `sha256`                       | Returns SHA2-256 digest of a file                                                                          |                                                               |
 | `sha2_512` or `sha512`                       | Returns SHA2-512 digest of a file                                                                          |                                                               |
@@ -145,40 +145,40 @@ Joins, unions, and subselects are not supported (yet?).
 
 Queries using these functions return only one result row.
 
-| Function | Meaning | Example |
-| --- | --- | --- |
-| AVG | Average of all values | `select avg(size) from /home/user/Downloads` |
-| COUNT | Number of all values | `select count(*) from /home/user/Downloads` |
-| MAX | Maximum value | `select max(size) from /home/user/Downloads` |
-| MIN | Minimum value | `select min(size) from /home/user where size gt 0` |
-| SUM | Sum of all values | `select sum(size) from /home/user/Downloads` |
-| STDDEV_POP, STDDEV or STD | Population standard deviation, the square root of variance | `select stddev_pop(size) from /home/user/Downloads` |
-| STDDEV_SAMP | Sample standard deviation, the square root of sample variance | `select stddev_samp(size) from /home/user/Downloads` |
-| VAR_POP or VARIANCE | Population variance | `select var_pop(size) from /home/user/Downloads` |
-| VAR_SAMP | Sample variance | `select var_samp(size) from /home/user/Downloads` |
+| Function                  | Meaning                                                       | Example                                              |
+|---------------------------|---------------------------------------------------------------|------------------------------------------------------|
+| AVG                       | Average of all values                                         | `select avg(size) from /home/user/Downloads`         |
+| COUNT                     | Number of all values                                          | `select count(*) from /home/user/Downloads`          |
+| MAX                       | Maximum value                                                 | `select max(size) from /home/user/Downloads`         |
+| MIN                       | Minimum value                                                 | `select min(size) from /home/user where size gt 0`   |
+| SUM                       | Sum of all values                                             | `select sum(size) from /home/user/Downloads`         |
+| STDDEV_POP, STDDEV or STD | Population standard deviation, the square root of variance    | `select stddev_pop(size) from /home/user/Downloads`  |
+| STDDEV_SAMP               | Sample standard deviation, the square root of sample variance | `select stddev_samp(size) from /home/user/Downloads` |
+| VAR_POP or VARIANCE       | Population variance                                           | `select var_pop(size) from /home/user/Downloads`     |
+| VAR_SAMP                  | Sample variance                                               | `select var_samp(size) from /home/user/Downloads`    |
 
 #### Date functions
 
 Used mostly for formatting results.
 
-| Function                            | Meaning | Example |
-|-------------------------------------| --- | --- |
-| CURRENT_DATE or CUR_DATE or CURDATE | Returns current date | `select modified, path where modified = CURDATE()` |
-| DAY                                 | Extract day of the month | `select day(modified) from /home/user/Downloads` |
-| MONTH                               | Extract month of the year | `select month(name) from /home/user/Downloads` |
-| YEAR                                | Extract year of the date | `select year(name) from /home/user/Downloads` |
+| Function                            | Meaning                                                | Example                                                                  |
+|-------------------------------------|--------------------------------------------------------|--------------------------------------------------------------------------|
+| CURRENT_DATE or CUR_DATE or CURDATE | Returns current date                                   | `select modified, path where modified = CURDATE()`                       |
+| DAY                                 | Extract day of the month                               | `select day(modified) from /home/user/Downloads`                         |
+| MONTH                               | Extract month of the year                              | `select month(name) from /home/user/Downloads`                           |
+| YEAR                                | Extract year of the date                               | `select year(name) from /home/user/Downloads`                            |
 | DOW or DAYOFWEEK                    | Returns day of the week (1 - Sunday, 2 - Monday, etc.) | `select name, modified, dow(modified) from /home/user/projects/FizzBuzz` |
 
 #### User functions
 
 These are only available on Unix platforms when `users` feature has been enabled during compilation.
 
-| Function | Meaning | Example |
-| --- | --- | --- |
-| CURRENT_UID  | Current real UID | `select CURRENT_UID()` |
-| CURRENT_USER | Current real UID's name | `select CURRENT_USER()` |
-| CURRENT_GID  | Current primary GID | `select CURRENT_GID()` |
-| CURRENT_GROUP | Current primary GID's name | `select CURRENT_GROUP()` |
+| Function       | Meaning                    | Example                  |
+|----------------|----------------------------|--------------------------|
+| CURRENT_UID    | Current real UID           | `select CURRENT_UID()`   |
+| CURRENT_USER   | Current real UID's name    | `select CURRENT_USER()`  |
+| CURRENT_GID    | Current primary GID        | `select CURRENT_GID()`   |
+| CURRENT_GROUP  | Current primary GID's name | `select CURRENT_GROUP()` |
 
 #### Xattr functions
 
@@ -214,63 +214,63 @@ Used mostly for formatting results.
 
 Used for detecting Japanese symbols in file names and such.
 
-| Function | Meaning | Example |
-| --- | --- | --- |
-| CONTAINS_JAPANESE or JAPANESE | Check if string value contains Japanese symbols | `select japanese(name) from /home/user/Downloads` |
-| CONTAINS_KANA or KANA | Check if string value contains kana symbols | `select kana(name) from /home/user/Downloads` |
+| Function                      | Meaning                                         | Example                                                    |
+|-------------------------------|-------------------------------------------------|------------------------------------------------------------|
+| CONTAINS_JAPANESE or JAPANESE | Check if string value contains Japanese symbols | `select japanese(name) from /home/user/Downloads`          |
+| CONTAINS_KANA or KANA         | Check if string value contains kana symbols     | `select kana(name) from /home/user/Downloads`              |
 | CONTAINS_HIRAGANA or HIRAGANA | Check if string value contains hiragana symbols | `select contains_hiragana(name) from /home/user/Downloads` |
-| CONTAINS_KATAKANA or KATAKANA | Check if string value contains katakana symbols | `select katakana(name) from /home/user/Downloads` |
-| CONTAINS_KANJI or KANJI | Check if string value contains kanji symbols | `select kanji(name) from /home/user/Downloads` |
+| CONTAINS_KATAKANA or KATAKANA | Check if string value contains katakana symbols | `select katakana(name) from /home/user/Downloads`          |
+| CONTAINS_KANJI or KANJI       | Check if string value contains kanji symbols    | `select kanji(name) from /home/user/Downloads`             |
 
 #### Other functions
 
-| Function | Meaning                                                                                     | Example |
-| --- |---------------------------------------------------------------------------------------------| --- |
-| BIN | Convert integer value to binary representation                                              | `select name, size, bin(size) from /home/user/Downloads` |
-| HEX | Convert integer value to hexadecimal representation                                         | `select name, size, hex(size), upper(hex(size)) from /home/user/Downloads` |
-| OCT | Convert integer value to octal representation                                               | `select name, size, oct(size) from /home/user/Downloads` |
-| POWER or POW | Raise the value to the specified power                                                      | `select pow(2, 3)` |
-| SQRT | Returns square root of the value                                                            | `select sqrt(25)` |
-| CONTAINS | `true` if file contains string, `false` if not                                              | `select contains(TODO) from /home/user/Projects/foo/src` |
-| COALESCE | Returns first nonempty expression value                                                     | `select name, size, COALESCE(sha256, '---') from /home/user/Downloads` |
-| CONCAT | Returns concatenated string of expression values                                            | `select CONCAT('Name is ', name, ' size is ', fsize, '!!!') from /home/user/Downloads` |
-| CONCAT_WS | Returns concatenated string of expression values with specified delimiter                   | `select name, fsize, CONCAT_WS('x', width, height) from /home/user/Images` |
-| RANDOM or RAND | Returns random integer (from zero to max int, from zero to *arg*, or from *arg1* to *arg2*) | `select path from /home/user/Music order by RAND()` |
-| FORMAT_TIME or PRETTY_TIME | Returns human-readable durations of time in seconds like *2min 26s*                         | `select format_time(duration) from /home/user/Music` |
-| FORMAT_SIZE | Returns formatted size of a file                                                            | `select name, FORMAT_SIZE(size, '%.0') from /home/user/Downloads order by size desc limit 10` |
+| Function                   | Meaning                                                                                     | Example                                                                                       |
+|----------------------------|---------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------|
+| BIN                        | Convert integer value to binary representation                                              | `select name, size, bin(size) from /home/user/Downloads`                                      |
+| HEX                        | Convert integer value to hexadecimal representation                                         | `select name, size, hex(size), upper(hex(size)) from /home/user/Downloads`                    |
+| OCT                        | Convert integer value to octal representation                                               | `select name, size, oct(size) from /home/user/Downloads`                                      |
+| POWER or POW               | Raise the value to the specified power                                                      | `select pow(2, 3)`                                                                            |
+| SQRT                       | Returns square root of the value                                                            | `select sqrt(25)`                                                                             |
+| CONTAINS                   | `true` if file contains string, `false` if not                                              | `select contains(TODO) from /home/user/Projects/foo/src`                                      |
+| COALESCE                   | Returns first nonempty expression value                                                     | `select name, size, COALESCE(sha256, '---') from /home/user/Downloads`                        |
+| CONCAT                     | Returns concatenated string of expression values                                            | `select CONCAT('Name is ', name, ' size is ', fsize, '!!!') from /home/user/Downloads`        |
+| CONCAT_WS                  | Returns concatenated string of expression values with specified delimiter                   | `select name, fsize, CONCAT_WS('x', width, height) from /home/user/Images`                    |
+| RANDOM or RAND             | Returns random integer (from zero to max int, from zero to *arg*, or from *arg1* to *arg2*) | `select path from /home/user/Music order by RAND()`                                           |
+| FORMAT_TIME or PRETTY_TIME | Returns human-readable durations of time in seconds like *2min 26s*                         | `select format_time(duration) from /home/user/Music`                                          |
+| FORMAT_SIZE                | Returns formatted size of a file                                                            | `select name, FORMAT_SIZE(size, '%.0') from /home/user/Downloads order by size desc limit 10` |
 
 Let's try `FORMAT_SIZE` with different format specifiers: 
 
-| Specifier | Meaning | Output |
-| --- | --- | --- |
-| `format_size(1678123)` | Default output | 1.60MiB |
-| `format_size(1678123, ' ')` | Put a space before units | 1.60 MiB |
-| `format_size(1678123, '%.0')` | Round up decimal part | 2MiB |
-| `format_size(1678123, '%.1')` | One place for decimal part | 1.6MiB |
-| `format_size(1678123, '%.2')` | Two places for decimal part | 1.60MiB |
-| `format_size(1678123, '%.2 ')` | Two places for decimal part, and put a space before units | 1.60 MiB |
-| `format_size(1678123, '%.2 d')` | Use decimal divider, e.g. 1000-based units, not 1024-based | 1.68 MB |
-| `format_size(1678123, '%.2 c')` | Use conventional format, e.g. 1024-based divider, but display 1000-based units | 1.60 MB |
-| `format_size(1678123, '%.2 k')` | Display file size in specified unit, this time in kibibytes | 1638.79 KiB |
-| `format_size(1678123, '%.2 ck')` | What is a kibibyte? Gimme conventional unit! | 1638.79 KB |
-| `format_size(1678123, '%.0 ck')` | And drop this decimal part! | 1639 KB |
-| `format_size(1678123, '%.0 kb')` | Use 1000-based kilobyte | 1678 KB |
-| `format_size(1678123, '%.0kb')` | Don't put a space | 1678KB |
-| `format_size(1678123, '%.0s')` | Use short units | 2M |
-| `format_size(1678123, '%.0 s')` | Use short units with a space | 2 M |
+| Specifier                         | Meaning                                                                        | Output      |
+|-----------------------------------|--------------------------------------------------------------------------------|-------------|
+| `format_size(1678123)`            | Default output                                                                 | 1.60MiB     |
+| `format_size(1678123, ' ')`       | Put a space before units                                                       | 1.60 MiB    |
+| `format_size(1678123, '%.0')`     | Round up decimal part                                                          | 2MiB        |
+| `format_size(1678123, '%.1')`     | One place for decimal part                                                     | 1.6MiB      |
+| `format_size(1678123, '%.2')`     | Two places for decimal part                                                    | 1.60MiB     |
+| `format_size(1678123, '%.2 ')`    | Two places for decimal part, and put a space before units                      | 1.60 MiB    |
+| `format_size(1678123, '%.2 d')`   | Use decimal divider, e.g. 1000-based units, not 1024-based                     | 1.68 MB     |
+| `format_size(1678123, '%.2 c')`   | Use conventional format, e.g. 1024-based divider, but display 1000-based units | 1.60 MB     |
+| `format_size(1678123, '%.2 k')`   | Display file size in specified unit, this time in kibibytes                    | 1638.79 KiB |
+| `format_size(1678123, '%.2 ck')`  | What is a kibibyte? Gimme conventional unit!                                   | 1638.79 KB  |
+| `format_size(1678123, '%.0 ck')`  | And drop this decimal part!                                                    | 1639 KB     |
+| `format_size(1678123, '%.0 kb')`  | Use 1000-based kilobyte                                                        | 1678 KB     |
+| `format_size(1678123, '%.0kb')`   | Don't put a space                                                              | 1678KB      |
+| `format_size(1678123, '%.0s')`    | Use short units                                                                | 2M          |
+| `format_size(1678123, '%.0 s')`   | Use short units with a space                                                   | 2 M         |
 
 ### File size units
 
-| Specifier | Meaning | Bytes |
-| --- | --- | --- |
+| Specifier    | Meaning  | Bytes                     |
+|--------------|----------|---------------------------|
 | `t` or `tib` | tebibyte | 1024 * 1024 * 1024 * 1024 |
-| `tb` | terabyte | 1000 * 1000 * 1000 * 1000 |
-| `g` or `gib` | gibibyte | 1024 * 1024 * 1024 |
-| `gb` | gigabyte | 1000 * 1000 * 1000 |
-| `m` or `mib` | mebibyte | 1024 * 1024 |
-| `mb` | megabyte | 1000 * 1000 |
-| `k` or `kib` | kibibyte | 1024 |
-| `kb` | kilobyte | 1000 |
+| `tb`         | terabyte | 1000 * 1000 * 1000 * 1000 |
+| `g` or `gib` | gibibyte | 1024 * 1024 * 1024        |
+| `gb`         | gigabyte | 1000 * 1000 * 1000        |
+| `m` or `mib` | mebibyte | 1024 * 1024               |
+| `mb`         | megabyte | 1000 * 1000               |
+| `k` or `kib` | kibibyte | 1024                      |
+| `kb`         | kilobyte | 1000                      |
 
     fselect size, path from /home/user/tmp where size gt 2g
     fselect fsize, path from /home/user/tmp where size = 5mib
@@ -282,21 +282,21 @@ Let's try `FORMAT_SIZE` with different format specifiers:
     
 When you put a directory to search at, you can specify some options.
 
-| Option | Meaning |
-| --- | --- |
-| mindepth N | Minimum search depth. Default is unlimited. Depth 1 means skip one directory level and search further. |
-| maxdepth N | Maximum search depth. Default is unlimited. Depth 1 means search the mentioned directory only. Depth 2 means search mentioned directory and its subdirectories. Synonym is `depth`. |
-| symlinks | If specified, search process will follow symlinks. Default is not to follow. Synonym is `sym`. |
-| archives | Search within archives. Only zip archives are supported. Default is not to include archived content into the search results. Synonym is `arc`. |
-| gitignore | Search respects `.gitignore` files found. Synonym is `git`. |
-| hgignore | Search respects `.hgignore` files found. Synonym is `hg`. |
-| dockerignore | Search respects `.dockerignore` files found. Synonym is `dock`. |
-| nogitignore | Disable `.gitignore` parsing during the search. Synonym is `nogit`. |
-| nohgignore | Disable `.hgignore` parsing during the search. Synonym is `nohg`. |
-| nodockerignore | Disable `.dockerignore` parsing during the search. Synonym is `nodock`. |
-| dfs | Depth-first search mode. |
-| bfs | Breadth-first search mode. This is the default. |
-| regexp | Use regular expressions to search within multiple roots. Synonym is `rx`. | 
+| Option         | Meaning                                                                                                                                                                             |
+|----------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| mindepth N     | Minimum search depth. Default is unlimited. Depth 1 means skip one directory level and search further.                                                                              |
+| maxdepth N     | Maximum search depth. Default is unlimited. Depth 1 means search the mentioned directory only. Depth 2 means search mentioned directory and its subdirectories. Synonym is `depth`. |
+| symlinks       | If specified, search process will follow symlinks. Default is not to follow. Synonym is `sym`.                                                                                      |
+| archives       | Search within archives. Only zip archives are supported. Default is not to include archived content into the search results. Synonym is `arc`.                                      |
+| gitignore      | Search respects `.gitignore` files found. Synonym is `git`.                                                                                                                         |
+| hgignore       | Search respects `.hgignore` files found. Synonym is `hg`.                                                                                                                           |
+| dockerignore   | Search respects `.dockerignore` files found. Synonym is `dock`.                                                                                                                     |
+| nogitignore    | Disable `.gitignore` parsing during the search. Synonym is `nogit`.                                                                                                                 |
+| nohgignore     | Disable `.hgignore` parsing during the search. Synonym is `nohg`.                                                                                                                   |
+| nodockerignore | Disable `.dockerignore` parsing during the search. Synonym is `nodock`.                                                                                                             |
+| dfs            | Depth-first search mode.                                                                                                                                                            |
+| bfs            | Breadth-first search mode. This is the default.                                                                                                                                     |
+| regexp         | Use regular expressions to search within multiple roots. Synonym is `rx`.                                                                                                           | 
 
 ### Operators
 
@@ -316,13 +316,13 @@ When you put a directory to search at, you can specify some options.
 
 ### Arithmetic operators
 
-| Operator | Alias |
-| --- | --- |
-| + | plus |
-| - | minus |
-| * | mul |
-| / | div |
-| % | mod |
+| Operator | Alias  |
+|----------|--------|
+| +        | plus   |
+| -        | minus  |
+| *        | mul    |
+| /        | div    |
+| %        | mod    |
 
 ### Date and time specifiers
 
@@ -374,9 +374,9 @@ The lists below could be edited with the configuration file.
 |-----------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | <a name="ext_archive"></a> `is_archive` | .7z, .bz2, .bzip2, .gz, .gzip, .lz, .rar, .tar, .xz, .zip                                                                                                                                                                                              |
 | <a name="ext_audio"></a> `is_audio`     | .aac, .aiff, .amr, .flac, .gsm, .m4a, .m4b, .m4p, .mp3, .ogg, .wav, .wma                                                                                                                                                                               |
-| <a name="ext_book"></a> `is_book`       | .azw3, .chm, .djv, .djvu, .epub, .fb2, .mobi, .pdf                                                                                                                                                                                                    |
+| <a name="ext_book"></a> `is_book`       | .azw3, .chm, .djv, .djvu, .epub, .fb2, .mobi, .pdf                                                                                                                                                                                                     |
 | <a name="ext_doc"></a> `is_doc`         | .accdb, .doc, .docm, .docx, .dot, .dotm, .dotx, .mdb, .odp, .ods, .odt, .pdf, .potm, .potx, .ppt, .pptm, .pptx, .rtf, .xlm, .xls, .xlsm, .xlsx, .xlt, .xltm, .xltx, .xps                                                                               |
-| <a name="ext_font"></a> `is_font`       | .eot, .fon, .otc, .otf, .ttc, .ttf, .woff, .woff2 |
+| <a name="ext_font"></a> `is_font`       | .eot, .fon, .otc, .otf, .ttc, .ttf, .woff, .woff2                                                                                                                                                                                                      |
 | <a name="ext_image"></a> `is_image`     | .bmp, .exr, .gif, .heic, .jpeg, .jpg, .jxl, .png, .svg, .tga, .tiff, .webp                                                                                                                                                                             |
 | <a name="ext_source"></a> `is_source`   | .asm, .bas, .c, .cc, .ceylon, .clj, .coffee, .cpp, .cs, .d, .dart, .elm, .erl, .go, .groovy, .h, .hh, .hpp, .java, .jl, .js, .jsp, .jsx, .kt, .kts, .lua, .nim, .pas, .php, .pl, .pm, .py, .rb, .rs, .scala, .sol, .swift, .tcl, .ts, .vala, .vb, .zig |
 | <a name="ext_video"></a> `is_video`     | .3gp, .avi, .flv, .m4p, .m4v, .mkv, .mov, .mp4, .mpeg, .mpg, .webm, .wmv                                                                                                                                                                               |
@@ -402,12 +402,12 @@ Duration is measured in seconds.
 
 ### File hashes
 
-| Column | Meaning |
-| --- | --- |
-| `sha1` | SHA-1 digest of a file|
+| Column                 | Meaning                   |
+|------------------------|---------------------------|
+| `sha1`                 | SHA-1 digest of a file    |
 | `sha2_256` or `sha256` | SHA2-256 digest of a file |
 | `sha2_512` or `sha512` | SHA2-512 digest of a file |
-| `sha3_512` or `sha3` | SHA3-512 digest of a file |
+| `sha3_512` or `sha3`   | SHA3-512 digest of a file |
 
     fselect path, sha256, 256 from /home/user/archive limit 5
     fselect path from /home/user/Download where sha1 like cb23ef45% 
@@ -416,14 +416,14 @@ Duration is measured in seconds.
 
     ... into FORMAT
 
-| Format | Description |
-| --- | --- |
-| `tabs` | default, columns are separated with tabulation |
-| `lines` | each column goes at a separate line |
-| `list` | columns are separated with NULL symbol, similar to `-print0` argument of `find` |
-| `csv` | comma-separated columns |
-| `json` | array of resulting objects with requested columns |
-| `html` | HTML document with table | 
+| Format   | Description                                                                     |
+|----------|---------------------------------------------------------------------------------|
+| `tabs`   | default, columns are separated with tabulation                                  |
+| `lines`  | each column goes at a separate line                                             |
+| `list`   | columns are separated with NULL symbol, similar to `-print0` argument of `find` |
+| `csv`    | comma-separated columns                                                         |
+| `json`   | array of resulting objects with requested columns                               |
+| `html`   | HTML document with table                                                        | 
 
     fselect size, path from /home/user limit 5 into json
     fselect size, path from /home/user limit 5 into csv
@@ -460,11 +460,11 @@ into the config file.
 
 ### Command-line arguments
 
-| Argument | Meaning |
-| --- | --- |
-| `--config` or `-c` or `/config` | Specify config file location |
-| `--nocolor` or `--no-color` or `/nocolor` | Disable colors |
-| `--help` or `-h` or `/?` or `/h` | Show help and exit |
+| Argument                                  | Meaning                      |
+|-------------------------------------------|------------------------------|
+| `--config` or `-c` or `/config`           | Specify config file location |
+| `--nocolor` or `--no-color` or `/nocolor` | Disable colors               |
+| `--help` or `-h` or `/?` or `/h`          | Show help and exit           |
 
 ### Environment variables
 
@@ -472,8 +472,8 @@ into the config file.
 
 ### Exit values
 
-| Value | Meaning |
-| --- | --- |
-| 0 | everything OK |
-| 1 | I/O error has occurred during any directory listing or file reading |
-| 2 | error during parsing of the search query |
+| Value | Meaning                                                             |
+|-------|---------------------------------------------------------------------|
+| 0     | everything OK                                                       |
+| 1     | I/O error has occurred during any directory listing or file reading |
+| 2     | error during parsing of the search query                            |

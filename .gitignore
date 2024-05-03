@@ -19,4 +19,4 @@ out/
 
 target
 
-.cargo/config
+.cargo/**

@@ -698,10 +698,6 @@ impl <'a> Searcher<'a> {
         let function = &column_expr.function.as_ref().unwrap();
 
         if function.is_aggregate_function() {
-            if entry.is_some() {
-                return Variant::empty(VariantType::Float);
-            }
-
             let _ = self.get_column_expr_value(entry, file_info, file_map, buffer_data, left_expr);
             let buffer_key = left_expr.to_string();
             let aggr_result = function::get_aggregate_value(&column_expr.function,

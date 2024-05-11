@@ -68,13 +68,10 @@ impl Config {
     }
 
     pub fn from(config_file: PathBuf) -> Result<Config, String> {
-        if let Ok(mut file) = fs::File::open(&config_file) {
+        if let Ok(mut file) = fs::File::open(config_file) {
             let mut contents = String::new();
-            if let Ok(_) = file.read_to_string(&mut contents) {
-                match toml::from_str(&contents) {
-                    Ok(config) => Ok(config),
-                    Err(err) => Err(err.to_string()),
-                }
+            if file.read_to_string(&mut contents).is_ok() {
+                toml::from_str(&contents).map_err(|err| err.to_string())
             } else {
                 Err("Could not read config file. Using default settings.".to_string())
             }
@@ -97,18 +94,13 @@ impl Config {
 
     #[cfg(not(windows))]
     fn get_project_dir() -> Option<PathBuf> {
-        match ProjectDirs::from("", ORGANIZATION, APPLICATION) {
-            Some(pd) => Some(pd.config_dir().to_path_buf()),
-            _ => None,
-        }
+        ProjectDirs::from("", ORGANIZATION, APPLICATION).map(|pd| pd.config_dir().to_path_buf())
     }
 
     #[cfg(windows)]
     fn get_project_dir() -> Option<PathBuf> {
-        match ProjectDirs::from("", ORGANIZATION, APPLICATION) {
-            Some(pd) => Some(pd.config_dir().parent().unwrap().to_path_buf()),
-            _ => None,
-        }
+        ProjectDirs::from("", ORGANIZATION, APPLICATION)
+            .map(|pd| pd.config_dir().parent().unwrap().to_path_buf())
     }
 
     pub fn save(&self) {
@@ -133,7 +125,7 @@ impl Config {
         let toml = toml::to_string_pretty(&self).unwrap();
 
         if let Ok(mut file) = fs::File::create(&config_file) {
-            let _ = file.write_all(&toml.as_bytes());
+            let _ = file.write_all(toml.as_bytes());
         }
     }
 

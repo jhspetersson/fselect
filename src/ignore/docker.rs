@@ -102,15 +102,12 @@ fn parse_dockerignore(
             })
             .for_each(|line| {
                 if err.is_empty() {
-                    match line {
-                        Ok(line) => {
-                            let pattern = convert_dockerignore_pattern(&line, dir_path);
-                            match pattern {
-                                Ok(pattern) => result.push(pattern),
-                                Err(parse_err) => err = parse_err,
-                            }
+                    if let Ok(line) = line {
+                        let pattern = convert_dockerignore_pattern(&line, dir_path);
+                        match pattern {
+                            Ok(pattern) => result.push(pattern),
+                            Err(parse_err) => err = parse_err,
                         }
-                        _ => {}
                     }
                 }
             });
@@ -148,7 +145,7 @@ lazy_static! {
 
 fn convert_dockerignore_glob(glob: &str, file_path: &Path) -> Result<Regex, Error> {
     let mut pattern = DOCKER_CONVERT_REPLACE_REGEX
-        .replace_all(&glob, |c: &Captures| {
+        .replace_all(glob, |c: &Captures| {
             match c.index(0) {
                 "**" => ".*",
                 "." => "\\.",

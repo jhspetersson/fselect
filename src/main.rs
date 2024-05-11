@@ -42,11 +42,13 @@ use crate::util::error_message;
 use crate::util::str_to_bool;
 
 fn main() -> ExitCode {
+    let default_config = Config::default(); 
+    
     let mut config = match Config::new() {
         Ok(cnf) => cnf,
         Err(err) => {
             eprintln!("{}", err);
-            Config::default()
+            default_config.clone()
         }
     };
 
@@ -84,7 +86,7 @@ fn main() -> ExitCode {
     }
 
     if first_arg.contains("help") || first_arg.starts_with("-h") || first_arg.starts_with("/?") || first_arg.starts_with("/h") {
-        usage_info(config, no_color);
+        usage_info(config, default_config, no_color);
         return ExitCode::SUCCESS;
     }
 
@@ -101,7 +103,7 @@ fn main() -> ExitCode {
                 Ok(cnf) => cnf,
                 Err(err) => {
                     eprintln!("{}", err);
-                    Config::default()
+                    default_config.clone()
                 }
             };
 
@@ -138,7 +140,7 @@ fn main() -> ExitCode {
                         },
                         Ok(query) => {
                             let _ = rl.add_history_entry(query.as_str());
-                            exec_search(query, &mut config, no_color);
+                            exec_search(query, &mut config, &default_config, no_color);
                         },
                         Err(ReadlineError::Interrupted) => {
                             println!("CTRL-C");
@@ -163,7 +165,7 @@ fn main() -> ExitCode {
         }
     } else {
         let query = args.join(" ");
-        exit_value = Some(exec_search(query, &mut config, no_color));
+        exit_value = Some(exec_search(query, &mut config, &default_config, no_color));
     }
 
     config.save();
@@ -186,7 +188,7 @@ fn main() -> ExitCode {
     ExitCode::SUCCESS
 }
 
-fn exec_search(query: String, config: &mut Config, no_color: bool) -> u8 {
+fn exec_search(query: String, config: &mut Config, default_config: &Config, no_color: bool) -> u8 {
     let mut p = Parser::new();
     let query = p.parse(&query, config.debug);
 
@@ -199,7 +201,7 @@ fn exec_search(query: String, config: &mut Config, no_color: bool) -> u8 {
             let is_terminal = stdout().is_terminal();
             let use_colors = !no_color && is_terminal;
 
-            let mut searcher = Searcher::new(&query, config, use_colors);
+            let mut searcher = Searcher::new(&query, config, default_config, use_colors);
             searcher.list_search_results().unwrap();
 
             let error_count = searcher.error_count;
@@ -240,22 +242,24 @@ fn help_hint() {
 For more detailed instructions please refer to the URL above or run fselect --help");
 }
 
-fn usage_info(config: Config, no_color: bool) {
+fn usage_info(config: Config, default_config: Config, no_color: bool) {
     short_usage_info(no_color);
 
-    let is_archive = config.is_archive.join(", ");
-    let is_audio = config.is_audio.join(", ");
-    let is_book = config.is_book.join(", ");
-    let is_doc = config.is_doc.join(", ");
-    let is_image = config.is_image.join(", ");
-    let is_source = config.is_source.join(", ");
-    let is_video = config.is_video.join(", ");
+    let is_archive = config.is_archive.unwrap_or(default_config.is_archive.unwrap()).join(", ");
+    let is_audio = config.is_audio.unwrap_or(default_config.is_audio.unwrap()).join(", ");
+    let is_book = config.is_book.unwrap_or(default_config.is_book.unwrap()).join(", ");
+    let is_doc = config.is_doc.unwrap_or(default_config.is_doc.unwrap()).join(", ");
+    let is_font = config.is_font.unwrap_or(default_config.is_font.unwrap()).join(", ");
+    let is_image = config.is_image.unwrap_or(default_config.is_image.unwrap()).join(", ");
+    let is_source = config.is_source.unwrap_or(default_config.is_source.unwrap()).join(", ");
+    let is_video = config.is_video.unwrap_or(default_config.is_video.unwrap()).join(", ");
 
     println!("
 Files Detected as Archives: {is_archive}
 Files Detected as Audio: {is_audio}
 Files Detected as Book: {is_book}
 Files Detected as Document: {is_doc}
+Files Detected as Fonts: {is_font}
 Files Detected as Image: {is_image}
 Files Detected as Source Code: {is_source}
 Files Detected as Video: {is_video}

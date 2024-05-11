@@ -149,6 +149,7 @@ impl FileMetadataState {
 pub struct Searcher<'a> {
     query: &'a Query,
     config : &'a Config,
+    default_config : &'a Config,
     use_colors: bool,
     results_writer: ResultsWriter,
     #[cfg(all(unix, feature = "users"))]
@@ -174,13 +175,14 @@ pub struct Searcher<'a> {
 }
 
 impl <'a> Searcher<'a> {
-    pub fn new(query: &'a Query, config: &'a Config, use_colors: bool) -> Self {
+    pub fn new(query: &'a Query, config: &'a Config, default_config: &'a Config, use_colors: bool) -> Self {
         let limit = query.limit;
 
         let results_writer = ResultsWriter::new(&query.output_format);
         Searcher {
             query,
             config,
+            default_config,
             use_colors,
             results_writer,
             #[cfg(all(unix, feature = "users"))]
@@ -1783,38 +1785,38 @@ impl <'a> Searcher<'a> {
     }
 
     fn is_zip_archive(&self, file_name: &str) -> bool {
-        has_extension(file_name, &self.config.is_zip_archive)
+        has_extension(file_name, &self.config.is_zip_archive.as_ref().unwrap_or(&self.default_config.is_zip_archive.as_ref().unwrap()))
     }
 
     fn is_archive(&self, file_name: &str) -> bool {
-        has_extension(file_name, &self.config.is_archive)
+        has_extension(file_name, &self.config.is_archive.as_ref().unwrap_or(&self.default_config.is_archive.as_ref().unwrap()))
     }
 
     fn is_audio(&self, file_name: &str) -> bool {
-        has_extension(file_name, &self.config.is_audio)
+        has_extension(file_name, &self.config.is_audio.as_ref().unwrap_or(&self.default_config.is_audio.as_ref().unwrap()))
     }
 
     fn is_book(&self, file_name: &str) -> bool {
-        has_extension(file_name, &self.config.is_book)
+        has_extension(file_name, &self.config.is_book.as_ref().unwrap_or(&self.default_config.is_book.as_ref().unwrap()))
     }
 
     fn is_doc(&self, file_name: &str) -> bool {
-        has_extension(file_name, &self.config.is_doc)
+        has_extension(file_name, &self.config.is_doc.as_ref().unwrap_or(&self.default_config.is_doc.as_ref().unwrap()))
     }
 
     fn is_font(&self, file_name: &str) -> bool {
-        has_extension(file_name, &self.config.is_font)
+        has_extension(file_name, &self.config.is_font.as_ref().unwrap_or(&self.default_config.is_font.as_ref().unwrap()))
     }
 
     fn is_image(&self, file_name: &str) -> bool {
-        has_extension(file_name, &self.config.is_image)
+        has_extension(file_name, &self.config.is_image.as_ref().unwrap_or(&self.default_config.is_image.as_ref().unwrap()))
     }
 
     fn is_source(&self, file_name: &str) -> bool {
-        has_extension(file_name, &self.config.is_source)
+        has_extension(file_name, &self.config.is_source.as_ref().unwrap_or(&self.default_config.is_source.as_ref().unwrap()))
     }
 
     fn is_video(&self, file_name: &str) -> bool {
-        has_extension(file_name, &self.config.is_video)
+        has_extension(file_name, &self.config.is_video.as_ref().unwrap_or(&self.default_config.is_video.as_ref().unwrap()))
     }
 }

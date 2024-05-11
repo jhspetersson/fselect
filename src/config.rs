@@ -10,9 +10,9 @@ const CONFIG_FILE: &str = "config.toml";
 
 macro_rules! vec_of_strings {
     ($($str:literal),*) => {
-        vec![
+        Some(vec![
             $(String::from($str)),*
-        ]
+        ])
     }
 }
 
@@ -22,15 +22,15 @@ pub struct Config {
     pub gitignore: Option<bool>,
     pub hgignore: Option<bool>,
     pub dockerignore: Option<bool>,
-    pub is_zip_archive : Vec<String>,
-    pub is_archive : Vec<String>,
-    pub is_audio : Vec<String>,
-    pub is_book : Vec<String>,
-    pub is_doc : Vec<String>,
-    pub is_font : Vec<String>,
-    pub is_image : Vec<String>,
-    pub is_source : Vec<String>,
-    pub is_video : Vec<String>,
+    pub is_zip_archive : Option<Vec<String>>,
+    pub is_archive : Option<Vec<String>>,
+    pub is_audio : Option<Vec<String>>,
+    pub is_book : Option<Vec<String>>,
+    pub is_doc : Option<Vec<String>>,
+    pub is_font : Option<Vec<String>>,
+    pub is_image : Option<Vec<String>>,
+    pub is_source : Option<Vec<String>>,
+    pub is_video : Option<Vec<String>>,
     pub default_file_size_format : Option<String>,
     pub check_for_updates: Option<bool>,
     #[serde(skip_serializing, default = "get_false")]

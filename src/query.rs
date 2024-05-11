@@ -134,22 +134,17 @@ pub enum OutputFormat {
 }
 
 impl OutputFormat {
-    pub fn from(s: &String) -> Option<OutputFormat> {
+    pub fn from(s: &str) -> Option<OutputFormat> {
         let s = s.to_lowercase();
-        if s == "lines" {
-            return Some(OutputFormat::Lines);
-        } else if s == "list" {
-            return Some(OutputFormat::List);
-        } else if s == "csv" {
-            return Some(OutputFormat::Csv);
-        } else if s == "json" {
-            return Some(OutputFormat::Json);
-        } else if s == "tabs" {
-            return Some(OutputFormat::Tabs);
-        } else if s == "html" {
-            return Some(OutputFormat::Html);
-        } else {
-            return None;
+
+        match s.as_str() {
+            "lines" => Some(OutputFormat::Lines),
+            "list" => Some(OutputFormat::List),
+            "csv" => Some(OutputFormat::Csv),
+            "json" => Some(OutputFormat::Json),
+            "tabs" => Some(OutputFormat::Tabs),
+            "html" => Some(OutputFormat::Html),
+            _ => None,
         }
     }
 }

@@ -6,14 +6,24 @@ use crate::field::Field;
 use crate::query::TraversalMode::Bfs;
 
 #[derive(Debug, Clone)]
+/// Represents a query to be executed on .
+///
 pub struct Query {
+    /// File fields to be selected
     pub fields: Vec<Expr>,
+    /// Root directories to search
     pub roots: Vec<Root>,
+    /// "where" filter expression
     pub expr: Option<Expr>,
+    /// Fields to group by
     pub grouping_fields: Rc<Vec<Expr>>,
+    /// Fields to order by
     pub ordering_fields: Rc<Vec<Expr>>,
+    /// Ordering direction (true for asc, false for desc)
     pub ordering_asc: Rc<Vec<bool>>,
+    /// Max amount of results to return
     pub limit: u32,
+    /// Output format
     pub output_format: OutputFormat,
 }
 
@@ -38,21 +48,32 @@ impl Query {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+/// Represents a root directory to start the search from, with traversal options.
 pub struct Root {
     pub path: String,
     pub options: RootOptions,
 }
 
 #[derive(Debug, Clone, PartialEq)]
+/// Represents the traversal options for a root directory.
 pub struct RootOptions {
+    /// Minimum depth to search
     pub min_depth: u32,
+    /// Maximum depth to search
     pub max_depth: u32,
+    /// Whether to search archives
     pub archives: bool,
+    /// Whether to follow symlinks
     pub symlinks: bool,
+    /// Whether to respect .gitignore files
     pub gitignore: Option<bool>,
+    /// Whether to respect .hgignore files
     pub hgignore: Option<bool>,
+    /// Whether to respect .dockerignore files
     pub dockerignore: Option<bool>,
+    /// The traversal mode to use
     pub traversal: TraversalMode,
+    /// Treat the path as a regular expression
     pub regexp: bool,
 }
 
@@ -105,7 +126,7 @@ impl Root {
     pub fn default(options: Option<RootOptions>) -> Root {
         Root {
             path: String::from("."),
-            options: options.unwrap_or_else(|| RootOptions::new()),
+            options: options.unwrap_or_else(RootOptions::new),
         }
     }
 

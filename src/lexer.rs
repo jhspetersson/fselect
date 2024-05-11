@@ -129,7 +129,7 @@ impl<'a> Lexer<'a> {
                         }
                     }
 
-                    self.after_open = (mode == LexingMode::Open);
+                    self.after_open = mode == LexingMode::Open;
                 }
             }
         }

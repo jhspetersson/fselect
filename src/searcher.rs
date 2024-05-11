@@ -753,12 +753,10 @@ impl<'a> Searcher<'a> {
                 let result = self.get_field_value(entry.unwrap(), file_info, field);
                 file_map.insert(column_expr.to_string(), result.to_string());
                 return result;
+            } else if let Some(val) = file_map.get(&field.to_string()) {
+                return Variant::from_string(val);
             } else {
-                if let Some(val) = file_map.get(&field.to_string()) {
-                    return Variant::from_string(val);
-                } else {
-                    return Variant::empty(VariantType::String);
-                }
+                return Variant::empty(VariantType::String);
             }
         }
 
@@ -902,10 +900,10 @@ impl<'a> Searcher<'a> {
                     ));
                 }
                 _ => {
-                    return Variant::from_string(&format!(
-                        "{}",
-                        crate::util::get_extension(&entry.file_name().to_string_lossy())
-                    ));
+                    return Variant::from_string(
+                        &crate::util::get_extension(&entry.file_name().to_string_lossy())
+                            .to_string(),
+                    );
                 }
             },
             Field::Path => match file_info {
@@ -1040,18 +1038,13 @@ impl<'a> Searcher<'a> {
                 }
             },
             Field::IsPipe => {
-                return self.check_file_mode(
-                    entry,
-                    &mode::is_pipe,
-                    &file_info,
-                    &mode::mode_is_pipe,
-                );
+                return self.check_file_mode(entry, &mode::is_pipe, file_info, &mode::mode_is_pipe);
             }
             Field::IsCharacterDevice => {
                 return self.check_file_mode(
                     entry,
                     &mode::is_char_device,
-                    &file_info,
+                    file_info,
                     &mode::mode_is_char_device,
                 );
             }
@@ -1059,7 +1052,7 @@ impl<'a> Searcher<'a> {
                 return self.check_file_mode(
                     entry,
                     &mode::is_block_device,
-                    &file_info,
+                    file_info,
                     &mode::mode_is_block_device,
                 );
             }
@@ -1067,7 +1060,7 @@ impl<'a> Searcher<'a> {
                 return self.check_file_mode(
                     entry,
                     &mode::is_socket,
-                    &file_info,
+                    file_info,
                     &mode::mode_is_socket,
                 );
             }
@@ -1142,7 +1135,7 @@ impl<'a> Searcher<'a> {
                 return self.check_file_mode(
                     entry,
                     &mode::user_read,
-                    &file_info,
+                    file_info,
                     &mode::mode_user_read,
                 );
             }
@@ -1150,7 +1143,7 @@ impl<'a> Searcher<'a> {
                 return self.check_file_mode(
                     entry,
                     &mode::user_write,
-                    &file_info,
+                    file_info,
                     &mode::mode_user_write,
                 );
             }
@@ -1158,7 +1151,7 @@ impl<'a> Searcher<'a> {
                 return self.check_file_mode(
                     entry,
                     &mode::user_exec,
-                    &file_info,
+                    file_info,
                     &mode::mode_user_exec,
                 );
             }
@@ -1166,7 +1159,7 @@ impl<'a> Searcher<'a> {
                 return self.check_file_mode(
                     entry,
                     &mode::user_all,
-                    &file_info,
+                    file_info,
                     &mode::mode_user_all,
                 );
             }
@@ -1174,7 +1167,7 @@ impl<'a> Searcher<'a> {
                 return self.check_file_mode(
                     entry,
                     &mode::group_read,
-                    &file_info,
+                    file_info,
                     &mode::mode_group_read,
                 );
             }
@@ -1182,7 +1175,7 @@ impl<'a> Searcher<'a> {
                 return self.check_file_mode(
                     entry,
                     &mode::group_write,
-                    &file_info,
+                    file_info,
                     &mode::mode_group_write,
                 );
             }
@@ -1190,7 +1183,7 @@ impl<'a> Searcher<'a> {
                 return self.check_file_mode(
                     entry,
                     &mode::group_exec,
-                    &file_info,
+                    file_info,
                     &mode::mode_group_exec,
                 );
             }
@@ -1198,7 +1191,7 @@ impl<'a> Searcher<'a> {
                 return self.check_file_mode(
                     entry,
                     &mode::group_all,
-                    &file_info,
+                    file_info,
                     &mode::mode_group_all,
                 );
             }
@@ -1206,7 +1199,7 @@ impl<'a> Searcher<'a> {
                 return self.check_file_mode(
                     entry,
                     &mode::other_read,
-                    &file_info,
+                    file_info,
                     &mode::mode_other_read,
                 );
             }
@@ -1214,7 +1207,7 @@ impl<'a> Searcher<'a> {
                 return self.check_file_mode(
                     entry,
                     &mode::other_write,
-                    &file_info,
+                    file_info,
                     &mode::mode_other_write,
                 );
             }
@@ -1222,7 +1215,7 @@ impl<'a> Searcher<'a> {
                 return self.check_file_mode(
                     entry,
                     &mode::other_exec,
-                    &file_info,
+                    file_info,
                     &mode::mode_other_exec,
                 );
             }
@@ -1230,7 +1223,7 @@ impl<'a> Searcher<'a> {
                 return self.check_file_mode(
                     entry,
                     &mode::other_all,
-                    &file_info,
+                    file_info,
                     &mode::mode_other_all,
                 );
             }
@@ -1238,7 +1231,7 @@ impl<'a> Searcher<'a> {
                 return self.check_file_mode(
                     entry,
                     &mode::suid_bit_set,
-                    &file_info,
+                    file_info,
                     &mode::mode_suid,
                 );
             }
@@ -1246,7 +1239,7 @@ impl<'a> Searcher<'a> {
                 return self.check_file_mode(
                     entry,
                     &mode::sgid_bit_set,
-                    &file_info,
+                    file_info,
                     &mode::mode_sgid,
                 );
             }
@@ -1357,7 +1350,7 @@ impl<'a> Searcher<'a> {
             Field::HasXattrs => {
                 #[cfg(unix)]
                 {
-                    if let Ok(file) = fs::File::open(&entry.path()) {
+                    if let Ok(file) = fs::File::open(entry.path()) {
                         if let Ok(xattrs) = file.list_xattr() {
                             let has_xattrs = xattrs.count() > 0;
                             return Variant::from_bool(has_xattrs);
@@ -1373,7 +1366,7 @@ impl<'a> Searcher<'a> {
             Field::Capabilities => {
                 #[cfg(target_os = "linux")]
                 {
-                    if let Ok(file) = fs::File::open(&entry.path()) {
+                    if let Ok(file) = fs::File::open(entry.path()) {
                         if let Ok(Some(caps_xattr)) = file.get_xattr("security.capability") {
                             let caps_string =
                                 crate::util::capabilities::parse_capabilities(caps_xattr);
@@ -1491,7 +1484,7 @@ impl<'a> Searcher<'a> {
 
                 if let Some(ref exif_info) = self.fms.exif_metadata {
                     if let Some(exif_value) = exif_info.get("DateTime") {
-                        if let Ok(exif_datetime) = parse_datetime(&exif_value) {
+                        if let Ok(exif_datetime) = parse_datetime(exif_value) {
                             return Variant::from_datetime(exif_datetime.0);
                         }
                     }
@@ -1529,7 +1522,7 @@ impl<'a> Searcher<'a> {
 
                 if let Some(ref exif_info) = self.fms.exif_metadata {
                     if let Some(exif_value) = exif_info.get("Make") {
-                        return Variant::from_string(&exif_value);
+                        return Variant::from_string(exif_value);
                     }
                 }
             }
@@ -1538,7 +1531,7 @@ impl<'a> Searcher<'a> {
 
                 if let Some(ref exif_info) = self.fms.exif_metadata {
                     if let Some(exif_value) = exif_info.get("Model") {
-                        return Variant::from_string(&exif_value);
+                        return Variant::from_string(exif_value);
                     }
                 }
             }
@@ -1547,7 +1540,7 @@ impl<'a> Searcher<'a> {
 
                 if let Some(ref exif_info) = self.fms.exif_metadata {
                     if let Some(exif_value) = exif_info.get("Software") {
-                        return Variant::from_string(&exif_value);
+                        return Variant::from_string(exif_value);
                     }
                 }
             }
@@ -1556,7 +1549,7 @@ impl<'a> Searcher<'a> {
 
                 if let Some(ref exif_info) = self.fms.exif_metadata {
                     if let Some(exif_value) = exif_info.get("ExifVersion") {
-                        return Variant::from_string(&exif_value);
+                        return Variant::from_string(exif_value);
                     }
                 }
             }
@@ -1673,16 +1666,16 @@ impl<'a> Searcher<'a> {
                 return Variant::from_bool(is_video);
             }
             Field::Sha1 => {
-                return Variant::from_string(&crate::util::get_sha1_file_hash(&entry));
+                return Variant::from_string(&crate::util::get_sha1_file_hash(entry));
             }
             Field::Sha256 => {
-                return Variant::from_string(&crate::util::get_sha256_file_hash(&entry));
+                return Variant::from_string(&crate::util::get_sha256_file_hash(entry));
             }
             Field::Sha512 => {
-                return Variant::from_string(&crate::util::get_sha512_file_hash(&entry));
+                return Variant::from_string(&crate::util::get_sha512_file_hash(entry));
             }
             Field::Sha3 => {
-                return Variant::from_string(&crate::util::get_sha3_512_file_hash(&entry));
+                return Variant::from_string(&crate::util::get_sha3_512_file_hash(entry));
             }
         };
 
@@ -1721,7 +1714,7 @@ impl<'a> Searcher<'a> {
 
         for field in self.query.fields.iter() {
             let record =
-                self.get_column_expr_value(Some(entry), file_info, &mut file_map, None, &field);
+                self.get_column_expr_value(Some(entry), file_info, &mut file_map, None, field);
 
             let value = match self.use_colors && field.contains_colorized() {
                 true => self.colorize(&record.to_string()),
@@ -1731,11 +1724,8 @@ impl<'a> Searcher<'a> {
         }
 
         for field in self.query.grouping_fields.iter() {
-            match file_map.get(&field.to_string()) {
-                None => {
-                    self.get_column_expr_value(Some(entry), file_info, &mut file_map, None, &field);
-                }
-                _ => {}
+            if file_map.get(&field.to_string()).is_none() {
+                self.get_column_expr_value(Some(entry), file_info, &mut file_map, None, field);
             }
         }
 
@@ -1743,7 +1733,7 @@ impl<'a> Searcher<'a> {
             criteria[idx] = match file_map.get(&field.to_string()) {
                 Some(record) => record.clone(),
                 None => self
-                    .get_column_expr_value(Some(entry), file_info, &mut file_map, None, &field)
+                    .get_column_expr_value(Some(entry), file_info, &mut file_map, None, field)
                     .to_string(),
             }
         }
@@ -1763,11 +1753,9 @@ impl<'a> Searcher<'a> {
             if self.has_aggregate_column() {
                 self.raw_output_buffer.push(file_map);
             }
-        } else {
-            if let Err(e) = write!(std::io::stdout(), "{}", String::from(buf)) {
-                if e.kind() == ErrorKind::BrokenPipe {
-                    return Ok(false);
-                }
+        } else if let Err(e) = write!(std::io::stdout(), "{}", String::from(buf)) {
+            if e.kind() == ErrorKind::BrokenPipe {
+                return Ok(false);
             }
         }
 
@@ -1824,7 +1812,7 @@ impl<'a> Searcher<'a> {
             let mut right_result = false;
 
             if let Some(ref left) = expr.left {
-                let left_res = self.conforms(entry, file_info, &left);
+                let left_res = self.conforms(entry, file_info, left);
                 left_result = left_res;
             }
 
@@ -1834,7 +1822,7 @@ impl<'a> Searcher<'a> {
                         result = false;
                     } else {
                         if let Some(ref right) = expr.right {
-                            let right_res = self.conforms(entry, file_info, &right);
+                            let right_res = self.conforms(entry, file_info, right);
                             right_result = right_res;
                         }
 
@@ -1846,7 +1834,7 @@ impl<'a> Searcher<'a> {
                         result = true;
                     } else {
                         if let Some(ref right) = expr.right {
-                            let right_res = self.conforms(entry, file_info, &right);
+                            let right_res = self.conforms(entry, file_info, right);
                             right_result = right_res;
                         }
 
@@ -1878,7 +1866,7 @@ impl<'a> Searcher<'a> {
                             true => {
                                 let regex = self.regex_cache.get(&val);
                                 match regex {
-                                    Some(ref regex) => {
+                                    Some(regex) => {
                                         return regex.is_match(&field_value.to_string());
                                     }
                                     None => {
@@ -1902,7 +1890,7 @@ impl<'a> Searcher<'a> {
                             true => {
                                 let regex = self.regex_cache.get(&val);
                                 match regex {
-                                    Some(ref regex) => {
+                                    Some(regex) => {
                                         return !regex.is_match(&field_value.to_string());
                                     }
                                     None => {
@@ -1925,7 +1913,7 @@ impl<'a> Searcher<'a> {
                         Op::Rx => {
                             let regex = self.regex_cache.get(&val);
                             match regex {
-                                Some(ref regex) => {
+                                Some(regex) => {
                                     return regex.is_match(&field_value.to_string());
                                 }
                                 None => {
@@ -1943,7 +1931,7 @@ impl<'a> Searcher<'a> {
                         Op::NotRx => {
                             let regex = self.regex_cache.get(&val);
                             match regex {
-                                Some(ref regex) => {
+                                Some(regex) => {
                                     return !regex.is_match(&field_value.to_string());
                                 }
                                 None => {
@@ -1961,7 +1949,7 @@ impl<'a> Searcher<'a> {
                         Op::Like => {
                             let regex = self.regex_cache.get(&val);
                             match regex {
-                                Some(ref regex) => {
+                                Some(regex) => {
                                     return regex.is_match(&field_value.to_string());
                                 }
                                 None => {
@@ -1980,7 +1968,7 @@ impl<'a> Searcher<'a> {
                         Op::NotLike => {
                             let regex = self.regex_cache.get(&val);
                             match regex {
-                                Some(ref regex) => {
+                                Some(regex) => {
                                     return !regex.is_match(&field_value.to_string());
                                 }
                                 None => {
@@ -2065,99 +2053,90 @@ impl<'a> Searcher<'a> {
     fn is_zip_archive(&self, file_name: &str) -> bool {
         has_extension(
             file_name,
-            &self
-                .config
+            self.config
                 .is_zip_archive
                 .as_ref()
-                .unwrap_or(&self.default_config.is_zip_archive.as_ref().unwrap()),
+                .unwrap_or(self.default_config.is_zip_archive.as_ref().unwrap()),
         )
     }
 
     fn is_archive(&self, file_name: &str) -> bool {
         has_extension(
             file_name,
-            &self
-                .config
+            self.config
                 .is_archive
                 .as_ref()
-                .unwrap_or(&self.default_config.is_archive.as_ref().unwrap()),
+                .unwrap_or(self.default_config.is_archive.as_ref().unwrap()),
         )
     }
 
     fn is_audio(&self, file_name: &str) -> bool {
         has_extension(
             file_name,
-            &self
-                .config
+            self.config
                 .is_audio
                 .as_ref()
-                .unwrap_or(&self.default_config.is_audio.as_ref().unwrap()),
+                .unwrap_or(self.default_config.is_audio.as_ref().unwrap()),
         )
     }
 
     fn is_book(&self, file_name: &str) -> bool {
         has_extension(
             file_name,
-            &self
-                .config
+            self.config
                 .is_book
                 .as_ref()
-                .unwrap_or(&self.default_config.is_book.as_ref().unwrap()),
+                .unwrap_or(self.default_config.is_book.as_ref().unwrap()),
         )
     }
 
     fn is_doc(&self, file_name: &str) -> bool {
         has_extension(
             file_name,
-            &self
-                .config
+            self.config
                 .is_doc
                 .as_ref()
-                .unwrap_or(&self.default_config.is_doc.as_ref().unwrap()),
+                .unwrap_or(self.default_config.is_doc.as_ref().unwrap()),
         )
     }
 
     fn is_font(&self, file_name: &str) -> bool {
         has_extension(
             file_name,
-            &self
-                .config
+            self.config
                 .is_font
                 .as_ref()
-                .unwrap_or(&self.default_config.is_font.as_ref().unwrap()),
+                .unwrap_or(self.default_config.is_font.as_ref().unwrap()),
         )
     }
 
     fn is_image(&self, file_name: &str) -> bool {
         has_extension(
             file_name,
-            &self
-                .config
+            self.config
                 .is_image
                 .as_ref()
-                .unwrap_or(&self.default_config.is_image.as_ref().unwrap()),
+                .unwrap_or(self.default_config.is_image.as_ref().unwrap()),
         )
     }
 
     fn is_source(&self, file_name: &str) -> bool {
         has_extension(
             file_name,
-            &self
-                .config
+            self.config
                 .is_source
                 .as_ref()
-                .unwrap_or(&self.default_config.is_source.as_ref().unwrap()),
+                .unwrap_or(self.default_config.is_source.as_ref().unwrap()),
         )
     }
 
     fn is_video(&self, file_name: &str) -> bool {
         has_extension(
             file_name,
-            &self
-                .config
+            self.config
                 .is_video
                 .as_ref()
-                .unwrap_or(&self.default_config.is_video.as_ref().unwrap()),
+                .unwrap_or(self.default_config.is_video.as_ref().unwrap()),
         )
     }
 }

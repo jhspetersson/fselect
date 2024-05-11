@@ -52,7 +52,7 @@ pub fn update_gitignore_map(
 ) {
     let gitignore_file = path.join(".gitignore");
     if gitignore_file.is_file() {
-        let regexes = parse_gitignore(&gitignore_file, &path);
+        let regexes = parse_gitignore(&gitignore_file, path);
         gitignore_map.insert(path.to_path_buf(), regexes);
     }
 }
@@ -160,9 +160,10 @@ fn parse_file(file_path: &Path, dir_path: &Path) -> Vec<GitignoreFilter> {
                 Ok(line) => !line.trim().is_empty() && !line.starts_with("#"),
                 _ => false,
             })
-            .for_each(|line| match line {
-                Ok(line) => result.append(&mut convert_gitignore_pattern(&line, dir_path)),
-                _ => {}
+            .for_each(|line| {
+                if let Ok(line) = line {
+                    result.append(&mut convert_gitignore_pattern(&line, dir_path))
+                }
             });
     }
 
@@ -184,16 +185,16 @@ fn convert_gitignore_pattern(pattern: &str, file_path: &Path) -> Vec<GitignoreFi
         pattern.pop();
 
         let regex = convert_gitignore_glob(&pattern, file_path);
-        if regex.is_ok() {
-            result.push(GitignoreFilter::new(regex.unwrap(), true, negate));
+        if let Ok(regex) = regex {
+            result.push(GitignoreFilter::new(regex, true, negate));
         }
 
         pattern = pattern.add("/**");
     }
 
     let regex = convert_gitignore_glob(&pattern, file_path);
-    if regex.is_ok() {
-        result.push(GitignoreFilter::new(regex.unwrap(), false, negate))
+    if let Ok(regex) = regex {
+        result.push(GitignoreFilter::new(regex, false, negate))
     }
 
     result
@@ -258,8 +259,8 @@ mod tests {
             filter.regex.as_str(),
             "/home/user/projects/testprj/([^/]+/)*foo"
         );
-        assert_eq!(filter.only_dir, false);
-        assert_eq!(filter.negate, false);
+        assert!(!filter.only_dir);
+        assert!(!filter.negate);
     }
 
     #[test]
@@ -278,8 +279,8 @@ mod tests {
             filter.regex.as_str(),
             "/home/user/projects/testprj/([^/]+/)*foo"
         );
-        assert_eq!(filter.only_dir, true);
-        assert_eq!(filter.negate, false);
+        assert!(filter.only_dir);
+        assert!(!filter.negate);
 
         let filter = &result[1];
 
@@ -287,8 +288,8 @@ mod tests {
             filter.regex.as_str(),
             "/home/user/projects/testprj/([^/]+/)*foo/.*"
         );
-        assert_eq!(filter.only_dir, false);
-        assert_eq!(filter.negate, false);
+        assert!(!filter.only_dir);
+        assert!(!filter.negate);
     }
 
     #[test]
@@ -307,8 +308,8 @@ mod tests {
             filter.regex.as_str(),
             "/home/user/projects/testprj/([^/]+/)*foo"
         );
-        assert_eq!(filter.only_dir, false);
-        assert_eq!(filter.negate, true);
+        assert!(!filter.only_dir);
+        assert!(filter.negate);
     }
 
     // Windows
@@ -326,8 +327,8 @@ mod tests {
         let filter = &result[0];
 
         assert_eq!(filter.regex.as_str(), "C:/Projects/testprj/([^/]+/)*foo");
-        assert_eq!(filter.only_dir, false);
-        assert_eq!(filter.negate, false);
+        assert!(!filter.only_dir);
+        assert!(!filter.negate);
     }
 
     #[test]
@@ -343,14 +344,14 @@ mod tests {
         let filter = &result[0];
 
         assert_eq!(filter.regex.as_str(), "C:/Projects/testprj/([^/]+/)*foo");
-        assert_eq!(filter.only_dir, true);
-        assert_eq!(filter.negate, false);
+        assert!(filter.only_dir);
+        assert!(filter.negate);
 
         let filter = &result[1];
 
         assert_eq!(filter.regex.as_str(), "C:/Projects/testprj/([^/]+/)*foo/.*");
-        assert_eq!(filter.only_dir, false);
-        assert_eq!(filter.negate, false);
+        assert!(!filter.only_dir);
+        assert!(!filter.negate);
     }
 
     #[test]
@@ -366,7 +367,7 @@ mod tests {
         let filter = &result[0];
 
         assert_eq!(filter.regex.as_str(), "C:/Projects/testprj/([^/]+/)*foo");
-        assert_eq!(filter.only_dir, false);
-        assert_eq!(filter.negate, true);
+        assert!(!filter.only_dir);
+        assert!(filter.negate);
     }
 }

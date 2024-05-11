@@ -483,7 +483,7 @@ pub fn get_value(
         }
         Some(Function::FromBase64) => {
             return Variant::from_string(
-                &String::from_utf8_lossy(&rbase64::decode(&function_arg).unwrap_or(vec![]))
+                &String::from_utf8_lossy(&rbase64::decode(&function_arg).unwrap_or_default())
                     .to_string(),
             );
         }
@@ -508,7 +508,7 @@ pub fn get_value(
         Some(Function::Power) => {
             return match function_arg.parse::<f64>() {
                 Ok(val) => {
-                    let power = match function_args.get(0) {
+                    let power = match function_args.first() {
                         Some(power) => power.parse::<f64>().unwrap(),
                         _ => 0.0,
                     };
@@ -704,7 +704,7 @@ pub fn get_value(
             if let Some(entry) = entry {
                 if let Ok(mut f) = File::open(entry.path()) {
                     let mut contents = String::new();
-                    if let Ok(_) = f.read_to_string(&mut contents) {
+                    if f.read_to_string(&mut contents).is_ok() {
                         if contents.contains(&function_arg) {
                             return Variant::from_bool(true);
                         } else {
@@ -719,7 +719,7 @@ pub fn get_value(
         #[cfg(unix)]
         Some(Function::HasXattr) => {
             if let Some(entry) = entry {
-                if let Ok(file) = File::open(&entry.path()) {
+                if let Ok(file) = File::open(entry.path()) {
                     if let Ok(xattr) = file.get_xattr(&function_arg) {
                         return Variant::from_bool(xattr.is_some());
                     }
@@ -731,12 +731,10 @@ pub fn get_value(
         #[cfg(unix)]
         Some(Function::Xattr) => {
             if let Some(entry) = entry {
-                if let Ok(file) = File::open(&entry.path()) {
-                    if let Ok(xattr) = file.get_xattr(&function_arg) {
-                        if let Some(xattr) = xattr {
-                            if let Ok(value) = String::from_utf8(xattr) {
-                                return Variant::from_string(&value);
-                            }
+                if let Ok(file) = File::open(entry.path()) {
+                    if let Ok(Some(xattr)) = file.get_xattr(&function_arg) {
+                        if let Ok(value) = String::from_utf8(xattr) {
+                            return Variant::from_string(&value);
                         }
                     }
                 }
@@ -747,7 +745,7 @@ pub fn get_value(
         #[cfg(target_os = "linux")]
         Some(Function::HasCapabilities) => {
             if let Some(entry) = entry {
-                if let Ok(file) = File::open(&entry.path()) {
+                if let Ok(file) = File::open(entry.path()) {
                     if let Ok(caps_xattr) = file.get_xattr("security.capability") {
                         return Variant::from_bool(caps_xattr.is_some());
                     }
@@ -759,7 +757,7 @@ pub fn get_value(
         #[cfg(target_os = "linux")]
         Some(Function::HasCapability) => {
             if let Some(entry) = entry {
-                if let Ok(file) = File::open(&entry.path()) {
+                if let Ok(file) = File::open(entry.path()) {
                     if let Ok(Some(caps_xattr)) = file.get_xattr("security.capability") {
                         let caps_string = crate::util::capabilities::parse_capabilities(caps_xattr);
                         return Variant::from_bool(caps_string.contains(&function_arg));
@@ -781,7 +779,7 @@ pub fn get_value(
                     if function_args.is_empty() {
                         return Variant::from_int(rng.gen_range(0..val));
                     } else {
-                        let limit = function_args.get(0).unwrap();
+                        let limit = function_args.first().unwrap();
                         match limit.parse::<i64>() {
                             Ok(limit) => return Variant::from_int(rng.gen_range(val..limit)),
                             _ => error_exit(

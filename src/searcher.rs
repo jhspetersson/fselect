@@ -493,6 +493,8 @@ impl<'a> Searcher<'a> {
         Ok(())
     }
 
+    /// Recursively explore directories starting from a given path.
+    /// Handles archives, and optionally applies filters.
     fn visit_dir(
         &mut self,
         dir: &Path,
@@ -506,6 +508,7 @@ impl<'a> Searcher<'a> {
         traversal_mode: TraversalMode,
         process_queue: bool,
     ) -> io::Result<()> {
+        // Prevents infinite loops when following symlinks
         if self.current_follow_symlinks {
             if self.visited_dirs.contains(&dir.to_path_buf()) {
                 return Ok(());
@@ -514,8 +517,8 @@ impl<'a> Searcher<'a> {
             }
         }
 
+        // Canonicalize the path to resolve symlinks and relative paths
         let canonical_path = crate::util::canonical_path(&dir.to_path_buf());
-
         if canonical_path.is_err() {
             self.error_count += 1;
             error_message(
@@ -548,6 +551,7 @@ impl<'a> Searcher<'a> {
             ));
         }
 
+        // Read the directory and process each entry
         match fs::read_dir(dir) {
             Ok(entry_list) => {
                 for entry in entry_list {
@@ -567,6 +571,7 @@ impl<'a> Searcher<'a> {
                                 }
                             }
 
+                            // Check the path against the filters
                             let pass_gitignore = !apply_gitignore
                                 || !matches_gitignore_filter(
                                     &gitignore_filters,
@@ -584,6 +589,7 @@ impl<'a> Searcher<'a> {
                                     canonical_path.to_string_lossy().as_ref(),
                                 );
 
+                            // If the path passes the filters, process it
                             if pass_gitignore && pass_hgignore && pass_dockerignore {
                                 if min_depth == 0 || depth >= min_depth {
                                     let checked = self.check_file(&entry, &None)?;
@@ -617,6 +623,7 @@ impl<'a> Searcher<'a> {
                                     }
                                 }
 
+                                // Recursively visit subdirectories if we're not too deep
                                 if max_depth == 0 || depth < max_depth {
                                     let result = entry.file_type();
                                     if let Ok(file_type) = result {
@@ -631,32 +638,30 @@ impl<'a> Searcher<'a> {
                                             ok = true;
                                         }
 
-                                        if ok {
-                                            if self.ok_to_visit_dir(&entry, file_type) {
-                                                if traversal_mode == TraversalMode::Dfs {
-                                                    let result = self.visit_dir(
-                                                        &path,
-                                                        min_depth,
-                                                        max_depth,
-                                                        base_depth,
-                                                        search_archives,
-                                                        apply_gitignore,
-                                                        apply_hgignore,
-                                                        apply_dockerignore,
-                                                        traversal_mode,
-                                                        false,
-                                                    );
+                                        if ok && self.ok_to_visit_dir(&entry, file_type) {
+                                            if traversal_mode == TraversalMode::Dfs {
+                                                let result = self.visit_dir(
+                                                    &path,
+                                                    min_depth,
+                                                    max_depth,
+                                                    base_depth,
+                                                    search_archives,
+                                                    apply_gitignore,
+                                                    apply_hgignore,
+                                                    apply_dockerignore,
+                                                    traversal_mode,
+                                                    false,
+                                                );
 
-                                                    if result.is_err() {
-                                                        self.error_count += 1;
-                                                        path_error_message(
-                                                            &path,
-                                                            result.err().unwrap(),
-                                                        );
-                                                    }
-                                                } else {
-                                                    self.dir_queue.push_back(path);
+                                                if result.is_err() {
+                                                    self.error_count += 1;
+                                                    path_error_message(
+                                                        &path,
+                                                        result.err().unwrap(),
+                                                    );
                                                 }
+                                            } else {
+                                                self.dir_queue.push_back(path);
                                             }
                                         }
                                     } else {

@@ -187,10 +187,7 @@ impl<'a> Lexer<'a> {
             _ => None,
         };
 
-        self.after_operator = match lexem {
-            Some(Lexem::Operator(_)) => true,
-            _ => false,
-        };
+        self.after_operator = matches!(lexem, Some(Lexem::Operator(_)));
 
         lexem
     }
@@ -210,10 +207,7 @@ impl<'a> Lexer<'a> {
             return false;
         }
 
-        match c {
-            '=' | '!' | '<' | '>' | '~' => true,
-            _ => false,
-        }
+        matches!(c, '=' | '!' | '<' | '>' | '~')
     }
 }
 

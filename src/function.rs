@@ -399,18 +399,18 @@ impl Serialize for Function {
 
 impl Function {
     pub fn is_aggregate_function(&self) -> bool {
-        match self {
+        matches!(
+            self,
             Function::Min
-            | Function::Max
-            | Function::Avg
-            | Function::Sum
-            | Function::Count
-            | Function::StdDevPop
-            | Function::StdDevSamp
-            | Function::VarPop
-            | Function::VarSamp => true,
-            _ => false,
-        }
+                | Function::Max
+                | Function::Avg
+                | Function::Sum
+                | Function::Count
+                | Function::StdDevPop
+                | Function::StdDevSamp
+                | Function::VarPop
+                | Function::VarSamp
+        )
     }
 
     pub fn is_numeric_function(&self) -> bool {
@@ -418,16 +418,16 @@ impl Function {
             return true;
         }
 
-        match self {
+        matches!(
+            self,
             Function::Length
-            | Function::Random
-            | Function::Day
-            | Function::Month
-            | Function::Year
-            | Function::Power
-            | Function::Sqrt => true,
-            _ => false,
-        }
+                | Function::Random
+                | Function::Day
+                | Function::Month
+                | Function::Year
+                | Function::Power
+                | Function::Sqrt
+        )
     }
 
     pub fn is_boolean_function(&self) -> bool {
@@ -441,15 +441,15 @@ impl Function {
             return true;
         }
 
-        match self {
+        matches!(
+            self,
             Function::Contains
-            | Function::ContainsHiragana
-            | Function::ContainsKatakana
-            | Function::ContainsKana
-            | Function::ContainsKanji
-            | Function::ContainsJapanese => true,
-            _ => false,
-        }
+                | Function::ContainsHiragana
+                | Function::ContainsKatakana
+                | Function::ContainsKana
+                | Function::ContainsKanji
+                | Function::ContainsJapanese
+        )
     }
 }
 

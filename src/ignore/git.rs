@@ -20,12 +20,17 @@ pub struct GitignoreFilter {
 impl GitignoreFilter {
     fn new(regex: Regex, only_dir: bool, negate: bool) -> GitignoreFilter {
         GitignoreFilter {
-            regex, only_dir, negate
+            regex,
+            only_dir,
+            negate,
         }
     }
 }
 
-pub fn search_upstream_gitignore(gitignore_map: &mut HashMap<PathBuf, Vec<GitignoreFilter>>, dir: &Path) {
+pub fn search_upstream_gitignore(
+    gitignore_map: &mut HashMap<PathBuf, Vec<GitignoreFilter>>,
+    dir: &Path,
+) {
     if let Ok(canonical_path) = crate::util::canonical_path(&dir.to_path_buf()) {
         let mut path = PathBuf::from(canonical_path);
 
@@ -41,7 +46,10 @@ pub fn search_upstream_gitignore(gitignore_map: &mut HashMap<PathBuf, Vec<Gitign
     }
 }
 
-pub fn update_gitignore_map(gitignore_map: &mut HashMap<PathBuf, Vec<GitignoreFilter>>, path: &Path) {
+pub fn update_gitignore_map(
+    gitignore_map: &mut HashMap<PathBuf, Vec<GitignoreFilter>>,
+    path: &Path,
+) {
     let gitignore_file = path.join(".gitignore");
     if gitignore_file.is_file() {
         let regexes = parse_gitignore(&gitignore_file, &path);
@@ -49,7 +57,10 @@ pub fn update_gitignore_map(gitignore_map: &mut HashMap<PathBuf, Vec<GitignoreFi
     }
 }
 
-pub fn get_gitignore_filters(gitignore_map: &mut HashMap<PathBuf, Vec<GitignoreFilter>>, dir: &Path) -> Vec<GitignoreFilter> {
+pub fn get_gitignore_filters(
+    gitignore_map: &mut HashMap<PathBuf, Vec<GitignoreFilter>>,
+    dir: &Path,
+) -> Vec<GitignoreFilter> {
     if let Some(regexes) = gitignore_map.get(&dir.to_path_buf()) {
         return regexes.to_vec();
     }
@@ -71,7 +82,11 @@ pub fn get_gitignore_filters(gitignore_map: &mut HashMap<PathBuf, Vec<GitignoreF
     }
 }
 
-pub fn matches_gitignore_filter(gitignore_filters: &Option<Vec<GitignoreFilter>>, file_name: &str, is_dir: bool) -> bool {
+pub fn matches_gitignore_filter(
+    gitignore_filters: &Option<Vec<GitignoreFilter>>,
+    file_name: &str,
+    is_dir: bool,
+) -> bool {
     match gitignore_filters {
         Some(gitignore_filters) => {
             let mut matched = false;
@@ -94,8 +109,8 @@ pub fn matches_gitignore_filter(gitignore_filters: &Option<Vec<GitignoreFilter>>
             }
 
             matched
-        },
-        _ => false
+        }
+        _ => false,
     }
 }
 
@@ -139,18 +154,15 @@ fn parse_file(file_path: &Path, dir_path: &Path) -> Vec<GitignoreFilter> {
         use std::io::BufRead;
         use std::io::BufReader;
         let reader = BufReader::new(file);
-        reader.lines()
-            .filter(|line| {
-                match line {
-                    Ok(line) => !line.trim().is_empty() && !line.starts_with("#"),
-                    _ => false
-                }
+        reader
+            .lines()
+            .filter(|line| match line {
+                Ok(line) => !line.trim().is_empty() && !line.starts_with("#"),
+                _ => false,
             })
-            .for_each(|line| {
-                match line {
-                    Ok(line) => result.append(&mut convert_gitignore_pattern(&line, dir_path)),
-                    _ => { }
-                }
+            .for_each(|line| match line {
+                Ok(line) => result.append(&mut convert_gitignore_pattern(&line, dir_path)),
+                _ => {}
             });
     }
 
@@ -192,23 +204,29 @@ lazy_static! {
 }
 
 fn convert_gitignore_glob(glob: &str, file_path: &Path) -> Result<Regex, Error> {
-    let mut pattern = GIT_CONVERT_REPLACE_REGEX.replace_all(&glob, |c: &Captures| {
-        match c.index(0) {
-            "**" => ".*",
-            "." => "\\.",
-            "*" => "[^/]*",
-            "?" => "[^/]+",
-            _ => error_exit(".gitignore", "Error parsing pattern")
-        }.to_string()
-    }).to_string();
+    let mut pattern = GIT_CONVERT_REPLACE_REGEX
+        .replace_all(&glob, |c: &Captures| {
+            match c.index(0) {
+                "**" => ".*",
+                "." => "\\.",
+                "*" => "[^/]*",
+                "?" => "[^/]+",
+                _ => error_exit(".gitignore", "Error parsing pattern"),
+            }
+            .to_string()
+        })
+        .to_string();
 
     while pattern.starts_with("/") || pattern.starts_with("\\") {
         pattern.remove(0);
     }
 
-    pattern = file_path.to_string_lossy().to_string()
+    pattern = file_path
+        .to_string_lossy()
+        .to_string()
         .replace("\\", "\\\\")
-        .add("/([^/]+/)*").add(&pattern);
+        .add("/([^/]+/)*")
+        .add(&pattern);
 
     #[cfg(windows)]
     {
@@ -236,7 +254,10 @@ mod tests {
 
         let filter = &result[0];
 
-        assert_eq!(filter.regex.as_str(), "/home/user/projects/testprj/([^/]+/)*foo");
+        assert_eq!(
+            filter.regex.as_str(),
+            "/home/user/projects/testprj/([^/]+/)*foo"
+        );
         assert_eq!(filter.only_dir, false);
         assert_eq!(filter.negate, false);
     }
@@ -253,13 +274,19 @@ mod tests {
 
         let filter = &result[0];
 
-        assert_eq!(filter.regex.as_str(), "/home/user/projects/testprj/([^/]+/)*foo");
+        assert_eq!(
+            filter.regex.as_str(),
+            "/home/user/projects/testprj/([^/]+/)*foo"
+        );
         assert_eq!(filter.only_dir, true);
         assert_eq!(filter.negate, false);
 
         let filter = &result[1];
 
-        assert_eq!(filter.regex.as_str(), "/home/user/projects/testprj/([^/]+/)*foo/.*");
+        assert_eq!(
+            filter.regex.as_str(),
+            "/home/user/projects/testprj/([^/]+/)*foo/.*"
+        );
         assert_eq!(filter.only_dir, false);
         assert_eq!(filter.negate, false);
     }
@@ -276,7 +303,10 @@ mod tests {
 
         let filter = &result[0];
 
-        assert_eq!(filter.regex.as_str(), "/home/user/projects/testprj/([^/]+/)*foo");
+        assert_eq!(
+            filter.regex.as_str(),
+            "/home/user/projects/testprj/([^/]+/)*foo"
+        );
         assert_eq!(filter.only_dir, false);
         assert_eq!(filter.negate, true);
     }

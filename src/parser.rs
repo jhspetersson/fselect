@@ -2,19 +2,19 @@ use std::rc::Rc;
 use std::str::FromStr;
 
 use crate::expr::Expr;
-use crate::lexer::Lexer;
-use crate::lexer::Lexem;
 use crate::field::Field;
 use crate::function::Function;
+use crate::lexer::Lexem;
+use crate::lexer::Lexer;
 use crate::operators::ArithmeticOp;
 use crate::operators::LogicalOp;
 use crate::operators::Op;
-use crate::query::{OutputFormat, RootOptions};
 use crate::query::Query;
 use crate::query::Root;
 use crate::query::TraversalMode::{Bfs, Dfs};
-use std::path::PathBuf;
+use crate::query::{OutputFormat, RootOptions};
 use directories::UserDirs;
+use std::path::PathBuf;
 
 pub struct Parser {
     lexems: Vec<Lexem>,
@@ -68,10 +68,16 @@ impl Parser {
                 dbg!(&roots);
             }
 
-            return Err(String::from("Could not parse tokens at the end of the query"));
+            return Err(String::from(
+                "Could not parse tokens at the end of the query",
+            ));
         }
 
-        if limit == 0 && fields.iter().all(|expr| expr.get_required_fields().is_empty()) {
+        if limit == 0
+            && fields
+                .iter()
+                .all(|expr| expr.get_required_fields().is_empty())
+        {
             limit = 1;
         }
 
@@ -95,18 +101,20 @@ impl Parser {
             match lexem {
                 Some(Lexem::Comma) => {
                     // skip
-                },
-                Some(Lexem::String(ref s)) | Some(Lexem::RawString(ref s)) | Some(Lexem::ArithmeticOperator(ref s)) => {
+                }
+                Some(Lexem::String(ref s))
+                | Some(Lexem::RawString(ref s))
+                | Some(Lexem::ArithmeticOperator(ref s)) => {
                     if s.to_ascii_lowercase() != "select" {
                         if s == "*" {
                             #[cfg(unix)]
-                                {
-                                    fields.push(Expr::field(Field::Mode));
-                                    #[cfg(feature = "users")]
-                                    fields.push(Expr::field(Field::User));
-                                    #[cfg(feature = "users")]
-                                    fields.push(Expr::field(Field::Group));
-                                }
+                            {
+                                fields.push(Expr::field(Field::Mode));
+                                #[cfg(feature = "users")]
+                                fields.push(Expr::field(Field::User));
+                                #[cfg(feature = "users")]
+                                fields.push(Expr::field(Field::Group));
+                            }
 
                             fields.push(Expr::field(Field::Size));
                             fields.push(Expr::field(Field::Modified));
@@ -123,13 +131,13 @@ impl Parser {
                             }
                         }
                     }
-                },
+                }
                 Some(Lexem::Open) | Some(Lexem::CurlyOpen) => {
                     self.drop_lexem();
                     if let Ok(Some(field)) = self.parse_expr() {
                         fields.push(field);
                     }
-                },
+                }
                 _ => {
                     self.drop_lexem();
                     break;
@@ -138,7 +146,7 @@ impl Parser {
         }
 
         if fields.is_empty() {
-            return Err(String::from("Error parsing fields, no selector found"))
+            return Err(String::from("Error parsing fields, no selector found"));
         }
 
         Ok(fields)
@@ -146,24 +154,25 @@ impl Parser {
 
     fn parse_roots(&mut self) -> Vec<Root> {
         enum RootParsingMode {
-            Unknown, From, Root, Comma
+            Unknown,
+            From,
+            Root,
+            Comma,
         }
 
         let mut roots: Vec<Root> = Vec::new();
         let mut mode = RootParsingMode::Unknown;
 
         match self.next_lexem() {
-            Some(ref lexem) => {
-                match lexem {
-                    &Lexem::From => {
-                        mode = RootParsingMode::From;
-                    },
-                    _ => {
-                        self.drop_lexem();
-                    }
+            Some(ref lexem) => match lexem {
+                &Lexem::From => {
+                    mode = RootParsingMode::From;
+                }
+                _ => {
+                    self.drop_lexem();
                 }
             },
-            _ => { }
+            _ => {}
         }
 
         if let RootParsingMode::From = mode {
@@ -173,50 +182,48 @@ impl Parser {
             loop {
                 let lexem = self.next_lexem();
                 match lexem {
-                    Some(ref lexem) => {
-                        match lexem {
-                            Lexem::String(ref s) | Lexem::RawString(ref s) => {
-                                match mode {
-                                    RootParsingMode::From | RootParsingMode::Comma => {
-                                        path = s.to_string();
-                                        if path.starts_with("~") {
-                                            if let Some(ud) = UserDirs::new() {
-                                                let mut pb = PathBuf::from(path.clone());
-                                                pb = pb.components().skip(1).collect();
-                                                pb = ud.home_dir().to_path_buf().join(pb);
-                                                path = pb.to_string_lossy().to_string();
-                                            }
-                                        }
-                                        mode = RootParsingMode::Root;
-                                    },
-                                    RootParsingMode::Root => {
-                                        self.drop_lexem();
-                                        root_options = self.parse_root_options().unwrap_or_else(|| RootOptions::new());
-                                    },
-                                    _ => { }
+                    Some(ref lexem) => match lexem {
+                        Lexem::String(ref s) | Lexem::RawString(ref s) => match mode {
+                            RootParsingMode::From | RootParsingMode::Comma => {
+                                path = s.to_string();
+                                if path.starts_with("~") {
+                                    if let Some(ud) = UserDirs::new() {
+                                        let mut pb = PathBuf::from(path.clone());
+                                        pb = pb.components().skip(1).collect();
+                                        pb = ud.home_dir().to_path_buf().join(pb);
+                                        path = pb.to_string_lossy().to_string();
+                                    }
                                 }
-                            },
-                            Lexem::Comma => {
-                                if path.len() > 0 {
-                                    roots.push(Root::new(path, root_options));
-
-                                    path = String::from("");
-                                    root_options = RootOptions::new();
-
-                                    mode = RootParsingMode::Comma;
-                                } else {
-                                    self.drop_lexem();
-                                    break;
-                                }
-                            },
-                            _ => {
-                                if path.len() > 0 {
-                                    roots.push(Root::new(path, root_options));
-                                }
-
-                                self.drop_lexem();
-                                break
+                                mode = RootParsingMode::Root;
                             }
+                            RootParsingMode::Root => {
+                                self.drop_lexem();
+                                root_options = self
+                                    .parse_root_options()
+                                    .unwrap_or_else(|| RootOptions::new());
+                            }
+                            _ => {}
+                        },
+                        Lexem::Comma => {
+                            if path.len() > 0 {
+                                roots.push(Root::new(path, root_options));
+
+                                path = String::from("");
+                                root_options = RootOptions::new();
+
+                                mode = RootParsingMode::Comma;
+                            } else {
+                                self.drop_lexem();
+                                break;
+                            }
+                        }
+                        _ => {
+                            if path.len() > 0 {
+                                roots.push(Root::new(path, root_options));
+                            }
+
+                            self.drop_lexem();
+                            break;
                         }
                     },
                     None => {
@@ -234,7 +241,10 @@ impl Parser {
 
     fn parse_root_options(&mut self) -> Option<RootOptions> {
         enum RootParsingMode {
-            Unknown, Options, MinDepth, Depth
+            Unknown,
+            Options,
+            MinDepth,
+            Depth,
         }
 
         let mut mode = RootParsingMode::Unknown;
@@ -252,90 +262,86 @@ impl Parser {
         loop {
             let lexem = self.next_lexem();
             match lexem {
-                Some(ref lexem) => {
-                    match lexem {
-                        Lexem::String(ref s) | Lexem::RawString(ref s) => {
-                            match mode {
-                                RootParsingMode::Unknown | RootParsingMode::Options => {
-                                    let s = s.to_ascii_lowercase();
-                                    if s == "mindepth" {
-                                        mode = RootParsingMode::MinDepth;
-                                    } else if s == "maxdepth" || s == "depth" {
-                                        mode = RootParsingMode::Depth;
-                                    } else if s.starts_with("arc") {
-                                        archives = true;
-                                        mode = RootParsingMode::Options;
-                                    } else if s.starts_with("sym") {
-                                        symlinks = true;
-                                        mode = RootParsingMode::Options;
-                                    } else if s.starts_with("git") {
-                                        gitignore = Some(true);
-                                        mode = RootParsingMode::Options;
-                                    } else if s.starts_with("hg") {
-                                        hgignore = Some(true);
-                                        mode = RootParsingMode::Options;
-                                    } else if s.starts_with("dock") {
-                                        dockerignore = Some(true);
-                                        mode = RootParsingMode::Options;
-                                    } else if s.starts_with("nogit") {
-                                        gitignore = Some(false);
-                                        mode = RootParsingMode::Options;
-                                    } else if s.starts_with("nohg") {
-                                        hgignore = Some(false);
-                                        mode = RootParsingMode::Options;
-                                    } else if s.starts_with("nodock") {
-                                        dockerignore = Some(false);
-                                        mode = RootParsingMode::Options;
-                                    } else if s == "bfs" {
-                                        traversal = Bfs;
-                                        mode = RootParsingMode::Options;
-                                    } else if s == "dfs" {
-                                        traversal = Dfs;
-                                        mode = RootParsingMode::Options;
-                                    } else if s.starts_with("regex") {
-                                        regexp = true;
-                                        mode = RootParsingMode::Options;
-                                    } else {
-                                        self.drop_lexem();
-                                        break;
-                                    }
-                                },
-                                RootParsingMode::MinDepth => {
-                                    let d: Result<u32, _> = s.parse();
-                                    match d {
-                                        Ok(d) => {
-                                            min_depth = d;
-                                            mode = RootParsingMode::Options;
-                                        },
-                                        _ => {
-                                            self.drop_lexem();
-                                            break;
-                                        }
-                                    }
-                                },
-                                RootParsingMode::Depth => {
-                                    let d: Result<u32, _> = s.parse();
-                                    match d {
-                                        Ok(d) => {
-                                            max_depth = d;
-                                            mode = RootParsingMode::Options;
-                                        },
-                                        _ => {
-                                            self.drop_lexem();
-                                            break;
-                                        }
-                                    }
+                Some(ref lexem) => match lexem {
+                    Lexem::String(ref s) | Lexem::RawString(ref s) => match mode {
+                        RootParsingMode::Unknown | RootParsingMode::Options => {
+                            let s = s.to_ascii_lowercase();
+                            if s == "mindepth" {
+                                mode = RootParsingMode::MinDepth;
+                            } else if s == "maxdepth" || s == "depth" {
+                                mode = RootParsingMode::Depth;
+                            } else if s.starts_with("arc") {
+                                archives = true;
+                                mode = RootParsingMode::Options;
+                            } else if s.starts_with("sym") {
+                                symlinks = true;
+                                mode = RootParsingMode::Options;
+                            } else if s.starts_with("git") {
+                                gitignore = Some(true);
+                                mode = RootParsingMode::Options;
+                            } else if s.starts_with("hg") {
+                                hgignore = Some(true);
+                                mode = RootParsingMode::Options;
+                            } else if s.starts_with("dock") {
+                                dockerignore = Some(true);
+                                mode = RootParsingMode::Options;
+                            } else if s.starts_with("nogit") {
+                                gitignore = Some(false);
+                                mode = RootParsingMode::Options;
+                            } else if s.starts_with("nohg") {
+                                hgignore = Some(false);
+                                mode = RootParsingMode::Options;
+                            } else if s.starts_with("nodock") {
+                                dockerignore = Some(false);
+                                mode = RootParsingMode::Options;
+                            } else if s == "bfs" {
+                                traversal = Bfs;
+                                mode = RootParsingMode::Options;
+                            } else if s == "dfs" {
+                                traversal = Dfs;
+                                mode = RootParsingMode::Options;
+                            } else if s.starts_with("regex") {
+                                regexp = true;
+                                mode = RootParsingMode::Options;
+                            } else {
+                                self.drop_lexem();
+                                break;
+                            }
+                        }
+                        RootParsingMode::MinDepth => {
+                            let d: Result<u32, _> = s.parse();
+                            match d {
+                                Ok(d) => {
+                                    min_depth = d;
+                                    mode = RootParsingMode::Options;
+                                }
+                                _ => {
+                                    self.drop_lexem();
+                                    break;
                                 }
                             }
-                        },
-                        Lexem::Operator(s) if s.eq("rx") => {
-                            regexp = true;
-                            mode = RootParsingMode::Options;
-                        },
-                        _ => {
-                            self.drop_lexem();
-                            break
                         }
+                        RootParsingMode::Depth => {
+                            let d: Result<u32, _> = s.parse();
+                            match d {
+                                Ok(d) => {
+                                    max_depth = d;
+                                    mode = RootParsingMode::Options;
+                                }
+                                _ => {
+                                    self.drop_lexem();
+                                    break;
+                                }
+                            }
+                        }
+                    },
+                    Lexem::Operator(s) if s.eq("rx") => {
+                        regexp = true;
+                        mode = RootParsingMode::Options;
+                    }
+                    _ => {
+                        self.drop_lexem();
+                        break;
                     }
                 },
                 None => {
@@ -356,25 +362,25 @@ impl Parser {
                 dockerignore,
                 traversal,
                 regexp,
-            })
+            }),
         }
     }
 
     fn is_root_option_keyword(s: &str) -> bool {
         s.to_ascii_lowercase() == "depth"
-        || s.to_ascii_lowercase() == "mindepth"
-        || s.to_ascii_lowercase() == "maxdepth"
-        || s.starts_with("arc")
-        || s.starts_with("sym")
-        || s.starts_with("git")
-        || s.starts_with("hg")
-        || s.starts_with("dock")
-        || s.starts_with("nogit")
-        || s.starts_with("nohg")
-        || s.starts_with("nodock")
-        || s == "bfs"
-        || s == "dfs"
-        || s.starts_with("regex")
+            || s.to_ascii_lowercase() == "mindepth"
+            || s.to_ascii_lowercase() == "maxdepth"
+            || s.starts_with("arc")
+            || s.starts_with("sym")
+            || s.starts_with("git")
+            || s.starts_with("hg")
+            || s.starts_with("dock")
+            || s.starts_with("nogit")
+            || s.starts_with("nohg")
+            || s.starts_with("nodock")
+            || s == "bfs"
+            || s == "dfs"
+            || s.starts_with("regex")
     }
 
     /*
@@ -391,9 +397,7 @@ impl Parser {
 
     fn parse_where(&mut self) -> Result<Option<Expr>, String> {
         match self.next_lexem() {
-            Some(Lexem::Where) => {
-                self.parse_expr()
-            },
+            Some(Lexem::Where) => self.parse_expr(),
             _ => {
                 self.drop_lexem();
                 Ok(None)
@@ -411,17 +415,23 @@ impl Parser {
                 Some(Lexem::Or) => {
                     let expr = self.parse_and()?;
                     right = match right {
-                        Some(right) => Some(Expr::logical_op(right, LogicalOp::Or, expr.clone().unwrap())),
-                        None => expr
+                        Some(right) => Some(Expr::logical_op(
+                            right,
+                            LogicalOp::Or,
+                            expr.clone().unwrap(),
+                        )),
+                        None => expr,
                     };
-                },
+                }
                 _ => {
                     self.drop_lexem();
 
                     return match right {
-                        Some(right) => Ok(Some(Expr::logical_op(left.unwrap(), LogicalOp::Or, right))),
-                        None => Ok(left)
-                    }
+                        Some(right) => {
+                            Ok(Some(Expr::logical_op(left.unwrap(), LogicalOp::Or, right)))
+                        }
+                        None => Ok(left),
+                    };
                 }
             }
         }
@@ -438,16 +448,18 @@ impl Parser {
                     let expr = self.parse_cond()?;
                     right = match right {
                         Some(right) => Some(Expr::logical_op(right, LogicalOp::And, expr.unwrap())),
-                        None => expr
+                        None => expr,
                     };
-                },
+                }
                 _ => {
                     self.drop_lexem();
 
                     return match right {
-                        Some(right) => Ok(Some(Expr::logical_op(left.unwrap(), LogicalOp::And, right))),
-                        None => Ok(left)
-                    }
+                        Some(right) => {
+                            Ok(Some(Expr::logical_op(left.unwrap(), LogicalOp::And, right)))
+                        }
+                        None => Ok(left),
+                    };
                 }
             }
         }
@@ -473,7 +485,7 @@ impl Parser {
         match lexem {
             Some(Lexem::Not) => {
                 not = true;
-            },
+            }
             _ => {
                 self.drop_lexem();
             }
@@ -486,21 +498,42 @@ impl Parser {
 
                 let and_lexem = self.next_lexem();
                 if and_lexem.is_none() || and_lexem.unwrap() != Lexem::And {
-                    return Err(String::from("Error parsing BETWEEN operator"))
+                    return Err(String::from("Error parsing BETWEEN operator"));
                 }
 
                 let right_between = self.parse_add_sub()?;
 
-                let left_expr = Expr::op(left.clone().unwrap(), match not { false => Op::Gte, true => Op::Lte }, left_between.unwrap());
-                let right_expr = Expr::op(left.unwrap(), match not { false => Op::Lte, true => Op::Gte }, right_between.unwrap());
+                let left_expr = Expr::op(
+                    left.clone().unwrap(),
+                    match not {
+                        false => Op::Gte,
+                        true => Op::Lte,
+                    },
+                    left_between.unwrap(),
+                );
+                let right_expr = Expr::op(
+                    left.unwrap(),
+                    match not {
+                        false => Op::Lte,
+                        true => Op::Gte,
+                    },
+                    right_between.unwrap(),
+                );
 
-                Ok(Some(Expr::logical_op(left_expr, match not { false => LogicalOp::And, true => LogicalOp::Or }, right_expr)))
-            },
+                Ok(Some(Expr::logical_op(
+                    left_expr,
+                    match not {
+                        false => LogicalOp::And,
+                        true => LogicalOp::Or,
+                    },
+                    right_expr,
+                )))
+            }
             Some(Lexem::Operator(s)) => {
                 let right = self.parse_add_sub()?;
                 let op = Op::from_with_not(s, not);
                 Ok(Some(Expr::op(left.unwrap(), op.unwrap(), right.unwrap())))
-            },
+            }
             _ => {
                 self.drop_lexem();
                 Ok(left)
@@ -509,13 +542,31 @@ impl Parser {
 
         if let Ok(Some(expr)) = result.clone() {
             if let Some(field) = expr.field {
-                if expr.left.is_none() && expr.right.is_none() && field.is_boolean_field() && self.roots_parsed && !self.where_parsed {
-                    result = Ok(Some(Expr::op(Expr::field(field), Op::Eq, Expr::value(String::from("true")))));
+                if expr.left.is_none()
+                    && expr.right.is_none()
+                    && field.is_boolean_field()
+                    && self.roots_parsed
+                    && !self.where_parsed
+                {
+                    result = Ok(Some(Expr::op(
+                        Expr::field(field),
+                        Op::Eq,
+                        Expr::value(String::from("true")),
+                    )));
                 }
             } else if let Some(function) = expr.function {
-                if expr.right.is_none() && (expr.args.is_none() || expr.args.unwrap().is_empty()) && function.is_boolean_function() && self.roots_parsed && !self.where_parsed {
+                if expr.right.is_none()
+                    && (expr.args.is_none() || expr.args.unwrap().is_empty())
+                    && function.is_boolean_function()
+                    && self.roots_parsed
+                    && !self.where_parsed
+                {
                     let func_expr = Expr::function_left(function, expr.left);
-                    result = Ok(Some(Expr::op(func_expr, Op::Eq, Expr::value(String::from("true")))));
+                    result = Ok(Some(Expr::op(
+                        func_expr,
+                        Op::Eq,
+                        Expr::value(String::from("true")),
+                    )));
                 }
             }
         }
@@ -545,10 +596,12 @@ impl Parser {
                         }
 
                         left = match left {
-                            Some(left) => Some(Expr::arithmetic_op(left, new_op.unwrap(), expr.unwrap())),
-                            None => expr
+                            Some(left) => {
+                                Some(Expr::arithmetic_op(left, new_op.unwrap(), expr.unwrap()))
+                            }
+                            None => expr,
                         };
-                    },
+                    }
                     _ => {
                         self.drop_lexem();
 
@@ -572,17 +625,21 @@ impl Parser {
             if let Some(Lexem::ArithmeticOperator(s)) = lexem {
                 let new_op = ArithmeticOp::from(s);
                 match new_op {
-                    Some(ArithmeticOp::Multiply) | Some(ArithmeticOp::Divide) | Some(ArithmeticOp::Modulo)  => {
+                    Some(ArithmeticOp::Multiply)
+                    | Some(ArithmeticOp::Divide)
+                    | Some(ArithmeticOp::Modulo) => {
                         let expr = self.parse_paren()?;
                         if op.is_none() {
                             op = new_op.clone();
                         }
 
                         left = match left {
-                            Some(left) => Some(Expr::arithmetic_op(left, new_op.unwrap(), expr.unwrap())),
-                            None => expr
+                            Some(left) => {
+                                Some(Expr::arithmetic_op(left, new_op.unwrap(), expr.unwrap()))
+                            }
+                            None => expr,
                         };
-                    },
+                    }
                     _ => {
                         self.drop_lexem();
 
@@ -606,7 +663,7 @@ impl Parser {
                 } else {
                     Err("Unmatched parenthesis".to_string())
                 }
-            },
+            }
             Some(Lexem::CurlyOpen) => {
                 let result = self.parse_expr();
                 if let Some(Lexem::CurlyClose) = self.next_lexem() {
@@ -614,7 +671,7 @@ impl Parser {
                 } else {
                     Err("Unmatched parenthesis".to_string())
                 }
-            },
+            }
             _ => {
                 self.drop_lexem();
                 self.parse_func_scalar()
@@ -651,8 +708,8 @@ impl Parser {
                             let mut expr = expr;
                             expr.minus = minus;
                             return Ok(Some(expr));
-                        },
-                        Err(err) => return Err(err)
+                        }
+                        Err(err) => return Err(err),
                     }
                 }
 
@@ -661,9 +718,7 @@ impl Parser {
 
                 Ok(Some(expr))
             }
-            _ => {
-                Err("Error parsing expression, expecting string".to_string())
-            }
+            _ => Err("Error parsing expression, expecting string".to_string()),
         }
     }
 
@@ -675,7 +730,7 @@ impl Parser {
         if let Some(lexem) = self.next_lexem() {
             if lexem != Lexem::Open && lexem != Lexem::CurlyOpen {
                 if is_boolean_function {
-                   return Ok(function_expr);
+                    return Ok(function_expr);
                 }
 
                 return Err("Error in function expression".to_string());
@@ -696,18 +751,19 @@ impl Parser {
 
         loop {
             match self.next_lexem() {
-                Some(lexem) if lexem == Lexem::Comma => {
-                    match self.parse_expr() {
-                        Ok(Some(expr)) => args.push(expr),
-                        _ => {
-                            return Err("Error in function expression".to_string());
-                        }
+                Some(lexem) if lexem == Lexem::Comma => match self.parse_expr() {
+                    Ok(Some(expr)) => args.push(expr),
+                    _ => {
+                        return Err("Error in function expression".to_string());
                     }
                 },
-                Some(lexem) if (lexem == Lexem::Close && !curly_mode) || (lexem == Lexem::CurlyClose && curly_mode) => {
+                Some(lexem)
+                    if (lexem == Lexem::Close && !curly_mode)
+                        || (lexem == Lexem::CurlyClose && curly_mode) =>
+                {
                     function_expr.args = Some(args);
                     return Ok(function_expr);
-                },
+                }
                 _ => {
                     return Err("Error in function expression".to_string());
                 }
@@ -722,16 +778,16 @@ impl Parser {
             if let Some(Lexem::By) = self.next_lexem() {
                 loop {
                     match self.next_lexem() {
-                        Some(Lexem::Comma) => {},
+                        Some(Lexem::Comma) => {}
                         Some(Lexem::RawString(_)) => {
                             self.drop_lexem();
                             let group_field = self.parse_expr().unwrap().unwrap();
                             group_by_fields.push(group_field);
-                        },
+                        }
                         _ => {
                             self.drop_lexem();
                             break;
-                        },
+                        }
                     }
                 }
             } else {
@@ -752,26 +808,26 @@ impl Parser {
             if let Some(Lexem::By) = self.next_lexem() {
                 loop {
                     match self.next_lexem() {
-                        Some(Lexem::Comma) => {},
+                        Some(Lexem::Comma) => {}
                         Some(Lexem::RawString(ref ordering_field)) => {
                             let actual_field = match ordering_field.parse::<usize>() {
                                 Ok(idx) => fields[idx - 1].clone(),
                                 _ => {
                                     self.drop_lexem();
                                     self.parse_expr().unwrap().unwrap()
-                                },
+                                }
                             };
                             order_by_fields.push(actual_field);
                             order_by_directions.push(true);
-                        },
+                        }
                         Some(Lexem::DescendingOrder) => {
                             let cnt = order_by_directions.len();
                             order_by_directions[cnt - 1] = false;
-                        },
+                        }
                         _ => {
                             self.drop_lexem();
                             break;
-                        },
+                        }
                     }
                 }
             } else {
@@ -783,7 +839,6 @@ impl Parser {
 
         Ok((order_by_fields, order_by_directions))
     }
-
 
     fn parse_limit(&mut self) -> Result<u32, &str> {
         let lexem = self.next_lexem();
@@ -797,13 +852,13 @@ impl Parser {
                         } else {
                             return Err("Error parsing limit");
                         }
-                    },
+                    }
                     _ => {
                         self.drop_lexem();
                         return Err("Error parsing limit, limit value not found");
                     }
                 }
-            },
+            }
             _ => {
                 self.drop_lexem();
             }
@@ -812,7 +867,7 @@ impl Parser {
         Ok(0)
     }
 
-    fn parse_output_format(&mut self) -> Result<OutputFormat, &str>{
+    fn parse_output_format(&mut self) -> Result<OutputFormat, &str> {
         let lexem = self.next_lexem();
         match lexem {
             Some(Lexem::Into) => {
@@ -821,15 +876,15 @@ impl Parser {
                     Some(Lexem::RawString(s)) | Some(Lexem::String(s)) => {
                         return match OutputFormat::from(&s) {
                             Some(output_format) => Ok(output_format),
-                            None => Err("Unknown output format")
+                            None => Err("Unknown output format"),
                         };
-                    },
+                    }
                     _ => {
                         self.drop_lexem();
                         return Err("Error parsing output format");
                     }
                 }
-            },
+            }
             _ => {
                 self.drop_lexem();
             }
@@ -848,12 +903,12 @@ impl Parser {
     }
 
     fn next_lexem(&mut self) -> Option<Lexem> {
-        let lexem = self.lexems.get(self.index );
+        let lexem = self.lexems.get(self.index);
         self.index += 1;
 
         match lexem {
             Some(lexem) => Some(lexem.clone()),
-            None => None
+            None => None,
         }
     }
 
@@ -890,11 +945,15 @@ mod tests {
         let mut p = Parser::new();
         let query = p.parse(&query, false).unwrap();
 
-        assert_eq!(query.fields, vec![Expr::field(Field::Name),
-                                      Expr::field(Field::Path),
-                                      Expr::field(Field::Size),
-                                      Expr::field(Field::FormattedSize),
-        ]);
+        assert_eq!(
+            query.fields,
+            vec![
+                Expr::field(Field::Name),
+                Expr::field(Field::Path),
+                Expr::field(Field::Size),
+                Expr::field(Field::FormattedSize),
+            ]
+        );
     }
 
     #[test]
@@ -903,39 +962,89 @@ mod tests {
         let mut p = Parser::new();
         let query = p.parse(&query, false).unwrap();
 
-        assert_eq!(query.fields, vec![Expr::field(Field::Name),
-                                      Expr::field(Field::Path),
-                                      Expr::field(Field::Size),
-                                      Expr::field(Field::FormattedSize)
-        ]);
+        assert_eq!(
+            query.fields,
+            vec![
+                Expr::field(Field::Name),
+                Expr::field(Field::Path),
+                Expr::field(Field::Size),
+                Expr::field(Field::FormattedSize)
+            ]
+        );
 
-        assert_eq!(query.roots, vec![
-            Root::new(String::from("/test"), RootOptions::from(0, 2, false, false, None, None, None, Bfs, false)),
-            Root::new(String::from("/test2"), RootOptions::from(0, 0, true, false, None, None, None, Bfs, false)),
-            Root::new(String::from("/test3"), RootOptions::from(0, 3, true, false, None, None, None, Bfs, false)),
-            Root::new(String::from("/test4"), RootOptions::from(0, 0, false, false, None, None, None, Bfs, false)),
-            Root::new(String::from("/test5"), RootOptions::from(0, 0, false, false, Some(true), None, None, Bfs, false)),
-            Root::new(String::from("/test6"), RootOptions::from(3, 0, false, false, None, None, None, Bfs, false)),
-            Root::new(String::from("/test7"), RootOptions::from(0, 0, true, false, None, None, None, Dfs, false)),
-            Root::new(String::from("/test8"), RootOptions::from(0, 0, false, false, None, None, None, Dfs, false)),
-        ]);
+        assert_eq!(
+            query.roots,
+            vec![
+                Root::new(
+                    String::from("/test"),
+                    RootOptions::from(0, 2, false, false, None, None, None, Bfs, false)
+                ),
+                Root::new(
+                    String::from("/test2"),
+                    RootOptions::from(0, 0, true, false, None, None, None, Bfs, false)
+                ),
+                Root::new(
+                    String::from("/test3"),
+                    RootOptions::from(0, 3, true, false, None, None, None, Bfs, false)
+                ),
+                Root::new(
+                    String::from("/test4"),
+                    RootOptions::from(0, 0, false, false, None, None, None, Bfs, false)
+                ),
+                Root::new(
+                    String::from("/test5"),
+                    RootOptions::from(0, 0, false, false, Some(true), None, None, Bfs, false)
+                ),
+                Root::new(
+                    String::from("/test6"),
+                    RootOptions::from(3, 0, false, false, None, None, None, Bfs, false)
+                ),
+                Root::new(
+                    String::from("/test7"),
+                    RootOptions::from(0, 0, true, false, None, None, None, Dfs, false)
+                ),
+                Root::new(
+                    String::from("/test8"),
+                    RootOptions::from(0, 0, false, false, None, None, None, Dfs, false)
+                ),
+            ]
+        );
 
         let expr = Expr::logical_op(
+            Expr::logical_op(
+                Expr::op(
+                    Expr::field(Field::Name),
+                    Op::Ne,
+                    Expr::value(String::from("123")),
+                ),
+                LogicalOp::And,
                 Expr::logical_op(
-                    Expr::op(Expr::field(Field::Name), Op::Ne, Expr::value(String::from("123"))),
-                    LogicalOp::And,
-                    Expr::logical_op(
-                        Expr::op(Expr::field(Field::Size), Op::Gt, Expr::value(String::from("456"))),
-                        LogicalOp::Or,
-                        Expr::op(Expr::field(Field::FormattedSize), Op::Lte, Expr::value(String::from("758"))),
+                    Expr::op(
+                        Expr::field(Field::Size),
+                        Op::Gt,
+                        Expr::value(String::from("456")),
+                    ),
+                    LogicalOp::Or,
+                    Expr::op(
+                        Expr::field(Field::FormattedSize),
+                        Op::Lte,
+                        Expr::value(String::from("758")),
                     ),
                 ),
+            ),
             LogicalOp::Or,
-                Expr::op(Expr::field(Field::Name), Op::Eq, Expr::value(String::from("xxx")))
+            Expr::op(
+                Expr::field(Field::Name),
+                Op::Eq,
+                Expr::value(String::from("xxx")),
+            ),
         );
 
         assert_eq!(query.expr, Some(expr));
-        assert_eq!(query.ordering_fields, Rc::new(vec![Expr::field(Field::Path), Expr::field(Field::Size)]));
+        assert_eq!(
+            query.ordering_fields,
+            Rc::new(vec![Expr::field(Field::Path), Expr::field(Field::Size)])
+        );
         assert_eq!(query.ordering_asc, Rc::new(vec![true, false]));
         assert_eq!(query.limit, 50);
     }
@@ -948,11 +1057,19 @@ mod tests {
 
         assert_eq!(query.fields, vec![Expr::field(Field::Name)]);
 
-        assert_eq!(query.roots, vec![
-            Root::new(String::from("/test"), RootOptions::from(0, 0, false, false, None, None, None, Bfs, false)),
-        ]);
+        assert_eq!(
+            query.roots,
+            vec![Root::new(
+                String::from("/test"),
+                RootOptions::from(0, 0, false, false, None, None, None, Bfs, false)
+            ),]
+        );
 
-        let expr = Expr::op(Expr::field(Field::Name), Op::NotLike, Expr::value(String::from("%.tmp")));
+        let expr = Expr::op(
+            Expr::field(Field::Name),
+            Op::NotLike,
+            Expr::value(String::from("%.tmp")),
+        );
 
         assert_eq!(query.expr, Some(expr));
     }
@@ -965,11 +1082,19 @@ mod tests {
 
         assert_eq!(query.fields, vec![Expr::field(Field::Name)]);
 
-        assert_eq!(query.roots, vec![
-            Root::new(String::from("/test"), RootOptions::from(0, 0, false, false, None, None, None, Bfs, false)),
-        ]);
+        assert_eq!(
+            query.roots,
+            vec![Root::new(
+                String::from("/test"),
+                RootOptions::from(0, 0, false, false, None, None, None, Bfs, false)
+            ),]
+        );
 
-        let expr = Expr::op(Expr::field(Field::Name), Op::NotLike, Expr::value(String::from("%.tmp")));
+        let expr = Expr::op(
+            Expr::field(Field::Name),
+            Op::NotLike,
+            Expr::value(String::from("%.tmp")),
+        );
 
         assert_eq!(query.expr, Some(expr));
     }
@@ -980,8 +1105,16 @@ mod tests {
         let mut p = Parser::new();
         let query = p.parse(&query, false).unwrap();
 
-        let left = Expr::op(Expr::field(Field::Name), Op::NotLike, Expr::value(String::from("%.tmp")));
-        let right = Expr::op(Expr::field(Field::Name), Op::NotLike, Expr::value(String::from("%.tst")));
+        let left = Expr::op(
+            Expr::field(Field::Name),
+            Op::NotLike,
+            Expr::value(String::from("%.tmp")),
+        );
+        let right = Expr::op(
+            Expr::field(Field::Name),
+            Op::NotLike,
+            Expr::value(String::from("%.tst")),
+        );
         let expr = Expr::logical_op(left, LogicalOp::And, right);
 
         assert_eq!(query.expr, Some(expr));
@@ -989,12 +1122,21 @@ mod tests {
 
     #[test]
     fn query_with_multiple_not_paren() {
-        let query = "select name from /test where (not name like '%.tmp') and (not name like '%.tst')";
+        let query =
+            "select name from /test where (not name like '%.tmp') and (not name like '%.tst')";
         let mut p = Parser::new();
         let query = p.parse(&query, false).unwrap();
 
-        let left = Expr::op(Expr::field(Field::Name), Op::NotLike, Expr::value(String::from("%.tmp")));
-        let right = Expr::op(Expr::field(Field::Name), Op::NotLike, Expr::value(String::from("%.tst")));
+        let left = Expr::op(
+            Expr::field(Field::Name),
+            Op::NotLike,
+            Expr::value(String::from("%.tmp")),
+        );
+        let right = Expr::op(
+            Expr::field(Field::Name),
+            Op::NotLike,
+            Expr::value(String::from("%.tst")),
+        );
         let expr = Expr::logical_op(left, LogicalOp::And, right);
 
         assert_eq!(query.expr, Some(expr));
@@ -1006,7 +1148,11 @@ mod tests {
         let mut p = Parser::new();
         let query = p.parse(&query, false).unwrap();
 
-        let expr = Expr::op(Expr::field(Field::Name), Op::Like, Expr::value(String::from("%.tmp")));
+        let expr = Expr::op(
+            Expr::field(Field::Name),
+            Op::Like,
+            Expr::value(String::from("%.tmp")),
+        );
 
         assert_eq!(query.expr, Some(expr));
     }
@@ -1017,7 +1163,11 @@ mod tests {
         let mut p = Parser::new();
         let query = p.parse(&query, false).unwrap();
 
-        let expr = Expr::op(Expr::field(Field::Name), Op::NotLike, Expr::value(String::from("%.tmp")));
+        let expr = Expr::op(
+            Expr::field(Field::Name),
+            Op::NotLike,
+            Expr::value(String::from("%.tmp")),
+        );
 
         assert_eq!(query.expr, Some(expr));
     }
@@ -1037,9 +1187,13 @@ mod tests {
         let mut p = Parser::new();
         let query = p.parse(&query, false).unwrap();
 
-        assert_eq!(query.roots, vec![
-            Root::new(String::from("/opt/Some Cool Dir/Test This"), RootOptions::from(0, 0, false, false, None, None, None, Bfs, false)),
-        ]);
+        assert_eq!(
+            query.roots,
+            vec![Root::new(
+                String::from("/opt/Some Cool Dir/Test This"),
+                RootOptions::from(0, 0, false, false, None, None, None, Bfs, false)
+            ),]
+        );
     }
 
     #[test]
@@ -1103,11 +1257,19 @@ mod tests {
 
         assert_eq!(query.fields, vec![Expr::field(Field::Name)]);
 
-        assert_eq!(query.roots, vec![
-            Root::new(String::from("/test"), RootOptions::from(2, 0, false, false, Some(true), None, None, Bfs, false)),
-        ]);
+        assert_eq!(
+            query.roots,
+            vec![Root::new(
+                String::from("/test"),
+                RootOptions::from(2, 0, false, false, Some(true), None, None, Bfs, false)
+            ),]
+        );
 
-        let expr = Expr::op(Expr::field(Field::Name), Op::NotLike, Expr::value(String::from("%.tmp")));
+        let expr = Expr::op(
+            Expr::field(Field::Name),
+            Op::NotLike,
+            Expr::value(String::from("%.tmp")),
+        );
 
         assert_eq!(query.expr, Some(expr));
     }
@@ -1118,9 +1280,10 @@ mod tests {
         let mut p = Parser::new();
         let query = p.parse(&query, false).unwrap();
 
-        assert_eq!(query.roots, vec![
-            Root::new(String::from("."), RootOptions::new()),
-        ]);
+        assert_eq!(
+            query.roots,
+            vec![Root::new(String::from("."), RootOptions::new()),]
+        );
     }
 
     #[test]
@@ -1129,9 +1292,13 @@ mod tests {
         let mut p = Parser::new();
         let query = p.parse(&query, false).unwrap();
 
-        assert_eq!(query.roots, vec![
-            Root::new(String::from("."), RootOptions::from(0, 2, false, false, None, None, None, Bfs, false)),
-        ]);
+        assert_eq!(
+            query.roots,
+            vec![Root::new(
+                String::from("."),
+                RootOptions::from(0, 2, false, false, None, None, None, Bfs, false)
+            ),]
+        );
     }
 
     #[test]
@@ -1153,13 +1320,26 @@ mod tests {
         let mut p = Parser::new();
         let query = p.parse(&query, false).unwrap();
 
-        assert_eq!(query.fields, vec![Expr::function_left(Function::Avg, Some(Box::new(Expr::field(Field::Size))))]);
+        assert_eq!(
+            query.fields,
+            vec![Expr::function_left(
+                Function::Avg,
+                Some(Box::new(Expr::field(Field::Size)))
+            )]
+        );
 
-        assert_eq!(query.roots, vec![
-            Root::new(String::from("/test"), RootOptions::from(0, 0, false, false, None, None, None, Bfs, false)),
-        ]);
+        assert_eq!(
+            query.roots,
+            vec![Root::new(
+                String::from("/test"),
+                RootOptions::from(0, 0, false, false, None, None, None, Bfs, false)
+            ),]
+        );
 
-        assert_eq!(query.grouping_fields, Rc::new(vec![Expr::field(Field::Mime)]));
+        assert_eq!(
+            query.grouping_fields,
+            Rc::new(vec![Expr::field(Field::Mime)])
+        );
     }
 
     #[test]

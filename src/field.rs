@@ -189,20 +189,22 @@ impl FromStr for Field {
 }
 
 impl Display for Field {
-    fn fmt(&self, f: &mut Formatter) -> Result<(), Error>{
+    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         write!(f, "{:?}", self)
     }
 }
 
 impl Serialize for Field {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-        where S: Serializer
+    where
+        S: Serializer,
     {
         serializer.serialize_str(&self.to_string())
     }
 }
 
 impl Field {
+    #[rustfmt::skip]
     pub fn is_numeric_field(&self) -> bool {
         match self {
             Field::Size | Field::FormattedSize
@@ -218,9 +220,8 @@ impl Field {
 
     pub fn is_datetime_field(&self) -> bool {
         match self {
-            Field::Created | Field::Accessed | Field::Modified
-            | Field::ExifDateTime => true,
-            _ => false
+            Field::Created | Field::Accessed | Field::Modified | Field::ExifDateTime => true,
+            _ => false,
         }
     }
 
@@ -261,7 +262,7 @@ impl Field {
             | Field::IsImage
             | Field::IsSource
             | Field::IsVideo => true,
-            _ => false
+            _ => false,
         }
     }
 
@@ -307,16 +308,15 @@ impl Field {
             | Field::IsFont
             | Field::IsImage
             | Field::IsSource
-            | Field::IsVideo
-            => true,
-            _ => false
+            | Field::IsVideo => true,
+            _ => false,
         }
     }
 
     pub fn is_colorized_field(&self) -> bool {
         match self {
             Field::Name => true,
-            _ => false
+            _ => false,
         }
     }
 }

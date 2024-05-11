@@ -170,7 +170,7 @@ impl Expr {
             result.extend(right.get_required_fields());
         }
 
-        if let Some( field) = self.field {
+        if let Some(field) = self.field {
             result.insert(field);
         }
 
@@ -190,7 +190,7 @@ impl Expr {
     fn contains_numeric_field(expr: &Expr) -> bool {
         let field = match expr.field {
             Some(ref field) => field.is_numeric_field(),
-            None => false
+            None => false,
         };
 
         if field {
@@ -199,7 +199,7 @@ impl Expr {
 
         let function = match expr.function {
             Some(ref function) => function.is_numeric_function(),
-            None => false
+            None => false,
         };
 
         if function {
@@ -208,7 +208,7 @@ impl Expr {
 
         let left = match expr.left {
             Some(ref left) => Self::contains_numeric_field(&left),
-            None => false
+            None => false,
         };
 
         left
@@ -221,7 +221,7 @@ impl Expr {
     fn contains_datetime_field(expr: &Expr) -> bool {
         let field = match expr.field {
             Some(ref field) => field.is_datetime_field(),
-            None => false
+            None => false,
         };
 
         if field {
@@ -230,7 +230,7 @@ impl Expr {
 
         let left = match expr.left {
             Some(ref left) => Self::contains_datetime_field(&left),
-            None => false
+            None => false,
         };
 
         left
@@ -247,7 +247,7 @@ impl Expr {
 
         let field = match expr.field {
             Some(ref field) => field.is_colorized_field(),
-            None => false
+            None => false,
         };
 
         if field {
@@ -256,7 +256,7 @@ impl Expr {
 
         let left = match expr.left {
             Some(ref left) => Self::contains_colorized_field(&left),
-            None => false
+            None => false,
         };
 
         left

@@ -5,18 +5,15 @@ pub const LINES_FORMATTER: FlatWriter = FlatWriter {
     line_separator: Some('\n'),
 };
 
-
 pub const LIST_FORMATTER: FlatWriter = FlatWriter {
     record_separator: '\0',
     line_separator: Some('\0'),
 };
 
-
 pub const TABS_FORMATTER: FlatWriter = FlatWriter {
     record_separator: '\t',
     line_separator: Some('\n'),
 };
-
 
 pub struct FlatWriter {
     record_separator: char,
@@ -35,7 +32,7 @@ impl ResultsFormatter for FlatWriter {
     fn format_element(&mut self, _: &str, record: &str, is_last: bool) -> Option<String> {
         match is_last {
             true => Some(format!("{}", record)),
-            false => Some(format!("{}{}", record, self.record_separator))
+            false => Some(format!("{}{}", record, self.record_separator)),
         }
     }
 
@@ -51,7 +48,7 @@ impl ResultsFormatter for FlatWriter {
 #[cfg(test)]
 mod test {
     #![allow(const_item_mutation)]
-    use crate::output::flat::{LIST_FORMATTER, LINES_FORMATTER, TABS_FORMATTER};
+    use crate::output::flat::{LINES_FORMATTER, LIST_FORMATTER, TABS_FORMATTER};
     use crate::output::test::write_test_items;
 
     #[test]

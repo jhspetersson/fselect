@@ -72,15 +72,17 @@ impl RootOptions {
     }
 
     #[cfg(test)]
-    pub fn from(min_depth: u32,
-                max_depth: u32,
-                archives: bool,
-                symlinks: bool,
-                gitignore: Option<bool>,
-                hgignore: Option<bool>,
-                dockerignore: Option<bool>,
-                traversal: TraversalMode,
-                regexp: bool) -> RootOptions {
+    pub fn from(
+        min_depth: u32,
+        max_depth: u32,
+        archives: bool,
+        symlinks: bool,
+        gitignore: Option<bool>,
+        hgignore: Option<bool>,
+        dockerignore: Option<bool>,
+        traversal: TraversalMode,
+        regexp: bool,
+    ) -> RootOptions {
         RootOptions {
             min_depth,
             max_depth,
@@ -97,10 +99,7 @@ impl RootOptions {
 
 impl Root {
     pub fn new(path: String, options: RootOptions) -> Root {
-        Root {
-            path,
-            options,
-        }
+        Root { path, options }
     }
 
     pub fn default(options: Option<RootOptions>) -> Root {

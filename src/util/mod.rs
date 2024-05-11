@@ -99,13 +99,7 @@ where
     where
         T: Ord,
     {
-        if self.values[i] < other.values[i] {
-            Ordering::Less
-        } else if self.values[i] > other.values[i] {
-            Ordering::Greater
-        } else {
-            Ordering::Equal
-        }
+        self.values[i].cmp(&other.values[i])
     }
 
     #[inline]
@@ -116,13 +110,7 @@ where
         let a = parse_filesize(&self.values[i].to_string()).unwrap_or(0);
         let b = parse_filesize(&other.values[i].to_string()).unwrap_or(0);
 
-        if a < b {
-            Ordering::Less
-        } else if a > b {
-            Ordering::Greater
-        } else {
-            Ordering::Equal
-        }
+        a.cmp(&b)
     }
 
     #[inline]
@@ -151,13 +139,7 @@ where
             .unwrap_or((default, default))
             .0;
 
-        if a < b {
-            Ordering::Less
-        } else if a > b {
-            Ordering::Greater
-        } else {
-            Ordering::Equal
-        }
+        a.cmp(&b)
     }
 }
 
@@ -278,10 +260,7 @@ pub fn parse_filesize(s: &str) -> Option<u64> {
         };
     }
 
-    return match string.parse::<u64>() {
-        Ok(size) => Some(size),
-        _ => None,
-    };
+    return string.parse::<u64>().ok();
 }
 
 lazy_static! {
@@ -295,18 +274,15 @@ pub fn format_filesize(size: u64, modifier: &str) -> String {
     let mut zeroes = -1;
     let mut space = false;
 
-    match FILE_SIZE_FORMAT_REGEX.captures(&modifier) {
-        Some(cap) => {
-            zeroes = cap
-                .name("zeroes")
-                .map_or(-1, |m| m.as_str().parse::<i32>().unwrap());
-            space = cap.name("space").map_or(false, |m| m.as_str() == " ");
-            modifier = cap
-                .name("units")
-                .map_or(String::from(""), |m| m.as_str().to_string());
-        }
-        _ => {}
-    };
+    if let Some(cap) = FILE_SIZE_FORMAT_REGEX.captures(&modifier) {
+        zeroes = cap
+            .name("zeroes")
+            .map_or(-1, |m| m.as_str().parse::<i32>().unwrap());
+        space = cap.name("space").map_or(false, |m| m.as_str() == " ");
+        modifier = cap
+            .name("units")
+            .map_or(String::from(""), |m| m.as_str().to_string());
+    }
 
     let fixed_at;
     let mut format;
@@ -496,13 +472,13 @@ pub fn canonical_path(path_buf: &PathBuf) -> Result<String, String> {
     match canonicalize(path_buf) {
         Ok(path) => Ok(format_absolute_path(&path)),
         Err(err) => match err.to_string().starts_with("Incorrect function.") {
-            true => Ok(format_absolute_path(&path_buf)),
+            true => Ok(format_absolute_path(path_buf)),
             _ => Err(err.to_string()),
         },
     }
 }
 
-pub fn format_absolute_path(path_buf: &PathBuf) -> String {
+pub fn format_absolute_path(path_buf: &Path) -> String {
     let path = format!("{}", path_buf.to_string_lossy());
 
     #[cfg(windows)]
@@ -602,7 +578,7 @@ pub fn get_exif_metadata(entry: &DirEntry) -> Option<HashMap<String, String>> {
 }
 
 fn parse_location_string(s: String, location_ref: String, modifier_value: &str) -> Result<f32, ()> {
-    let parts = s.split(";").map(|p| p.to_string()).collect::<Vec<String>>();
+    let parts = s.split(';').map(|p| p.to_string()).collect::<Vec<String>>();
     if parts.len() == 3 {
         let mut coord = parts[0].parse::<f32>().unwrap_or(0.0)
             + parts[1].parse::<f32>().unwrap_or(0.0) / 60.0
@@ -614,7 +590,7 @@ fn parse_location_string(s: String, location_ref: String, modifier_value: &str) 
         return Ok(coord);
     }
 
-    return Err(());
+    Err(())
 }
 
 pub fn is_shebang(path: &PathBuf) -> bool {
@@ -658,7 +634,7 @@ pub fn is_hidden(file_name: &str, metadata: &Option<Metadata>, archive_mode: boo
 }
 
 pub fn get_line_count(entry: &DirEntry) -> Option<usize> {
-    if let Ok(file) = File::open(&entry.path()) {
+    if let Ok(file) = File::open(entry.path()) {
         let mut reader = BufReader::with_capacity(1024 * 32, file);
         let mut count = 0;
 
@@ -669,7 +645,7 @@ pub fn get_line_count(entry: &DirEntry) -> Option<usize> {
                         break;
                     }
 
-                    count += bytecount::count(&buf, b'\n');
+                    count += bytecount::count(buf, b'\n');
                     buf.len()
                 } else {
                     return None;
@@ -686,7 +662,7 @@ pub fn get_line_count(entry: &DirEntry) -> Option<usize> {
 }
 
 pub fn get_sha1_file_hash(entry: &DirEntry) -> String {
-    if let Ok(mut file) = File::open(&entry.path()) {
+    if let Ok(mut file) = File::open(entry.path()) {
         let mut hasher = sha1::Sha1::new();
         if io::copy(&mut file, &mut hasher).is_ok() {
             let hash = hasher.finalize();
@@ -698,7 +674,7 @@ pub fn get_sha1_file_hash(entry: &DirEntry) -> String {
 }
 
 pub fn get_sha256_file_hash(entry: &DirEntry) -> String {
-    if let Ok(mut file) = File::open(&entry.path()) {
+    if let Ok(mut file) = File::open(entry.path()) {
         let mut hasher = sha2::Sha256::new();
         if io::copy(&mut file, &mut hasher).is_ok() {
             let hash = hasher.finalize();
@@ -710,7 +686,7 @@ pub fn get_sha256_file_hash(entry: &DirEntry) -> String {
 }
 
 pub fn get_sha512_file_hash(entry: &DirEntry) -> String {
-    if let Ok(mut file) = File::open(&entry.path()) {
+    if let Ok(mut file) = File::open(entry.path()) {
         let mut hasher = sha2::Sha512::new();
         if io::copy(&mut file, &mut hasher).is_ok() {
             let hash = hasher.finalize();
@@ -722,7 +698,7 @@ pub fn get_sha512_file_hash(entry: &DirEntry) -> String {
 }
 
 pub fn get_sha3_512_file_hash(entry: &DirEntry) -> String {
-    if let Ok(mut file) = File::open(&entry.path()) {
+    if let Ok(mut file) = File::open(entry.path()) {
         let mut hasher = sha3::Sha3_512::new();
         if io::copy(&mut file, &mut hasher).is_ok() {
             let hash = hasher.finalize();
@@ -734,7 +710,7 @@ pub fn get_sha3_512_file_hash(entry: &DirEntry) -> String {
 }
 
 pub fn is_dir_empty(entry: &DirEntry) -> Option<bool> {
-    match fs::read_dir(&entry.path()) {
+    match fs::read_dir(entry.path()) {
         Ok(dir) => Some(!dir.into_iter().any(|_| true)),
         _ => None,
     }

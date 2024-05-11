@@ -168,6 +168,6 @@ mod tests {
     fn default_config() {
         let config = Config::default();
 
-        assert!(config.is_source.contains(&String::from(".rs")));
+        assert!(config.is_source.unwrap().contains(&String::from(".rs")));
     }
 }

@@ -53,7 +53,7 @@ impl ResultsWriter {
         self.write_row_start(writer)?;
         let len = values.len();
         for (pos, (name, value)) in values.iter().enumerate() {
-            self.write_row_item(writer, &name, &value, pos == len - 1)?;
+            self.write_row_item(writer, name, value, pos == len - 1)?;
         }
         self.write_row_end(writer)
     }
@@ -93,8 +93,8 @@ fn select_formatter(format: &OutputFormat) -> Box<dyn ResultsFormatter> {
         OutputFormat::Tabs => Box::new(TABS_FORMATTER),
         OutputFormat::Lines => Box::new(LINES_FORMATTER),
         OutputFormat::List => Box::new(LIST_FORMATTER),
-        OutputFormat::Csv => Box::new(CsvFormatter::default()),
-        OutputFormat::Json => Box::new(JsonFormatter::default()),
+        OutputFormat::Csv => Box::<CsvFormatter>::default(),
+        OutputFormat::Json => Box::<JsonFormatter>::default(),
         OutputFormat::Html => Box::new(HtmlFormatter),
     }
 }

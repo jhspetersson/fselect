@@ -31,7 +31,7 @@ impl ResultsFormatter for FlatWriter {
 
     fn format_element(&mut self, _: &str, record: &str, is_last: bool) -> Option<String> {
         match is_last {
-            true => Some(format!("{}", record)),
+            true => Some(record.to_string()),
             false => Some(format!("{}{}", record, self.record_separator)),
         }
     }

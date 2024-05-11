@@ -801,6 +801,16 @@ pub fn get_value(
     }
 }
 
+/// Retrieves an aggregated value from a data buffer based on the specified function and key.
+///
+/// Args:
+///   function: Optional specification of which aggregate function to apply.
+///   raw_output_buffer: A vector of hashmaps, where each hashmap contains string key-value pairs.
+///   buffer_key: The key to look up in each hashmap of the buffer.
+///   default_value: An optional default value to return if the function is not specified.
+///
+/// Returns:
+///   A string representation of the aggregate value computed or the default value if no function is provided.
 pub fn get_aggregate_value(
     function: &Option<Function>,
     raw_output_buffer: &Vec<HashMap<String, String>>,
@@ -808,38 +818,29 @@ pub fn get_aggregate_value(
     default_value: &Option<String>,
 ) -> String {
     match function {
+        // Minimum value in the buffer
         Some(Function::Min) => {
-            let mut min = -1;
-            for value in raw_output_buffer {
-                if let Some(value) = value.get(&buffer_key) {
-                    if let Ok(value) = value.parse::<i64>() {
-                        if min == -1 || value < min {
-                            min = value;
-                        }
-                    }
-                }
-            }
+            let min = raw_output_buffer
+                .iter()
+                .filter_map(|item| item.get(&buffer_key)) // Get the value from the buffer
+                .filter_map(|value| value.parse::<i64>().ok()) // Parse the value and filter out errors
+                .min()
+                .unwrap_or(0); // If no items were found
 
-            if min == -1 {
-                min = 0;
-            }
-
-            return min.to_string();
+            min.to_string()
         }
+        // Maximum value in the buffer
         Some(Function::Max) => {
-            let mut max = 0;
-            for value in raw_output_buffer {
-                if let Some(value) = value.get(&buffer_key) {
-                    if let Ok(value) = value.parse::<usize>() {
-                        if value > max {
-                            max = value;
-                        }
-                    }
-                }
-            }
+            let max = raw_output_buffer
+                .iter()
+                .filter_map(|item| item.get(&buffer_key)) // Get the values from the buffer
+                .filter_map(|value| value.parse::<i64>().ok()) // Parse the value and filter out errors
+                .max()
+                .unwrap_or(0); // If no items were found
 
-            return max.to_string();
+            max.to_string()
         }
+        // Average of all elements in the buffer
         Some(Function::Avg) => {
             if raw_output_buffer.is_empty() {
                 return String::from("0");
@@ -847,10 +848,11 @@ pub fn get_aggregate_value(
 
             get_mean(raw_output_buffer, &buffer_key).to_string()
         }
+        // Sum of all elements in the buffer
         Some(Function::Sum) => get_buffer_sum(raw_output_buffer, &buffer_key).to_string(),
-        Some(Function::Count) => {
-            return raw_output_buffer.len().to_string();
-        }
+        // Count the number of elements in the buffer
+        Some(Function::Count) => raw_output_buffer.len().to_string(),
+        // Standard deviation population
         Some(Function::StdDevPop) => {
             if raw_output_buffer.is_empty() {
                 return String::new();
@@ -860,8 +862,9 @@ pub fn get_aggregate_value(
             let variance = get_variance(raw_output_buffer, &buffer_key, n);
             let result = variance.sqrt();
 
-            return result.to_string();
+            result.to_string()
         }
+        // Standard deviation sample
         Some(Function::StdDevSamp) => {
             if raw_output_buffer.is_empty() {
                 return String::new();
@@ -872,8 +875,9 @@ pub fn get_aggregate_value(
             let variance = get_variance(raw_output_buffer, &buffer_key, n);
             let result = variance.sqrt();
 
-            return result.to_string();
+            result.to_string()
         }
+        // Variance population
         Some(Function::VarPop) => {
             if raw_output_buffer.is_empty() {
                 return String::new();
@@ -882,8 +886,9 @@ pub fn get_aggregate_value(
             let n = raw_output_buffer.len();
             let variance = get_variance(raw_output_buffer, &buffer_key, n);
 
-            return variance.to_string();
+            variance.to_string()
         }
+        // Variance sample
         Some(Function::VarSamp) => {
             if raw_output_buffer.is_empty() {
                 return String::new();
@@ -893,16 +898,20 @@ pub fn get_aggregate_value(
             let n = if size == 1 { 1 } else { size - 1 };
             let variance = get_variance(raw_output_buffer, &buffer_key, n);
 
-            return variance.to_string();
+            variance.to_string()
         }
 
+        // If no function is specified, return the default value
+        // If no default value was specified, return an empty string
         _ => match &default_value {
-            Some(val) => return val.to_owned(),
-            _ => return String::new(),
+            Some(val) => val.to_owned(),
+            _ => String::new(),
         },
     }
 }
 
+/// Get the variance of all values in the buffer, based on the buffer key.
+/// If the value can't be parsed as usize, it will be ignored.
 fn get_variance(
     raw_output_buffer: &Vec<HashMap<String, String>>,
     buffer_key: &String,
@@ -922,6 +931,8 @@ fn get_variance(
     result
 }
 
+/// Get the mean of all values in the buffer, based on the buffer key.
+/// If the value can't be parsed as usize, it will be ignored.
 fn get_mean(raw_output_buffer: &Vec<HashMap<String, String>>, buffer_key: &String) -> f64 {
     let sum = get_buffer_sum(raw_output_buffer, buffer_key);
     let size = raw_output_buffer.len();
@@ -929,6 +940,8 @@ fn get_mean(raw_output_buffer: &Vec<HashMap<String, String>>, buffer_key: &Strin
     (sum / size) as f64
 }
 
+/// Get the sum of all values in the buffer, based on the buffer key.
+/// If the value can't be parsed as usize, it will be ignored.
 fn get_buffer_sum(raw_output_buffer: &Vec<HashMap<String, String>>, buffer_key: &String) -> usize {
     let mut sum = 0;
     for value in raw_output_buffer {

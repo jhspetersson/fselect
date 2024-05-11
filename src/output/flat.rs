@@ -1,3 +1,5 @@
+//! Handles export of results in line-separated, list-separated, and tab-separated formats
+
 use crate::output::ResultsFormatter;
 
 pub const LINES_FORMATTER: FlatWriter = FlatWriter {

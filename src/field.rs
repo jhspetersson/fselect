@@ -1,3 +1,5 @@
+//! Defines the various fields available in the query language
+
 use std::fmt::Display;
 use std::fmt::Error;
 use std::fmt::Formatter;

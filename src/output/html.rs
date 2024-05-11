@@ -1,3 +1,5 @@
+//! Handles export of results in HTML format
+
 use crate::output::ResultsFormatter;
 
 pub struct HtmlFormatter;

@@ -1,3 +1,6 @@
+//! Defines the query struct and related types.
+//! Query parsing is handled in the `parser` module
+
 use std::collections::HashSet;
 use std::rc::Rc;
 

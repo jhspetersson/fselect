@@ -1,3 +1,6 @@
+//! The entry point of the program
+//! Handles the command line arguments parsing
+
 #[macro_use]
 extern crate lazy_static;
 #[macro_use]

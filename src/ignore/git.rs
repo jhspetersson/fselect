@@ -1,3 +1,5 @@
+//! Handles .gitignore parsing
+
 use std::collections::HashMap;
 use std::fs::File;
 use std::ops::Add;

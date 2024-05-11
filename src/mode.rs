@@ -1,3 +1,5 @@
+//! This module contains functions for working with file modes / permissions
+
 use std::fs::Metadata;
 #[cfg(unix)]
 use std::os::unix::fs::MetadataExt;

@@ -1,3 +1,6 @@
+//! Functions for processing values in the query language.
+//! This module contains both the regular and aggregate functions used in the query language.
+
 use std::collections::HashMap;
 use std::fmt::Display;
 use std::fmt::Error;

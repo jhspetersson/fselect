@@ -1,3 +1,5 @@
+//! Defines the arithmetic operators used in the query language
+
 use crate::function::Variant;
 
 #[derive(Debug, Clone, Eq, Hash, PartialEq, PartialOrd, Serialize)]

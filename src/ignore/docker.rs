@@ -1,3 +1,5 @@
+//! Handles .dockerignore parsing
+
 use std::fs::File;
 use std::io::BufRead;
 use std::io::BufReader;

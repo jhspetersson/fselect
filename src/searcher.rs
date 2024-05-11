@@ -1,3 +1,5 @@
+//! Handles directory traversal and file processing.
+
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs;
 #[cfg(unix)]

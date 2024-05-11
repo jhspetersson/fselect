@@ -1,3 +1,5 @@
+//! Handles the parsing of the query string
+
 use std::rc::Rc;
 use std::str::FromStr;
 

@@ -1,3 +1,5 @@
+//! Lexer to tokenizes SQL-like syntax into lexems
+
 use std::str::FromStr;
 
 use regex::Regex;

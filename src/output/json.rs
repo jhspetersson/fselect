@@ -1,3 +1,5 @@
+//! Handles export of results in JSON format
+
 use crate::output::ResultsFormatter;
 use std::collections::BTreeMap;
 

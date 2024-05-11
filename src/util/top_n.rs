@@ -29,7 +29,7 @@ impl<K: Ord, V> TopN<K, V> {
         K: Clone,
     {
         self.count += 1;
-        self.echelons.entry(k).or_insert(Vec::new()).push(v);
+        self.echelons.entry(k).or_default().push(v);
 
         if let Some(limit) = self.limit {
             if limit < self.count {

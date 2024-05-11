@@ -206,12 +206,10 @@ impl Expr {
             return true;
         }
 
-        let left = match expr.left {
-            Some(ref left) => Self::contains_numeric_field(&left),
+        match expr.left {
+            Some(ref left) => Self::contains_numeric_field(left),
             None => false,
-        };
-
-        left
+        }
     }
 
     pub fn contains_datetime(&self) -> bool {
@@ -228,12 +226,10 @@ impl Expr {
             return true;
         }
 
-        let left = match expr.left {
-            Some(ref left) => Self::contains_datetime_field(&left),
+        match expr.left {
+            Some(ref left) => Self::contains_datetime_field(left),
             None => false,
-        };
-
-        left
+        }
     }
 
     pub fn contains_colorized(&self) -> bool {
@@ -254,12 +250,10 @@ impl Expr {
             return true;
         }
 
-        let left = match expr.left {
-            Some(ref left) => Self::contains_colorized_field(&left),
+        match expr.left {
+            Some(ref left) => Self::contains_colorized_field(left),
             None => false,
-        };
-
-        left
+        }
     }
 }
 
@@ -287,7 +281,7 @@ impl Display for Expr {
         }
 
         if let Some(ref val) = self.val {
-            fmt.write_str(&val)?;
+            fmt.write_str(val)?;
         }
 
         if let Some(ref right) = self.right {

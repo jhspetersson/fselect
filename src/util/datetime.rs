@@ -106,21 +106,20 @@ pub fn parse_datetime(s: &str) -> Result<(NaiveDateTime, NaiveDateTime), String>
                 match parse_date_string(s, Local::now(), Dialect::Uk) {
                     Ok(date_time) => {
                         let date_time = date_time.naive_local();
-                        let finish;
-                        if date_time.hour() == 0
+                        let finish = if date_time.hour() == 0
                             && date_time.minute() == 0
                             && date_time.second() == 0
                         {
-                            finish = date_time
+                            date_time
                                 .with_hour(23)
                                 .unwrap()
                                 .with_minute(59)
                                 .unwrap()
                                 .with_second(59)
-                                .unwrap();
+                                .unwrap()
                         } else {
-                            finish = date_time;
-                        }
+                            date_time
+                        };
 
                         Ok((date_time, finish))
                     }

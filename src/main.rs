@@ -52,7 +52,7 @@ fn main() -> ExitCode {
         }
     };
 
-    let env_var_value = std::env::var("NO_COLOR").ok().unwrap_or(String::new());
+    let env_var_value = std::env::var("NO_COLOR").ok().unwrap_or_default();
     let env_no_color = str_to_bool(&env_var_value).unwrap_or(false);
     let mut no_color = env_no_color || config.no_color.unwrap_or(false);
 
@@ -230,7 +230,7 @@ fn exec_search(query: String, config: &mut Config, default_config: &Config, no_c
 }
 
 fn short_usage_info(no_color: bool) {
-    const VERSION: &'static str = env!("CARGO_PKG_VERSION");
+    const VERSION: &str = env!("CARGO_PKG_VERSION");
 
     print!("fselect ");
 

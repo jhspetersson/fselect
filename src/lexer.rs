@@ -52,14 +52,14 @@ pub struct Lexer<'a> {
 
 impl<'a> Lexer<'a> {
     pub fn new(input: &str) -> Lexer {
-        return Lexer {
+        Lexer {
             input,
             index: 0,
             before_from: true,
             after_open: false,
             after_where: false,
             after_operator: false,
-        };
+        }
     }
 
     pub fn next_lexem(&mut self) -> Option<Lexem> {
@@ -129,11 +129,7 @@ impl<'a> Lexer<'a> {
                         }
                     }
 
-                    if mode == LexingMode::Open {
-                        self.after_open = true;
-                    } else {
-                        self.after_open = false;
-                    }
+                    self.after_open = (mode == LexingMode::Open);
                 }
             }
         }
@@ -230,7 +226,7 @@ fn looks_like_date(s: &str) -> bool {
         Some(cap) => {
             let year = cap[1].parse::<i32>();
             let year_ok = match year {
-                Ok(year) => year >= 1970 && year < 3000, // optimistic assumption
+                Ok(year) => (1970..3000).contains(&year), // optimistic assumption
                 _ => false,
             };
 
@@ -241,12 +237,11 @@ fn looks_like_date(s: &str) -> bool {
             match cap.get(2) {
                 Some(month) => {
                     let month = month.as_str().parse::<i32>();
-                    let month_ok = match month {
-                        Ok(month) => month >= 1 && month <= 12,
-                        _ => false,
-                    };
 
-                    month_ok
+                    match month {
+                        Ok(month) => (1..=12).contains(&month),
+                        _ => false,
+                    }
                 }
                 _ => true,
             }

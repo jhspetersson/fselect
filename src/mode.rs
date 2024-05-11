@@ -68,12 +68,10 @@ fn get_mode_unix(mode: u32) -> String {
         } else {
             s.push('x')
         }
+    } else if mode_suid(mode) {
+        s.push('S')
     } else {
-        if mode_suid(mode) {
-            s.push('S')
-        } else {
-            s.push('-')
-        }
+        s.push('-')
     }
 
     // group
@@ -96,12 +94,10 @@ fn get_mode_unix(mode: u32) -> String {
         } else {
             s.push('x')
         }
+    } else if mode_sgid(mode) {
+        s.push('S')
     } else {
-        if mode_sgid(mode) {
-            s.push('S')
-        } else {
-            s.push('-')
-        }
+        s.push('-')
     }
 
     // other
@@ -124,12 +120,10 @@ fn get_mode_unix(mode: u32) -> String {
         } else {
             s.push('x')
         }
+    } else if mode_sticky(mode) {
+        s.push('T')
     } else {
-        if mode_sticky(mode) {
-            s.push('T')
-        } else {
-            s.push('-')
-        }
+        s.push('-')
     }
 
     s

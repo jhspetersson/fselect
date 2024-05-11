@@ -102,6 +102,6 @@ impl ArithmeticOp {
             ArithmeticOp::Modulo => left.to_float() % right.to_float(),
         };
 
-        return Variant::from_float(result);
+        Variant::from_float(result)
     }
 }

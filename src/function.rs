@@ -460,6 +460,7 @@ impl Serialize for Function {
 }
 
 impl Function {
+    /// Check if the function is an aggregate function
     pub fn is_aggregate_function(&self) -> bool {
         matches!(
             self,
@@ -475,6 +476,7 @@ impl Function {
         )
     }
 
+    /// Check if the function is a numeric function, i.e. it returns a numeric value.
     pub fn is_numeric_function(&self) -> bool {
         if self.is_aggregate_function() {
             return true;
@@ -492,6 +494,7 @@ impl Function {
         )
     }
 
+    /// Check if the function is a boolean function, i.e. it returns a boolean value.
     pub fn is_boolean_function(&self) -> bool {
         #[cfg(unix)]
         if self == &Function::HasXattr {

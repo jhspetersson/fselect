@@ -234,6 +234,7 @@ impl<'a> Searcher<'a> {
         self.query.has_aggregate_column()
     }
 
+    /// Searches directories based on configured query and outputs results to stdout.
     pub fn list_search_results(&mut self) -> io::Result<()> {
         let current_dir = std::env::current_dir().unwrap();
 
@@ -245,12 +246,15 @@ impl<'a> Searcher<'a> {
 
         let mut roots = vec![];
 
+        // ======== Process each root specified in the query =========
         for root in &self.query.roots {
             if root.options.regexp {
                 let mut ext_roots: Vec<String> = vec![];
+                // Split the path into parts to process each segment as a regex
                 let parts = root.path.split('/').collect::<Vec<&str>>();
                 for part in parts {
                     if looks_like_regexp(part) {
+                        // Create a regex from the part
                         let rx_string = format!("^{}$", part);
                         let rx = Regex::new(&rx_string).unwrap();
                         let mut tmp = vec![];
@@ -264,6 +268,7 @@ impl<'a> Searcher<'a> {
                             }
                         }
 
+                        // Read the directory and filter entries matching the regex
                         for root in &ext_roots {
                             let mut start_from_rx_dir = false;
 
@@ -276,32 +281,24 @@ impl<'a> Searcher<'a> {
 
                             match path.read_dir() {
                                 Ok(read_result) => {
-                                    for entry in read_result {
-                                        if let Ok(entry) = entry {
-                                            if let Ok(file_type) = entry.file_type() {
-                                                if file_type.is_dir() {
-                                                    if rx.is_match(
+                                    for entry in read_result.flatten() {
+                                        if let Ok(file_type) = entry.file_type() {
+                                            if file_type.is_dir()
+                                                && rx.is_match(
+                                                    entry.file_name().to_string_lossy().as_ref(),
+                                                )
+                                            {
+                                                if start_from_rx_dir {
+                                                    tmp.push(
                                                         entry
                                                             .file_name()
                                                             .to_string_lossy()
-                                                            .as_ref(),
-                                                    ) {
-                                                        if start_from_rx_dir {
-                                                            tmp.push(
-                                                                entry
-                                                                    .file_name()
-                                                                    .to_string_lossy()
-                                                                    .to_string(),
-                                                            );
-                                                        } else {
-                                                            tmp.push(
-                                                                entry
-                                                                    .path()
-                                                                    .to_string_lossy()
-                                                                    .to_string(),
-                                                            );
-                                                        }
-                                                    }
+                                                            .to_string(),
+                                                    );
+                                                } else {
+                                                    tmp.push(
+                                                        entry.path().to_string_lossy().to_string(),
+                                                    );
                                                 }
                                             }
                                         }
@@ -309,25 +306,23 @@ impl<'a> Searcher<'a> {
                                 }
                                 Err(e) => {
                                     self.error_count += 1;
-                                    path_error_message(&path, e)
+                                    path_error_message(path, e)
                                 }
                             }
                         }
 
                         ext_roots.clear();
                         ext_roots.append(&mut tmp);
+                    } else if ext_roots.is_empty() {
+                        ext_roots.push(part.to_string());
                     } else {
-                        if ext_roots.is_empty() {
-                            ext_roots.push(part.to_string());
-                        } else {
-                            //update all roots
-                            let mut new_roots = ext_roots
-                                .iter()
-                                .map(|root| root.to_string() + "/" + part)
-                                .collect::<Vec<String>>();
-                            ext_roots.clear();
-                            ext_roots.append(&mut new_roots);
-                        }
+                        //update all roots
+                        let mut new_roots = ext_roots
+                            .iter()
+                            .map(|root| root.to_string() + "/" + part)
+                            .collect::<Vec<String>>();
+                        ext_roots.clear();
+                        ext_roots.append(&mut new_roots);
                     }
                 }
 
@@ -335,10 +330,12 @@ impl<'a> Searcher<'a> {
                     roots.push(Root::clone_with_path(ext_root.to_string(), root.clone()))
                 });
             } else {
+                // The root is not a regular expression
                 roots.push(root.clone());
             }
         }
 
+        // ======== Explore each root =========
         for root in roots {
             self.current_follow_symlinks = root.options.symlinks;
 
@@ -360,16 +357,17 @@ impl<'a> Searcher<'a> {
                 .unwrap_or(self.config.dockerignore.unwrap_or(false));
             let traversal_mode = root.options.traversal;
 
+            // Apply filters
             if apply_gitignore {
-                search_upstream_gitignore(&mut self.gitignore_map, &root_dir);
+                search_upstream_gitignore(&mut self.gitignore_map, root_dir);
             }
 
             if apply_hgignore {
-                search_upstream_hgignore(&mut self.hgignore_filters, &root_dir);
+                search_upstream_hgignore(&mut self.hgignore_filters, root_dir);
             }
 
             if apply_dockerignore {
-                search_upstream_dockerignore(&mut self.dockerignore_filters, &root_dir);
+                search_upstream_dockerignore(&mut self.dockerignore_filters, root_dir);
             }
 
             self.dir_queue.clear();
@@ -399,6 +397,7 @@ impl<'a> Searcher<'a> {
             );
         }
 
+        // ======== Compute results =========
         if self.has_aggregate_column() {
             if !self.query.grouping_fields.is_empty() {
                 if self.partitioned_output_buffer.is_empty() {
@@ -473,14 +472,12 @@ impl<'a> Searcher<'a> {
             for piece in self.output_buffer.values() {
                 if first {
                     first = false;
-                } else {
-                    if let Err(e) = self
-                        .results_writer
-                        .write_row_separator(&mut std::io::stdout())
-                    {
-                        if e.kind() == ErrorKind::BrokenPipe {
-                            return Ok(());
-                        }
+                } else if let Err(e) = self
+                    .results_writer
+                    .write_row_separator(&mut std::io::stdout())
+                {
+                    if e.kind() == ErrorKind::BrokenPipe {
+                        return Ok(());
                     }
                 }
                 if let Err(e) = write!(std::io::stdout(), "{}", piece) {

@@ -1,14 +1,14 @@
 use std::io;
 
-mod mp4;
-mod mkv;
 mod image;
+mod mkv;
+mod mp4;
 mod svg;
 
-use mp4::Mp4DimensionsExtractor;
-use mkv::MkvDimensionsExtractor;
-use image::ImageDimensionsExtractor;
 use self::svg::SvgDimensionsExtractor;
+use image::ImageDimensionsExtractor;
+use mkv::MkvDimensionsExtractor;
+use mp4::Mp4DimensionsExtractor;
 use std::path::Path;
 
 #[derive(PartialEq, Eq, Clone, Debug)]
@@ -33,21 +33,25 @@ pub fn get_dimensions<T: AsRef<Path>>(path: T) -> Option<Dimensions> {
     let path_ref = path.as_ref();
     let extension = path_ref.extension()?.to_str()?;
 
-    EXTRACTORS.iter()
+    EXTRACTORS
+        .iter()
         .find(|extractor| extractor.supports_ext(&extension.to_lowercase()))
         .and_then(|extractor| extractor.try_read_dimensions(path_ref).unwrap_or_default())
 }
-
 
 #[cfg(test)]
 mod test {
     use crate::util::dimensions::DimensionsExtractor;
     use crate::util::Dimensions;
-    use std::path::PathBuf;
     use std::error::Error;
     use std::ffi::OsStr;
+    use std::path::PathBuf;
 
-    pub(crate) fn test_successful<T: DimensionsExtractor>(under_test: T, test_res_path: &str, expected: Option<Dimensions>) -> Result<(), Box<dyn Error>> {
+    pub(crate) fn test_successful<T: DimensionsExtractor>(
+        under_test: T,
+        test_res_path: &str,
+        expected: Option<Dimensions>,
+    ) -> Result<(), Box<dyn Error>> {
         let path_string = std::env::var("CARGO_MANIFEST_DIR")? + "/resources/test/" + test_res_path;
         let path = PathBuf::from(path_string);
         assert!(under_test.supports_ext(path.extension().and_then(OsStr::to_str).unwrap()));
@@ -56,15 +60,16 @@ mod test {
         Ok(())
     }
 
-    pub(crate) fn test_fail<T: DimensionsExtractor>(under_test: T, test_res_path: &str, expected: std::io::ErrorKind) -> Result<(), Box<dyn Error>> {
+    pub(crate) fn test_fail<T: DimensionsExtractor>(
+        under_test: T,
+        test_res_path: &str,
+        expected: std::io::ErrorKind,
+    ) -> Result<(), Box<dyn Error>> {
         let path_string = std::env::var("CARGO_MANIFEST_DIR")? + "/resources/test/" + test_res_path;
         let path = PathBuf::from(path_string);
         assert!(under_test.supports_ext(path.extension().and_then(OsStr::to_str).unwrap()));
         let result = under_test.try_read_dimensions(&path);
-        assert_eq!(
-            result.map_err(|err| err.kind()),
-            Err(expected)
-        );
+        assert_eq!(result.map_err(|err| err.kind()), Err(expected));
 
         Ok(())
     }

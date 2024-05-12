@@ -1,3 +1,5 @@
+//! Handles .dockerignore parsing
+
 use std::fs::File;
 use std::io::BufRead;
 use std::io::BufReader;
@@ -19,13 +21,14 @@ pub struct DockerignoreFilter {
 
 impl DockerignoreFilter {
     fn new(regex: Regex, negate: bool) -> DockerignoreFilter {
-        DockerignoreFilter {
-            regex, negate
-        }
+        DockerignoreFilter { regex, negate }
     }
 }
 
-pub fn search_upstream_dockerignore(dockerignore_filters: &mut Vec<DockerignoreFilter>, dir: &Path) {
+pub fn search_upstream_dockerignore(
+    dockerignore_filters: &mut Vec<DockerignoreFilter>,
+    dir: &Path,
+) {
     if let Ok(canonical_path) = crate::util::canonical_path(&dir.to_path_buf()) {
         let mut path = std::path::PathBuf::from(canonical_path);
 
@@ -53,7 +56,7 @@ fn update_dockerignore_filters(dockerignore_filters: &mut Vec<DockerignoreFilter
         match regexes {
             Ok(ref regexes) => {
                 dockerignore_filters.append(&mut regexes.clone());
-            },
+            }
             Err(err) => {
                 eprintln!("{}: {}", path.to_string_lossy(), err);
             }
@@ -61,7 +64,10 @@ fn update_dockerignore_filters(dockerignore_filters: &mut Vec<DockerignoreFilter
     }
 }
 
-pub fn matches_dockerignore_filter(dockerignore_filters: &Vec<DockerignoreFilter>, file_name: &str) -> bool {
+pub fn matches_dockerignore_filter(
+    dockerignore_filters: &Vec<DockerignoreFilter>,
+    file_name: &str,
+) -> bool {
     let mut matched = false;
 
     let file_name = file_name.to_string().replace("\\", "/").replace("//", "/");
@@ -81,30 +87,29 @@ pub fn matches_dockerignore_filter(dockerignore_filters: &Vec<DockerignoreFilter
     matched
 }
 
-fn parse_dockerignore(file_path: &Path, dir_path: &Path) -> Result<Vec<DockerignoreFilter>, String> {
+fn parse_dockerignore(
+    file_path: &Path,
+    dir_path: &Path,
+) -> Result<Vec<DockerignoreFilter>, String> {
     let mut result = vec![];
     let mut err = String::new();
 
     if let Ok(file) = File::open(file_path) {
         let reader = BufReader::new(file);
-        reader.lines()
-            .filter(|line| {
-                match line {
-                    Ok(line) => !line.trim().is_empty() && !line.starts_with("#"),
-                    _ => false
-                }
+        reader
+            .lines()
+            .filter(|line| match line {
+                Ok(line) => !line.trim().is_empty() && !line.starts_with("#"),
+                _ => false,
             })
             .for_each(|line| {
                 if err.is_empty() {
-                    match line {
-                        Ok(line) => {
-                            let pattern = convert_dockerignore_pattern(&line, dir_path);
-                            match pattern {
-                                Ok(pattern) => result.push(pattern),
-                                Err(parse_err) => err = parse_err
-                            }
-                        },
-                        _ => { }
+                    if let Ok(line) = line {
+                        let pattern = convert_dockerignore_pattern(&line, dir_path);
+                        match pattern {
+                            Ok(pattern) => result.push(pattern),
+                            Err(parse_err) => err = parse_err,
+                        }
                     }
                 }
             });
@@ -112,11 +117,14 @@ fn parse_dockerignore(file_path: &Path, dir_path: &Path) -> Result<Vec<Dockerign
 
     match err.is_empty() {
         true => Ok(result),
-        false => Err(err)
+        false => Err(err),
     }
 }
 
-fn convert_dockerignore_pattern(pattern: &str, file_path: &Path) -> Result<DockerignoreFilter, String> {
+fn convert_dockerignore_pattern(
+    pattern: &str,
+    file_path: &Path,
+) -> Result<DockerignoreFilter, String> {
     let mut pattern = String::from(pattern);
 
     let mut negate = false;
@@ -127,7 +135,9 @@ fn convert_dockerignore_pattern(pattern: &str, file_path: &Path) -> Result<Docke
 
     match convert_dockerignore_glob(&pattern, file_path) {
         Ok(regex) => Ok(DockerignoreFilter::new(regex, negate)),
-        _ => Err("Error creating regex while parsing .dockerignore glob: ".to_string().add(&pattern))
+        _ => Err("Error creating regex while parsing .dockerignore glob: "
+            .to_string()
+            .add(&pattern)),
     }
 }
 
@@ -136,30 +146,34 @@ lazy_static! {
 }
 
 fn convert_dockerignore_glob(glob: &str, file_path: &Path) -> Result<Regex, Error> {
-    let mut pattern = DOCKER_CONVERT_REPLACE_REGEX.replace_all(&glob, |c: &Captures| {
-        match c.index(0) {
-            "**" => ".*",
-            "." => "\\.",
-            "*" => "[^/]*",
-            "?" => "[^/]",
-            _ => error_exit(".dockerignore", "Error parsing pattern")
-        }.to_string()
-    }).to_string();
+    let mut pattern = DOCKER_CONVERT_REPLACE_REGEX
+        .replace_all(glob, |c: &Captures| {
+            match c.index(0) {
+                "**" => ".*",
+                "." => "\\.",
+                "*" => "[^/]*",
+                "?" => "[^/]",
+                _ => error_exit(".dockerignore", "Error parsing pattern"),
+            }
+            .to_string()
+        })
+        .to_string();
 
     while pattern.starts_with("/") || pattern.starts_with("\\") {
         pattern.remove(0);
     }
 
     #[cfg(windows)]
-    let path = file_path.to_string_lossy().to_string()
-        .replace("\\", "/").replace("//", "/");
+    let path = file_path
+        .to_string_lossy()
+        .to_string()
+        .replace("\\", "/")
+        .replace("//", "/");
 
     #[cfg(not(windows))]
     let path = file_path.to_string_lossy().to_string();
 
-    pattern = path
-        .replace("\\", "\\\\")
-        .add("/([^/]+/)*").add(&pattern);
+    pattern = path.replace("\\", "\\\\").add("/([^/]+/)*").add(&pattern);
 
     Regex::new(&pattern)
 }

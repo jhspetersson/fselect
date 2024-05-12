@@ -12,6 +12,6 @@ pub fn to_file_info(zipped_file: &zip::read::ZipFile) -> FileInfo {
         name: zipped_file.name().to_string(),
         size: zipped_file.size(),
         mode: zipped_file.unix_mode(),
-        modified: zipped_file.last_modified()
+        modified: zipped_file.last_modified(),
     }
 }

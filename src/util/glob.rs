@@ -23,8 +23,9 @@ pub fn convert_glob_to_pattern(s: &str) -> String {
             ")" => "\\)",
             "^" => "\\^",
             "$" => "\\$",
-            _ => error_exit("Error parsing glob expression", s)
-        }.to_string()
+            _ => error_exit("Error parsing glob expression", s),
+        }
+        .to_string()
     });
 
     format!("^(?i){}$", string)
@@ -46,8 +47,9 @@ pub fn convert_like_to_pattern(s: &str) -> String {
             ")" => "\\)",
             "^" => "\\^",
             "$" => "\\$",
-            _ => error_exit("Error parsing LIKE expression", s)
-        }.to_string()
+            _ => error_exit("Error parsing LIKE expression", s),
+        }
+        .to_string()
     });
 
     format!("^(?i){}$", string)

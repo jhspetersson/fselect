@@ -1,3 +1,5 @@
+//! Handles export of results in HTML format
+
 use crate::output::ResultsFormatter;
 
 pub struct HtmlFormatter;
@@ -28,7 +30,6 @@ impl ResultsFormatter for HtmlFormatter {
 mod test {
     use crate::output::html::HtmlFormatter;
     use crate::output::test::write_test_items;
-
 
     #[test]
     fn test() {

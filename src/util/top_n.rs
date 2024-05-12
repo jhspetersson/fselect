@@ -7,13 +7,12 @@ pub struct TopN<K: Ord, V> {
 }
 
 impl<K: Ord, V> TopN<K, V> {
-
     pub fn new(limit: u32) -> TopN<K, V> {
         debug_assert_ne!(limit, 0);
         TopN {
             limit: Some(limit),
             count: 0,
-            echelons: BTreeMap::new()
+            echelons: BTreeMap::new(),
         }
     }
 
@@ -21,13 +20,16 @@ impl<K: Ord, V> TopN<K, V> {
         TopN {
             limit: None,
             count: 0,
-            echelons: BTreeMap::new()
+            echelons: BTreeMap::new(),
         }
     }
 
-    pub fn insert(&mut self, k: K, v: V) -> Option<V> where K: Clone {
+    pub fn insert(&mut self, k: K, v: V) -> Option<V>
+    where
+        K: Clone,
+    {
         self.count += 1;
-        self.echelons.entry(k).or_insert(Vec::new()).push(v);
+        self.echelons.entry(k).or_default().push(v);
 
         if let Some(limit) = self.limit {
             if limit < self.count {
@@ -47,11 +49,17 @@ impl<K: Ord, V> TopN<K, V> {
     }
 
     // see: https://github.com/rust-lang/rfcs/blob/master/text/1522-conservative-impl-trait.md
-//    pub fn values(&self) -> impl Iterator<Item=&V> {
-//        self.echelons.values().flat_map(|v| v)
-//    }
-    pub fn values(&self) -> Vec<V> where V: Clone {
-        self.echelons.values().flat_map(|v| v.iter().cloned()).collect()
+    //    pub fn values(&self) -> impl Iterator<Item=&V> {
+    //        self.echelons.values().flat_map(|v| v)
+    //    }
+    pub fn values(&self) -> Vec<V>
+    where
+        V: Clone,
+    {
+        self.echelons
+            .values()
+            .flat_map(|v| v.iter().cloned())
+            .collect()
     }
 }
 
@@ -128,4 +136,3 @@ mod tests {
         assert_eq!(top_n.values(), vec![1, 0, 2, 3]);
     }
 }
-

@@ -1,3 +1,5 @@
+//! Defines the arithmetic operators used in the query language
+
 use crate::function::Variant;
 
 #[derive(Debug, Clone, Eq, Hash, PartialEq, PartialOrd, Serialize)]
@@ -40,17 +42,15 @@ impl Op {
             "like" => Some(Op::Like),
             "notlike" => Some(Op::NotLike),
             "between" => Some(Op::Between),
-            _ => None
+            _ => None,
         }
     }
 
     pub fn from_with_not(text: String, not: bool) -> Option<Op> {
         let op = Op::from(text);
         match op {
-            Some(op) if not => {
-                Some(Self::negate(op))
-            },
-            _ => op
+            Some(op) if not => Some(Self::negate(op)),
+            _ => op,
         }
     }
 
@@ -87,11 +87,11 @@ impl ArithmeticOp {
     pub fn from(text: String) -> Option<ArithmeticOp> {
         match text.to_lowercase().as_str() {
             "+" | "plus" => Some(ArithmeticOp::Add),
-            "-" | "minus"  => Some(ArithmeticOp::Subtract),
+            "-" | "minus" => Some(ArithmeticOp::Subtract),
             "*" | "mul" => Some(ArithmeticOp::Multiply),
             "/" | "div" => Some(ArithmeticOp::Divide),
             "%" | "mod" => Some(ArithmeticOp::Modulo),
-            _ => None
+            _ => None,
         }
     }
 
@@ -104,6 +104,6 @@ impl ArithmeticOp {
             ArithmeticOp::Modulo => left.to_float() % right.to_float(),
         };
 
-        return Variant::from_float(result);
+        Variant::from_float(result)
     }
 }

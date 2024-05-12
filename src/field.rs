@@ -1,3 +1,5 @@
+//! Defines the various fields available in the query language
+
 use std::fmt::Display;
 use std::fmt::Error;
 use std::fmt::Formatter;
@@ -189,134 +191,128 @@ impl FromStr for Field {
 }
 
 impl Display for Field {
-    fn fmt(&self, f: &mut Formatter) -> Result<(), Error>{
+    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         write!(f, "{:?}", self)
     }
 }
 
 impl Serialize for Field {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-        where S: Serializer
+    where
+        S: Serializer,
     {
         serializer.serialize_str(&self.to_string())
     }
 }
 
 impl Field {
+    #[rustfmt::skip]
     pub fn is_numeric_field(&self) -> bool {
-        match self {
-            Field::Size | Field::FormattedSize
+        matches!(self, Field::Size | Field::FormattedSize
             | Field::Uid | Field::Gid
             | Field::Width | Field::Height
             | Field::LineCount
             | Field::Duration
             | Field::Bitrate | Field::Freq | Field::Year
-            | Field::ExifGpsLatitude | Field::ExifGpsLongitude | Field::ExifGpsAltitude => true,
-            _ => false
-        }
+            | Field::ExifGpsLatitude | Field::ExifGpsLongitude | Field::ExifGpsAltitude)
     }
 
     pub fn is_datetime_field(&self) -> bool {
-        match self {
-            Field::Created | Field::Accessed | Field::Modified
-            | Field::ExifDateTime => true,
-            _ => false
-        }
+        matches!(
+            self,
+            Field::Created | Field::Accessed | Field::Modified | Field::ExifDateTime
+        )
     }
 
     pub fn is_boolean_field(&self) -> bool {
-        match self {
+        matches!(
+            self,
             Field::IsDir
-            | Field::IsFile
-            | Field::UserRead
-            | Field::UserWrite
-            | Field::UserExec
-            | Field::UserAll
-            | Field::GroupRead
-            | Field::GroupWrite
-            | Field::GroupExec
-            | Field::GroupAll
-            | Field::OtherRead
-            | Field::OtherWrite
-            | Field::OtherExec
-            | Field::OtherAll
-            | Field::Suid
-            | Field::Sgid
-            | Field::IsSymlink
-            | Field::IsPipe
-            | Field::IsCharacterDevice
-            | Field::IsBlockDevice
-            | Field::IsSocket
-            | Field::IsHidden
-            | Field::HasXattrs
-            | Field::IsEmpty
-            | Field::IsShebang
-            | Field::IsBinary
-            | Field::IsText
-            | Field::IsArchive
-            | Field::IsAudio
-            | Field::IsBook
-            | Field::IsDoc
-            | Field::IsFont
-            | Field::IsImage
-            | Field::IsSource
-            | Field::IsVideo => true,
-            _ => false
-        }
+                | Field::IsFile
+                | Field::UserRead
+                | Field::UserWrite
+                | Field::UserExec
+                | Field::UserAll
+                | Field::GroupRead
+                | Field::GroupWrite
+                | Field::GroupExec
+                | Field::GroupAll
+                | Field::OtherRead
+                | Field::OtherWrite
+                | Field::OtherExec
+                | Field::OtherAll
+                | Field::Suid
+                | Field::Sgid
+                | Field::IsSymlink
+                | Field::IsPipe
+                | Field::IsCharacterDevice
+                | Field::IsBlockDevice
+                | Field::IsSocket
+                | Field::IsHidden
+                | Field::HasXattrs
+                | Field::IsEmpty
+                | Field::IsShebang
+                | Field::IsBinary
+                | Field::IsText
+                | Field::IsArchive
+                | Field::IsAudio
+                | Field::IsBook
+                | Field::IsDoc
+                | Field::IsFont
+                | Field::IsImage
+                | Field::IsSource
+                | Field::IsVideo
+        )
     }
 
     pub fn is_available_for_archived_files(&self) -> bool {
-        match self {
+        matches!(
+            self,
             Field::Name
-            | Field::Extension
-            | Field::Path
-            | Field::AbsPath
-            | Field::Directory
-            | Field::AbsDir
-            | Field::Size
-            | Field::FormattedSize
-            | Field::IsDir
-            | Field::IsFile
-            | Field::IsSymlink
-            | Field::IsPipe
-            | Field::IsCharacterDevice
-            | Field::IsBlockDevice
-            | Field::IsSocket
-            | Field::Mode
-            | Field::UserRead
-            | Field::UserWrite
-            | Field::UserExec
-            | Field::UserAll
-            | Field::GroupRead
-            | Field::GroupWrite
-            | Field::GroupExec
-            | Field::GroupAll
-            | Field::OtherRead
-            | Field::OtherWrite
-            | Field::OtherExec
-            | Field::OtherAll
-            | Field::Suid
-            | Field::Sgid
-            | Field::IsHidden
-            | Field::IsEmpty
-            | Field::Modified
-            | Field::IsArchive
-            | Field::IsAudio
-            | Field::IsBook
-            | Field::IsDoc
-            | Field::IsFont
-            | Field::IsImage
-            | Field::IsSource
-            | Field::IsVideo
-            => true,
-            _ => false
-        }
+                | Field::Extension
+                | Field::Path
+                | Field::AbsPath
+                | Field::Directory
+                | Field::AbsDir
+                | Field::Size
+                | Field::FormattedSize
+                | Field::IsDir
+                | Field::IsFile
+                | Field::IsSymlink
+                | Field::IsPipe
+                | Field::IsCharacterDevice
+                | Field::IsBlockDevice
+                | Field::IsSocket
+                | Field::Mode
+                | Field::UserRead
+                | Field::UserWrite
+                | Field::UserExec
+                | Field::UserAll
+                | Field::GroupRead
+                | Field::GroupWrite
+                | Field::GroupExec
+                | Field::GroupAll
+                | Field::OtherRead
+                | Field::OtherWrite
+                | Field::OtherExec
+                | Field::OtherAll
+                | Field::Suid
+                | Field::Sgid
+                | Field::IsHidden
+                | Field::IsEmpty
+                | Field::Modified
+                | Field::IsArchive
+                | Field::IsAudio
+                | Field::IsBook
+                | Field::IsDoc
+                | Field::IsFont
+                | Field::IsImage
+                | Field::IsSource
+                | Field::IsVideo
+        )
     }
 
     pub fn is_colorized_field(&self) -> bool {
-        match self {
-            Field::Name => true,
-            _ => false
-        }
+        matches!(self, Field::Name)
     }
 }

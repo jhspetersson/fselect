@@ -1,8 +1,10 @@
+//! Handles directory traversal and file processing.
+
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs;
-use std::fs::{DirEntry, FileType, Metadata};
 #[cfg(unix)]
 use std::fs::symlink_metadata;
+use std::fs::{DirEntry, FileType, Metadata};
 use std::io;
 use std::io::{ErrorKind, Write};
 use std::ops::Add;
@@ -23,20 +25,25 @@ use xattr::FileExt;
 use crate::config::Config;
 use crate::expr::Expr;
 use crate::field::Field;
-use crate::fileinfo::{FileInfo, to_file_info};
+use crate::fileinfo::{to_file_info, FileInfo};
 use crate::function;
 use crate::function::{Variant, VariantType};
-use crate::ignore::docker::{DockerignoreFilter, matches_dockerignore_filter, search_upstream_dockerignore};
-use crate::ignore::git::{get_gitignore_filters, GitignoreFilter, matches_gitignore_filter, search_upstream_gitignore, update_gitignore_map};
-use crate::ignore::hg::{HgignoreFilter, matches_hgignore_filter, search_upstream_hgignore};
+use crate::ignore::docker::{
+    matches_dockerignore_filter, search_upstream_dockerignore, DockerignoreFilter,
+};
+use crate::ignore::git::{
+    get_gitignore_filters, matches_gitignore_filter, search_upstream_gitignore,
+    update_gitignore_map, GitignoreFilter,
+};
+use crate::ignore::hg::{matches_hgignore_filter, search_upstream_hgignore, HgignoreFilter};
 use crate::mode;
 use crate::operators::{LogicalOp, Op};
 use crate::output::ResultsWriter;
-use crate::query::{Query, Root, TraversalMode};
 use crate::query::TraversalMode::Bfs;
-use crate::util::*;
+use crate::query::{Query, Root, TraversalMode};
 use crate::util::dimensions::get_dimensions;
 use crate::util::duration::get_duration;
+use crate::util::*;
 
 struct FileMetadataState {
     file_metadata_set: bool,
@@ -148,8 +155,8 @@ impl FileMetadataState {
 
 pub struct Searcher<'a> {
     query: &'a Query,
-    config : &'a Config,
-    default_config : &'a Config,
+    config: &'a Config,
+    default_config: &'a Config,
     use_colors: bool,
     results_writer: ResultsWriter,
     #[cfg(all(unix, feature = "users"))]
@@ -174,8 +181,13 @@ pub struct Searcher<'a> {
     pub error_count: i32,
 }
 
-impl <'a> Searcher<'a> {
-    pub fn new(query: &'a Query, config: &'a Config, default_config: &'a Config, use_colors: bool) -> Self {
+impl<'a> Searcher<'a> {
+    pub fn new(
+        query: &'a Query,
+        config: &'a Config,
+        default_config: &'a Config,
+        use_colors: bool,
+    ) -> Self {
         let limit = query.limit;
 
         let results_writer = ResultsWriter::new(&query.output_format);
@@ -191,7 +203,11 @@ impl <'a> Searcher<'a> {
             found: 0,
             raw_output_buffer: vec![],
             partitioned_output_buffer: Rc::new(HashMap::new()),
-            output_buffer: if limit == 0 { TopN::limitless() } else { TopN::new(limit) },
+            output_buffer: if limit == 0 {
+                TopN::limitless()
+            } else {
+                TopN::new(limit)
+            },
             gitignore_map: HashMap::new(),
             hgignore_filters: vec![],
             dockerignore_filters: vec![],
@@ -220,23 +236,27 @@ impl <'a> Searcher<'a> {
         self.query.has_aggregate_column()
     }
 
+    /// Searches directories based on configured query and outputs results to stdout.
     pub fn list_search_results(&mut self) -> io::Result<()> {
         let current_dir = std::env::current_dir().unwrap();
 
         if let Err(e) = self.results_writer.write_header(&mut std::io::stdout()) {
             if e.kind() == ErrorKind::BrokenPipe {
-                return Ok(())
+                return Ok(());
             }
         }
 
         let mut roots = vec![];
 
+        // ======== Process each root specified in the query =========
         for root in &self.query.roots {
             if root.options.regexp {
                 let mut ext_roots: Vec<String> = vec![];
+                // Split the path into parts to process each segment as a regex
                 let parts = root.path.split('/').collect::<Vec<&str>>();
                 for part in parts {
                     if looks_like_regexp(part) {
+                        // Create a regex from the part
                         let rx_string = format!("^{}$", part);
                         let rx = Regex::new(&rx_string).unwrap();
                         let mut tmp = vec![];
@@ -250,6 +270,7 @@ impl <'a> Searcher<'a> {
                             }
                         }
 
+                        // Read the directory and filter entries matching the regex
                         for root in &ext_roots {
                             let mut start_from_rx_dir = false;
 
@@ -262,49 +283,61 @@ impl <'a> Searcher<'a> {
 
                             match path.read_dir() {
                                 Ok(read_result) => {
-                                    for entry in read_result {
-                                        if let Ok(entry) = entry {
-                                            if let Ok(file_type) = entry.file_type() {
-                                                if file_type.is_dir() {
-                                                    if rx.is_match(entry.file_name().to_string_lossy().as_ref()) {
-                                                        if start_from_rx_dir {
-                                                            tmp.push(entry.file_name().to_string_lossy().to_string());
-                                                        } else {
-                                                            tmp.push(entry.path().to_string_lossy().to_string());
-                                                        }
-                                                    }
+                                    for entry in read_result.flatten() {
+                                        if let Ok(file_type) = entry.file_type() {
+                                            if file_type.is_dir()
+                                                && rx.is_match(
+                                                    entry.file_name().to_string_lossy().as_ref(),
+                                                )
+                                            {
+                                                if start_from_rx_dir {
+                                                    tmp.push(
+                                                        entry
+                                                            .file_name()
+                                                            .to_string_lossy()
+                                                            .to_string(),
+                                                    );
+                                                } else {
+                                                    tmp.push(
+                                                        entry.path().to_string_lossy().to_string(),
+                                                    );
                                                 }
                                             }
                                         }
                                     }
-                                },
+                                }
                                 Err(e) => {
                                     self.error_count += 1;
-                                    path_error_message(&path, e)
+                                    path_error_message(path, e)
                                 }
                             }
                         }
 
                         ext_roots.clear();
                         ext_roots.append(&mut tmp);
+                    } else if ext_roots.is_empty() {
+                        ext_roots.push(part.to_string());
                     } else {
-                        if ext_roots.is_empty() {
-                            ext_roots.push(part.to_string());
-                        } else {
-                            //update all roots
-                            let mut new_roots = ext_roots.iter().map(|root| root.to_string() + "/" + part).collect::<Vec<String>>();
-                            ext_roots.clear();
-                            ext_roots.append(&mut new_roots);
-                        }
+                        //update all roots
+                        let mut new_roots = ext_roots
+                            .iter()
+                            .map(|root| root.to_string() + "/" + part)
+                            .collect::<Vec<String>>();
+                        ext_roots.clear();
+                        ext_roots.append(&mut new_roots);
                     }
                 }
 
-                ext_roots.iter().for_each(|ext_root| roots.push(Root::clone_with_path(ext_root.to_string(), root.clone())));
+                ext_roots.iter().for_each(|ext_root| {
+                    roots.push(Root::clone_with_path(ext_root.to_string(), root.clone()))
+                });
             } else {
+                // The root is not a regular expression
                 roots.push(root.clone());
             }
         }
 
+        // ======== Explore each root =========
         for root in roots {
             self.current_follow_symlinks = root.options.symlinks;
 
@@ -312,35 +345,45 @@ impl <'a> Searcher<'a> {
             let min_depth = root.options.min_depth;
             let max_depth = root.options.max_depth;
             let search_archives = root.options.archives;
-            let apply_gitignore = root.options.gitignore.unwrap_or(self.config.gitignore.unwrap_or(false));
-            let apply_hgignore = root.options.hgignore.unwrap_or(self.config.hgignore.unwrap_or(false));
-            let apply_dockerignore = root.options.dockerignore.unwrap_or(self.config.dockerignore.unwrap_or(false));
+            let apply_gitignore = root
+                .options
+                .gitignore
+                .unwrap_or(self.config.gitignore.unwrap_or(false));
+            let apply_hgignore = root
+                .options
+                .hgignore
+                .unwrap_or(self.config.hgignore.unwrap_or(false));
+            let apply_dockerignore = root
+                .options
+                .dockerignore
+                .unwrap_or(self.config.dockerignore.unwrap_or(false));
             let traversal_mode = root.options.traversal;
 
+            // Apply filters
             if apply_gitignore {
-                search_upstream_gitignore(&mut self.gitignore_map, &root_dir);
+                search_upstream_gitignore(&mut self.gitignore_map, root_dir);
             }
 
             if apply_hgignore {
-                search_upstream_hgignore(&mut self.hgignore_filters, &root_dir);
+                search_upstream_hgignore(&mut self.hgignore_filters, root_dir);
             }
 
             if apply_dockerignore {
-                search_upstream_dockerignore(&mut self.dockerignore_filters, &root_dir);
+                search_upstream_dockerignore(&mut self.dockerignore_filters, root_dir);
             }
 
             self.dir_queue.clear();
 
             #[cfg(unix)]
-                {
-                    let metadata = match self.current_follow_symlinks {
-                        true => root_dir.metadata(),
-                        false => symlink_metadata(root_dir)
-                    };
-                    if let Ok(metadata) = metadata {
-                        self.visited_inodes.insert(metadata.ino());
-                    }
+            {
+                let metadata = match self.current_follow_symlinks {
+                    true => root_dir.metadata(),
+                    false => symlink_metadata(root_dir),
+                };
+                if let Ok(metadata) = metadata {
+                    self.visited_inodes.insert(metadata.ino());
                 }
+            }
 
             let _result = self.visit_dir(
                 root_dir,
@@ -352,17 +395,23 @@ impl <'a> Searcher<'a> {
                 apply_hgignore,
                 apply_dockerignore,
                 traversal_mode,
-                true
+                true,
             );
         }
 
+        // ======== Compute results =========
         if self.has_aggregate_column() {
             if !self.query.grouping_fields.is_empty() {
                 if self.partitioned_output_buffer.is_empty() {
                     self.partitioned_output_buffer = Rc::new(self.partition_output_buffer());
                 }
 
-                let group_keys: Vec<String> = self.query.grouping_fields.iter().map(|f| f.to_string()).collect();
+                let group_keys: Vec<String> = self
+                    .query
+                    .grouping_fields
+                    .iter()
+                    .map(|f| f.to_string())
+                    .collect();
                 let buffer_partitions = self.partitioned_output_buffer.clone();
 
                 buffer_partitions.iter().for_each(|f| {
@@ -375,7 +424,16 @@ impl <'a> Searcher<'a> {
                     }
 
                     for column_expr in &self.query.fields {
-                        let record = format!("{}", self.get_column_expr_value(None, &None, &mut file_map, Some(f.1), column_expr));
+                        let record = format!(
+                            "{}",
+                            self.get_column_expr_value(
+                                None,
+                                &None,
+                                &mut file_map,
+                                Some(f.1),
+                                column_expr
+                            )
+                        );
                         let field_name = column_expr.to_string().to_lowercase();
                         items.push((field_name, record));
                     }
@@ -389,7 +447,16 @@ impl <'a> Searcher<'a> {
                 let mut items: Vec<(String, String)> = Vec::new();
 
                 for column_expr in &self.query.fields {
-                    let record = format!("{}", self.get_column_expr_value(None, &None, &mut HashMap::new(), None, column_expr));
+                    let record = format!(
+                        "{}",
+                        self.get_column_expr_value(
+                            None,
+                            &None,
+                            &mut HashMap::new(),
+                            None,
+                            column_expr
+                        )
+                    );
                     let field_name = column_expr.to_string().to_lowercase();
                     items.push((field_name, record));
                 }
@@ -407,11 +474,12 @@ impl <'a> Searcher<'a> {
             for piece in self.output_buffer.values() {
                 if first {
                     first = false;
-                } else {
-                    if let Err(e) = self.results_writer.write_row_separator(&mut std::io::stdout()){
-                        if e.kind() == ErrorKind::BrokenPipe {
-                            return Ok(());
-                        }
+                } else if let Err(e) = self
+                    .results_writer
+                    .write_row_separator(&mut std::io::stdout())
+                {
+                    if e.kind() == ErrorKind::BrokenPipe {
+                        return Ok(());
                     }
                 }
                 if let Err(e) = write!(std::io::stdout(), "{}", piece) {
@@ -427,17 +495,22 @@ impl <'a> Searcher<'a> {
         Ok(())
     }
 
-    fn visit_dir(&mut self,
-                 dir: &Path,
-                 min_depth: u32,
-                 max_depth: u32,
-                 root_depth: u32,
-                 search_archives: bool,
-                 apply_gitignore: bool,
-                 apply_hgignore: bool,
-                 apply_dockerignore: bool,
-                 traversal_mode: TraversalMode,
-                 process_queue: bool) -> io::Result<()> {
+    /// Recursively explore directories starting from a given path.
+    /// Handles archives, and optionally applies filters.
+    fn visit_dir(
+        &mut self,
+        dir: &Path,
+        min_depth: u32,
+        max_depth: u32,
+        root_depth: u32,
+        search_archives: bool,
+        apply_gitignore: bool,
+        apply_hgignore: bool,
+        apply_dockerignore: bool,
+        traversal_mode: TraversalMode,
+        process_queue: bool,
+    ) -> io::Result<()> {
+        // Prevents infinite loops when following symlinks
         if self.current_follow_symlinks {
             if self.visited_dirs.contains(&dir.to_path_buf()) {
                 return Ok(());
@@ -446,11 +519,16 @@ impl <'a> Searcher<'a> {
             }
         }
 
+        // Canonicalize the path to resolve symlinks and relative paths
         let canonical_path = crate::util::canonical_path(&dir.to_path_buf());
-
         if canonical_path.is_err() {
             self.error_count += 1;
-            error_message(&dir.to_string_lossy(), String::from("could not canonicalize path: ").add(canonical_path.err().unwrap().as_str()).as_str());
+            error_message(
+                &dir.to_string_lossy(),
+                String::from("could not canonicalize path: ")
+                    .add(canonical_path.err().unwrap().as_str())
+                    .as_str(),
+            );
             return Ok(());
         }
 
@@ -459,7 +537,7 @@ impl <'a> Searcher<'a> {
 
         let base_depth = match root_depth {
             0 => canonical_depth,
-            _ => root_depth
+            _ => root_depth,
         };
 
         let depth = canonical_depth - base_depth + 1;
@@ -469,13 +547,18 @@ impl <'a> Searcher<'a> {
         if apply_gitignore {
             let canonical_path = PathBuf::from(canonical_path);
             update_gitignore_map(&mut self.gitignore_map, &canonical_path);
-            gitignore_filters = Some(get_gitignore_filters(&mut self.gitignore_map, &canonical_path));
+            gitignore_filters = Some(get_gitignore_filters(
+                &mut self.gitignore_map,
+                &canonical_path,
+            ));
         }
 
+        // Read the directory and process each entry
         match fs::read_dir(dir) {
             Ok(entry_list) => {
                 for entry in entry_list {
-                    if !self.is_buffered() && self.query.limit > 0 && self.query.limit <= self.found {
+                    if !self.is_buffered() && self.query.limit > 0 && self.query.limit <= self.found
+                    {
                         break;
                     }
 
@@ -490,10 +573,25 @@ impl <'a> Searcher<'a> {
                                 }
                             }
 
-                            let pass_gitignore = !apply_gitignore || !matches_gitignore_filter(&gitignore_filters, canonical_path.to_string_lossy().as_ref(), path.is_dir());
-                            let pass_hgignore = !apply_hgignore || !matches_hgignore_filter(&self.hgignore_filters, canonical_path.to_string_lossy().as_ref());
-                            let pass_dockerignore = !apply_dockerignore || !matches_dockerignore_filter(&self.dockerignore_filters, canonical_path.to_string_lossy().as_ref());
+                            // Check the path against the filters
+                            let pass_gitignore = !apply_gitignore
+                                || !matches_gitignore_filter(
+                                    &gitignore_filters,
+                                    canonical_path.to_string_lossy().as_ref(),
+                                    path.is_dir(),
+                                );
+                            let pass_hgignore = !apply_hgignore
+                                || !matches_hgignore_filter(
+                                    &self.hgignore_filters,
+                                    canonical_path.to_string_lossy().as_ref(),
+                                );
+                            let pass_dockerignore = !apply_dockerignore
+                                || !matches_dockerignore_filter(
+                                    &self.dockerignore_filters,
+                                    canonical_path.to_string_lossy().as_ref(),
+                                );
 
+                            // If the path passes the filters, process it
                             if pass_gitignore && pass_hgignore && pass_dockerignore {
                                 if min_depth == 0 || depth >= min_depth {
                                     let checked = self.check_file(&entry, &None)?;
@@ -501,17 +599,22 @@ impl <'a> Searcher<'a> {
                                         return Ok(());
                                     }
 
-                                    if search_archives && self.is_zip_archive(&path.to_string_lossy()) {
+                                    if search_archives
+                                        && self.is_zip_archive(&path.to_string_lossy())
+                                    {
                                         if let Ok(file) = fs::File::open(&path) {
                                             if let Ok(mut archive) = zip::ZipArchive::new(file) {
                                                 for i in 0..archive.len() {
-                                                    if self.query.limit > 0 && self.query.limit <= self.found {
+                                                    if self.query.limit > 0
+                                                        && self.query.limit <= self.found
+                                                    {
                                                         break;
                                                     }
 
                                                     if let Ok(afile) = archive.by_index(i) {
                                                         let file_info = to_file_info(&afile);
-                                                        let checked = self.check_file(&entry, &Some(file_info))?;
+                                                        let checked = self
+                                                            .check_file(&entry, &Some(file_info))?;
                                                         if !checked {
                                                             return Ok(());
                                                         }
@@ -522,6 +625,7 @@ impl <'a> Searcher<'a> {
                                     }
                                 }
 
+                                // Recursively visit subdirectories if we're not too deep
                                 if max_depth == 0 || depth < max_depth {
                                     let result = entry.file_type();
                                     if let Ok(file_type) = result {
@@ -536,28 +640,30 @@ impl <'a> Searcher<'a> {
                                             ok = true;
                                         }
 
-                                        if ok {
-                                            if self.ok_to_visit_dir(&entry, file_type) {
-                                                if traversal_mode == TraversalMode::Dfs {
-                                                    let result = self.visit_dir(
-                                                        &path,
-                                                        min_depth,
-                                                        max_depth,
-                                                        base_depth,
-                                                        search_archives,
-                                                        apply_gitignore,
-                                                        apply_hgignore,
-                                                        apply_dockerignore,
-                                                        traversal_mode,
-                                                        false);
+                                        if ok && self.ok_to_visit_dir(&entry, file_type) {
+                                            if traversal_mode == TraversalMode::Dfs {
+                                                let result = self.visit_dir(
+                                                    &path,
+                                                    min_depth,
+                                                    max_depth,
+                                                    base_depth,
+                                                    search_archives,
+                                                    apply_gitignore,
+                                                    apply_hgignore,
+                                                    apply_dockerignore,
+                                                    traversal_mode,
+                                                    false,
+                                                );
 
-                                                    if result.is_err() {
-                                                        self.error_count += 1;
-                                                        path_error_message(&path, result.err().unwrap());
-                                                    }
-                                                } else {
-                                                    self.dir_queue.push_back(path);
+                                                if result.is_err() {
+                                                    self.error_count += 1;
+                                                    path_error_message(
+                                                        &path,
+                                                        result.err().unwrap(),
+                                                    );
                                                 }
+                                            } else {
+                                                self.dir_queue.push_back(path);
                                             }
                                         }
                                     } else {
@@ -566,14 +672,14 @@ impl <'a> Searcher<'a> {
                                     }
                                 }
                             }
-                        },
+                        }
                         Err(err) => {
                             self.error_count += 1;
                             path_error_message(dir, err);
                         }
                     }
                 }
-            },
+            }
             Err(err) => {
                 self.error_count += 1;
                 path_error_message(dir, err);
@@ -593,7 +699,8 @@ impl <'a> Searcher<'a> {
                     apply_hgignore,
                     apply_dockerignore,
                     traversal_mode,
-                    false);
+                    false,
+                );
 
                 if result.is_err() {
                     self.error_count += 1;
@@ -616,7 +723,7 @@ impl <'a> Searcher<'a> {
 
         match self.current_follow_symlinks {
             true => true,
-            false => !file_type.is_symlink()
+            false => !file_type.is_symlink(),
         }
     }
 
@@ -624,18 +731,21 @@ impl <'a> Searcher<'a> {
     fn ok_to_visit_dir(&mut self, _: &DirEntry, file_type: FileType) -> bool {
         match self.current_follow_symlinks {
             true => true,
-            false => !file_type.is_symlink()
+            false => !file_type.is_symlink(),
         }
     }
 
-    fn get_column_expr_value(&mut self,
-                             entry: Option<&DirEntry>,
-                             file_info: &Option<FileInfo>,
-                             file_map: &mut HashMap<String, String>,
-                             buffer_data: Option<&Vec<HashMap<String, String>>>,
-                             column_expr: &Expr) -> Variant {
+    fn get_column_expr_value(
+        &mut self,
+        entry: Option<&DirEntry>,
+        file_info: &Option<FileInfo>,
+        file_map: &mut HashMap<String, String>,
+        buffer_data: Option<&Vec<HashMap<String, String>>>,
+        column_expr: &Expr,
+    ) -> Variant {
         if let Some(ref _function) = column_expr.function {
-            let result = self.get_function_value(entry, file_info, file_map, buffer_data, column_expr);
+            let result =
+                self.get_function_value(entry, file_info, file_map, buffer_data, column_expr);
             file_map.insert(column_expr.to_string(), result.to_string());
             return result;
         }
@@ -645,12 +755,10 @@ impl <'a> Searcher<'a> {
                 let result = self.get_field_value(entry.unwrap(), file_info, field);
                 file_map.insert(column_expr.to_string(), result.to_string());
                 return result;
+            } else if let Some(val) = file_map.get(&field.to_string()) {
+                return Variant::from_string(val);
             } else {
-                if let Some(val) = file_map.get(&field.to_string()) {
-                    return Variant::from_string(val);
-                } else {
-                    return Variant::empty(VariantType::String);
-                }
+                return Variant::empty(VariantType::String);
             }
         }
 
@@ -661,11 +769,13 @@ impl <'a> Searcher<'a> {
         let result;
 
         if let Some(ref left) = column_expr.left {
-            let left_result = self.get_column_expr_value(entry, file_info, file_map, buffer_data, left);
+            let left_result =
+                self.get_column_expr_value(entry, file_info, file_map, buffer_data, left);
 
             if let Some(ref op) = column_expr.arithmetic_op {
                 if let Some(ref right) = column_expr.right {
-                    let right_result = self.get_column_expr_value(entry, file_info, file_map, buffer_data, right);
+                    let right_result =
+                        self.get_column_expr_value(entry, file_info, file_map, buffer_data, right);
                     result = op.calc(&left_result, &right_result);
                     file_map.insert(column_expr.to_string(), result.to_string());
                 } else {
@@ -681,18 +791,20 @@ impl <'a> Searcher<'a> {
         result
     }
 
-    fn get_function_value(&mut self,
-                          entry: Option<&DirEntry>,
-                          file_info: &Option<FileInfo>,
-                          file_map: &mut HashMap<String, String>,
-                          buffer_data: Option<&Vec<HashMap<String, String>>>,
-                          column_expr: &Expr) -> Variant {
+    fn get_function_value(
+        &mut self,
+        entry: Option<&DirEntry>,
+        file_info: &Option<FileInfo>,
+        file_map: &mut HashMap<String, String>,
+        buffer_data: Option<&Vec<HashMap<String, String>>>,
+        column_expr: &Expr,
+    ) -> Variant {
         let dummy = Expr::value(String::from(""));
         let boxed_dummy = &Box::from(dummy);
 
         let left_expr = match &column_expr.left {
             Some(left_expr) => left_expr,
-            _ => boxed_dummy
+            _ => boxed_dummy,
         };
 
         let function = &column_expr.function.as_ref().unwrap();
@@ -700,21 +812,31 @@ impl <'a> Searcher<'a> {
         if function.is_aggregate_function() {
             let _ = self.get_column_expr_value(entry, file_info, file_map, buffer_data, left_expr);
             let buffer_key = left_expr.to_string();
-            let aggr_result = function::get_aggregate_value(&column_expr.function,
-                                                            buffer_data.unwrap_or(&self.raw_output_buffer),
-                                                            buffer_key,
-                                                            &column_expr.val);
+            let aggr_result = function::get_aggregate_value(
+                &column_expr.function,
+                buffer_data.unwrap_or(&self.raw_output_buffer),
+                buffer_key,
+                &column_expr.val,
+            );
             return Variant::from_string(&aggr_result);
         } else {
-            let function_arg = self.get_column_expr_value(entry, file_info, file_map, buffer_data, left_expr);
+            let function_arg =
+                self.get_column_expr_value(entry, file_info, file_map, buffer_data, left_expr);
             let mut function_args = vec![];
             if let Some(args) = &column_expr.args {
                 for arg in args {
-                    let arg_value = self.get_column_expr_value(entry, file_info, file_map, buffer_data, arg);
+                    let arg_value =
+                        self.get_column_expr_value(entry, file_info, file_map, buffer_data, arg);
                     function_args.push(arg_value.to_string());
                 }
             }
-            let result = function::get_value(&column_expr.function, function_arg.to_string(), function_args, entry, file_info);
+            let result = function::get_value(
+                &column_expr.function,
+                function_arg.to_string(),
+                function_args,
+                entry,
+                file_info,
+            );
             file_map.insert(column_expr.to_string(), result.to_string());
 
             return result;
@@ -722,11 +844,19 @@ impl <'a> Searcher<'a> {
     }
 
     fn partition_output_buffer(&self) -> HashMap<Vec<String>, Vec<HashMap<String, String>>> {
-        let group_fields: Vec<String> = self.query.grouping_fields.iter().map(|ref expr| expr.to_string()).collect();
+        let group_fields: Vec<String> = self
+            .query
+            .grouping_fields
+            .iter()
+            .map(|ref expr| expr.to_string())
+            .collect();
         let mut result: HashMap<Vec<String>, Vec<HashMap<String, String>>> = HashMap::new();
 
         self.raw_output_buffer.iter().for_each(|item| {
-            let key: Vec<String> = group_fields.iter().map(|f| item.get(f).unwrap_or(&String::new()).clone()).collect();
+            let key: Vec<String> = group_fields
+                .iter()
+                .map(|f| item.get(f).unwrap_or(&String::new()).clone())
+                .collect();
             if result.contains_key(&key) {
                 result.get_mut(&key).unwrap().push(item.clone());
             } else {
@@ -737,71 +867,87 @@ impl <'a> Searcher<'a> {
         result
     }
 
-    fn get_field_value(&mut self,
-                       entry: &DirEntry,
-                       file_info: &Option<FileInfo>,
-                       field: &Field) -> Variant {
+    fn get_field_value(
+        &mut self,
+        entry: &DirEntry,
+        file_info: &Option<FileInfo>,
+        field: &Field,
+    ) -> Variant {
         if file_info.is_some() && !field.is_available_for_archived_files() {
             return Variant::empty(VariantType::String);
         }
 
         match field {
-            Field::Name => {
-                match file_info {
-                    Some(ref file_info) => {
-                        return Variant::from_string(&format!("[{}] {}", entry.file_name().to_string_lossy(), file_info.name));
-                    },
-                    _ => {
-                        return Variant::from_string(&format!("{}", entry.file_name().to_string_lossy()));
-                    }
+            Field::Name => match file_info {
+                Some(ref file_info) => {
+                    return Variant::from_string(&format!(
+                        "[{}] {}",
+                        entry.file_name().to_string_lossy(),
+                        file_info.name
+                    ));
+                }
+                _ => {
+                    return Variant::from_string(&format!(
+                        "{}",
+                        entry.file_name().to_string_lossy()
+                    ));
                 }
             },
-            Field::Extension => {
-                match file_info {
-                    Some(ref file_info) => {
-                        return Variant::from_string(&format!("[{}] {}", entry.file_name().to_string_lossy(), crate::util::get_extension(&file_info.name)));
-                    },
-                    _ => {
-                        return Variant::from_string(&format!("{}", crate::util::get_extension(&entry.file_name().to_string_lossy())));
-                    }
+            Field::Extension => match file_info {
+                Some(ref file_info) => {
+                    return Variant::from_string(&format!(
+                        "[{}] {}",
+                        entry.file_name().to_string_lossy(),
+                        crate::util::get_extension(&file_info.name)
+                    ));
+                }
+                _ => {
+                    return Variant::from_string(
+                        &crate::util::get_extension(&entry.file_name().to_string_lossy())
+                            .to_string(),
+                    );
                 }
             },
-            Field::Path => {
-                match file_info {
-                    Some(ref file_info) => {
-                        return Variant::from_string(&format!("[{}] {}", entry.path().to_string_lossy(), file_info.name));
-                    },
-                    _ => {
-                        return Variant::from_string(&format!("{}", entry.path().to_string_lossy()));
-                    }
+            Field::Path => match file_info {
+                Some(ref file_info) => {
+                    return Variant::from_string(&format!(
+                        "[{}] {}",
+                        entry.path().to_string_lossy(),
+                        file_info.name
+                    ));
+                }
+                _ => {
+                    return Variant::from_string(&format!("{}", entry.path().to_string_lossy()));
                 }
             },
-            Field::AbsPath => {
-                match file_info {
-                    Some(ref file_info) => {
-                        return Variant::from_string(&format!("[{}] {}", entry.path().to_string_lossy(), file_info.name));
-                    },
-                    _ => {
-                        if let Ok(path) = crate::util::canonical_path(&entry.path()) {
-                            return Variant::from_string(&path);
-                        }
+            Field::AbsPath => match file_info {
+                Some(ref file_info) => {
+                    return Variant::from_string(&format!(
+                        "[{}] {}",
+                        entry.path().to_string_lossy(),
+                        file_info.name
+                    ));
+                }
+                _ => {
+                    if let Ok(path) = crate::util::canonical_path(&entry.path()) {
+                        return Variant::from_string(&path);
                     }
                 }
             },
             Field::Directory => {
                 let file_path = match file_info {
                     Some(ref file_info) => file_info.name.clone(),
-                    _ => entry.path().to_string_lossy().to_string()
+                    _ => entry.path().to_string_lossy().to_string(),
                 };
                 let pb = PathBuf::from(file_path);
                 if let Some(parent) = pb.parent() {
                     return Variant::from_string(&parent.to_string_lossy().to_string());
                 }
-            },
+            }
             Field::AbsDir => {
                 let file_path = match file_info {
                     Some(ref file_info) => file_info.name.clone(),
-                    _ => entry.path().to_string_lossy().to_string()
+                    _ => entry.path().to_string_lossy().to_string(),
                 };
                 let pb = PathBuf::from(file_path);
                 if let Some(parent) = pb.parent() {
@@ -813,251 +959,360 @@ impl <'a> Searcher<'a> {
                         return Variant::from_string(&path);
                     }
                 }
-            },
-            Field::Size => {
-                match file_info {
-                    Some(ref file_info) => {
-                        return Variant::from_int(file_info.size as i64);
-                    },
-                    _ => {
-                        self.fms.update_file_metadata(entry, self.current_follow_symlinks);
+            }
+            Field::Size => match file_info {
+                Some(ref file_info) => {
+                    return Variant::from_int(file_info.size as i64);
+                }
+                _ => {
+                    self.fms
+                        .update_file_metadata(entry, self.current_follow_symlinks);
 
-                        if let Some(ref attrs) = self.fms.file_metadata {
-                            return Variant::from_int(attrs.len() as i64);
-                        }
+                    if let Some(ref attrs) = self.fms.file_metadata {
+                        return Variant::from_int(attrs.len() as i64);
                     }
                 }
             },
-            Field::FormattedSize => {
-                match file_info {
-                    Some(ref file_info) => {
-                        return Variant::from_string( &format_filesize(file_info.size, self.config.default_file_size_format.as_ref().unwrap_or(&String::new())));
-                    },
-                    _ => {
-                        self.fms.update_file_metadata(entry, self.current_follow_symlinks);
+            Field::FormattedSize => match file_info {
+                Some(ref file_info) => {
+                    return Variant::from_string(&format_filesize(
+                        file_info.size,
+                        self.config
+                            .default_file_size_format
+                            .as_ref()
+                            .unwrap_or(&String::new()),
+                    ));
+                }
+                _ => {
+                    self.fms
+                        .update_file_metadata(entry, self.current_follow_symlinks);
 
-                        if let Some(ref attrs) = self.fms.file_metadata {
-                            return Variant::from_string(&format_filesize(attrs.len(), self.config.default_file_size_format.as_ref().unwrap_or(&String::new())));
-                        }
+                    if let Some(ref attrs) = self.fms.file_metadata {
+                        return Variant::from_string(&format_filesize(
+                            attrs.len(),
+                            self.config
+                                .default_file_size_format
+                                .as_ref()
+                                .unwrap_or(&String::new()),
+                        ));
                     }
                 }
             },
-            Field::IsDir => {
-                match file_info {
-                    Some(ref file_info) => {
-                        return Variant::from_bool(file_info.name.ends_with('/') || file_info.name.ends_with('\\'));
-                    },
-                    _ => {
-                        self.fms.update_file_metadata(entry, self.current_follow_symlinks);
+            Field::IsDir => match file_info {
+                Some(ref file_info) => {
+                    return Variant::from_bool(
+                        file_info.name.ends_with('/') || file_info.name.ends_with('\\'),
+                    );
+                }
+                _ => {
+                    self.fms
+                        .update_file_metadata(entry, self.current_follow_symlinks);
 
-                        if let Some(ref attrs) = self.fms.file_metadata {
-                            return Variant::from_bool(attrs.is_dir());
-                        }
+                    if let Some(ref attrs) = self.fms.file_metadata {
+                        return Variant::from_bool(attrs.is_dir());
                     }
                 }
             },
-            Field::IsFile => {
-                match file_info {
-                    Some(ref file_info) => {
-                        return Variant::from_bool(!file_info.name.ends_with('/'));
-                    },
-                    _ => {
-                        self.fms.update_file_metadata(entry, self.current_follow_symlinks);
+            Field::IsFile => match file_info {
+                Some(ref file_info) => {
+                    return Variant::from_bool(!file_info.name.ends_with('/'));
+                }
+                _ => {
+                    self.fms
+                        .update_file_metadata(entry, self.current_follow_symlinks);
 
-                        if let Some(ref attrs) = self.fms.file_metadata {
-                            return Variant::from_bool(attrs.is_file());
-                        }
+                    if let Some(ref attrs) = self.fms.file_metadata {
+                        return Variant::from_bool(attrs.is_file());
                     }
                 }
             },
-            Field::IsSymlink => {
-                match file_info {
-                    Some(_) => {
-                        return Variant::from_bool(false);
-                    },
-                    _ => {
-                        self.fms.update_file_metadata(entry, self.current_follow_symlinks);
+            Field::IsSymlink => match file_info {
+                Some(_) => {
+                    return Variant::from_bool(false);
+                }
+                _ => {
+                    self.fms
+                        .update_file_metadata(entry, self.current_follow_symlinks);
 
-                        if let Some(ref attrs) = self.fms.file_metadata {
-                            return Variant::from_bool(attrs.file_type().is_symlink());
-                        }
+                    if let Some(ref attrs) = self.fms.file_metadata {
+                        return Variant::from_bool(attrs.file_type().is_symlink());
                     }
                 }
             },
             Field::IsPipe => {
-                return self.check_file_mode(entry, &mode::is_pipe, &file_info, &mode::mode_is_pipe);
-            },
+                return self.check_file_mode(entry, &mode::is_pipe, file_info, &mode::mode_is_pipe);
+            }
             Field::IsCharacterDevice => {
-                return self.check_file_mode(entry, &mode::is_char_device, &file_info, &mode::mode_is_char_device);
-            },
+                return self.check_file_mode(
+                    entry,
+                    &mode::is_char_device,
+                    file_info,
+                    &mode::mode_is_char_device,
+                );
+            }
             Field::IsBlockDevice => {
-                return self.check_file_mode(entry, &mode::is_block_device, &file_info, &mode::mode_is_block_device);
-            },
+                return self.check_file_mode(
+                    entry,
+                    &mode::is_block_device,
+                    file_info,
+                    &mode::mode_is_block_device,
+                );
+            }
             Field::IsSocket => {
-                return self.check_file_mode(entry, &mode::is_socket, &file_info, &mode::mode_is_socket);
-            },
+                return self.check_file_mode(
+                    entry,
+                    &mode::is_socket,
+                    file_info,
+                    &mode::mode_is_socket,
+                );
+            }
             Field::Device => {
                 #[cfg(unix)]
-                    {
-                        self.fms.update_file_metadata(entry, self.current_follow_symlinks);
+                {
+                    self.fms
+                        .update_file_metadata(entry, self.current_follow_symlinks);
 
-                        if let Some(ref attrs) = self.fms.file_metadata {
-                            return Variant::from_int(attrs.dev() as i64);
-                        }
+                    if let Some(ref attrs) = self.fms.file_metadata {
+                        return Variant::from_int(attrs.dev() as i64);
                     }
+                }
 
                 return Variant::empty(VariantType::String);
-            },
+            }
             Field::Inode => {
                 #[cfg(unix)]
-                    {
-                        self.fms.update_file_metadata(entry, self.current_follow_symlinks);
+                {
+                    self.fms
+                        .update_file_metadata(entry, self.current_follow_symlinks);
 
-                        if let Some(ref attrs) = self.fms.file_metadata {
-                            return Variant::from_int(attrs.ino() as i64);
-                        }
+                    if let Some(ref attrs) = self.fms.file_metadata {
+                        return Variant::from_int(attrs.ino() as i64);
                     }
+                }
 
                 return Variant::empty(VariantType::String);
-            },
+            }
             Field::Blocks => {
                 #[cfg(unix)]
-                    {
-                        self.fms.update_file_metadata(entry, self.current_follow_symlinks);
+                {
+                    self.fms
+                        .update_file_metadata(entry, self.current_follow_symlinks);
 
-                        if let Some(ref attrs) = self.fms.file_metadata {
-                            return Variant::from_int(attrs.blocks() as i64);
-                        }
+                    if let Some(ref attrs) = self.fms.file_metadata {
+                        return Variant::from_int(attrs.blocks() as i64);
                     }
+                }
 
                 return Variant::empty(VariantType::String);
-            },
+            }
             Field::Hardlinks => {
                 #[cfg(unix)]
-                    {
-                        self.fms.update_file_metadata(entry, self.current_follow_symlinks);
+                {
+                    self.fms
+                        .update_file_metadata(entry, self.current_follow_symlinks);
 
-                        if let Some(ref attrs) = self.fms.file_metadata {
-                            return Variant::from_int(attrs.nlink() as i64);
-                        }
+                    if let Some(ref attrs) = self.fms.file_metadata {
+                        return Variant::from_int(attrs.nlink() as i64);
                     }
+                }
 
                 return Variant::empty(VariantType::String);
-            },
-            Field::Mode => {
-                match file_info {
-                    Some(ref file_info) => {
-                        if let Some(mode) = file_info.mode {
-                            return Variant::from_string(&mode::format_mode(mode));
-                        }
-                    },
-                    _ => {
-                        self.fms.update_file_metadata(entry, self.current_follow_symlinks);
+            }
+            Field::Mode => match file_info {
+                Some(ref file_info) => {
+                    if let Some(mode) = file_info.mode {
+                        return Variant::from_string(&mode::format_mode(mode));
+                    }
+                }
+                _ => {
+                    self.fms
+                        .update_file_metadata(entry, self.current_follow_symlinks);
 
-                        if let Some(ref attrs) = self.fms.file_metadata {
-                            return Variant::from_string(&mode::get_mode(attrs));
-                        }
+                    if let Some(ref attrs) = self.fms.file_metadata {
+                        return Variant::from_string(&mode::get_mode(attrs));
                     }
                 }
             },
             Field::UserRead => {
-                return self.check_file_mode(entry, &mode::user_read, &file_info, &mode::mode_user_read);
-            },
+                return self.check_file_mode(
+                    entry,
+                    &mode::user_read,
+                    file_info,
+                    &mode::mode_user_read,
+                );
+            }
             Field::UserWrite => {
-                return self.check_file_mode(entry, &mode::user_write, &file_info, &mode::mode_user_write);
-            },
+                return self.check_file_mode(
+                    entry,
+                    &mode::user_write,
+                    file_info,
+                    &mode::mode_user_write,
+                );
+            }
             Field::UserExec => {
-                return self.check_file_mode(entry, &mode::user_exec, &file_info, &mode::mode_user_exec);
-            },
+                return self.check_file_mode(
+                    entry,
+                    &mode::user_exec,
+                    file_info,
+                    &mode::mode_user_exec,
+                );
+            }
             Field::UserAll => {
-                return self.check_file_mode(entry, &mode::user_all, &file_info, &mode::mode_user_all);
-            },
+                return self.check_file_mode(
+                    entry,
+                    &mode::user_all,
+                    file_info,
+                    &mode::mode_user_all,
+                );
+            }
             Field::GroupRead => {
-                return self.check_file_mode(entry, &mode::group_read, &file_info, &mode::mode_group_read);
-            },
+                return self.check_file_mode(
+                    entry,
+                    &mode::group_read,
+                    file_info,
+                    &mode::mode_group_read,
+                );
+            }
             Field::GroupWrite => {
-                return self.check_file_mode(entry, &mode::group_write, &file_info, &mode::mode_group_write);
-            },
+                return self.check_file_mode(
+                    entry,
+                    &mode::group_write,
+                    file_info,
+                    &mode::mode_group_write,
+                );
+            }
             Field::GroupExec => {
-                return self.check_file_mode(entry, &mode::group_exec, &file_info, &mode::mode_group_exec);
-            },
+                return self.check_file_mode(
+                    entry,
+                    &mode::group_exec,
+                    file_info,
+                    &mode::mode_group_exec,
+                );
+            }
             Field::GroupAll => {
-                return self.check_file_mode(entry, &mode::group_all, &file_info, &mode::mode_group_all);
-            },
+                return self.check_file_mode(
+                    entry,
+                    &mode::group_all,
+                    file_info,
+                    &mode::mode_group_all,
+                );
+            }
             Field::OtherRead => {
-                return self.check_file_mode(entry, &mode::other_read, &file_info, &mode::mode_other_read);
-            },
+                return self.check_file_mode(
+                    entry,
+                    &mode::other_read,
+                    file_info,
+                    &mode::mode_other_read,
+                );
+            }
             Field::OtherWrite => {
-                return self.check_file_mode(entry, &mode::other_write, &file_info, &mode::mode_other_write);
-            },
+                return self.check_file_mode(
+                    entry,
+                    &mode::other_write,
+                    file_info,
+                    &mode::mode_other_write,
+                );
+            }
             Field::OtherExec => {
-                return self.check_file_mode(entry, &mode::other_exec, &file_info, &mode::mode_other_exec);
-            },
+                return self.check_file_mode(
+                    entry,
+                    &mode::other_exec,
+                    file_info,
+                    &mode::mode_other_exec,
+                );
+            }
             Field::OtherAll => {
-                return self.check_file_mode(entry, &mode::other_all, &file_info, &mode::mode_other_all);
-            },
+                return self.check_file_mode(
+                    entry,
+                    &mode::other_all,
+                    file_info,
+                    &mode::mode_other_all,
+                );
+            }
             Field::Suid => {
-                return self.check_file_mode(entry, &mode::suid_bit_set, &file_info, &mode::mode_suid);
-            },
+                return self.check_file_mode(
+                    entry,
+                    &mode::suid_bit_set,
+                    file_info,
+                    &mode::mode_suid,
+                );
+            }
             Field::Sgid => {
-                return self.check_file_mode(entry, &mode::sgid_bit_set, &file_info, &mode::mode_sgid);
-            },
-            Field::IsHidden => {
-                match file_info {
-                    Some(ref file_info) => {
-                        return Variant::from_bool(is_hidden(&file_info.name, &None, true));
-                    },
-                    _ => {
-                        self.fms.update_file_metadata(entry, self.current_follow_symlinks);
+                return self.check_file_mode(
+                    entry,
+                    &mode::sgid_bit_set,
+                    file_info,
+                    &mode::mode_sgid,
+                );
+            }
+            Field::IsHidden => match file_info {
+                Some(ref file_info) => {
+                    return Variant::from_bool(is_hidden(&file_info.name, &None, true));
+                }
+                _ => {
+                    self.fms
+                        .update_file_metadata(entry, self.current_follow_symlinks);
 
-                        return Variant::from_bool(is_hidden(&entry.file_name().to_string_lossy(), &self.fms.file_metadata, false));
-                    }
+                    return Variant::from_bool(is_hidden(
+                        &entry.file_name().to_string_lossy(),
+                        &self.fms.file_metadata,
+                        false,
+                    ));
                 }
             },
             Field::Uid => {
-                self.fms.update_file_metadata(entry, self.current_follow_symlinks);
+                self.fms
+                    .update_file_metadata(entry, self.current_follow_symlinks);
 
                 if let Some(ref attrs) = self.fms.file_metadata {
                     if let Some(uid) = mode::get_uid(attrs) {
                         return Variant::from_int(uid as i64);
                     }
                 }
-            },
+            }
             Field::Gid => {
-                self.fms.update_file_metadata(entry, self.current_follow_symlinks);
+                self.fms
+                    .update_file_metadata(entry, self.current_follow_symlinks);
 
                 if let Some(ref attrs) = self.fms.file_metadata {
                     if let Some(gid) = mode::get_gid(attrs) {
                         return Variant::from_int(gid as i64);
                     }
                 }
-            },
+            }
             #[cfg(all(unix, feature = "users"))]
             Field::User => {
-                self.fms.update_file_metadata(entry, self.current_follow_symlinks);
+                self.fms
+                    .update_file_metadata(entry, self.current_follow_symlinks);
 
                 if let Some(ref attrs) = self.fms.file_metadata {
                     if let Some(uid) = mode::get_uid(attrs) {
                         if let Some(user) = self.user_cache.get_user_by_uid(uid) {
-                            return Variant::from_string(&user.name().to_string_lossy().to_string());
+                            return Variant::from_string(
+                                &user.name().to_string_lossy().to_string(),
+                            );
                         }
                     }
                 }
-            },
+            }
             #[cfg(all(unix, feature = "users"))]
             Field::Group => {
-                self.fms.update_file_metadata(entry, self.current_follow_symlinks);
+                self.fms
+                    .update_file_metadata(entry, self.current_follow_symlinks);
 
                 if let Some(ref attrs) = self.fms.file_metadata {
                     if let Some(gid) = mode::get_gid(attrs) {
                         if let Some(group) = self.user_cache.get_group_by_gid(gid) {
-                            return Variant::from_string(&group.name().to_string_lossy().to_string());
+                            return Variant::from_string(
+                                &group.name().to_string_lossy().to_string(),
+                            );
                         }
                     }
                 }
-            },
+            }
             Field::Created => {
-                self.fms.update_file_metadata(entry, self.current_follow_symlinks);
+                self.fms
+                    .update_file_metadata(entry, self.current_follow_symlinks);
 
                 if let Some(ref attrs) = self.fms.file_metadata {
                     if let Ok(sdt) = attrs.created() {
@@ -1065,9 +1320,10 @@ impl <'a> Searcher<'a> {
                         return Variant::from_datetime(dt.naive_local());
                     }
                 }
-            },
+            }
             Field::Accessed => {
-                self.fms.update_file_metadata(entry, self.current_follow_symlinks);
+                self.fms
+                    .update_file_metadata(entry, self.current_follow_symlinks);
 
                 if let Some(ref attrs) = self.fms.file_metadata {
                     if let Ok(sdt) = attrs.accessed() {
@@ -1075,74 +1331,73 @@ impl <'a> Searcher<'a> {
                         return Variant::from_datetime(dt.naive_local());
                     }
                 }
-            },
-            Field::Modified => {
-                match file_info {
-                    Some(ref file_info) => {
-                        let dt = to_local_datetime(&file_info.modified);
-                        return Variant::from_datetime(dt);
-                    },
-                    _ => {
-                        self.fms.update_file_metadata(entry, self.current_follow_symlinks);
+            }
+            Field::Modified => match file_info {
+                Some(ref file_info) => {
+                    let dt = to_local_datetime(&file_info.modified);
+                    return Variant::from_datetime(dt);
+                }
+                _ => {
+                    self.fms
+                        .update_file_metadata(entry, self.current_follow_symlinks);
 
-                        if let Some(ref attrs) = self.fms.file_metadata {
-                            if let Ok(sdt) = attrs.modified() {
-                                let dt: DateTime<Local> = DateTime::from(sdt);
-                                return Variant::from_datetime(dt.naive_local());
-                            }
+                    if let Some(ref attrs) = self.fms.file_metadata {
+                        if let Ok(sdt) = attrs.modified() {
+                            let dt: DateTime<Local> = DateTime::from(sdt);
+                            return Variant::from_datetime(dt.naive_local());
                         }
                     }
                 }
             },
             Field::HasXattrs => {
                 #[cfg(unix)]
-                    {
-                        if let Ok(file) = fs::File::open(&entry.path()) {
-                            if let Ok(xattrs) = file.list_xattr() {
-                                let has_xattrs = xattrs.count() > 0;
-                                return Variant::from_bool(has_xattrs);
-                            }
+                {
+                    if let Ok(file) = fs::File::open(entry.path()) {
+                        if let Ok(xattrs) = file.list_xattr() {
+                            let has_xattrs = xattrs.count() > 0;
+                            return Variant::from_bool(has_xattrs);
                         }
                     }
+                }
 
                 #[cfg(not(unix))]
-                    {
-                        return Variant::from_bool(false);
-                    }
-            },
+                {
+                    return Variant::from_bool(false);
+                }
+            }
             Field::Capabilities => {
                 #[cfg(target_os = "linux")]
-                    {
-                        if let Ok(file) = fs::File::open(&entry.path()) {
-                            if let Ok(Some(caps_xattr)) = file.get_xattr("security.capability") {
-                                let caps_string = crate::util::capabilities::parse_capabilities(caps_xattr);
-                                return Variant::from_string(&caps_string);
-                            }
+                {
+                    if let Ok(file) = fs::File::open(entry.path()) {
+                        if let Ok(Some(caps_xattr)) = file.get_xattr("security.capability") {
+                            let caps_string =
+                                crate::util::capabilities::parse_capabilities(caps_xattr);
+                            return Variant::from_string(&caps_string);
                         }
                     }
+                }
 
                 return Variant::empty(VariantType::String);
-            },
+            }
             Field::IsShebang => {
                 return Variant::from_bool(is_shebang(&entry.path()));
-            },
-            Field::IsEmpty => {
-                match file_info {
-                    Some(ref file_info) => {
-                        return Variant::from_bool(file_info.size == 0);
-                    },
-                    _ => {
-                        self.fms.update_file_metadata(entry, self.current_follow_symlinks);
+            }
+            Field::IsEmpty => match file_info {
+                Some(ref file_info) => {
+                    return Variant::from_bool(file_info.size == 0);
+                }
+                _ => {
+                    self.fms
+                        .update_file_metadata(entry, self.current_follow_symlinks);
 
-                        if let Some(ref attrs) = self.fms.file_metadata {
-                            return match attrs.is_dir() {
-                                true =>  match is_dir_empty(entry) {
-                                    Some(result) => Variant::from_bool(result),
-                                    None => Variant::empty(VariantType::Bool)
-                                },
-                                false => Variant::from_bool(attrs.len() == 0)
-                            };
-                        }
+                    if let Some(ref attrs) = self.fms.file_metadata {
+                        return match attrs.is_dir() {
+                            true => match is_dir_empty(entry) {
+                                Some(result) => Variant::from_bool(result),
+                                None => Variant::empty(VariantType::Bool),
+                            },
+                            false => Variant::from_bool(attrs.len() == 0),
+                        };
                     }
                 }
             },
@@ -1152,35 +1407,35 @@ impl <'a> Searcher<'a> {
                 if let Some(Dimensions { width, .. }) = self.fms.dimensions {
                     return Variant::from_int(width as i64);
                 }
-            },
+            }
             Field::Height => {
                 self.fms.update_dimensions(entry);
 
                 if let Some(Dimensions { height, .. }) = self.fms.dimensions {
                     return Variant::from_int(height as i64);
                 }
-            },
+            }
             Field::Duration => {
                 self.fms.update_duration(entry);
 
                 if let Some(Duration { length, .. }) = self.fms.duration {
                     return Variant::from_int(length as i64);
                 }
-            },
+            }
             Field::Bitrate => {
                 self.fms.update_mp3_metadata(entry);
 
                 if let Some(ref mp3_info) = self.fms.mp3_metadata {
                     return Variant::from_int(mp3_info.frames[0].bitrate as i64);
                 }
-            },
+            }
             Field::Freq => {
                 self.fms.update_mp3_metadata(entry);
 
                 if let Some(ref mp3_info) = self.fms.mp3_metadata {
                     return Variant::from_int(mp3_info.frames[0].sampling_freq as i64);
                 }
-            },
+            }
             Field::Title => {
                 self.fms.update_mp3_metadata(entry);
 
@@ -1189,7 +1444,7 @@ impl <'a> Searcher<'a> {
                         return Variant::from_string(&mp3_tag.title);
                     }
                 }
-            },
+            }
             Field::Artist => {
                 self.fms.update_mp3_metadata(entry);
 
@@ -1198,7 +1453,7 @@ impl <'a> Searcher<'a> {
                         return Variant::from_string(&mp3_tag.artist);
                     }
                 }
-            },
+            }
             Field::Album => {
                 self.fms.update_mp3_metadata(entry);
 
@@ -1207,7 +1462,7 @@ impl <'a> Searcher<'a> {
                         return Variant::from_string(&mp3_tag.album);
                     }
                 }
-            },
+            }
             Field::Year => {
                 self.fms.update_mp3_metadata(entry);
 
@@ -1216,7 +1471,7 @@ impl <'a> Searcher<'a> {
                         return Variant::from_int(mp3_tag.year as i64);
                     }
                 }
-            },
+            }
             Field::Genre => {
                 self.fms.update_mp3_metadata(entry);
 
@@ -1225,18 +1480,18 @@ impl <'a> Searcher<'a> {
                         return Variant::from_string(&format!("{:?}", mp3_tag.genre));
                     }
                 }
-            },
+            }
             Field::ExifDateTime => {
                 self.fms.update_exif_metadata(entry);
 
                 if let Some(ref exif_info) = self.fms.exif_metadata {
                     if let Some(exif_value) = exif_info.get("DateTime") {
-                        if let Ok(exif_datetime) = parse_datetime(&exif_value) {
+                        if let Ok(exif_datetime) = parse_datetime(exif_value) {
                             return Variant::from_datetime(exif_datetime.0);
                         }
                     }
                 }
-            },
+            }
             Field::ExifGpsAltitude => {
                 self.fms.update_exif_metadata(entry);
 
@@ -1245,7 +1500,7 @@ impl <'a> Searcher<'a> {
                         return Variant::from_float(exif_value.parse().unwrap_or(0.0));
                     }
                 }
-            },
+            }
             Field::ExifGpsLatitude => {
                 self.fms.update_exif_metadata(entry);
 
@@ -1254,7 +1509,7 @@ impl <'a> Searcher<'a> {
                         return Variant::from_float(exif_value.parse().unwrap_or(0.0));
                     }
                 }
-            },
+            }
             Field::ExifGpsLongitude => {
                 self.fms.update_exif_metadata(entry);
 
@@ -1263,59 +1518,60 @@ impl <'a> Searcher<'a> {
                         return Variant::from_float(exif_value.parse().unwrap_or(0.0));
                     }
                 }
-            },
+            }
             Field::ExifMake => {
                 self.fms.update_exif_metadata(entry);
 
                 if let Some(ref exif_info) = self.fms.exif_metadata {
                     if let Some(exif_value) = exif_info.get("Make") {
-                        return Variant::from_string(&exif_value);
+                        return Variant::from_string(exif_value);
                     }
                 }
-            },
+            }
             Field::ExifModel => {
                 self.fms.update_exif_metadata(entry);
 
                 if let Some(ref exif_info) = self.fms.exif_metadata {
                     if let Some(exif_value) = exif_info.get("Model") {
-                        return Variant::from_string(&exif_value);
+                        return Variant::from_string(exif_value);
                     }
                 }
-            },
+            }
             Field::ExifSoftware => {
                 self.fms.update_exif_metadata(entry);
 
                 if let Some(ref exif_info) = self.fms.exif_metadata {
                     if let Some(exif_value) = exif_info.get("Software") {
-                        return Variant::from_string(&exif_value);
+                        return Variant::from_string(exif_value);
                     }
                 }
-            },
+            }
             Field::ExifVersion => {
                 self.fms.update_exif_metadata(entry);
 
                 if let Some(ref exif_info) = self.fms.exif_metadata {
                     if let Some(exif_value) = exif_info.get("ExifVersion") {
-                        return Variant::from_string(&exif_value);
+                        return Variant::from_string(exif_value);
                     }
                 }
-            },
+            }
             Field::LineCount => {
                 self.fms.update_line_count(entry);
 
                 if let Some(line_count) = self.fms.line_count {
                     return Variant::from_int(line_count as i64);
                 }
-            },
+            }
             Field::Mime => {
                 if let Some(mime) = tree_magic_mini::from_filepath(&entry.path()) {
                     return Variant::from_string(&String::from(mime));
                 }
 
                 return Variant::empty(VariantType::String);
-            },
+            }
             Field::IsBinary => {
-                self.fms.update_file_metadata(entry, self.current_follow_symlinks);
+                self.fms
+                    .update_file_metadata(entry, self.current_follow_symlinks);
 
                 if let Some(ref meta) = self.fms.file_metadata {
                     if meta.is_dir() {
@@ -1329,9 +1585,10 @@ impl <'a> Searcher<'a> {
                 }
 
                 return Variant::from_bool(false);
-            },
+            }
             Field::IsText => {
-                self.fms.update_file_metadata(entry, self.current_follow_symlinks);
+                self.fms
+                    .update_file_metadata(entry, self.current_follow_symlinks);
 
                 if let Some(ref meta) = self.fms.file_metadata {
                     if meta.is_dir() {
@@ -1345,91 +1602,89 @@ impl <'a> Searcher<'a> {
                 }
 
                 return Variant::from_bool(false);
-            },
+            }
             Field::IsArchive => {
                 let is_archive = match file_info {
                     Some(file_info) => self.is_archive(&file_info.name),
-                    None => self.is_archive(&entry.file_name().to_string_lossy())
+                    None => self.is_archive(&entry.file_name().to_string_lossy()),
                 };
 
                 return Variant::from_bool(is_archive);
-            },
+            }
             Field::IsAudio => {
                 let is_audio = match file_info {
                     Some(file_info) => self.is_audio(&file_info.name),
-                    None => self.is_audio(&entry.file_name().to_string_lossy())
+                    None => self.is_audio(&entry.file_name().to_string_lossy()),
                 };
 
                 return Variant::from_bool(is_audio);
-            },
+            }
             Field::IsBook => {
                 let is_book = match file_info {
                     Some(file_info) => self.is_book(&file_info.name),
-                    None => self.is_book(&entry.file_name().to_string_lossy())
+                    None => self.is_book(&entry.file_name().to_string_lossy()),
                 };
 
                 return Variant::from_bool(is_book);
-            },
+            }
             Field::IsDoc => {
                 let is_doc = match file_info {
                     Some(file_info) => self.is_doc(&file_info.name),
-                    None => self.is_doc(&entry.file_name().to_string_lossy())
+                    None => self.is_doc(&entry.file_name().to_string_lossy()),
                 };
 
                 return Variant::from_bool(is_doc);
-            },
+            }
             Field::IsFont => {
                 let is_font = match file_info {
                     Some(file_info) => self.is_font(&file_info.name),
-                    None => self.is_font(&entry.file_name().to_string_lossy())
+                    None => self.is_font(&entry.file_name().to_string_lossy()),
                 };
 
                 return Variant::from_bool(is_font);
-            },
+            }
             Field::IsImage => {
                 let is_image = match file_info {
                     Some(file_info) => self.is_image(&file_info.name),
-                    None => self.is_image(&entry.file_name().to_string_lossy())
+                    None => self.is_image(&entry.file_name().to_string_lossy()),
                 };
 
                 return Variant::from_bool(is_image);
-            },
+            }
             Field::IsSource => {
                 let is_source = match file_info {
                     Some(file_info) => self.is_source(&file_info.name),
-                    None => self.is_source(&entry.file_name().to_string_lossy())
+                    None => self.is_source(&entry.file_name().to_string_lossy()),
                 };
 
                 return Variant::from_bool(is_source);
-            },
+            }
             Field::IsVideo => {
                 let is_video = match file_info {
                     Some(file_info) => self.is_video(&file_info.name),
-                    None => self.is_video(&entry.file_name().to_string_lossy())
+                    None => self.is_video(&entry.file_name().to_string_lossy()),
                 };
 
                 return Variant::from_bool(is_video);
-            },
+            }
             Field::Sha1 => {
-                return Variant::from_string(&crate::util::get_sha1_file_hash(&entry));
-            },
+                return Variant::from_string(&crate::util::get_sha1_file_hash(entry));
+            }
             Field::Sha256 => {
-                return Variant::from_string(&crate::util::get_sha256_file_hash(&entry));
-            },
+                return Variant::from_string(&crate::util::get_sha256_file_hash(entry));
+            }
             Field::Sha512 => {
-                return Variant::from_string(&crate::util::get_sha512_file_hash(&entry));
-            },
+                return Variant::from_string(&crate::util::get_sha512_file_hash(entry));
+            }
             Field::Sha3 => {
-                return Variant::from_string(&crate::util::get_sha3_512_file_hash(&entry));
+                return Variant::from_string(&crate::util::get_sha3_512_file_hash(entry));
             }
         };
 
         return Variant::empty(VariantType::String);
     }
 
-    fn check_file(&mut self,
-                  entry: &DirEntry,
-                  file_info: &Option<FileInfo>) -> io::Result<bool> {
+    fn check_file(&mut self, entry: &DirEntry, file_info: &Option<FileInfo>) -> io::Result<bool> {
         self.fms.clear();
 
         if let Some(ref expr) = self.query.expr {
@@ -1447,9 +1702,11 @@ impl <'a> Searcher<'a> {
         let mut criteria = vec!["".to_string(); self.query.ordering_fields.len()];
 
         for field in self.query.get_all_fields() {
-            file_map.insert(field.to_string(), self.get_field_value(entry, file_info, &field).to_string());
+            file_map.insert(
+                field.to_string(),
+                self.get_field_value(entry, file_info, &field).to_string(),
+            );
         }
-
 
         if !self.is_buffered() && self.found > 1 {
             self.results_writer.write_row_separator(&mut buf)?;
@@ -1458,44 +1715,49 @@ impl <'a> Searcher<'a> {
         let mut items: Vec<(String, String)> = Vec::new();
 
         for field in self.query.fields.iter() {
-            let record = self.get_column_expr_value(Some(entry), file_info, &mut file_map, None, &field);
+            let record =
+                self.get_column_expr_value(Some(entry), file_info, &mut file_map, None, field);
 
             let value = match self.use_colors && field.contains_colorized() {
                 true => self.colorize(&record.to_string()),
-                false => record.to_string()
+                false => record.to_string(),
             };
             items.push((field.to_string(), value));
         }
 
         for field in self.query.grouping_fields.iter() {
-            match file_map.get(&field.to_string()) {
-                None => {
-                    self.get_column_expr_value(Some(entry), file_info, &mut file_map, None, &field);
-                },
-                _ => {}
+            if file_map.get(&field.to_string()).is_none() {
+                self.get_column_expr_value(Some(entry), file_info, &mut file_map, None, field);
             }
         }
 
         for (idx, field) in self.query.ordering_fields.iter().enumerate() {
             criteria[idx] = match file_map.get(&field.to_string()) {
                 Some(record) => record.clone(),
-                None => self.get_column_expr_value(Some(entry), file_info, &mut file_map, None, &field).to_string()
+                None => self
+                    .get_column_expr_value(Some(entry), file_info, &mut file_map, None, field)
+                    .to_string(),
             }
         }
 
         self.results_writer.write_row(&mut buf, items)?;
 
         if self.is_buffered() {
-            self.output_buffer.insert(Criteria::new(self.query.ordering_fields.clone(), criteria, self.query.ordering_asc.clone()), String::from(buf));
+            self.output_buffer.insert(
+                Criteria::new(
+                    self.query.ordering_fields.clone(),
+                    criteria,
+                    self.query.ordering_asc.clone(),
+                ),
+                String::from(buf),
+            );
 
             if self.has_aggregate_column() {
                 self.raw_output_buffer.push(file_map);
             }
-        } else {
-            if let Err(e) = write!(std::io::stdout(), "{}", String::from(buf)) {
-                if e.kind() == ErrorKind::BrokenPipe {
-                    return Ok(false);
-                }
+        } else if let Err(e) = write!(std::io::stdout(), "{}", String::from(buf)) {
+            if e.kind() == ErrorKind::BrokenPipe {
+                return Ok(false);
             }
         }
 
@@ -1506,7 +1768,9 @@ impl <'a> Searcher<'a> {
         let style;
 
         if let Some(ref metadata) = self.fms.file_metadata {
-            style = self.lscolors.style_for_path_with_metadata(Path::new(&value), Some(metadata));
+            style = self
+                .lscolors
+                .style_for_path_with_metadata(Path::new(&value), Some(metadata));
         } else {
             style = self.lscolors.style_for_path(Path::new(&value));
         }
@@ -1516,19 +1780,22 @@ impl <'a> Searcher<'a> {
         format!("{}", ansi_style.paint(value))
     }
 
-    fn check_file_mode(&mut self,
-                       entry: &DirEntry,
-                       mode_func_boxed: &dyn Fn(&Metadata) -> bool,
-                       file_info: &Option<FileInfo>,
-                       mode_func_i32: &dyn Fn(u32) -> bool) -> Variant {
+    fn check_file_mode(
+        &mut self,
+        entry: &DirEntry,
+        mode_func_boxed: &dyn Fn(&Metadata) -> bool,
+        file_info: &Option<FileInfo>,
+        mode_func_i32: &dyn Fn(u32) -> bool,
+    ) -> Variant {
         match file_info {
             Some(ref file_info) => {
                 if let Some(mode) = file_info.mode {
                     return Variant::from_bool(mode_func_i32(mode));
                 }
-            },
+            }
             _ => {
-                self.fms.update_file_metadata(entry, self.current_follow_symlinks);
+                self.fms
+                    .update_file_metadata(entry, self.current_follow_symlinks);
 
                 if let Some(ref attrs) = self.fms.file_metadata {
                     return Variant::from_bool(mode_func_boxed(attrs));
@@ -1539,10 +1806,7 @@ impl <'a> Searcher<'a> {
         Variant::from_bool(false)
     }
 
-    fn conforms(&mut self,
-                entry: &DirEntry,
-                file_info: &Option<FileInfo>,
-                expr: &Expr) -> bool {
+    fn conforms(&mut self, entry: &DirEntry, file_info: &Option<FileInfo>, expr: &Expr) -> bool {
         let mut result = false;
 
         if let Some(ref logical_op) = expr.logical_op {
@@ -1550,7 +1814,7 @@ impl <'a> Searcher<'a> {
             let mut right_result = false;
 
             if let Some(ref left) = expr.left {
-                let left_res = self.conforms(entry, file_info, &left);
+                let left_res = self.conforms(entry, file_info, left);
                 left_result = left_res;
             }
 
@@ -1560,19 +1824,19 @@ impl <'a> Searcher<'a> {
                         result = false;
                     } else {
                         if let Some(ref right) = expr.right {
-                            let right_res = self.conforms(entry, file_info, &right);
+                            let right_res = self.conforms(entry, file_info, right);
                             right_result = right_res;
                         }
 
                         result = left_result && right_result;
                     }
-                },
+                }
                 LogicalOp::Or => {
                     if left_result {
                         result = true;
                     } else {
                         if let Some(ref right) = expr.right {
-                            let right_res = self.conforms(entry, file_info, &right);
+                            let right_res = self.conforms(entry, file_info, right);
                             right_result = right_res;
                         }
 
@@ -1581,107 +1845,115 @@ impl <'a> Searcher<'a> {
                 }
             }
         } else if let Some(ref op) = expr.op {
-            let field_value = self.get_column_expr_value(Some(entry), file_info, &mut HashMap::new(), None, expr.left.as_ref().unwrap());
-            let value = self.get_column_expr_value(Some(entry), file_info, &mut HashMap::new(), None, expr.right.as_ref().unwrap());
+            let field_value = self.get_column_expr_value(
+                Some(entry),
+                file_info,
+                &mut HashMap::new(),
+                None,
+                expr.left.as_ref().unwrap(),
+            );
+            let value = self.get_column_expr_value(
+                Some(entry),
+                file_info,
+                &mut HashMap::new(),
+                None,
+                expr.right.as_ref().unwrap(),
+            );
 
             result = match field_value.get_type() {
                 VariantType::String => {
                     let val = value.to_string();
                     match op {
-                        Op::Eq => {
-                            match is_glob(&val) {
-                                true => {
-                                    let regex = self.regex_cache.get(&val);
-                                    match regex {
-                                        Some(ref regex) => {
-                                            return regex.is_match(&field_value.to_string());
-                                        },
-                                        None => {
-                                            let pattern = convert_glob_to_pattern(&val);
-                                            let regex = Regex::new(&pattern);
-                                            match regex {
-                                                Ok(ref regex) => {
-                                                    self.regex_cache.insert(val, regex.clone());
-                                                    return regex.is_match(&field_value.to_string());
-                                                },
-                                                _ => {
-                                                    return val.eq(&field_value.to_string());
-                                                }
+                        Op::Eq => match is_glob(&val) {
+                            true => {
+                                let regex = self.regex_cache.get(&val);
+                                match regex {
+                                    Some(regex) => {
+                                        return regex.is_match(&field_value.to_string());
+                                    }
+                                    None => {
+                                        let pattern = convert_glob_to_pattern(&val);
+                                        let regex = Regex::new(&pattern);
+                                        match regex {
+                                            Ok(ref regex) => {
+                                                self.regex_cache.insert(val, regex.clone());
+                                                return regex.is_match(&field_value.to_string());
+                                            }
+                                            _ => {
+                                                return val.eq(&field_value.to_string());
                                             }
                                         }
                                     }
-                                },
-                                false => val.eq(&field_value.to_string())
+                                }
                             }
+                            false => val.eq(&field_value.to_string()),
                         },
-                        Op::Ne => {
-                            match is_glob(&val) {
-                                true => {
-                                    let regex = self.regex_cache.get(&val);
-                                    match regex {
-                                        Some(ref regex) => {
-                                            return !regex.is_match(&field_value.to_string());
-                                        },
-                                        None => {
-                                            let pattern = convert_glob_to_pattern(&val);
-                                            let regex = Regex::new(&pattern);
-                                            match regex {
-                                                Ok(ref regex) => {
-                                                    self.regex_cache.insert(val, regex.clone());
-                                                    return !regex.is_match(&field_value.to_string());
-                                                },
-                                                _ => {
-                                                    return val.ne(&field_value.to_string());
-                                                }
+                        Op::Ne => match is_glob(&val) {
+                            true => {
+                                let regex = self.regex_cache.get(&val);
+                                match regex {
+                                    Some(regex) => {
+                                        return !regex.is_match(&field_value.to_string());
+                                    }
+                                    None => {
+                                        let pattern = convert_glob_to_pattern(&val);
+                                        let regex = Regex::new(&pattern);
+                                        match regex {
+                                            Ok(ref regex) => {
+                                                self.regex_cache.insert(val, regex.clone());
+                                                return !regex.is_match(&field_value.to_string());
+                                            }
+                                            _ => {
+                                                return val.ne(&field_value.to_string());
                                             }
                                         }
                                     }
-                                },
-                                false => val.ne(&field_value.to_string())
+                                }
                             }
+                            false => val.ne(&field_value.to_string()),
                         },
                         Op::Rx => {
                             let regex = self.regex_cache.get(&val);
                             match regex {
-                                Some(ref regex) => {
+                                Some(regex) => {
                                     return regex.is_match(&field_value.to_string());
-                                },
+                                }
                                 None => {
                                     let regex = Regex::new(&val);
                                     match regex {
                                         Ok(ref regex) => {
                                             self.regex_cache.insert(val, regex.clone());
                                             return regex.is_match(&field_value.to_string());
-                                        },
-                                        _ => error_exit("Incorrect regex expression", val.as_str())
+                                        }
+                                        _ => error_exit("Incorrect regex expression", val.as_str()),
                                     }
                                 }
                             }
-                        },
+                        }
                         Op::NotRx => {
                             let regex = self.regex_cache.get(&val);
                             match regex {
-                                Some(ref regex) => {
+                                Some(regex) => {
                                     return !regex.is_match(&field_value.to_string());
-                                },
+                                }
                                 None => {
                                     let regex = Regex::new(&val);
                                     match regex {
                                         Ok(ref regex) => {
                                             self.regex_cache.insert(val, regex.clone());
                                             return !regex.is_match(&field_value.to_string());
-                                        },
-                                        _ => error_exit("Incorrect regex expression", val.as_str())
+                                        }
+                                        _ => error_exit("Incorrect regex expression", val.as_str()),
                                     }
                                 }
                             }
-                        },
+                        }
                         Op::Like => {
                             let regex = self.regex_cache.get(&val);
                             match regex {
-                                Some(ref regex) => {
+                                Some(regex) => {
                                     return regex.is_match(&field_value.to_string());
-                                },
+                                }
                                 None => {
                                     let pattern = convert_like_to_pattern(&val);
                                     let regex = Regex::new(&pattern);
@@ -1689,18 +1961,18 @@ impl <'a> Searcher<'a> {
                                         Ok(ref regex) => {
                                             self.regex_cache.insert(val, regex.clone());
                                             return regex.is_match(&field_value.to_string());
-                                        },
-                                        _ => error_exit("Incorrect LIKE expression", val.as_str())
+                                        }
+                                        _ => error_exit("Incorrect LIKE expression", val.as_str()),
                                     }
                                 }
                             }
-                        },
+                        }
                         Op::NotLike => {
                             let regex = self.regex_cache.get(&val);
                             match regex {
-                                Some(ref regex) => {
+                                Some(regex) => {
                                     return !regex.is_match(&field_value.to_string());
-                                },
+                                }
                                 None => {
                                     let pattern = convert_like_to_pattern(&val);
                                     let regex = Regex::new(&pattern);
@@ -1708,17 +1980,17 @@ impl <'a> Searcher<'a> {
                                         Ok(ref regex) => {
                                             self.regex_cache.insert(val, regex.clone());
                                             return !regex.is_match(&field_value.to_string());
-                                        },
-                                        _ => error_exit("Incorrect LIKE expression", val.as_str())
+                                        }
+                                        _ => error_exit("Incorrect LIKE expression", val.as_str()),
                                     }
                                 }
                             }
-                        },
+                        }
                         Op::Eeq => val.eq(&field_value.to_string()),
                         Op::Ene => val.ne(&field_value.to_string()),
-                        _ => false
+                        _ => false,
                     }
-                },
+                }
                 VariantType::Int => {
                     let val = value.to_int();
                     let int_value = field_value.to_int();
@@ -1729,9 +2001,9 @@ impl <'a> Searcher<'a> {
                         Op::Gte => int_value >= val,
                         Op::Lt => int_value < val,
                         Op::Lte => int_value <= val,
-                        _ => false
+                        _ => false,
                     }
-                },
+                }
                 VariantType::Float => {
                     let val = value.to_float();
                     let float_value = field_value.to_float();
@@ -1742,9 +2014,9 @@ impl <'a> Searcher<'a> {
                         Op::Gte => float_value >= val,
                         Op::Lt => float_value < val,
                         Op::Lte => float_value <= val,
-                        _ => false
+                        _ => false,
                     }
-                },
+                }
                 VariantType::Bool => {
                     let val = value.to_bool();
                     match op {
@@ -1754,9 +2026,9 @@ impl <'a> Searcher<'a> {
                         Op::Gte => field_value.to_bool() >= val,
                         Op::Lt => field_value.to_bool() < val,
                         Op::Lte => field_value.to_bool() <= val,
-                        _ => false
+                        _ => false,
                     }
-                },
+                }
                 VariantType::DateTime => {
                     let (start, finish) = value.to_datetime();
                     let start = start.and_utc().timestamp();
@@ -1771,7 +2043,7 @@ impl <'a> Searcher<'a> {
                         Op::Gte => dt >= start,
                         Op::Lt => dt < start,
                         Op::Lte => dt <= finish,
-                        _ => false
+                        _ => false,
                     }
                 }
             };
@@ -1781,38 +2053,92 @@ impl <'a> Searcher<'a> {
     }
 
     fn is_zip_archive(&self, file_name: &str) -> bool {
-        has_extension(file_name, &self.config.is_zip_archive.as_ref().unwrap_or(&self.default_config.is_zip_archive.as_ref().unwrap()))
+        has_extension(
+            file_name,
+            self.config
+                .is_zip_archive
+                .as_ref()
+                .unwrap_or(self.default_config.is_zip_archive.as_ref().unwrap()),
+        )
     }
 
     fn is_archive(&self, file_name: &str) -> bool {
-        has_extension(file_name, &self.config.is_archive.as_ref().unwrap_or(&self.default_config.is_archive.as_ref().unwrap()))
+        has_extension(
+            file_name,
+            self.config
+                .is_archive
+                .as_ref()
+                .unwrap_or(self.default_config.is_archive.as_ref().unwrap()),
+        )
     }
 
     fn is_audio(&self, file_name: &str) -> bool {
-        has_extension(file_name, &self.config.is_audio.as_ref().unwrap_or(&self.default_config.is_audio.as_ref().unwrap()))
+        has_extension(
+            file_name,
+            self.config
+                .is_audio
+                .as_ref()
+                .unwrap_or(self.default_config.is_audio.as_ref().unwrap()),
+        )
     }
 
     fn is_book(&self, file_name: &str) -> bool {
-        has_extension(file_name, &self.config.is_book.as_ref().unwrap_or(&self.default_config.is_book.as_ref().unwrap()))
+        has_extension(
+            file_name,
+            self.config
+                .is_book
+                .as_ref()
+                .unwrap_or(self.default_config.is_book.as_ref().unwrap()),
+        )
     }
 
     fn is_doc(&self, file_name: &str) -> bool {
-        has_extension(file_name, &self.config.is_doc.as_ref().unwrap_or(&self.default_config.is_doc.as_ref().unwrap()))
+        has_extension(
+            file_name,
+            self.config
+                .is_doc
+                .as_ref()
+                .unwrap_or(self.default_config.is_doc.as_ref().unwrap()),
+        )
     }
 
     fn is_font(&self, file_name: &str) -> bool {
-        has_extension(file_name, &self.config.is_font.as_ref().unwrap_or(&self.default_config.is_font.as_ref().unwrap()))
+        has_extension(
+            file_name,
+            self.config
+                .is_font
+                .as_ref()
+                .unwrap_or(self.default_config.is_font.as_ref().unwrap()),
+        )
     }
 
     fn is_image(&self, file_name: &str) -> bool {
-        has_extension(file_name, &self.config.is_image.as_ref().unwrap_or(&self.default_config.is_image.as_ref().unwrap()))
+        has_extension(
+            file_name,
+            self.config
+                .is_image
+                .as_ref()
+                .unwrap_or(self.default_config.is_image.as_ref().unwrap()),
+        )
     }
 
     fn is_source(&self, file_name: &str) -> bool {
-        has_extension(file_name, &self.config.is_source.as_ref().unwrap_or(&self.default_config.is_source.as_ref().unwrap()))
+        has_extension(
+            file_name,
+            self.config
+                .is_source
+                .as_ref()
+                .unwrap_or(self.default_config.is_source.as_ref().unwrap()),
+        )
     }
 
     fn is_video(&self, file_name: &str) -> bool {
-        has_extension(file_name, &self.config.is_video.as_ref().unwrap_or(&self.default_config.is_video.as_ref().unwrap()))
+        has_extension(
+            file_name,
+            self.config
+                .is_video
+                .as_ref()
+                .unwrap_or(self.default_config.is_video.as_ref().unwrap()),
+        )
     }
 }

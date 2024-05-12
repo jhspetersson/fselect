@@ -1,3 +1,5 @@
+//! Handles export of results in CSV format
+
 use crate::output::ResultsFormatter;
 use crate::util::WritableBuffer;
 

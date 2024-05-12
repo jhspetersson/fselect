@@ -1,3 +1,5 @@
+//! This module contains functions for working with file modes / permissions
+
 use std::fs::Metadata;
 #[cfg(unix)]
 use std::os::unix::fs::MetadataExt;
@@ -68,12 +70,10 @@ fn get_mode_unix(mode: u32) -> String {
         } else {
             s.push('x')
         }
+    } else if mode_suid(mode) {
+        s.push('S')
     } else {
-        if mode_suid(mode) {
-            s.push('S')
-        } else {
-            s.push('-')
-        }
+        s.push('-')
     }
 
     // group
@@ -96,12 +96,10 @@ fn get_mode_unix(mode: u32) -> String {
         } else {
             s.push('x')
         }
+    } else if mode_sgid(mode) {
+        s.push('S')
     } else {
-        if mode_sgid(mode) {
-            s.push('S')
-        } else {
-            s.push('-')
-        }
+        s.push('-')
     }
 
     // other
@@ -124,12 +122,10 @@ fn get_mode_unix(mode: u32) -> String {
         } else {
             s.push('x')
         }
+    } else if mode_sticky(mode) {
+        s.push('T')
     } else {
-        if mode_sticky(mode) {
-            s.push('T')
-        } else {
-            s.push('-')
-        }
+        s.push('-')
     }
 
     s
@@ -151,7 +147,7 @@ pub fn get_mode_from_boxed_unix_int(meta: &Metadata) -> Option<u32> {
 pub fn user_read(meta: &Metadata) -> bool {
     match get_mode_from_boxed_unix_int(meta) {
         Some(mode) => mode_user_read(mode),
-        None => false
+        None => false,
     }
 }
 
@@ -162,7 +158,7 @@ pub fn mode_user_read(mode: u32) -> bool {
 pub fn user_write(meta: &Metadata) -> bool {
     match get_mode_from_boxed_unix_int(meta) {
         Some(mode) => mode_user_write(mode),
-        None => false
+        None => false,
     }
 }
 
@@ -173,7 +169,7 @@ pub fn mode_user_write(mode: u32) -> bool {
 pub fn user_exec(meta: &Metadata) -> bool {
     match get_mode_from_boxed_unix_int(meta) {
         Some(mode) => mode_user_exec(mode),
-        None => false
+        None => false,
     }
 }
 
@@ -192,7 +188,7 @@ pub fn mode_user_all(mode: u32) -> bool {
 pub fn group_read(meta: &Metadata) -> bool {
     match get_mode_from_boxed_unix_int(meta) {
         Some(mode) => mode_group_read(mode),
-        None => false
+        None => false,
     }
 }
 
@@ -203,7 +199,7 @@ pub fn mode_group_read(mode: u32) -> bool {
 pub fn group_write(meta: &Metadata) -> bool {
     match get_mode_from_boxed_unix_int(meta) {
         Some(mode) => mode_group_write(mode),
-        None => false
+        None => false,
     }
 }
 
@@ -214,7 +210,7 @@ pub fn mode_group_write(mode: u32) -> bool {
 pub fn group_exec(meta: &Metadata) -> bool {
     match get_mode_from_boxed_unix_int(meta) {
         Some(mode) => mode_group_exec(mode),
-        None => false
+        None => false,
     }
 }
 
@@ -233,7 +229,7 @@ pub fn mode_group_all(mode: u32) -> bool {
 pub fn other_read(meta: &Metadata) -> bool {
     match get_mode_from_boxed_unix_int(meta) {
         Some(mode) => mode_other_read(mode),
-        None => false
+        None => false,
     }
 }
 
@@ -244,7 +240,7 @@ pub fn mode_other_read(mode: u32) -> bool {
 pub fn other_write(meta: &Metadata) -> bool {
     match get_mode_from_boxed_unix_int(meta) {
         Some(mode) => mode_other_write(mode),
-        None => false
+        None => false,
     }
 }
 
@@ -255,7 +251,7 @@ pub fn mode_other_write(mode: u32) -> bool {
 pub fn other_exec(meta: &Metadata) -> bool {
     match get_mode_from_boxed_unix_int(meta) {
         Some(mode) => mode_other_exec(mode),
-        None => false
+        None => false,
     }
 }
 
@@ -274,7 +270,7 @@ pub fn mode_other_all(mode: u32) -> bool {
 pub fn suid_bit_set(meta: &Metadata) -> bool {
     match get_mode_from_boxed_unix_int(meta) {
         Some(mode) => mode_suid(mode),
-        None => false
+        None => false,
     }
 }
 
@@ -285,7 +281,7 @@ pub fn mode_suid(mode: u32) -> bool {
 pub fn sgid_bit_set(meta: &Metadata) -> bool {
     match get_mode_from_boxed_unix_int(meta) {
         Some(mode) => mode_sgid(mode),
-        None => false
+        None => false,
     }
 }
 
@@ -301,7 +297,7 @@ pub fn mode_sticky(mode: u32) -> bool {
 pub fn is_pipe(meta: &Metadata) -> bool {
     match get_mode_from_boxed_unix_int(meta) {
         Some(mode) => mode_is_pipe(mode),
-        None => false
+        None => false,
     }
 }
 
@@ -312,7 +308,7 @@ pub fn mode_is_pipe(mode: u32) -> bool {
 pub fn is_char_device(meta: &Metadata) -> bool {
     match get_mode_from_boxed_unix_int(meta) {
         Some(mode) => mode_is_char_device(mode),
-        None => false
+        None => false,
     }
 }
 
@@ -323,7 +319,7 @@ pub fn mode_is_char_device(mode: u32) -> bool {
 pub fn is_block_device(meta: &Metadata) -> bool {
     match get_mode_from_boxed_unix_int(meta) {
         Some(mode) => mode_is_block_device(mode),
-        None => false
+        None => false,
     }
 }
 
@@ -344,7 +340,7 @@ pub fn mode_is_link(mode: u32) -> bool {
 pub fn is_socket(meta: &Metadata) -> bool {
     match get_mode_from_boxed_unix_int(meta) {
         Some(mode) => mode_is_socket(mode),
-        None => false
+        None => false,
     }
 }
 

@@ -20,8 +20,11 @@ impl DurationExtractor for WavDurationExtractor {
         path: &Path,
         _: &Option<MP3Metadata>,
     ) -> io::Result<Option<Duration>> {
-        let wav: Wav<i16> = Wav::from_path(path).map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))?;
-        Ok(Some(Duration { length: wav.duration() as usize }))
+        let wav: Wav<i16> =
+            Wav::from_path(path).map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))?;
+        Ok(Some(Duration {
+            length: wav.duration() as usize,
+        }))
     }
 }
 

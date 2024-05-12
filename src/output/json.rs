@@ -1,3 +1,5 @@
+//! Handles export of results in JSON format
+
 use crate::output::ResultsFormatter;
 use std::collections::BTreeMap;
 
@@ -35,15 +37,17 @@ impl ResultsFormatter for JsonFormatter {
     }
 }
 
-
 #[cfg(test)]
 mod test {
-    use crate::output::test::write_test_items;
     use crate::output::json::JsonFormatter;
+    use crate::output::test::write_test_items;
 
     #[test]
     fn test() {
-        let result =  write_test_items(&mut JsonFormatter::default());
-        assert_eq!(r#"[{"bar":"BAR value","foo":"foo_value"},{"bar":"","foo":"123"}]"#, result);
+        let result = write_test_items(&mut JsonFormatter::default());
+        assert_eq!(
+            r#"[{"bar":"BAR value","foo":"foo_value"},{"bar":"","foo":"123"}]"#,
+            result
+        );
     }
 }

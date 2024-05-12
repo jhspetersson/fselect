@@ -30,7 +30,6 @@ impl Write for WritableBuffer {
             }
             Err(_) => Err(io::ErrorKind::InvalidInput.into()),
         }
-
     }
 
     fn flush(&mut self) -> io::Result<()> {

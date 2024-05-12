@@ -1,3 +1,6 @@
+//! The entry point of the program
+//! Handles the command line arguments parsing
+
 #[macro_use]
 extern crate lazy_static;
 #[macro_use]
@@ -8,7 +11,7 @@ extern crate uzers;
 extern crate xattr;
 
 use std::env;
-use std::io::{IsTerminal, stdout};
+use std::io::{stdout, IsTerminal};
 use std::path::PathBuf;
 use std::process::ExitCode;
 #[cfg(feature = "update-notifications")]
@@ -42,8 +45,8 @@ use crate::util::error_message;
 use crate::util::str_to_bool;
 
 fn main() -> ExitCode {
-    let default_config = Config::default(); 
-    
+    let default_config = Config::default();
+
     let mut config = match Config::new() {
         Ok(cnf) => cnf,
         Err(err) => {
@@ -52,7 +55,7 @@ fn main() -> ExitCode {
         }
     };
 
-    let env_var_value = std::env::var("NO_COLOR").ok().unwrap_or(String::new());
+    let env_var_value = std::env::var("NO_COLOR").ok().unwrap_or_default();
     let env_no_color = str_to_bool(&env_var_value).unwrap_or(false);
     let mut no_color = env_no_color || config.no_color.unwrap_or(false);
 
@@ -63,7 +66,7 @@ fn main() -> ExitCode {
             let win_init_ok = match res {
                 Ok(()) => true,
                 Err(203) => true,
-                _ => false
+                _ => false,
             };
             no_color = !win_init_ok;
         }
@@ -85,7 +88,11 @@ fn main() -> ExitCode {
         return ExitCode::SUCCESS;
     }
 
-    if first_arg.contains("help") || first_arg.starts_with("-h") || first_arg.starts_with("/?") || first_arg.starts_with("/h") {
+    if first_arg.contains("help")
+        || first_arg.starts_with("-h")
+        || first_arg.starts_with("/?")
+        || first_arg.starts_with("/h")
+    {
         usage_info(config, default_config, no_color);
         return ExitCode::SUCCESS;
     }
@@ -95,9 +102,15 @@ fn main() -> ExitCode {
     loop {
         if first_arg.contains("nocolor") || first_arg.contains("no-color") {
             no_color = true;
-        } else if first_arg.starts_with("-i") || first_arg.starts_with("--i") || first_arg.starts_with("/i") {
+        } else if first_arg.starts_with("-i")
+            || first_arg.starts_with("--i")
+            || first_arg.starts_with("/i")
+        {
             interactive = true;
-        } else if first_arg.starts_with("-c") || first_arg.starts_with("--config") || first_arg.starts_with("/c") {
+        } else if first_arg.starts_with("-c")
+            || first_arg.starts_with("--config")
+            || first_arg.starts_with("/c")
+        {
             let config_path = args[1].to_ascii_lowercase();
             config = match Config::from(PathBuf::from(&config_path)) {
                 Ok(cnf) => cnf,
@@ -131,30 +144,31 @@ fn main() -> ExitCode {
 
     if interactive {
         match DefaultEditor::new() {
-            Ok(mut rl) => {
-                loop {
-                    let readline = rl.readline("query> ");
-                    match readline {
-                        Ok(cmd) if cmd.to_ascii_lowercase().trim() == "quit" || cmd.to_ascii_lowercase().trim() == "exit" => {
-                            break
-                        },
-                        Ok(query) => {
-                            let _ = rl.add_history_entry(query.as_str());
-                            exec_search(query, &mut config, &default_config, no_color);
-                        },
-                        Err(ReadlineError::Interrupted) => {
-                            println!("CTRL-C");
-                            break
-                        },
-                        Err(ReadlineError::Eof) => {
-                            println!("CTRL-D");
-                            break
-                        },
-                        Err(err) => {
-                            let err = format!("{:?}", err);
-                            error_message("input", &err);
-                            break
-                        }
+            Ok(mut rl) => loop {
+                let readline = rl.readline("query> ");
+                match readline {
+                    Ok(cmd)
+                        if cmd.to_ascii_lowercase().trim() == "quit"
+                            || cmd.to_ascii_lowercase().trim() == "exit" =>
+                    {
+                        break
+                    }
+                    Ok(query) => {
+                        let _ = rl.add_history_entry(query.as_str());
+                        exec_search(query, &mut config, &default_config, no_color);
+                    }
+                    Err(ReadlineError::Interrupted) => {
+                        println!("CTRL-C");
+                        break;
+                    }
+                    Err(ReadlineError::Eof) => {
+                        println!("CTRL-D");
+                        break;
+                    }
+                    Err(err) => {
+                        let err = format!("{:?}", err);
+                        error_message("input", &err);
+                        break;
                     }
                 }
             },
@@ -174,9 +188,10 @@ fn main() -> ExitCode {
     if config.check_for_updates.unwrap_or(false) && stdout().is_terminal() {
         let name = env!("CARGO_PKG_NAME");
         let version = env!("CARGO_PKG_VERSION");
-        let informer = update_informer::new(registry::Crates, name, version).interval(Duration::from_secs(60 * 60 * 24));
+        let informer = update_informer::new(registry::Crates, name, version)
+            .interval(Duration::from_secs(60 * 60 * 24));
 
-        if let Some(version) = informer.check_version().ok().flatten()  {
+        if let Some(version) = informer.check_version().ok().flatten() {
             println!("\nNew version is available! : {}", version);
         }
     }
@@ -207,15 +222,18 @@ fn exec_search(query: String, config: &mut Config, default_config: &Config, no_c
             let error_count = searcher.error_count;
             match error_count {
                 0 => 0,
-                _ => 1
+                _ => 1,
             }
-        },
-        Err(err) => { error_message("query", &err); 2 }
+        }
+        Err(err) => {
+            error_message("query", &err);
+            2
+        }
     }
 }
 
 fn short_usage_info(no_color: bool) {
-    const VERSION: &'static str = env!("CARGO_PKG_VERSION");
+    const VERSION: &str = env!("CARGO_PKG_VERSION");
 
     print!("fselect ");
 
@@ -230,7 +248,11 @@ fn short_usage_info(no_color: bool) {
     if no_color {
         println!("https://github.com/jhspetersson/fselect");
     } else {
-        println!("{}", Cyan.underline().paint("https://github.com/jhspetersson/fselect"));
+        println!(
+            "{}",
+            Cyan.underline()
+                .paint("https://github.com/jhspetersson/fselect")
+        );
     }
 
     println!();
@@ -238,21 +260,47 @@ fn short_usage_info(no_color: bool) {
 }
 
 fn help_hint() {
-    println!("
-For more detailed instructions please refer to the URL above or run fselect --help");
+    println!(
+        "
+For more detailed instructions please refer to the URL above or run fselect --help"
+    );
 }
 
 fn usage_info(config: Config, default_config: Config, no_color: bool) {
     short_usage_info(no_color);
 
-    let is_archive = config.is_archive.unwrap_or(default_config.is_archive.unwrap()).join(", ");
-    let is_audio = config.is_audio.unwrap_or(default_config.is_audio.unwrap()).join(", ");
-    let is_book = config.is_book.unwrap_or(default_config.is_book.unwrap()).join(", ");
-    let is_doc = config.is_doc.unwrap_or(default_config.is_doc.unwrap()).join(", ");
-    let is_font = config.is_font.unwrap_or(default_config.is_font.unwrap()).join(", ");
-    let is_image = config.is_image.unwrap_or(default_config.is_image.unwrap()).join(", ");
-    let is_source = config.is_source.unwrap_or(default_config.is_source.unwrap()).join(", ");
-    let is_video = config.is_video.unwrap_or(default_config.is_video.unwrap()).join(", ");
+    let is_archive = config
+        .is_archive
+        .unwrap_or(default_config.is_archive.unwrap())
+        .join(", ");
+    let is_audio = config
+        .is_audio
+        .unwrap_or(default_config.is_audio.unwrap())
+        .join(", ");
+    let is_book = config
+        .is_book
+        .unwrap_or(default_config.is_book.unwrap())
+        .join(", ");
+    let is_doc = config
+        .is_doc
+        .unwrap_or(default_config.is_doc.unwrap())
+        .join(", ");
+    let is_font = config
+        .is_font
+        .unwrap_or(default_config.is_font.unwrap())
+        .join(", ");
+    let is_image = config
+        .is_image
+        .unwrap_or(default_config.is_image.unwrap())
+        .join(", ");
+    let is_source = config
+        .is_source
+        .unwrap_or(default_config.is_source.unwrap())
+        .join(", ");
+    let is_video = config
+        .is_video
+        .unwrap_or(default_config.is_video.unwrap())
+        .join(", ");
 
     println!("
 Files Detected as Archives: {is_archive}

@@ -1,3 +1,6 @@
+//! Functions for processing values in the query language.
+//! This module contains both the regular and aggregate functions used in the query language.
+
 use std::collections::HashMap;
 use std::fmt::Display;
 use std::fmt::Error;
@@ -19,11 +22,11 @@ use xattr::FileExt;
 use human_time::ToHumanTimeString;
 
 use crate::fileinfo::FileInfo;
-use crate::util::{capitalize, error_exit, format_date};
 use crate::util::format_datetime;
 use crate::util::parse_datetime;
 use crate::util::parse_filesize;
 use crate::util::str_to_bool;
+use crate::util::{capitalize, error_exit, format_date};
 
 #[derive(Clone, Debug)]
 pub enum VariantType {
@@ -105,8 +108,8 @@ impl Variant {
                 result += &value.to_owned();
 
                 result
-            },
-            false => value.to_owned()
+            }
+            false => value.to_owned(),
         };
 
         Variant {
@@ -123,8 +126,14 @@ impl Variant {
     pub fn from_bool(value: bool) -> Variant {
         Variant {
             value_type: VariantType::Bool,
-            string_value: match value { true => String::from("true"), _ => String::from("false") },
-            int_value: match value { true => Some(1), _ => Some(0) },
+            string_value: match value {
+                true => String::from("true"),
+                _ => String::from("false"),
+            },
+            int_value: match value {
+                true => Some(1),
+                _ => Some(0),
+            },
             float_value: None,
             bool_value: Some(value),
             dt_from: None,
@@ -161,8 +170,8 @@ impl Variant {
                     Ok(i) => i as i64,
                     _ => match parse_filesize(&self.string_value) {
                         Some(size) => size as i64,
-                        _ => 0
-                    }
+                        _ => 0,
+                    },
                 }
             }
         }
@@ -181,8 +190,8 @@ impl Variant {
                     Ok(f) => f,
                     _ => match parse_filesize(&self.string_value) {
                         Some(size) => size as f64,
-                        _ => 0.0
-                    }
+                        _ => 0.0,
+                    },
                 }
             }
         }
@@ -207,8 +216,8 @@ impl Variant {
             match parse_datetime(&self.string_value) {
                 Ok((dt_from, dt_to)) => {
                     return (dt_from, dt_to);
-                },
-                _ => error_exit("Can't parse datetime", &self.string_value)
+                }
+                _ => error_exit("Can't parse datetime", &self.string_value),
             }
         }
 
@@ -217,80 +226,142 @@ impl Variant {
 }
 
 impl Display for Variant {
-    fn fmt(&self, f: &mut Formatter) -> Result<(), Error>{
+    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         write!(f, "{}", self.to_string())
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Hash)]
 pub enum Function {
+    // ===== Regular functions =====
+    //  String conversion functions
+    /// Convert the value to lowercase
     Lower,
+    /// Convert the value to UPPERCASE
     Upper,
+    /// Capitalize the first letter of each word (Title Case)
     InitCap,
+    /// Get the length of the string
     Length,
+    /// Convert the value to base64
     ToBase64,
+    /// Read the value as base64
     FromBase64,
+
+    //  String manipulation functions
+    /// Concatenate the value with the arguments
+    Concat,
+    /// Concatenate the arguments, separated by the value
+    ConcatWs,
+    /// Get a substring of the value, from a position and length
+    Substring,
+    /// Replace a substring in the value with another string
+    Replace,
+    /// Trim whitespace from the value
+    Trim,
+    /// Trim whitespace from the start of the value
+    LTrim,
+    /// Trim whitespace from the end of the value
+    RTrim,
+
+    //  Numeric functions
+    /// Get the binary representation of the value
     Bin,
+    /// Get the hexadecimal representation of the value
     Hex,
+    /// Get the octal representation of the value
     Oct,
+    /// Raise the value to the power of another value
     Power,
+    /// Get the square root of the value
     Sqrt,
 
+    //  Japanese string functions
+    /// Check if the string contains Japanese characters
     ContainsJapanese,
+    /// Check if the string contains Hiragana characters
     ContainsHiragana,
+    /// Check if the string contains Katakana characters
     ContainsKatakana,
+    /// Check if the string contains Kana characters
     ContainsKana,
+    /// Check if the string contains Kanji characters
     ContainsKanji,
 
-    Concat,
-    ConcatWs,
-    Substring,
-    Replace,
-    Trim,
-    LTrim,
-    RTrim,
-    Coalesce,
+    //  Formatting functions
+    /// Format a file size in human-readable format
     FormatSize,
+    /// Format a time duration in human-readable format
     FormatTime,
 
-    Min,
-    Max,
-    Avg,
-    Sum,
-    Count,
-
-    StdDevPop,
-    StdDevSamp,
-    VarPop,
-    VarSamp,
-
+    //  Date and time functions
+    /// Get the current date
     CurrentDate,
+    /// Get the day from a date
     Day,
+    /// Get the month from a date
     Month,
+    /// Get the year from a date
     Year,
+    /// Get the day of the week from a date
     DayOfWeek,
 
+    //  File functions
     #[cfg(all(unix, feature = "users"))]
+    /// Get the current user ID
     CurrentUid,
     #[cfg(all(unix, feature = "users"))]
+    /// Get the current username
     CurrentUser,
     #[cfg(all(unix, feature = "users"))]
+    /// Get the current group ID
     CurrentGid,
     #[cfg(all(unix, feature = "users"))]
+    /// Get the current group name
     CurrentGroup,
 
+    /// Checks if a file contains a substring
     Contains,
 
     #[cfg(unix)]
+    /// Check if the file has a specific extended attribute
     HasXattr,
     #[cfg(unix)]
+    /// Get the value of an extended attribute
     Xattr,
     #[cfg(target_os = "linux")]
+    /// Check if the file has capabilities (security.capability xattr)
     HasCapabilities,
     #[cfg(target_os = "linux")]
+    /// Check if the file has a specific capability (security.capability xattr)
     HasCapability,
 
+    //  Miscellaneous functions
+    /// Return the first non-empty value
+    Coalesce,
+    /// Gets a random number from 0 to the value, or between two values
     Random,
+
+    // ===== Aggregate functions =====
+    /// Get the minimum value
+    Min,
+    /// Get the maximum value
+    Max,
+    /// Get the average value
+    Avg,
+    /// Get the sum of all values
+    Sum,
+    /// Get the number of values
+    Count,
+
+    /// Get the population standard deviation
+    StdDevPop,
+    /// Get the sample standard deviation
+    StdDevSamp,
+    /// Get the population variance
+    VarPop,
+    /// Get the sample variance
+    VarSamp,
 }
 
 impl FromStr for Function {
@@ -377,52 +448,56 @@ impl FromStr for Function {
 }
 
 impl Display for Function {
-    fn fmt(&self, f: &mut Formatter) -> Result<(), Error>{
+    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         write!(f, "{:?}", self)
     }
 }
 
 impl Serialize for Function {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-        where S: Serializer
+    where
+        S: Serializer,
     {
         serializer.serialize_str(&self.to_string())
     }
 }
 
 impl Function {
+    /// Check if the function is an aggregate function
     pub fn is_aggregate_function(&self) -> bool {
-        match self {
+        matches!(
+            self,
             Function::Min
-            | Function::Max
-            | Function::Avg
-            | Function::Sum
-            | Function::Count
-            | Function::StdDevPop
-            | Function::StdDevSamp
-            | Function::VarPop
-            | Function::VarSamp => true,
-            _ => false
-        }
+                | Function::Max
+                | Function::Avg
+                | Function::Sum
+                | Function::Count
+                | Function::StdDevPop
+                | Function::StdDevSamp
+                | Function::VarPop
+                | Function::VarSamp
+        )
     }
 
+    /// Check if the function is a numeric function, i.e. it returns a numeric value.
     pub fn is_numeric_function(&self) -> bool {
         if self.is_aggregate_function() {
             return true;
         }
 
-        match self {
+        matches!(
+            self,
             Function::Length
-            | Function::Random
-            | Function::Day
-            | Function::Month
-            | Function::Year
-            | Function::Power
-            | Function::Sqrt => true,
-            _ => false
-        }
+                | Function::Random
+                | Function::Day
+                | Function::Month
+                | Function::Year
+                | Function::Power
+                | Function::Sqrt
+        )
     }
 
+    /// Check if the function is a boolean function, i.e. it returns a boolean value.
     pub fn is_boolean_function(&self) -> bool {
         #[cfg(unix)]
         if self == &Function::HasXattr {
@@ -434,119 +509,77 @@ impl Function {
             return true;
         }
 
-        match self {
+        matches!(
+            self,
             Function::Contains
-            | Function::ContainsHiragana
-            | Function::ContainsKatakana
-            | Function::ContainsKana
-            | Function::ContainsKanji
-            | Function::ContainsJapanese => true,
-            _ => false
-        }
+                | Function::ContainsHiragana
+                | Function::ContainsKatakana
+                | Function::ContainsKana
+                | Function::ContainsKanji
+                | Function::ContainsJapanese
+        )
     }
 }
 
-pub fn get_value(function: &Option<Function>,
-                 function_arg: String,
-                 function_args: Vec<String>,
-                 entry: Option<&DirEntry>,
-                 file_info: &Option<FileInfo>) -> Variant {
+/// Applies a function to a value and returns the result.
+/// If no function is provided, the original value is returned.
+///
+/// Args:
+///  function: Optional specification of which function to apply.
+///  function_arg: The value to apply the function to.
+///  function_args: Additional arguments to the function.
+///  entry: Optional directory entry to read the file contents from.
+///  file_info: Optional file information to read the file contents from.
+///
+/// Returns:
+///   A variant containing the value computed or the original value if no function is provided.
+pub fn get_value(
+    function: &Option<Function>,
+    function_arg: String,
+    function_args: Vec<String>,
+    entry: Option<&DirEntry>,
+    file_info: &Option<FileInfo>,
+) -> Variant {
+    //* Refer to the Function enum for a list of available functions and their descriptions
     match function {
-        Some(Function::Lower) => {
-            return Variant::from_string(&function_arg.to_lowercase());
-        },
-        Some(Function::Upper) => {
-            return Variant::from_string(&function_arg.to_uppercase());
-        },
+        // ===== String functions =====
+        Some(Function::Lower) => Variant::from_string(&function_arg.to_lowercase()),
+        Some(Function::Upper) => Variant::from_string(&function_arg.to_uppercase()),
         Some(Function::InitCap) => {
-            let result = function_arg.split_whitespace().map(|s| capitalize(&s.to_lowercase())).collect::<Vec<_>>().join(" ");
-            return Variant::from_string(&result);
-        },
+            let result = function_arg
+                .split_whitespace()
+                .map(|s| capitalize(&s.to_lowercase()))
+                .collect::<Vec<_>>()
+                .join(" ");
+            Variant::from_string(&result)
+        }
+        // Get the length of the string
         Some(Function::Length) => {
             return Variant::from_int(function_arg.chars().count() as i64);
-        },
+        }
+        // Convert the value to base64
         Some(Function::ToBase64) => {
-            return Variant::from_string(&rbase64::encode((&function_arg).as_ref()));
-        },
+            return Variant::from_string(&rbase64::encode((function_arg).as_ref()));
+        }
+        // Read the value as base64
         Some(Function::FromBase64) => {
-            return Variant::from_string(&String::from_utf8_lossy(&rbase64::decode(&function_arg).unwrap_or(vec![])).to_string());
-        },
-        Some(Function::Bin) => {
-            return match function_arg.parse::<i64>() {
-                Ok(val) => Variant::from_string(&format!("{:b}", val)),
-                _ => Variant::empty(VariantType::String)
-            };
-        },
-        Some(Function::Hex) => {
-            return match function_arg.parse::<i64>() {
-                Ok(val) => Variant::from_string(&format!("{:x}", val)),
-                _ => Variant::empty(VariantType::String)
-            };
-        },
-        Some(Function::Oct) => {
-            return match function_arg.parse::<i64>() {
-                Ok(val) => Variant::from_string(&format!("{:o}", val)),
-                _ => Variant::empty(VariantType::String)
-            };
-        },
-        Some(Function::Power) => {
-            return match function_arg.parse::<f64>() {
-                Ok(val) => {
-                    let power = match function_args.get(0) {
-                        Some(power) => power.parse::<f64>().unwrap(),
-                        _ => 0.0
-                    };
+            return Variant::from_string(
+                &String::from_utf8_lossy(&rbase64::decode(&function_arg).unwrap_or_default())
+                    .to_string(),
+            );
+        }
 
-                    return Variant::from_float(val.powf(power));
-                },
-                _ => Variant::empty(VariantType::String)
-            };
-        },
-        Some(Function::Sqrt) => {
-            return match function_arg.parse::<f64>() {
-                Ok(val) => {
-                    return Variant::from_float(val.sqrt());
-                },
-                _ => Variant::empty(VariantType::String)
-            };
-        },
-        Some(Function::ContainsJapanese) => {
-            let result = crate::util::japanese::contains_japanese(&function_arg);
-
-            return Variant::from_bool(result);
-        },
-        Some(Function::ContainsHiragana) => {
-            let result = crate::util::japanese::contains_hiragana(&function_arg);
-
-            return Variant::from_bool(result);
-        },
-        Some(Function::ContainsKatakana) => {
-            let result = crate::util::japanese::contains_katakana(&function_arg);
-
-            return Variant::from_bool(result);
-        },
-        Some(Function::ContainsKana) => {
-            let result = crate::util::japanese::contains_kana(&function_arg);
-
-            return Variant::from_bool(result);
-        },
-        Some(Function::ContainsKanji) => {
-            let result = crate::util::japanese::contains_kanji(&function_arg);
-
-            return Variant::from_bool(result);
-        },
+        // ===== String manipulation functions =====
         Some(Function::Concat) => {
-            return Variant::from_string(&(String::from(&function_arg) + &function_args.join("")));
-        },
-        Some(Function::ConcatWs) => {
-            return Variant::from_string(&function_args.join(&function_arg));
-        },
+            Variant::from_string(&(String::from(&function_arg) + &function_args.join("")))
+        }
+        Some(Function::ConcatWs) => Variant::from_string(&function_args.join(&function_arg)),
         Some(Function::Substring) => {
             let string = String::from(&function_arg);
 
-            let mut pos = match &function_args.is_empty() {
+            let mut pos: i32 = match &function_args.is_empty() {
                 true => 0,
-                false => *&function_args[0].parse::<i32>().unwrap() - 1
+                false => *&function_args[0].parse::<i32>().unwrap() - 1,
             };
 
             if pos < 0 {
@@ -556,16 +589,16 @@ pub fn get_value(function: &Option<Function>,
 
             let len = match &function_args.get(1) {
                 Some(len) => len.parse::<usize>().unwrap(),
-                _ => 0
+                _ => 0,
             };
 
             let result = match len > 0 {
                 true => string.chars().skip(pos as usize).take(len).collect(),
-                false => string.chars().skip(pos as usize).collect()
+                false => string.chars().skip(pos as usize).collect(),
             };
 
-            return Variant::from_string(&result);
-        },
+            Variant::from_string(&result)
+        }
         Some(Function::Replace) => {
             let source = function_arg;
             let from = &function_args[0];
@@ -573,45 +606,82 @@ pub fn get_value(function: &Option<Function>,
 
             let result = source.replace(from, to);
 
-            return Variant::from_string(&result);
-        },
+            Variant::from_string(&result)
+        }
         Some(Function::Trim) => {
             return Variant::from_string(&function_arg.trim().to_string());
-        },
+        }
         Some(Function::LTrim) => {
             return Variant::from_string(&function_arg.trim_start().to_string());
-        },
+        }
         Some(Function::RTrim) => {
             return Variant::from_string(&function_arg.trim_end().to_string());
-        },
-        Some(Function::Coalesce) => {
-            if !&function_arg.is_empty() {
-                return Variant::from_string(&function_arg);
-            }
+        }
 
-            for arg in function_args {
-                if !arg.is_empty() {
-                    return Variant::from_string(&arg);
+        // ===== Numeric functions =====
+        Some(Function::Bin) => match function_arg.parse::<i64>() {
+            Ok(val) => Variant::from_string(&format!("{:b}", val)),
+            _ => Variant::empty(VariantType::String),
+        },
+        Some(Function::Hex) => match function_arg.parse::<i64>() {
+            Ok(val) => Variant::from_string(&format!("{:x}", val)),
+            _ => Variant::empty(VariantType::String),
+        },
+        Some(Function::Oct) => match function_arg.parse::<i64>() {
+            Ok(val) => Variant::from_string(&format!("{:o}", val)),
+            _ => Variant::empty(VariantType::String),
+        },
+        Some(Function::Power) => {
+            return match function_arg.parse::<f64>() {
+                Ok(val) => {
+                    let power = match function_args.first() {
+                        Some(power) => power.parse::<f64>().unwrap(),
+                        _ => 0.0,
+                    };
+
+                    return Variant::from_float(val.powf(power));
                 }
-            }
-
-            return Variant::empty(VariantType::String);
+                _ => Variant::empty(VariantType::String),
+            };
+        }
+        Some(Function::Sqrt) => match function_arg.parse::<f64>() {
+            Ok(val) => Variant::from_float(val.sqrt()),
+            _ => Variant::empty(VariantType::String),
         },
+
+        // ===== Japanese string functions =====
+        Some(Function::ContainsJapanese) => {
+            Variant::from_bool(crate::util::japanese::contains_japanese(&function_arg))
+        }
+        Some(Function::ContainsHiragana) => {
+            Variant::from_bool(crate::util::japanese::contains_hiragana(&function_arg))
+        }
+        Some(Function::ContainsKatakana) => {
+            Variant::from_bool(crate::util::japanese::contains_katakana(&function_arg))
+        }
+        Some(Function::ContainsKana) => {
+            Variant::from_bool(crate::util::japanese::contains_kana(&function_arg))
+        }
+        Some(Function::ContainsKanji) => {
+            Variant::from_bool(crate::util::japanese::contains_kanji(&function_arg))
+        }
+
+        // ===== Formatting functions =====
         Some(Function::FormatSize) => {
             if function_arg.is_empty() {
                 return Variant::empty(VariantType::String);
             }
 
             if let Ok(size) = function_arg.parse::<u64>() {
-                let modifier = match function_args.get(0) {
+                let modifier = match function_args.first() {
                     Some(modifier) => modifier,
-                    _ => ""
+                    _ => "",
                 };
                 let file_size = crate::util::format_filesize(size, modifier);
                 return Variant::from_string(&file_size);
             }
 
-            return Variant::empty(VariantType::String);
+            Variant::empty(VariantType::String)
         }
         Some(Function::FormatTime) => {
             if function_arg.is_empty() {
@@ -620,48 +690,34 @@ pub fn get_value(function: &Option<Function>,
 
             let seconds = function_arg.parse::<u64>().unwrap();
             let formatted = Duration::from_secs(seconds).to_human_time_string();
-            return Variant::from_string(&formatted);
+            Variant::from_string(&formatted)
         }
+
+        // ===== Datetime functions =====
         Some(Function::CurrentDate) => {
             let now = Local::now().date_naive();
-            return Variant::from_string(&format_date(&now));
+            Variant::from_string(&format_date(&now))
         }
         Some(Function::Year) => match parse_datetime(&function_arg) {
-            Ok(date) => {
-                return Variant::from_int(date.0.year() as i64);
-            }
-            _ => {
-                return Variant::empty(VariantType::Int);
-            }
+            Ok(date) => Variant::from_int(date.0.year() as i64),
+            _ => Variant::empty(VariantType::Int),
         },
         Some(Function::Month) => match parse_datetime(&function_arg) {
-            Ok(date) => {
-                return Variant::from_int(date.0.month() as i64);
-            }
-            _ => {
-                return Variant::empty(VariantType::Int);
-            }
+            Ok(date) => Variant::from_int(date.0.month() as i64),
+            _ => Variant::empty(VariantType::Int),
         },
         Some(Function::Day) => match parse_datetime(&function_arg) {
-            Ok(date) => {
-                return Variant::from_int(date.0.day() as i64);
-            }
-            _ => {
-                return Variant::empty(VariantType::Int);
-            }
+            Ok(date) => Variant::from_int(date.0.day() as i64),
+            _ => Variant::empty(VariantType::Int),
         },
         Some(Function::DayOfWeek) => match parse_datetime(&function_arg) {
-            Ok(date) => {
-                return Variant::from_int(date.0.weekday().number_from_sunday() as i64);
-            }
-            _ => {
-                return Variant::empty(VariantType::Int);
-            }
+            Ok(date) => Variant::from_int(date.0.weekday().number_from_sunday() as i64),
+            _ => Variant::empty(VariantType::Int),
         },
+
+        // ===== File functions =====
         #[cfg(all(unix, feature = "users"))]
-        Some(Function::CurrentUid) => {
-            return Variant::from_int(uzers::get_current_uid() as i64);
-        }
+        Some(Function::CurrentUid) => Variant::from_int(uzers::get_current_uid() as i64),
         #[cfg(all(unix, feature = "users"))]
         Some(Function::CurrentUser) => {
             match uzers::get_current_username().and_then(|u| u.into_string().ok()) {
@@ -670,9 +726,7 @@ pub fn get_value(function: &Option<Function>,
             }
         }
         #[cfg(all(unix, feature = "users"))]
-        Some(Function::CurrentGid) => {
-            return Variant::from_int(uzers::get_current_gid() as i64);
-        }
+        Some(Function::CurrentGid) => Variant::from_int(uzers::get_current_gid() as i64),
         #[cfg(all(unix, feature = "users"))]
         Some(Function::CurrentGroup) => {
             match uzers::get_current_groupname().and_then(|u| u.into_string().ok()) {
@@ -688,7 +742,7 @@ pub fn get_value(function: &Option<Function>,
             if let Some(entry) = entry {
                 if let Ok(mut f) = File::open(entry.path()) {
                     let mut contents = String::new();
-                    if let Ok(_) = f.read_to_string(&mut contents) {
+                    if f.read_to_string(&mut contents).is_ok() {
                         if contents.contains(&function_arg) {
                             return Variant::from_bool(true);
                         } else {
@@ -698,52 +752,50 @@ pub fn get_value(function: &Option<Function>,
                 }
             }
 
-            return Variant::empty(VariantType::Bool);
+            Variant::empty(VariantType::Bool)
         }
         #[cfg(unix)]
         Some(Function::HasXattr) => {
             if let Some(entry) = entry {
-                if let Ok(file) = File::open(&entry.path()) {
+                if let Ok(file) = File::open(entry.path()) {
                     if let Ok(xattr) = file.get_xattr(&function_arg) {
                         return Variant::from_bool(xattr.is_some());
                     }
                 }
             }
 
-            return Variant::empty(VariantType::Bool);
+            Variant::empty(VariantType::Bool)
         }
         #[cfg(unix)]
         Some(Function::Xattr) => {
             if let Some(entry) = entry {
-                if let Ok(file) = File::open(&entry.path()) {
-                    if let Ok(xattr) = file.get_xattr(&function_arg) {
-                        if let Some(xattr) = xattr {
-                            if let Ok(value) = String::from_utf8(xattr) {
-                                return Variant::from_string(&value);
-                            }
+                if let Ok(file) = File::open(entry.path()) {
+                    if let Ok(Some(xattr)) = file.get_xattr(&function_arg) {
+                        if let Ok(value) = String::from_utf8(xattr) {
+                            return Variant::from_string(&value);
                         }
                     }
                 }
             }
 
-            return Variant::empty(VariantType::String);
+            Variant::empty(VariantType::String)
         }
         #[cfg(target_os = "linux")]
         Some(Function::HasCapabilities) => {
             if let Some(entry) = entry {
-                if let Ok(file) = File::open(&entry.path()) {
+                if let Ok(file) = File::open(entry.path()) {
                     if let Ok(caps_xattr) = file.get_xattr("security.capability") {
                         return Variant::from_bool(caps_xattr.is_some());
                     }
                 }
             }
 
-            return Variant::empty(VariantType::Bool);
+            Variant::empty(VariantType::Bool)
         }
         #[cfg(target_os = "linux")]
         Some(Function::HasCapability) => {
             if let Some(entry) = entry {
-                if let Ok(file) = File::open(&entry.path()) {
+                if let Ok(file) = File::open(entry.path()) {
                     if let Ok(Some(caps_xattr)) = file.get_xattr("security.capability") {
                         let caps_string = crate::util::capabilities::parse_capabilities(caps_xattr);
                         return Variant::from_bool(caps_string.contains(&function_arg));
@@ -751,7 +803,21 @@ pub fn get_value(function: &Option<Function>,
                 }
             }
 
-            return Variant::empty(VariantType::Bool);
+            Variant::empty(VariantType::Bool)
+        }
+        // ===== Miscellaneous functions =====
+        Some(Function::Coalesce) => {
+            if !&function_arg.is_empty() {
+                return Variant::from_string(&function_arg);
+            }
+
+            for arg in function_args {
+                if !arg.is_empty() {
+                    return Variant::from_string(&arg);
+                }
+            }
+
+            Variant::empty(VariantType::String)
         }
         Some(Function::Random) => {
             let mut rng = rand::thread_rng();
@@ -763,74 +829,76 @@ pub fn get_value(function: &Option<Function>,
             match function_arg.parse::<i64>() {
                 Ok(val) => {
                     if function_args.is_empty() {
-                        return Variant::from_int(rng.gen_range(0..val));
+                        Variant::from_int(rng.gen_range(0..val))
                     } else {
-                        let limit = function_args.get(0).unwrap();
+                        let limit = function_args.first().unwrap();
                         match limit.parse::<i64>() {
-                            Ok(limit) => return Variant::from_int(rng.gen_range(val..limit)),
-                            _ => error_exit("Could not parse limit argument of RANDOM function", limit.as_str())
+                            Ok(limit) => Variant::from_int(rng.gen_range(val..limit)),
+                            _ => error_exit(
+                                "Could not parse limit argument of RANDOM function",
+                                limit.as_str(),
+                            ),
                         }
                     }
-                },
-                _ => error_exit("Could not parse an argument of RANDOM function", function_arg.as_str())
+                }
+                _ => error_exit(
+                    "Could not parse an argument of RANDOM function",
+                    function_arg.as_str(),
+                ),
             }
-        },
-        _ => {
-            return Variant::empty(VariantType::String);
         }
+        // If no function is specified, return the original value
+        _ => Variant::empty(VariantType::String),
     }
 }
 
-pub fn get_aggregate_value(function: &Option<Function>,
-                           raw_output_buffer: &Vec<HashMap<String, String>>,
-                           buffer_key: String,
-                           default_value: &Option<String>) -> String {
+/// Retrieves an aggregated value from a data buffer based on the specified function and key.
+///
+/// Args:
+///   function: Optional specification of which aggregate function to apply.
+///   raw_output_buffer: A vector of hashmaps, where each hashmap contains string key-value pairs.
+///   buffer_key: The key to look up in each hashmap of the buffer.
+///   default_value: An optional default value to return if the function is not specified.
+///
+/// Returns:
+///   A string representation of the aggregate value computed or the default value if no function is provided.
+pub fn get_aggregate_value(
+    function: &Option<Function>,
+    raw_output_buffer: &Vec<HashMap<String, String>>,
+    buffer_key: String,
+    default_value: &Option<String>,
+) -> String {
+    //* Refer to the Function enum for a list of available functions and their descriptions
     match function {
         Some(Function::Min) => {
-            let mut min = -1;
-            for value in raw_output_buffer {
-                if let Some(value) = value.get(&buffer_key) {
-                    if let Ok(value) = value.parse::<i64>() {
-                        if min == -1 || value < min {
-                            min = value;
-                        }
-                    }
-                }
-            }
+            let min = raw_output_buffer
+                .iter()
+                .filter_map(|item| item.get(&buffer_key)) // Get the value from the buffer
+                .filter_map(|value| value.parse::<i64>().ok()) // Parse the value and filter out errors
+                .min()
+                .unwrap_or(0); // If no items were found
 
-            if min == -1 {
-                min = 0;
-            }
-
-            return min.to_string();
-        },
+            min.to_string()
+        }
         Some(Function::Max) => {
-            let mut max = 0;
-            for value in raw_output_buffer {
-                if let Some(value) = value.get(&buffer_key) {
-                    if let Ok(value) = value.parse::<usize>() {
-                        if value > max {
-                            max = value;
-                        }
-                    }
-                }
-            }
+            let max = raw_output_buffer
+                .iter()
+                .filter_map(|item| item.get(&buffer_key)) // Get the values from the buffer
+                .filter_map(|value| value.parse::<i64>().ok()) // Parse the value and filter out errors
+                .max()
+                .unwrap_or(0); // If no items were found
 
-            return max.to_string();
-        },
+            max.to_string()
+        }
         Some(Function::Avg) => {
             if raw_output_buffer.is_empty() {
                 return String::from("0");
             }
 
             get_mean(raw_output_buffer, &buffer_key).to_string()
-        },
-        Some(Function::Sum) => {
-            get_buffer_sum(raw_output_buffer, &buffer_key).to_string()
-        },
-        Some(Function::Count) => {
-            return raw_output_buffer.len().to_string();
-        },
+        }
+        Some(Function::Sum) => get_buffer_sum(raw_output_buffer, &buffer_key).to_string(),
+        Some(Function::Count) => raw_output_buffer.len().to_string(),
         Some(Function::StdDevPop) => {
             if raw_output_buffer.is_empty() {
                 return String::new();
@@ -840,8 +908,8 @@ pub fn get_aggregate_value(function: &Option<Function>,
             let variance = get_variance(raw_output_buffer, &buffer_key, n);
             let result = variance.sqrt();
 
-            return result.to_string();
-        },
+            result.to_string()
+        }
         Some(Function::StdDevSamp) => {
             if raw_output_buffer.is_empty() {
                 return String::new();
@@ -852,8 +920,8 @@ pub fn get_aggregate_value(function: &Option<Function>,
             let variance = get_variance(raw_output_buffer, &buffer_key, n);
             let result = variance.sqrt();
 
-            return result.to_string();
-        },
+            result.to_string()
+        }
         Some(Function::VarPop) => {
             if raw_output_buffer.is_empty() {
                 return String::new();
@@ -862,8 +930,8 @@ pub fn get_aggregate_value(function: &Option<Function>,
             let n = raw_output_buffer.len();
             let variance = get_variance(raw_output_buffer, &buffer_key, n);
 
-            return variance.to_string();
-        },
+            variance.to_string()
+        }
         Some(Function::VarSamp) => {
             if raw_output_buffer.is_empty() {
                 return String::new();
@@ -873,21 +941,25 @@ pub fn get_aggregate_value(function: &Option<Function>,
             let n = if size == 1 { 1 } else { size - 1 };
             let variance = get_variance(raw_output_buffer, &buffer_key, n);
 
-            return variance.to_string();
-        },
-
-        _ => {
-            match &default_value {
-                Some(val) => return val.to_owned(),
-                _ => return String::new()
-            }
+            variance.to_string()
         }
+
+        // If no function is specified, return the default value
+        // If no default value was specified, return an empty string
+        _ => match &default_value {
+            Some(val) => val.to_owned(),
+            _ => String::new(),
+        },
     }
 }
 
-fn get_variance(raw_output_buffer: &Vec<HashMap<String, String>>,
-                buffer_key: &String,
-                n: usize) -> f64 {
+/// Get the variance of all values in the buffer, based on the buffer key.
+/// If the value can't be parsed as usize, it will be ignored.
+fn get_variance(
+    raw_output_buffer: &Vec<HashMap<String, String>>,
+    buffer_key: &String,
+    n: usize,
+) -> f64 {
     let avg = get_mean(raw_output_buffer, buffer_key);
 
     let mut result: f64 = 0.0;
@@ -902,6 +974,8 @@ fn get_variance(raw_output_buffer: &Vec<HashMap<String, String>>,
     result
 }
 
+/// Get the mean of all values in the buffer, based on the buffer key.
+/// If the value can't be parsed as usize, it will be ignored.
 fn get_mean(raw_output_buffer: &Vec<HashMap<String, String>>, buffer_key: &String) -> f64 {
     let sum = get_buffer_sum(raw_output_buffer, buffer_key);
     let size = raw_output_buffer.len();
@@ -909,6 +983,8 @@ fn get_mean(raw_output_buffer: &Vec<HashMap<String, String>>, buffer_key: &Strin
     (sum / size) as f64
 }
 
+/// Get the sum of all values in the buffer, based on the buffer key.
+/// If the value can't be parsed as usize, it will be ignored.
 fn get_buffer_sum(raw_output_buffer: &Vec<HashMap<String, String>>, buffer_key: &String) -> usize {
     let mut sum = 0;
     for value in raw_output_buffer {

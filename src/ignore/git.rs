@@ -347,7 +347,7 @@ mod tests {
 
         assert_eq!(filter.regex.as_str(), "C:/Projects/testprj/([^/]+/)*foo");
         assert!(filter.only_dir);
-        assert!(filter.negate);
+        assert!(!filter.negate);
 
         let filter = &result[1];
 

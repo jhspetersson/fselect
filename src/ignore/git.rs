@@ -1,6 +1,7 @@
 //! Handles .gitignore parsing
 
 use std::collections::HashMap;
+use std::ffi::OsStr;
 use std::fs::File;
 use std::ops::Add;
 use std::ops::Index;
@@ -35,6 +36,10 @@ pub fn search_upstream_gitignore(
 ) {
     if let Ok(canonical_path) = crate::util::canonical_path(&dir.to_path_buf()) {
         let mut path = PathBuf::from(canonical_path);
+        
+        if let Some(root_dir) = path.iter().next() {
+            parse_global_ignore(gitignore_map, root_dir);
+        }
 
         loop {
             let parent_found = path.pop();
@@ -149,6 +154,55 @@ fn parse_gitignore(file_path: &Path, dir_path: &Path) -> Vec<GitignoreFilter> {
     result
 }
 
+fn parse_global_ignore(
+    gitignore_map: &mut HashMap<PathBuf, Vec<GitignoreFilter>>,
+    root_dir: &OsStr
+) {
+    let mut regexes: Vec<GitignoreFilter> = Vec::new();
+    
+    if let Ok(xdg_home) = std::env::var("XDG_CONFIG_HOME") {
+        if !xdg_home.is_empty() {
+            let xdg_home_ignore = xdg_home + "/git/ignore";
+            regexes.append(&mut parse_file(Path::new(&xdg_home_ignore), Path::new("/")));
+        }
+    }
+
+    if let Ok(user_profile) = std::env::var("USERPROFILE") {
+        if !user_profile.is_empty() {
+            let user_profile_gitconfig = user_profile + "/.gitconfig";
+            if let Ok(file) = File::open(user_profile_gitconfig) {
+                use std::io::BufRead;
+                use std::io::BufReader;
+                let reader = BufReader::new(file);
+                let excludes_file = reader
+                    .lines()
+                    .filter(|line| match line {
+                        Ok(line) => !line.starts_with(";") && !line.starts_with("#") && line.contains("excludesFile"),
+                        _ => false,
+                    })
+                    .next();
+                if let Some(Ok(excludes_file)) = excludes_file {
+                    let excludes_file: Vec<&str> = excludes_file.split("=").collect();
+                    if excludes_file.len() == 2 {
+                        let excludes_file = excludes_file[1].trim();
+                        regexes.append(&mut parse_file(Path::new(excludes_file), Path::new("/")));
+                    }
+                }
+            }
+        }
+    }
+
+    #[cfg(windows)]
+    {
+        gitignore_map.insert(Path::new((root_dir.to_string_lossy() + "\\").as_ref()).to_path_buf(), regexes);
+    }
+
+    #[cfg(not(windows))]
+    {
+        gitignore_map.insert(Path::new(root_dir).to_path_buf(), regexes);
+    }
+}
+
 fn parse_file(file_path: &Path, dir_path: &Path) -> Vec<GitignoreFilter> {
     let mut result = vec![];
 
@@ -224,17 +278,18 @@ fn convert_gitignore_glob(glob: &str, file_path: &Path) -> Result<Regex, Error> 
         pattern.remove(0);
     }
 
-    pattern = file_path
+    let mut file_path_pattern = file_path
         .to_string_lossy()
         .to_string()
         .replace("\\", "\\\\")
-        .add("/([^/]+/)*")
-        .add(&pattern);
+        .add("/([^/]+/)*");
 
     #[cfg(windows)]
     {
-        pattern = pattern.replace("\\", "/").replace("//", "/");
+        file_path_pattern = file_path_pattern.replace("\\", "/").replace("//", "/");
     }
+    
+    pattern = file_path_pattern.add(&pattern);
 
     Regex::new(&pattern)
 }

@@ -160,14 +160,18 @@ fn parse_global_ignore(
 ) {
     let mut regexes: Vec<GitignoreFilter> = Vec::new();
     
-    if let Ok(xdg_home) = std::env::var("XDG_CONFIG_HOME") {
-        if !xdg_home.is_empty() {
-            let xdg_home_ignore = xdg_home + "/git/ignore";
-            regexes.append(&mut parse_file(Path::new(&xdg_home_ignore), Path::new("/")));
-        }
+    let home_env_var;
+    #[cfg(windows)]
+    {
+        home_env_var = "USERPROFILE";
+    }
+    #[cfg(not(windows))]
+    {
+        home_env_var = "HOME";
     }
 
-    if let Ok(user_profile) = std::env::var("USERPROFILE") {
+    if let Ok(user_profile) = std::env::var(home_env_var) {
+        let mut global_config_found = false;
         if !user_profile.is_empty() {
             let user_profile_gitconfig = user_profile + "/.gitconfig";
             if let Ok(file) = File::open(user_profile_gitconfig) {
@@ -186,6 +190,26 @@ fn parse_global_ignore(
                     if excludes_file.len() == 2 {
                         let excludes_file = excludes_file[1].trim();
                         regexes.append(&mut parse_file(Path::new(excludes_file), Path::new("/")));
+                        global_config_found = true;
+                    }
+                }
+            }
+        }
+        
+        if !global_config_found {
+            if let Ok(xdg_home) = std::env::var("XDG_CONFIG_HOME") {
+                if !xdg_home.is_empty() {
+                    let xdg_home_ignore = xdg_home + "/git/ignore";
+                    regexes.append(&mut parse_file(Path::new(&xdg_home_ignore), Path::new("/")));
+                    global_config_found = true;
+                }
+            }
+            
+            if !global_config_found {
+                if let Ok(home) = std::env::var("HOME") {
+                    if !home.is_empty() {
+                        let home_ignore = home + "/.config/git/ignore";
+                        regexes.append(&mut parse_file(Path::new(&home_ignore), Path::new("/")));
                     }
                 }
             }

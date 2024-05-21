@@ -302,6 +302,7 @@ fn convert_gitignore_glob(glob: &str, file_path: &Path) -> Result<Regex, Error> 
         pattern.remove(0);
     }
 
+    #[allow(unused_mut)]
     let mut file_path_pattern = file_path
         .to_string_lossy()
         .to_string()

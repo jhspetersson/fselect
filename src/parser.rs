@@ -38,7 +38,10 @@ impl Parser {
     pub fn parse(&mut self, query: &str, debug: bool) -> Result<Query, String> {
         let mut lexer = Lexer::new(query);
         while let Some(lexem) = lexer.next_lexem() {
-            self.lexems.push(lexem);
+            match lexem {
+                Lexem::String(s) if s.is_empty() => {}
+                _ => self.lexems.push(lexem) 
+            }            
         }
 
         if debug {
@@ -199,8 +202,10 @@ impl Parser {
                             }
                             RootParsingMode::Root => {
                                 self.drop_lexem();
-                                root_options =
-                                    self.parse_root_options().unwrap_or_else(RootOptions::new);
+                                match self.parse_root_options() {
+                                    Some(options) => root_options = options,
+                                    None => break
+                                }
                             }
                             _ => {}
                         },

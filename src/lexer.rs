@@ -38,7 +38,9 @@ enum LexingMode {
     Comma,
     Operator,
     ArithmeticOperator,
-    String,
+    SingleQuotedString,
+    DoubleQuotedString,
+    BackticksQuotedString,
     Open,
     Close,
 }
@@ -71,9 +73,23 @@ impl<'a> Lexer<'a> {
         for c in self.input.chars().skip(self.index) {
             match mode {
                 LexingMode::Comma | LexingMode::Open | LexingMode::Close => break,
-                LexingMode::String => {
+                LexingMode::SingleQuotedString => {
                     self.index += 1;
                     if c == '\'' {
+                        break;
+                    }
+                    s.push(c);
+                }
+                LexingMode::DoubleQuotedString => {
+                    self.index += 1;
+                    if c == '"' {
+                        break;
+                    }
+                    s.push(c);
+                }
+                LexingMode::BackticksQuotedString => {
+                    self.index += 1;
+                    if c == '`' {
                         break;
                     }
                     s.push(c);
@@ -109,7 +125,9 @@ impl<'a> Lexer<'a> {
                     self.index += 1;
                     match c {
                         ' ' => {}
-                        '\'' => mode = LexingMode::String,
+                        '\'' => mode = LexingMode::SingleQuotedString,
+                        '"' => mode = LexingMode::DoubleQuotedString,
+                        '`' => mode = LexingMode::BackticksQuotedString,
                         ',' => mode = LexingMode::Comma,
                         '(' | '{' => {
                             s.push(c);
@@ -137,7 +155,9 @@ impl<'a> Lexer<'a> {
         }
 
         let lexem = match mode {
-            LexingMode::String => Some(Lexem::String(s)),
+            LexingMode::SingleQuotedString => Some(Lexem::String(s)),
+            LexingMode::DoubleQuotedString => Some(Lexem::String(s)),
+            LexingMode::BackticksQuotedString => Some(Lexem::String(s)),
             LexingMode::Operator => Some(Lexem::Operator(s)),
             LexingMode::ArithmeticOperator => Some(Lexem::ArithmeticOperator(s)),
             LexingMode::Comma => Some(Lexem::Comma),
@@ -1040,6 +1060,66 @@ mod tests {
         assert_eq!(
             lexer.next_lexem(),
             Some(Lexem::RawString(String::from("2000000")))
+        );
+    }
+
+    #[test]
+    fn spaces_in_path_with_single_quotes() {
+        let mut lexer =
+            Lexer::new("select name from '/home/user/foo bar/'");
+
+        assert_eq!(
+            lexer.next_lexem(),
+            Some(Lexem::RawString(String::from("select")))
+        );
+        assert_eq!(
+            lexer.next_lexem(),
+            Some(Lexem::RawString(String::from("name")))
+        );
+        assert_eq!(lexer.next_lexem(), Some(Lexem::From));
+        assert_eq!(
+            lexer.next_lexem(),
+            Some(Lexem::String(String::from("/home/user/foo bar/")))
+        );
+    }
+
+    #[test]
+    fn spaces_in_path_with_double_quotes() {
+        let mut lexer =
+            Lexer::new("select name from \"/home/user/foo bar/\"");
+
+        assert_eq!(
+            lexer.next_lexem(),
+            Some(Lexem::RawString(String::from("select")))
+        );
+        assert_eq!(
+            lexer.next_lexem(),
+            Some(Lexem::RawString(String::from("name")))
+        );
+        assert_eq!(lexer.next_lexem(), Some(Lexem::From));
+        assert_eq!(
+            lexer.next_lexem(),
+            Some(Lexem::String(String::from("/home/user/foo bar/")))
+        );
+    }
+
+    #[test]
+    fn spaces_in_path_with_backticks() {
+        let mut lexer =
+            Lexer::new("select name from `/home/user/foo bar/`");
+
+        assert_eq!(
+            lexer.next_lexem(),
+            Some(Lexem::RawString(String::from("select")))
+        );
+        assert_eq!(
+            lexer.next_lexem(),
+            Some(Lexem::RawString(String::from("name")))
+        );
+        assert_eq!(lexer.next_lexem(), Some(Lexem::From));
+        assert_eq!(
+            lexer.next_lexem(),
+            Some(Lexem::String(String::from("/home/user/foo bar/")))
         );
     }
 }

@@ -4,7 +4,7 @@ pub struct FileInfo {
     pub name: String,
     pub size: u64,
     pub mode: Option<u32>,
-    pub modified: DateTime,
+    pub modified: Option<DateTime>,
 }
 
 pub fn to_file_info(zipped_file: &zip::read::ZipFile) -> FileInfo {

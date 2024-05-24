@@ -1334,8 +1334,10 @@ impl<'a> Searcher<'a> {
             }
             Field::Modified => match file_info {
                 Some(ref file_info) => {
-                    let dt = to_local_datetime(&file_info.modified);
-                    return Variant::from_datetime(dt);
+                    if let Some(file_info_modified) = &file_info.modified {
+                        let dt = to_local_datetime(file_info_modified);
+                        return Variant::from_datetime(dt);
+                    }
                 }
                 _ => {
                     self.fms

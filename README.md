@@ -102,9 +102,14 @@ Or put all the arguments into the quotes like this:
 
     fselect "name from /home/user/tmp where size > 0"
 
-Find files (just names) with any content (size > 0):
+Search within a directory name with spaces (backticks are also supported):
 
-    fselect name from /home/user/tmp where size gt 0
+    fselect "name from '/home/user/dir with spaces' where size > 0"
+    fselect "name from `/home/user/dir with spaces` where size > 0"
+
+Or simply escape the single quotes:
+
+    fselect name from \'/home/user/dir with spaces\' where size gt 0
 
 Specify file size, get absolute path, and add it to the results:
 

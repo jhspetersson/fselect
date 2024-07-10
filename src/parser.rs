@@ -1229,11 +1229,11 @@ mod tests {
     fn simple_function_without_args_syntax_in_where() {
         let query = "select name, caps from /home/user where HAS_CAPS()";
         let mut p = Parser::new();
-        let query = p.parse(&vec![query.to_string()], false).unwrap();
+        let query = p.parse(vec![query.to_string()], false).unwrap();
 
         let query2 = "select name, caps from /home/user where HAS_CAPS";
         let mut p2 = Parser::new();
-        let query2 = p2.parse(&vec![query2.to_string()], false).unwrap();
+        let query2 = p2.parse(vec![query2.to_string()], false).unwrap();
 
         assert_eq!(query.expr, query2.expr);
     }

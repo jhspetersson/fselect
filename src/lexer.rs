@@ -45,8 +45,8 @@ enum LexingMode {
     Close,
 }
 
-pub struct Lexer<'a> {
-    input: &'a str,
+pub struct Lexer {
+    input: Vec<String>,
     index: usize,
     before_from: bool,
     after_open: bool,
@@ -54,8 +54,8 @@ pub struct Lexer<'a> {
     after_operator: bool,
 }
 
-impl<'a> Lexer<'a> {
-    pub fn new(input: &str) -> Lexer {
+impl Lexer {
+    pub fn new(input: Vec<String>) -> Lexer {
         Lexer {
             input,
             index: 0,
@@ -70,7 +70,7 @@ impl<'a> Lexer<'a> {
         let mut s = String::new();
         let mut mode = LexingMode::Undefined;
 
-        for c in self.input.chars().skip(self.index) {
+        for c in self.input.join(" ").chars().skip(self.index) {
             match mode {
                 LexingMode::Comma | LexingMode::Open | LexingMode::Close => break,
                 LexingMode::SingleQuotedString => {
@@ -272,6 +272,15 @@ fn looks_like_date(s: &str) -> bool {
     }
 }
 
+macro_rules! lexer {
+    ($str:literal) => {
+        {
+            let quote = vec![$str.to_string()];
+            Lexer::new(quote)
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -284,8 +293,8 @@ mod tests {
 
     #[test]
     fn lexems() {
-        let mut lexer = Lexer::new("select name, path ,size , fsize from /test depth 2, /test2 archives,/test3 depth 3 archives , /test4 ,'/test5' where name != 123 AND ( size gt 456 or fsize lte 758) or name = 'xxx' order by 1 ,3 desc , path asc limit 50");
-
+        let mut lexer = lexer!("select name, path ,size , fsize from /test depth 2, /test2 archives,/test3 depth 3 archives , /test4 ,'/test5' where name != 123 AND ( size gt 456 or fsize lte 758) or name = 'xxx' order by 1 ,3 desc , path asc limit 50");
+        
         assert_eq!(
             lexer.next_lexem(),
             Some(Lexem::RawString(String::from("select")))
@@ -432,19 +441,19 @@ mod tests {
 
     #[test]
     fn spaces() {
-        let lexer = Lexer::new("path,size from . where size=0");
+        let lexer = lexer!("path,size from . where size=0");
         assert_spaces(lexer);
 
-        let lexer = Lexer::new("path,size from . where size =0");
+        let lexer = lexer!("path,size from . where size =0");
         assert_spaces(lexer);
 
-        let lexer = Lexer::new("path,size from . where size= 0");
+        let lexer = lexer!("path,size from . where size= 0");
         assert_spaces(lexer);
 
-        let lexer = Lexer::new("path,size from . where size = 0");
+        let lexer = lexer!("path,size from . where size = 0");
         assert_spaces(lexer);
 
-        let lexer = Lexer::new("path,size from . where size   =     0");
+        let lexer = lexer!("path,size from . where size   =     0");
         assert_spaces(lexer);
     }
 
@@ -477,7 +486,7 @@ mod tests {
 
     #[test]
     fn func_calls() {
-        let mut lexer = Lexer::new("name, length(name),UPPER( name ) from .");
+        let mut lexer = lexer!("name, length(name),UPPER( name ) from .");
 
         assert_eq!(
             lexer.next_lexem(),
@@ -514,7 +523,7 @@ mod tests {
 
     #[test]
     fn func_calls2() {
-        let mut lexer = Lexer::new("select name, upper(name) from . depth 1");
+        let mut lexer = lexer!("select name, upper(name) from . depth 1");
 
         assert_eq!(
             lexer.next_lexem(),
@@ -552,7 +561,7 @@ mod tests {
 
     #[test]
     fn func_calls3() {
-        let mut lexer = Lexer::new("select name, rand() from . depth 1 order by rand() limit 10");
+        let mut lexer = lexer!("select name, rand() from . depth 1 order by rand() limit 10");
 
         assert_eq!(
             lexer.next_lexem(),
@@ -599,7 +608,7 @@ mod tests {
 
     #[test]
     fn agg_func_calls() {
-        let mut lexer = Lexer::new("COUNT(*), MIN(size), AVG(size), MAX(size) from .");
+        let mut lexer = lexer!("COUNT(*), MIN(size), AVG(size), MAX(size) from .");
 
         assert_eq!(
             lexer.next_lexem(),
@@ -653,7 +662,7 @@ mod tests {
 
     #[test]
     fn arithmetic_operators() {
-        let mut lexer = Lexer::new("width + height, width-height, width mul height, path from .");
+        let mut lexer = lexer!("width + height, width-height, width mul height, path from .");
 
         assert_eq!(
             lexer.next_lexem(),
@@ -707,7 +716,7 @@ mod tests {
 
     #[test]
     fn context_sensitive_date_string() {
-        let mut lexer = Lexer::new("size,modified,path from . where modified gt 2018-08-01 and name='*.txt' order by modified");
+        let mut lexer = lexer!("size,modified,path from . where modified gt 2018-08-01 and name='*.txt' order by modified");
 
         assert_eq!(
             lexer.next_lexem(),
@@ -761,7 +770,7 @@ mod tests {
 
     #[test]
     fn root_with_dashes() {
-        let mut lexer = Lexer::new("path from ./foo-bar");
+        let mut lexer = lexer!("path from ./foo-bar");
 
         assert_eq!(
             lexer.next_lexem(),
@@ -776,7 +785,7 @@ mod tests {
 
     #[test]
     fn another_workaround_for_raw_paths() {
-        let mut lexer = Lexer::new("name, size where path eq \\*some/stuff-inside/\\*.rs");
+        let mut lexer = lexer!("name, size where path eq \\*some/stuff-inside/\\*.rs");
 
         assert_eq!(
             lexer.next_lexem(),
@@ -806,7 +815,7 @@ mod tests {
 
     #[test]
     fn mime_types() {
-        let mut lexer = Lexer::new("mime from . where mime = application/pkcs8+pem");
+        let mut lexer = lexer!("mime from . where mime = application/pkcs8+pem");
 
         assert_eq!(
             lexer.next_lexem(),
@@ -831,7 +840,7 @@ mod tests {
 
     #[test]
     fn raw_abs_path_after_eq() {
-        let mut lexer = Lexer::new("abspath,absdir,name where absdir = /home/user/docs");
+        let mut lexer = lexer!("abspath,absdir,name where absdir = /home/user/docs");
 
         assert_eq!(
             lexer.next_lexem(),
@@ -858,7 +867,7 @@ mod tests {
             Some(Lexem::RawString(String::from("/home/user/docs")))
         );
 
-        let mut lexer = Lexer::new("abspath,absdir,name where absdir == /home/user/docs");
+        let mut lexer = lexer!("abspath,absdir,name where absdir == /home/user/docs");
 
         assert_eq!(
             lexer.next_lexem(),
@@ -888,7 +897,7 @@ mod tests {
             Some(Lexem::RawString(String::from("/home/user/docs")))
         );
 
-        let mut lexer = Lexer::new("abspath,absdir,name where absdir === /home/user/docs");
+        let mut lexer = lexer!("abspath,absdir,name where absdir === /home/user/docs");
 
         assert_eq!(
             lexer.next_lexem(),
@@ -918,7 +927,7 @@ mod tests {
             Some(Lexem::RawString(String::from("/home/user/docs")))
         );
 
-        let mut lexer = Lexer::new("abspath,absdir,name where absdir eq /home/user/docs");
+        let mut lexer = lexer!("abspath,absdir,name where absdir eq /home/user/docs");
 
         assert_eq!(
             lexer.next_lexem(),
@@ -951,7 +960,7 @@ mod tests {
 
     #[test]
     fn star_field() {
-        let mut lexer = Lexer::new("select modified,* from /test");
+        let mut lexer = lexer!("select modified,* from /test");
 
         assert_eq!(
             lexer.next_lexem(),
@@ -972,7 +981,7 @@ mod tests {
             Some(Lexem::RawString(String::from("/test")))
         );
 
-        let mut lexer = Lexer::new("select modified, * from /test limit 10");
+        let mut lexer = lexer!("select modified, * from /test limit 10");
 
         assert_eq!(
             lexer.next_lexem(),
@@ -996,7 +1005,7 @@ mod tests {
 
     #[test]
     fn group_by() {
-        let mut lexer = Lexer::new("select AVG(size) from /test group by mime");
+        let mut lexer = lexer!("select AVG(size) from /test group by mime");
 
         assert_eq!(
             lexer.next_lexem(),
@@ -1027,8 +1036,7 @@ mod tests {
 
     #[test]
     fn between_op() {
-        let mut lexer =
-            Lexer::new("select name from /home/user where size between 1000000 and 2000000");
+        let mut lexer = lexer!("select name from /home/user where size between 1000000 and 2000000");
 
         assert_eq!(
             lexer.next_lexem(),
@@ -1065,8 +1073,7 @@ mod tests {
 
     #[test]
     fn spaces_in_path_with_single_quotes() {
-        let mut lexer =
-            Lexer::new("select name from '/home/user/foo bar/'");
+        let mut lexer = lexer!("select name from '/home/user/foo bar/'");
 
         assert_eq!(
             lexer.next_lexem(),
@@ -1085,8 +1092,7 @@ mod tests {
 
     #[test]
     fn spaces_in_path_with_double_quotes() {
-        let mut lexer =
-            Lexer::new("select name from \"/home/user/foo bar/\"");
+        let mut lexer = lexer!("select name from \"/home/user/foo bar/\"");
 
         assert_eq!(
             lexer.next_lexem(),
@@ -1105,8 +1111,7 @@ mod tests {
 
     #[test]
     fn spaces_in_path_with_backticks() {
-        let mut lexer =
-            Lexer::new("select name from `/home/user/foo bar/`");
+        let mut lexer = lexer!("select name from `/home/user/foo bar/`");
 
         assert_eq!(
             lexer.next_lexem(),

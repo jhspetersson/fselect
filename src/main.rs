@@ -155,7 +155,7 @@ fn main() -> ExitCode {
                     }
                     Ok(query) => {
                         let _ = rl.add_history_entry(query.as_str());
-                        exec_search(query, &mut config, &default_config, no_color);
+                        exec_search(vec![query], &mut config, &default_config, no_color);
                     }
                     Err(ReadlineError::Interrupted) => {
                         println!("CTRL-C");
@@ -178,8 +178,7 @@ fn main() -> ExitCode {
             }
         }
     } else {
-        let query = args.join(" ");
-        exit_value = Some(exec_search(query, &mut config, &default_config, no_color));
+        exit_value = Some(exec_search(args, &mut config, &default_config, no_color));
     }
 
     config.save();
@@ -203,9 +202,9 @@ fn main() -> ExitCode {
     ExitCode::SUCCESS
 }
 
-fn exec_search(query: String, config: &mut Config, default_config: &Config, no_color: bool) -> u8 {
+fn exec_search(query: Vec<String>, config: &mut Config, default_config: &Config, no_color: bool) -> u8 {
     let mut p = Parser::new();
-    let query = p.parse(&query, config.debug);
+    let query = p.parse(query, config.debug);
 
     if config.debug {
         dbg!(&query);

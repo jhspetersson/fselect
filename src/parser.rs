@@ -35,7 +35,7 @@ impl Parser {
         }
     }
 
-    pub fn parse(&mut self, query: &str, debug: bool) -> Result<Query, String> {
+    pub fn parse(&mut self, query: Vec<String>, debug: bool) -> Result<Query, String> {
         let mut lexer = Lexer::new(query);
         while let Some(lexem) = lexer.next_lexem() {
             match lexem {
@@ -945,7 +945,7 @@ mod tests {
     fn simple_query() {
         let query = "select name, path ,size , fsize from /";
         let mut p = Parser::new();
-        let query = p.parse(query, false).unwrap();
+        let query = p.parse(vec![query.to_string()], false).unwrap();
 
         assert_eq!(
             query.fields,
@@ -962,7 +962,7 @@ mod tests {
     fn query() {
         let query = "select name, path ,size , fsize from /test depth 2, /test2 archives,/test3 depth 3 archives , /test4 ,'/test5' gitignore , /test6 mindepth 3, /test7 archives DFS, /test8 dfs where name != 123 AND ( size gt 456 or fsize lte 758) or name = 'xxx' order by 2, size desc limit 50";
         let mut p = Parser::new();
-        let query = p.parse(query, false).unwrap();
+        let query = p.parse(vec![query.to_string()], false).unwrap();
 
         assert_eq!(
             query.fields,
@@ -1055,7 +1055,7 @@ mod tests {
     fn query_with_not() {
         let query = "select name from /test where name not like '%.tmp'";
         let mut p = Parser::new();
-        let query = p.parse(query, false).unwrap();
+        let query = p.parse(vec![query.to_string()], false).unwrap();
 
         assert_eq!(query.fields, vec![Expr::field(Field::Name)]);
 
@@ -1080,7 +1080,7 @@ mod tests {
     fn query_with_single_not() {
         let query = "select name from /test where not name like '%.tmp'";
         let mut p = Parser::new();
-        let query = p.parse(query, false).unwrap();
+        let query = p.parse(vec![query.to_string()], false).unwrap();
 
         assert_eq!(query.fields, vec![Expr::field(Field::Name)]);
 
@@ -1105,7 +1105,7 @@ mod tests {
     fn query_with_multiple_not() {
         let query = "select name from /test where not name like '%.tmp' and not name like '%.tst'";
         let mut p = Parser::new();
-        let query = p.parse(query, false).unwrap();
+        let query = p.parse(vec![query.to_string()], false).unwrap();
 
         let left = Expr::op(
             Expr::field(Field::Name),
@@ -1127,7 +1127,7 @@ mod tests {
         let query =
             "select name from /test where (not name like '%.tmp') and (not name like '%.tst')";
         let mut p = Parser::new();
-        let query = p.parse(query, false).unwrap();
+        let query = p.parse(vec![query.to_string()], false).unwrap();
 
         let left = Expr::op(
             Expr::field(Field::Name),
@@ -1148,7 +1148,7 @@ mod tests {
     fn query_double_not() {
         let query = "select name from /test where not not name like '%.tmp'";
         let mut p = Parser::new();
-        let query = p.parse(query, false).unwrap();
+        let query = p.parse(vec![query.to_string()], false).unwrap();
 
         let expr = Expr::op(
             Expr::field(Field::Name),
@@ -1163,7 +1163,7 @@ mod tests {
     fn query_triple_not() {
         let query = "select name from /test where not not not name like '%.tmp'";
         let mut p = Parser::new();
-        let query = p.parse(query, false).unwrap();
+        let query = p.parse(vec![query.to_string()], false).unwrap();
 
         let expr = Expr::op(
             Expr::field(Field::Name),
@@ -1178,7 +1178,7 @@ mod tests {
     fn broken_query() {
         let query = "select name, path ,size , fsize from / where name != 'foobar' order by size desc limit 10 into csv this is unexpected";
         let mut p = Parser::new();
-        let query = p.parse(query, false);
+        let query = p.parse(vec![query.to_string()], false);
 
         assert!(query.is_err());
     }
@@ -1187,7 +1187,7 @@ mod tests {
     fn path_with_spaces() {
         let query = "select name from '/opt/Some Cool Dir/Test This'";
         let mut p = Parser::new();
-        let query = p.parse(query, false).unwrap();
+        let query = p.parse(vec![query.to_string()], false).unwrap();
 
         assert_eq!(
             query.roots,
@@ -1202,11 +1202,11 @@ mod tests {
     fn simple_boolean_syntax() {
         let query = "select name from /home/user where is_audio or is_video";
         let mut p = Parser::new();
-        let query = p.parse(query, false).unwrap();
+        let query = p.parse(vec![query.to_string()], false).unwrap();
 
         let query2 = "select name from /home/user where is_audio = true or is_video = true";
         let mut p2 = Parser::new();
-        let query2 = p2.parse(query2, false).unwrap();
+        let query2 = p2.parse(vec![query2.to_string()], false).unwrap();
 
         assert_eq!(query.expr, query2.expr);
     }
@@ -1215,11 +1215,11 @@ mod tests {
     fn simple_boolean_function_syntax() {
         let query = "select name from /home/user where CONTAINS('foobar') or CONTAINS('bazz')";
         let mut p = Parser::new();
-        let query = p.parse(query, false).unwrap();
+        let query = p.parse(vec![query.to_string()], false).unwrap();
 
         let query2 = "select name from /home/user where CONTAINS('foobar') = true or CONTAINS('bazz') = true";
         let mut p2 = Parser::new();
-        let query2 = p2.parse(query2, false).unwrap();
+        let query2 = p2.parse(vec![query2.to_string()], false).unwrap();
 
         assert_eq!(query.expr, query2.expr);
     }
@@ -1229,11 +1229,11 @@ mod tests {
     fn simple_function_without_args_syntax_in_where() {
         let query = "select name, caps from /home/user where HAS_CAPS()";
         let mut p = Parser::new();
-        let query = p.parse(query, false).unwrap();
+        let query = p.parse(&vec![query.to_string()], false).unwrap();
 
         let query2 = "select name, caps from /home/user where HAS_CAPS";
         let mut p2 = Parser::new();
-        let query2 = p2.parse(query2, false).unwrap();
+        let query2 = p2.parse(&vec![query2.to_string()], false).unwrap();
 
         assert_eq!(query.expr, query2.expr);
     }
@@ -1242,11 +1242,11 @@ mod tests {
     fn simple_function_without_args_syntax() {
         let query = "select CURDATE()";
         let mut p = Parser::new();
-        let query = p.parse(query, false).unwrap();
+        let query = p.parse(vec![query.to_string()], false).unwrap();
 
         let query2 = "select CURDATE";
         let mut p2 = Parser::new();
-        let query2 = p2.parse(query2, false).unwrap();
+        let query2 = p2.parse(vec![query2.to_string()], false).unwrap();
 
         assert_eq!(query.expr, query2.expr);
     }
@@ -1255,7 +1255,7 @@ mod tests {
     fn from_at_the_end_of_the_query() {
         let query = "select name where not name like '%.tmp' from /test gitignore mindepth 2";
         let mut p = Parser::new();
-        let query = p.parse(query, false).unwrap();
+        let query = p.parse(vec![query.to_string()], false).unwrap();
 
         assert_eq!(query.fields, vec![Expr::field(Field::Name)]);
 
@@ -1280,7 +1280,7 @@ mod tests {
     fn query_with_implicit_root() {
         let query = "select name, size";
         let mut p = Parser::new();
-        let query = p.parse(query, false).unwrap();
+        let query = p.parse(vec![query.to_string()], false).unwrap();
 
         assert_eq!(
             query.roots,
@@ -1292,7 +1292,7 @@ mod tests {
     fn query_with_implicit_root_and_root_options() {
         let query = "select name, size depth 2";
         let mut p = Parser::new();
-        let query = p.parse(query, false).unwrap();
+        let query = p.parse(vec![query.to_string()], false).unwrap();
 
         assert_eq!(
             query.roots,
@@ -1307,11 +1307,11 @@ mod tests {
     fn use_curly_braces() {
         let query = "select name, (1 + 2) from /home/user limit 1";
         let mut p = Parser::new();
-        let query = p.parse(query, false).unwrap();
+        let query = p.parse(vec![query.to_string()], false).unwrap();
 
         let query2 = "select name, {1 + 2} from /home/user limit 1";
         let mut p2 = Parser::new();
-        let query2 = p2.parse(query2, false).unwrap();
+        let query2 = p2.parse(vec![query2.to_string()], false).unwrap();
 
         assert_eq!(query.expr, query2.expr);
     }
@@ -1320,7 +1320,7 @@ mod tests {
     fn query_with_group_by() {
         let query = "select AVG(size) from /test group by mime";
         let mut p = Parser::new();
-        let query = p.parse(query, false).unwrap();
+        let query = p.parse(vec![query.to_string()], false).unwrap();
 
         assert_eq!(
             query.fields,
@@ -1348,11 +1348,11 @@ mod tests {
     fn query_with_between() {
         let query = "select name, size from /test where size between 5mb and 6mb";
         let mut p = Parser::new();
-        let query = p.parse(query, false).unwrap();
+        let query = p.parse(vec![query.to_string()], false).unwrap();
 
         let query2 = "select name, size from /test where size gte 5mb and size lte 6mb";
         let mut p2 = Parser::new();
-        let query2 = p2.parse(query2, false).unwrap();
+        let query2 = p2.parse(vec![query2.to_string()], false).unwrap();
 
         assert_eq!(query.expr, query2.expr);
     }

@@ -48,7 +48,7 @@ enum LexingMode {
 pub struct Lexer {
     input: Vec<String>,
     input_index: usize,
-    char_index: usize,
+    char_index: isize,
     before_from: bool,
     after_open: bool,
     after_where: bool,
@@ -78,13 +78,20 @@ impl Lexer {
                 break;
             }
             let input_part = input_part.unwrap();
-            let c = input_part.chars().nth(self.char_index);
-            if c.is_none() {
-                self.input_index += 1;
-                self.char_index = 0;
-                continue;
+            
+            let c;
+            if self.char_index == -1 {
+                c = ' ';
+                self.char_index += 1;
+            } else {
+                let input_char = input_part.chars().nth(self.char_index as usize);
+                if input_char.is_none() {
+                    self.input_index += 1;
+                    self.char_index = -1;
+                    continue;
+                }
+                c = input_char.unwrap();
             }
-            let c = c.unwrap();
             
             match mode {
                 LexingMode::Comma | LexingMode::Open | LexingMode::Close => break,
@@ -288,9 +295,9 @@ fn looks_like_date(s: &str) -> bool {
 }
 
 macro_rules! lexer {
-    ($str:literal) => {
+    ($($str:literal),+) => {
         {
-            let quote = vec![$str.to_string()];
+            let quote = vec![$($str.to_string()),+];
             Lexer::new(quote)
         }
     }
@@ -997,6 +1004,30 @@ mod tests {
         );
 
         let mut lexer = lexer!("select modified, * from /test limit 10");
+
+        assert_eq!(
+            lexer.next_lexem(),
+            Some(Lexem::RawString(String::from("select")))
+        );
+        assert_eq!(
+            lexer.next_lexem(),
+            Some(Lexem::RawString(String::from("modified")))
+        );
+        assert_eq!(lexer.next_lexem(), Some(Lexem::Comma));
+        assert_eq!(
+            lexer.next_lexem(),
+            Some(Lexem::ArithmeticOperator(String::from("*")))
+        );
+        assert_eq!(lexer.next_lexem(), Some(Lexem::From));
+        assert_eq!(
+            lexer.next_lexem(),
+            Some(Lexem::RawString(String::from("/test")))
+        );
+    }
+
+    #[test]
+    fn lexer_with_multiple_input_parts() {
+        let mut lexer = lexer!("select", "modified,*", "from", "/test");
 
         assert_eq!(
             lexer.next_lexem(),

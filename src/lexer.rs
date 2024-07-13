@@ -47,7 +47,8 @@ enum LexingMode {
 
 pub struct Lexer {
     input: Vec<String>,
-    index: usize,
+    input_index: usize,
+    char_index: usize,
     before_from: bool,
     after_open: bool,
     after_where: bool,
@@ -58,7 +59,8 @@ impl Lexer {
     pub fn new(input: Vec<String>) -> Lexer {
         Lexer {
             input,
-            index: 0,
+            input_index: 0,
+            char_index: 0,
             before_from: true,
             after_open: false,
             after_where: false,
@@ -70,25 +72,38 @@ impl Lexer {
         let mut s = String::new();
         let mut mode = LexingMode::Undefined;
 
-        for c in self.input.join(" ").chars().skip(self.index) {
+        loop {
+            let input_part = self.input.get(self.input_index);
+            if input_part.is_none() {
+                break;
+            }
+            let input_part = input_part.unwrap();
+            let c = input_part.chars().nth(self.char_index);
+            if c.is_none() {
+                self.input_index += 1;
+                self.char_index = 0;
+                continue;
+            }
+            let c = c.unwrap();
+            
             match mode {
                 LexingMode::Comma | LexingMode::Open | LexingMode::Close => break,
                 LexingMode::SingleQuotedString => {
-                    self.index += 1;
+                    self.char_index += 1;
                     if c == '\'' {
                         break;
                     }
                     s.push(c);
                 }
                 LexingMode::DoubleQuotedString => {
-                    self.index += 1;
+                    self.char_index += 1;
                     if c == '"' {
                         break;
                     }
                     s.push(c);
                 }
                 LexingMode::BackticksQuotedString => {
-                    self.index += 1;
+                    self.char_index += 1;
                     if c == '`' {
                         break;
                     }
@@ -99,7 +114,7 @@ impl Lexer {
                         break;
                     }
 
-                    self.index += 1;
+                    self.char_index += 1;
                     s.push(c);
                 }
                 LexingMode::ArithmeticOperator => {
@@ -118,11 +133,11 @@ impl Lexer {
                         }
                     }
 
-                    self.index += 1;
+                    self.char_index += 1;
                     s.push(c);
                 }
                 LexingMode::Undefined => {
-                    self.index += 1;
+                    self.char_index += 1;
                     match c {
                         ' ' => {}
                         '\'' => mode = LexingMode::SingleQuotedString,

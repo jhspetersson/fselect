@@ -19,7 +19,7 @@ users = ["dep:uzers"]
 
 [dependencies]
 bytecount = "0.6"
-chrono = "0.4.35"
+chrono = "0.4"
 chrono-english = "0.1"
 csv = "1.0"
 directories = "5.0"

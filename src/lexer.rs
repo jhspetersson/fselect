@@ -294,18 +294,18 @@ fn looks_like_date(s: &str) -> bool {
     }
 }
 
-macro_rules! lexer {
-    ($($str:literal),+) => {
-        {
-            let quote = vec![$($str.to_string()),+];
-            Lexer::new(quote)
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    macro_rules! lexer {
+        ($($str:literal),+) => {
+            {
+                let quote = vec![$($str.to_string()),+];
+                Lexer::new(quote)
+            }
+        }
+    }
 
     #[test]
     fn looks_like_date_test() {

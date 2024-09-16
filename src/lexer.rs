@@ -1,7 +1,7 @@
 //! Lexer to tokenizes SQL-like syntax into lexems
 
 use std::str::FromStr;
-
+use std::sync::LazyLock;
 use regex::Regex;
 
 use crate::field::Field;
@@ -255,9 +255,9 @@ fn is_paren_char(c: char) -> bool {
     c == '(' || c == ')' || c == '{' || c == '}'
 }
 
-lazy_static! {
-    static ref DATE_ALIKE_REGEX: Regex = Regex::new("(\\d{4})-?(\\d{2})?").unwrap();
-}
+static DATE_ALIKE_REGEX: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new("(\\d{4})-?(\\d{2})?").unwrap()
+});
 
 fn looks_like_expression(s: &str) -> bool {
     !s.split(|c: char| !c.is_ascii_alphanumeric()).any(|s| {

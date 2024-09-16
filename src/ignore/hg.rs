@@ -6,7 +6,7 @@ use std::io::BufReader;
 use std::ops::Add;
 use std::ops::Index;
 use std::path::Path;
-
+use std::sync::LazyLock;
 use crate::util::error_exit;
 use regex::Captures;
 use regex::Error;
@@ -165,9 +165,9 @@ fn convert_hgignore_pattern(
     }
 }
 
-lazy_static! {
-    static ref HG_CONVERT_REPLACE_REGEX: Regex = Regex::new("(\\*\\*|\\?|\\.|\\*)").unwrap();
-}
+static HG_CONVERT_REPLACE_REGEX: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new("(\\*\\*|\\?|\\.|\\*)").unwrap()
+});
 
 fn convert_hgignore_glob(glob: &str, file_path: &Path) -> Result<Regex, Error> {
     #[cfg(not(windows))]

@@ -23,7 +23,7 @@ use std::io::{BufRead, BufReader};
 use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
-
+use std::sync::LazyLock;
 use chrono::{Datelike, Local, Timelike};
 use mp3_metadata::MP3Metadata;
 use regex::Regex;
@@ -263,10 +263,9 @@ pub fn parse_filesize(s: &str) -> Option<u64> {
     return string.parse::<u64>().ok();
 }
 
-lazy_static! {
-    static ref FILE_SIZE_FORMAT_REGEX: Regex =
-        Regex::new("(%\\.(?P<zeroes>\\d+))?(?P<space>\\s)?(?P<units>\\w+)?").unwrap();
-}
+static FILE_SIZE_FORMAT_REGEX: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new("(%\\.(?P<zeroes>\\d+))?(?P<space>\\s)?(?P<units>\\w+)?").unwrap()
+});
 
 pub fn format_filesize(size: u64, modifier: &str) -> String {
     let mut modifier = modifier.to_ascii_lowercase();

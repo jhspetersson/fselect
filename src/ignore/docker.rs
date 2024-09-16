@@ -6,7 +6,7 @@ use std::io::BufReader;
 use std::ops::Add;
 use std::ops::Index;
 use std::path::Path;
-
+use std::sync::LazyLock;
 use regex::Captures;
 use regex::Error;
 use regex::Regex;
@@ -141,9 +141,9 @@ fn convert_dockerignore_pattern(
     }
 }
 
-lazy_static! {
-    static ref DOCKER_CONVERT_REPLACE_REGEX: Regex = Regex::new("(\\*\\*|\\?|\\.|\\*)").unwrap();
-}
+static DOCKER_CONVERT_REPLACE_REGEX: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new("(\\*\\*|\\?|\\.|\\*)").unwrap()
+});
 
 fn convert_dockerignore_glob(glob: &str, file_path: &Path) -> Result<Regex, Error> {
     let mut pattern = DOCKER_CONVERT_REPLACE_REGEX

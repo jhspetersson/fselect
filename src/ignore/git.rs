@@ -6,7 +6,7 @@ use std::fs::File;
 use std::ops::Add;
 use std::ops::Index;
 use std::path::{Path, PathBuf};
-
+use std::sync::LazyLock;
 use regex::Captures;
 use regex::Error;
 use regex::Regex;
@@ -280,9 +280,9 @@ fn convert_gitignore_pattern(pattern: &str, file_path: &Path) -> Vec<GitignoreFi
     result
 }
 
-lazy_static! {
-    static ref GIT_CONVERT_REPLACE_REGEX: Regex = Regex::new("(\\*\\*|\\?|\\.|\\*)").unwrap();
-}
+static GIT_CONVERT_REPLACE_REGEX: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new("(\\*\\*|\\?|\\.|\\*)").unwrap()
+});
 
 fn convert_gitignore_glob(glob: &str, file_path: &Path) -> Result<Regex, Error> {
     let mut pattern = GIT_CONVERT_REPLACE_REGEX

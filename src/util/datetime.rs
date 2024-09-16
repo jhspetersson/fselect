@@ -1,19 +1,12 @@
-use chrono::Datelike;
-use chrono::Duration;
-use chrono::Local;
-use chrono::LocalResult;
-use chrono::NaiveDate;
-use chrono::NaiveDateTime;
-use chrono::TimeZone;
-use chrono::Timelike;
+use std::sync::LazyLock;
+
+use chrono::{Datelike, Duration, Local, LocalResult, NaiveDate, NaiveDateTime, TimeZone, Timelike};
 use chrono_english::{parse_date_string, Dialect};
 use regex::Regex;
 
-lazy_static! {
-    static ref DATE_REGEX: Regex =
-        Regex::new("(\\d{4})(-|:)(\\d{1,2})(-|:)(\\d{1,2}) ?(\\d{1,2})?:?(\\d{1,2})?:?(\\d{1,2})?")
-            .unwrap();
-}
+static DATE_REGEX: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new("(\\d{4})(-|:)(\\d{1,2})(-|:)(\\d{1,2}) ?(\\d{1,2})?:?(\\d{1,2})?:?(\\d{1,2})?").unwrap()
+});
 
 pub fn parse_datetime(s: &str) -> Result<(NaiveDateTime, NaiveDateTime), String> {
     if s == "today" {

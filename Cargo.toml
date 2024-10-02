@@ -27,7 +27,7 @@ human-time = "0.1.6"
 humansize = "2.0"
 imagesize = "0.13"
 kamadak-exif = "0.5"
-lscolors = { version = "0.19", features = [ "nu-ansi-term" ] }
+lscolors = { version = "0.20", features = [ "nu-ansi-term" ] }
 matroska = "0.27"
 mp3-metadata = "0.3"
 mp4parse = "0.17"
@@ -42,11 +42,11 @@ serde_json = "1.0"
 sha-1 = "0.10"
 sha2 = "0.10"
 sha3 = "0.10"
-svg = "0.17"
+svg = "0.18"
 toml = "0.8"
 tree_magic_mini = { version = "3.0", features = [ "tree_magic_db" ] }
 update-informer = { version = "1.1.0", optional = true }
-wana_kana = "3.0"
+wana_kana = "4.0"
 wavers = "1.1"
 zip = "2.0"
 

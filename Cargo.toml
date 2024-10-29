@@ -28,7 +28,7 @@ humansize = "2.0"
 imagesize = "0.13"
 kamadak-exif = "0.5"
 lscolors = { version = "0.20", features = [ "nu-ansi-term" ] }
-matroska = "0.27"
+matroska = "0.28"
 mp3-metadata = "0.3"
 mp4parse = "0.17"
 nu-ansi-term = "0.50"
@@ -44,7 +44,7 @@ sha2 = "0.10"
 sha3 = "0.10"
 svg = "0.18"
 toml = "0.8"
-tree_magic_mini = { version = "3.0", features = [ "tree_magic_db" ] }
+tree_magic_mini = { version = "3.0", features = [ "with-gpl-data" ] }
 update-informer = { version = "1.1.0", optional = true }
 wana_kana = "4.0"
 wavers = "1.1"

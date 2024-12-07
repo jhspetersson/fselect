@@ -14,6 +14,7 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use chrono::{DateTime, Local};
+use git2::Repository;
 use lscolors::{LsColors, Style};
 use mp3_metadata::MP3Metadata;
 use regex::Regex;
@@ -30,10 +31,6 @@ use crate::function;
 use crate::function::{Variant, VariantType};
 use crate::ignore::docker::{
     matches_dockerignore_filter, search_upstream_dockerignore, DockerignoreFilter,
-};
-use crate::ignore::git::{
-    get_gitignore_filters, matches_gitignore_filter, search_upstream_gitignore,
-    update_gitignore_map, GitignoreFilter,
 };
 use crate::ignore::hg::{matches_hgignore_filter, search_upstream_hgignore, HgignoreFilter};
 use crate::mode;
@@ -166,7 +163,6 @@ pub struct Searcher<'a> {
     raw_output_buffer: Vec<HashMap<String, String>>,
     partitioned_output_buffer: Rc<HashMap<Vec<String>, Vec<HashMap<String, String>>>>,
     output_buffer: TopN<Criteria<String>, String>,
-    gitignore_map: HashMap<PathBuf, Vec<GitignoreFilter>>,
     hgignore_filters: Vec<HgignoreFilter>,
     dockerignore_filters: Vec<DockerignoreFilter>,
     visited_dirs: HashSet<PathBuf>,
@@ -208,7 +204,6 @@ impl<'a> Searcher<'a> {
             } else {
                 TopN::new(limit)
             },
-            gitignore_map: HashMap::new(),
             hgignore_filters: vec![],
             dockerignore_filters: vec![],
             visited_dirs: HashSet::new(),
@@ -360,10 +355,6 @@ impl<'a> Searcher<'a> {
             let traversal_mode = root.options.traversal;
 
             // Apply filters
-            if apply_gitignore {
-                search_upstream_gitignore(&mut self.gitignore_map, root_dir);
-            }
-
             if apply_hgignore {
                 search_upstream_hgignore(&mut self.hgignore_filters, root_dir);
             }
@@ -392,6 +383,7 @@ impl<'a> Searcher<'a> {
                 0,
                 search_archives,
                 apply_gitignore,
+                Repository::discover(&root_dir).ok().as_ref(),
                 apply_hgignore,
                 apply_dockerignore,
                 traversal_mode,
@@ -505,6 +497,7 @@ impl<'a> Searcher<'a> {
         root_depth: u32,
         search_archives: bool,
         apply_gitignore: bool,
+        git_repository: Option<&Repository>,
         apply_hgignore: bool,
         apply_dockerignore: bool,
         traversal_mode: TraversalMode,
@@ -542,17 +535,6 @@ impl<'a> Searcher<'a> {
 
         let depth = canonical_depth - base_depth + 1;
 
-        let mut gitignore_filters = None;
-
-        if apply_gitignore {
-            let canonical_path = PathBuf::from(canonical_path);
-            update_gitignore_map(&mut self.gitignore_map, &canonical_path);
-            gitignore_filters = Some(get_gitignore_filters(
-                &mut self.gitignore_map,
-                &canonical_path,
-            ));
-        }
-
         // Read the directory and process each entry
         match fs::read_dir(dir) {
             Ok(entry_list) => {
@@ -575,11 +557,9 @@ impl<'a> Searcher<'a> {
 
                             // Check the path against the filters
                             let pass_gitignore = !apply_gitignore
-                                || !matches_gitignore_filter(
-                                    &gitignore_filters,
-                                    canonical_path.to_string_lossy().as_ref(),
-                                    path.is_dir(),
-                                );
+                                || (git_repository.is_some() && 
+                                    git_repository.unwrap().is_path_ignored(&path)
+                                        .unwrap_or(false));
                             let pass_hgignore = !apply_hgignore
                                 || !matches_hgignore_filter(
                                     &self.hgignore_filters,
@@ -649,6 +629,7 @@ impl<'a> Searcher<'a> {
                                                     base_depth,
                                                     search_archives,
                                                     apply_gitignore,
+                                                    git_repository,
                                                     apply_hgignore,
                                                     apply_dockerignore,
                                                     traversal_mode,
@@ -696,6 +677,7 @@ impl<'a> Searcher<'a> {
                     base_depth,
                     search_archives,
                     apply_gitignore,
+                    git_repository,
                     apply_hgignore,
                     apply_dockerignore,
                     traversal_mode,

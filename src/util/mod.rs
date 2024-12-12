@@ -260,7 +260,7 @@ pub fn parse_filesize(s: &str) -> Option<u64> {
         };
     }
 
-    return string.parse::<u64>().ok();
+    string.parse::<u64>().ok()
 }
 
 static FILE_SIZE_FORMAT_REGEX: LazyLock<Regex> = LazyLock::new(|| {

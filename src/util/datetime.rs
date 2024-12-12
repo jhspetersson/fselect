@@ -149,3 +149,72 @@ pub fn format_datetime(dt: &NaiveDateTime) -> String {
 pub fn format_date(date: &NaiveDate) -> String {
     format!("{}", date.format("%Y-%m-%d"))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::{Local, NaiveDate};
+
+    #[test]
+    fn test_parse_today() {
+        let result = parse_datetime("today").unwrap();
+        let now = Local::now().date_naive();
+        let start = now.and_hms_opt(0, 0, 0).unwrap();
+        let finish = now.and_hms_opt(23, 59, 59).unwrap();
+
+        assert_eq!(result.0, start);
+        assert_eq!(result.1, finish);
+    }
+
+    #[test]
+    fn test_parse_yesterday() {
+        let result = parse_datetime("yesterday").unwrap();
+        let yesterday = Local::now().date_naive() - chrono::Duration::days(1);
+        let start = yesterday.and_hms_opt(0, 0, 0).unwrap();
+        let finish = yesterday.and_hms_opt(23, 59, 59).unwrap();
+
+        assert_eq!(result.0, start);
+        assert_eq!(result.1, finish);
+    }
+
+    #[test]
+    fn test_parse_specific_date() {
+        let result = parse_datetime("2023-12-11").unwrap();
+        let date = NaiveDate::from_ymd_opt(2023, 12, 11).unwrap();
+        let start = date.and_hms_opt(0, 0, 0).unwrap();
+        let finish = date.and_hms_opt(23, 59, 59).unwrap();
+
+        assert_eq!(result.0, start);
+        assert_eq!(result.1, finish);
+    }
+
+    #[test]
+    fn test_parse_specific_datetime() {
+        let result = parse_datetime("2023-12-11 14:30:45").unwrap();
+        let date = NaiveDate::from_ymd_opt(2023, 12, 11).unwrap();
+        let start = date.and_hms_opt(14, 30, 45).unwrap();
+        let finish = start;
+
+        assert_eq!(result.0, start);
+        assert_eq!(result.1, finish);
+    }
+
+    #[test]
+    fn test_invalid_format() {
+        let result = parse_datetime("invalid-date");
+
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "Error parsing date/time value: invalid-date");
+    }
+
+    #[test]
+    fn test_partial_date_parsing() {
+        let result = parse_datetime("2023-12-11 14:30").unwrap();
+        let date = NaiveDate::from_ymd_opt(2023, 12, 11).unwrap();
+        let start = date.and_hms_opt(14, 30, 0).unwrap();
+        let finish = date.and_hms_opt(14, 30, 59).unwrap();
+        
+        assert_eq!(result.0, start);
+        assert_eq!(result.1, finish);
+    }
+}

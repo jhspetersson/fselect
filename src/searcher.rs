@@ -503,6 +503,8 @@ impl<'a> Searcher<'a> {
         traversal_mode: TraversalMode,
         process_queue: bool,
     ) -> io::Result<()> {
+        dbg!(&git_repository.is_some());
+        
         // Prevents infinite loops when following symlinks
         if self.current_follow_symlinks {
             if self.visited_dirs.contains(&dir.to_path_buf()) {
@@ -557,7 +559,7 @@ impl<'a> Searcher<'a> {
 
                             // Check the path against the filters
                             let pass_gitignore = !apply_gitignore
-                                || (git_repository.is_some() && 
+                                || !(git_repository.is_some() && 
                                     git_repository.unwrap().is_path_ignored(&path)
                                         .unwrap_or(false));
                             let pass_hgignore = !apply_hgignore
@@ -622,6 +624,16 @@ impl<'a> Searcher<'a> {
 
                                         if ok && self.ok_to_visit_dir(&entry, file_type) {
                                             if traversal_mode == TraversalMode::Dfs {
+                                                let repo;
+                                                let git_repository = match git_repository {
+                                                    Some(repo) => Some(repo),
+                                                    None if apply_gitignore => {
+                                                        repo = Repository::open(&path).ok();
+                                                        dbg!("[DFS] REPO has been found!!!");
+                                                        repo.as_ref()
+                                                    },
+                                                    _ => None,
+                                                };
                                                 let result = self.visit_dir(
                                                     &path,
                                                     min_depth,
@@ -670,6 +682,16 @@ impl<'a> Searcher<'a> {
         if traversal_mode == Bfs && process_queue {
             while !self.dir_queue.is_empty() {
                 let path = self.dir_queue.pop_front().unwrap();
+                let repo;
+                let git_repository = match git_repository {
+                    Some(repo) => Some(repo),
+                    None if apply_gitignore => {
+                        repo = Repository::open(&path).ok();
+                        dbg!("[BFS] REPO has been found!!!");
+                        repo.as_ref()
+                    },
+                    _ => None,
+                };
                 let result = self.visit_dir(
                     &path,
                     min_depth,

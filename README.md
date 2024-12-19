@@ -15,7 +15,7 @@ While it doesn't tend to fully replace traditional `find` and `ls`, **fselect** 
 * `.gitignore`, `.hgignore`, and `.dockerignore` support (experimental)
 * search by width and height of images, EXIF metadata
 * search by MP3 info
-* search by extended file attributes
+* search by extended file attributes and Linux capabilities
 * search by file hashes
 * search by MIME type
 * shortcuts to common file types

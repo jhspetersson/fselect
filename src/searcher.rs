@@ -503,8 +503,6 @@ impl<'a> Searcher<'a> {
         traversal_mode: TraversalMode,
         process_queue: bool,
     ) -> io::Result<()> {
-        dbg!(&git_repository.is_some());
-        
         // Prevents infinite loops when following symlinks
         if self.current_follow_symlinks {
             if self.visited_dirs.contains(&dir.to_path_buf()) {
@@ -629,7 +627,6 @@ impl<'a> Searcher<'a> {
                                                     Some(repo) => Some(repo),
                                                     None if apply_gitignore => {
                                                         repo = Repository::open(&path).ok();
-                                                        dbg!("[DFS] REPO has been found!!!");
                                                         repo.as_ref()
                                                     },
                                                     _ => None,
@@ -687,7 +684,6 @@ impl<'a> Searcher<'a> {
                     Some(repo) => Some(repo),
                     None if apply_gitignore => {
                         repo = Repository::open(&path).ok();
-                        dbg!("[BFS] REPO has been found!!!");
                         repo.as_ref()
                     },
                     _ => None,

@@ -23,7 +23,6 @@ pub enum Lexem {
     And,
     Or,
     Not,
-    Group,
     Order,
     By,
     DescendingOrder,
@@ -212,7 +211,6 @@ impl Lexer {
                 "or" => Some(Lexem::Or),
                 "and" => Some(Lexem::And),
                 "not" if self.after_where => Some(Lexem::Not),
-                "group" => Some(Lexem::Group),
                 "order" => Some(Lexem::Order),
                 "by" => Some(Lexem::By),
                 "asc" => self.next_lexem(),
@@ -1072,7 +1070,7 @@ mod tests {
             lexer.next_lexem(),
             Some(Lexem::RawString(String::from("/test")))
         );
-        assert_eq!(lexer.next_lexem(), Some(Lexem::Group));
+        assert_eq!(lexer.next_lexem(), Some(Lexem::RawString("group".to_owned())));
         assert_eq!(lexer.next_lexem(), Some(Lexem::By));
         assert_eq!(
             lexer.next_lexem(),

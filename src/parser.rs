@@ -125,6 +125,16 @@ impl Parser {
                             fields.push(Expr::field(Field::Modified));
                             fields.push(Expr::field(Field::Path));
                         } else {
+                            if s.to_lowercase() == "group" {
+                                if let Some(Lexem::By) = self.next_lexem() {
+                                    self.drop_lexem();
+                                    self.drop_lexem();
+                                    break;
+                                } else {
+                                    self.drop_lexem();
+                                }
+                            }
+
                             self.drop_lexem();
 
                             if Self::is_root_option_keyword(s) {
@@ -204,7 +214,10 @@ impl Parser {
                                 self.drop_lexem();
                                 match self.parse_root_options() {
                                     Some(options) => root_options = options,
-                                    None => break
+                                    None => {
+                                        roots.push(Root::new(path, RootOptions::new()));
+                                        break
+                                    }
                                 }
                             }
                             _ => {}
@@ -779,25 +792,29 @@ impl Parser {
     fn parse_group_by(&mut self) -> Result<Vec<Expr>, String> {
         let mut group_by_fields: Vec<Expr> = vec![];
 
-        if let Some(Lexem::Group) = self.next_lexem() {
-            if let Some(Lexem::By) = self.next_lexem() {
-                loop {
-                    match self.next_lexem() {
-                        Some(Lexem::Comma) => {}
-                        Some(Lexem::RawString(_)) => {
-                            self.drop_lexem();
-                            let group_field = self.parse_expr().unwrap().unwrap();
-                            group_by_fields.push(group_field);
-                        }
-                        _ => {
-                            self.drop_lexem();
-                            break;
+        if let Some(Lexem::RawString(s)) = self.next_lexem() {
+            if s.to_lowercase() == "group" {
+                if let Some(Lexem::By) = self.next_lexem() {
+                    loop {
+                        match self.next_lexem() {
+                            Some(Lexem::Comma) => {}
+                            Some(Lexem::RawString(_)) => {
+                                self.drop_lexem();
+                                let group_field = self.parse_expr().unwrap().unwrap();
+                                group_by_fields.push(group_field);
+                            }
+                            _ => {
+                                self.drop_lexem();
+                                break;
+                            }
                         }
                     }
+                } else {
+                    self.drop_lexem();
                 }
             } else {
                 self.drop_lexem();
-            }
+            }            
         } else {
             self.drop_lexem();
         }

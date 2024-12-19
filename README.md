@@ -39,13 +39,9 @@ More is under way!
 
 [`fselect` in `nixpkgs`](https://github.com/filalex77/nixpkgs/blob/1eced92263395896c10cea69e5f60e8be5f43aeb/pkgs/tools/misc/fselect/default.nix), thanks to [@filalex77](https://github.com/filalex77)
 
-#### Other Linux
-
-[Static build with musl](https://github.com/jhspetersson/fselect/releases/download/0.8.6/fselect-x86_64-linux-musl.gz).
-
 #### Windows 64bit
 
-A statically precompiled [binary](https://github.com/jhspetersson/fselect/releases/download/0.8.6/fselect-x86_64-win.zip) is available at Github downloads.
+A statically precompiled [binary](https://github.com/jhspetersson/fselect/releases/download/0.8.8/fselect-x86_64-win.zip) is available at GitHub downloads.
 
 #### Windows via winget
 
@@ -131,7 +127,7 @@ Formatting functions:
 
     fselect "LOWER(name), UPPER(name), LENGTH(name), YEAR(modified) from /home/user/Downloads"
     
-Get the year of an oldest file:
+Get the year of the oldest file:
 
     fselect "MIN(YEAR(modified)) from /home/user"
     
@@ -208,6 +204,7 @@ Or in combination:
 Enable `.gitignore` or `.hgignore` support:
 
     fselect size, path from /home/user/projects gitignore where name = '*.cpp'
+    fselect size, path from /home/user/projects git where name = '*.cpp'    
     fselect size, path from /home/user/projects hgignore where name = '*.py'        
     
 Search by image dimensions:

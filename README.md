@@ -34,6 +34,7 @@ More is under way!
 #### Arch Linux
 
 [AUR package](https://aur.archlinux.org/packages/fselect/), thanks to [@asm0dey](https://github.com/asm0dey)
+[AUR bin package](https://aur.archlinux.org/packages/fselect-bin/), thanks to [@4censord](https://github.com/4censord)
 
 #### NixOS
 

@@ -39,6 +39,10 @@ More is under way!
 
 [`fselect` in `nixpkgs`](https://github.com/filalex77/nixpkgs/blob/1eced92263395896c10cea69e5f60e8be5f43aeb/pkgs/tools/misc/fselect/default.nix), thanks to [@filalex77](https://github.com/filalex77)
 
+#### Other Linux
+
+[Static build with musl](https://github.com/jhspetersson/fselect/releases/download/0.8.8/fselect-x86_64-linux-musl.gz).
+
 #### Windows 64bit
 
 A statically precompiled [binary](https://github.com/jhspetersson/fselect/releases/download/0.8.8/fselect-x86_64-win.zip) is available at GitHub downloads.

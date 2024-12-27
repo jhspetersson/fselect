@@ -555,18 +555,18 @@ pub fn get_value(
         }
         // Get the length of the string
         Some(Function::Length) => {
-            return Variant::from_int(function_arg.chars().count() as i64);
+            Variant::from_int(function_arg.chars().count() as i64)
         }
         // Convert the value to base64
         Some(Function::ToBase64) => {
-            return Variant::from_string(&rbase64::encode((function_arg).as_ref()));
+            Variant::from_string(&rbase64::encode((function_arg).as_ref()))
         }
         // Read the value as base64
         Some(Function::FromBase64) => {
-            return Variant::from_string(
+            Variant::from_string(
                 &String::from_utf8_lossy(&rbase64::decode(&function_arg).unwrap_or_default())
                     .to_string(),
-            );
+            )
         }
 
         // ===== String manipulation functions =====
@@ -609,13 +609,13 @@ pub fn get_value(
             Variant::from_string(&result)
         }
         Some(Function::Trim) => {
-            return Variant::from_string(&function_arg.trim().to_string());
+            Variant::from_string(&function_arg.trim().to_string())
         }
         Some(Function::LTrim) => {
-            return Variant::from_string(&function_arg.trim_start().to_string());
+            Variant::from_string(&function_arg.trim_start().to_string())
         }
         Some(Function::RTrim) => {
-            return Variant::from_string(&function_arg.trim_end().to_string());
+            Variant::from_string(&function_arg.trim_end().to_string())
         }
 
         // ===== Numeric functions =====
@@ -632,17 +632,17 @@ pub fn get_value(
             _ => Variant::empty(VariantType::String),
         },
         Some(Function::Power) => {
-            return match function_arg.parse::<f64>() {
+            match function_arg.parse::<f64>() {
                 Ok(val) => {
                     let power = match function_args.first() {
                         Some(power) => power.parse::<f64>().unwrap(),
                         _ => 0.0,
                     };
 
-                    return Variant::from_float(val.powf(power));
+                    Variant::from_float(val.powf(power))
                 }
                 _ => Variant::empty(VariantType::String),
-            };
+            }
         }
         Some(Function::Sqrt) => match function_arg.parse::<f64>() {
             Ok(val) => Variant::from_float(val.sqrt()),

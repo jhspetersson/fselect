@@ -23,7 +23,7 @@ chrono = "0.4"
 chrono-english = "0.1"
 csv = "1.0"
 directories = "5.0"
-git2 = { version = "0.19.0", default-features = false }
+git2 = { version = "0.20.0", default-features = false }
 human-time = "0.1.6"
 humansize = "2.0"
 imagesize = "0.13"

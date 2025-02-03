@@ -14,19 +14,15 @@ use std::time::Duration;
 use chrono::Datelike;
 use chrono::Local;
 use chrono::NaiveDateTime;
+use human_time::ToHumanTimeString;
 use rand::Rng;
 use serde::ser::{Serialize, Serializer};
 #[cfg(unix)]
 use xattr::FileExt;
 
-use human_time::ToHumanTimeString;
-
 use crate::fileinfo::FileInfo;
-use crate::util::format_datetime;
-use crate::util::parse_datetime;
-use crate::util::parse_filesize;
-use crate::util::str_to_bool;
-use crate::util::{capitalize, error_exit, format_date};
+use crate::util::{capitalize, error_exit, format_date, format_datetime};
+use crate::util::{parse_filesize, parse_datetime, str_to_bool};
 
 #[derive(Clone, Debug)]
 pub enum VariantType {
@@ -861,20 +857,20 @@ pub fn get_value(
             Variant::empty(VariantType::String)
         }
         Some(Function::Random) => {
-            let mut rng = rand::thread_rng();
+            let mut rng = rand::rng();
 
             if function_arg.is_empty() {
-                return Variant::from_int(rng.gen_range(0..i64::MAX));
+                return Variant::from_int(rng.random_range(0..i64::MAX));
             }
 
             match function_arg.parse::<i64>() {
                 Ok(val) => {
                     if function_args.is_empty() {
-                        Variant::from_int(rng.gen_range(0..val))
+                        Variant::from_int(rng.random_range(0..val))
                     } else {
                         let limit = function_args.first().unwrap();
                         match limit.parse::<i64>() {
-                            Ok(limit) => Variant::from_int(rng.gen_range(val..limit)),
+                            Ok(limit) => Variant::from_int(rng.random_range(val..limit)),
                             _ => error_exit(
                                 "Could not parse limit argument of RANDOM function",
                                 limit.as_str(),

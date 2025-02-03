@@ -81,7 +81,6 @@ impl Lexer {
             let c;
             if self.char_index == -1 {
                 c = ' ';
-                self.char_index += 1;
             } else {
                 let input_char = input_part.chars().nth(self.char_index as usize);
                 if input_char.is_none() {

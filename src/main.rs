@@ -201,6 +201,10 @@ fn main() -> ExitCode {
 }
 
 fn exec_search(query: Vec<String>, config: &mut Config, default_config: &Config, no_color: bool) -> u8 {
+    if config.debug {
+        dbg!(&query);
+    }
+
     let mut p = Parser::new();
     let query = p.parse(query, config.debug);
 

@@ -49,6 +49,7 @@ pub struct Lexer {
     input_index: usize,
     char_index: isize,
     before_from: bool,
+    possible_search_root: bool,
     after_open: bool,
     after_where: bool,
     after_operator: bool,
@@ -61,6 +62,7 @@ impl Lexer {
             input_index: 0,
             char_index: 0,
             before_from: true,
+            possible_search_root: false,
             after_open: false,
             after_where: false,
             after_operator: false,
@@ -86,6 +88,7 @@ impl Lexer {
                 if input_char.is_none() {
                     self.input_index += 1;
                     self.char_index = -1;
+                    self.possible_search_root = false;
                     continue;
                 }
                 c = input_char.unwrap();
@@ -133,7 +136,9 @@ impl Lexer {
                             if maybe_expr {
                                 break;
                             }
-                        } else if c == ' ' || c == ',' || is_paren_char(c) || self.is_op_char(c) {
+                        } else if (self.input.len() == 1 
+                                || (self.input.len() > 1 && !self.possible_search_root)) 
+                            && (c == ' ' || c == ',' || is_paren_char(c) || self.is_op_char(c)) {
                             break;
                         }
                     }
@@ -224,6 +229,8 @@ impl Lexer {
             _ => None,
         };
 
+        self.possible_search_root = matches!(lexem, Some(Lexem::From))
+                || (matches!(lexem, Some(Lexem::Comma)) && !self.after_where);
         self.after_operator = matches!(lexem, Some(Lexem::Operator(_)));
 
         lexem

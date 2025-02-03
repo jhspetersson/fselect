@@ -473,8 +473,12 @@ Functions:
         BIN                         Returns binary representation of an integer value
         HEX                         Returns hexadecimal representation of an integer value
         OCT                         Returns octal representation of an integer value
+        ABS                         Returns absolute value of the number
         POWER | POW                 Raise the value to the specified power
         SQRT                        Returns square root of the value
+        LOG                         Returns logarithm of the value
+        LN                          Returns natural logarithm of the value
+        EXP                         Returns e raised to the power of the value
         CONTAINS                    Returns true, if file contains string, false if not
         COALESCE                    Returns first nonempty expression value
         CONCAT                      Returns concatenated string of expression values

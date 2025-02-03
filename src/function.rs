@@ -271,10 +271,18 @@ pub enum Function {
     Hex,
     /// Get the octal representation of the value
     Oct,
+    /// Get the absolute value of the number
+    Abs,
     /// Raise the value to the power of another value
     Power,
     /// Get the square root of the value
     Sqrt,
+    /// Get the logarithm of the value with a specific base
+    Log,
+    /// Get the natural logarithm of the value
+    Ln,
+    /// Get e raised to the power of the specified number
+    Exp,
 
     //  Japanese string functions
     /// Check if the string contains Japanese characters
@@ -380,8 +388,12 @@ impl FromStr for Function {
             "bin" => Ok(Function::Bin),
             "hex" => Ok(Function::Hex),
             "oct" => Ok(Function::Oct),
+            "abs" => Ok(Function::Abs),
             "power" | "pow" => Ok(Function::Power),
             "sqrt" => Ok(Function::Sqrt),
+            "log" => Ok(Function::Log),
+            "ln" => Ok(Function::Ln),
+            "exp" => Ok(Function::Exp),
 
             "contains_japanese" | "japanese" => Ok(Function::ContainsJapanese),
             "contains_hiragana" | "hiragana" => Ok(Function::ContainsHiragana),
@@ -492,8 +504,12 @@ impl Function {
                 | Function::Day
                 | Function::Month
                 | Function::Year
+                | Function::Abs
                 | Function::Power
                 | Function::Sqrt
+                | Function::Log
+                | Function::Ln
+                | Function::Exp
         )
     }
 
@@ -631,6 +647,10 @@ pub fn get_value(
             Ok(val) => Variant::from_string(&format!("{:o}", val)),
             _ => Variant::empty(VariantType::String),
         },
+        Some(Function::Abs) => match function_arg.parse::<f64>() {
+            Ok(val) => Variant::from_float(val.abs()),
+            _ => Variant::empty(VariantType::String),
+        }
         Some(Function::Power) => {
             match function_arg.parse::<f64>() {
                 Ok(val) => {
@@ -648,6 +668,27 @@ pub fn get_value(
             Ok(val) => Variant::from_float(val.sqrt()),
             _ => Variant::empty(VariantType::String),
         },
+        Some(Function::Log) => {
+            match function_arg.parse::<f64>() {
+                Ok(val) => {
+                    let base = match function_args.first() {
+                        Some(base) => base.parse::<f64>().unwrap(),
+                        _ => 10.0,
+                    };
+
+                    Variant::from_float(val.log(base))
+                }
+                _ => Variant::empty(VariantType::String),
+            }
+        }
+        Some(Function::Ln) => match function_arg.parse::<f64>() {
+            Ok(val) => Variant::from_float(val.ln()),
+            _ => Variant::empty(VariantType::String),
+        }
+        Some(Function::Exp) => match function_arg.parse::<f64>() {
+            Ok(val) => Variant::from_float(val.exp()),
+            _ => Variant::empty(VariantType::String),
+        }
 
         // ===== Japanese string functions =====
         Some(Function::ContainsJapanese) => {

@@ -230,7 +230,7 @@ impl Lexer {
         };
 
         self.possible_search_root = matches!(lexem, Some(Lexem::From))
-                || (matches!(lexem, Some(Lexem::Comma)) && !self.after_where);
+                || (matches!(lexem, Some(Lexem::Comma)) && !self.before_from && !self.after_where);
         self.after_operator = matches!(lexem, Some(Lexem::Operator(_)));
 
         lexem
@@ -513,7 +513,16 @@ mod tests {
     #[test]
     fn func_calls() {
         let mut lexer = lexer!("name, length(name),UPPER( name ) from .");
+        assert_func_calls_lexems(&mut lexer);
+    }
 
+    #[test]
+    fn func_calls_with_multiple_input_parts() {
+        let mut lexer = lexer!("name,", "length(name),UPPER(", "name", ")", "from", ".");
+        assert_func_calls_lexems(&mut lexer);
+    }
+
+    fn assert_func_calls_lexems(lexer: &mut Lexer) {
         assert_eq!(
             lexer.next_lexem(),
             Some(Lexem::RawString(String::from("name")))
@@ -550,7 +559,16 @@ mod tests {
     #[test]
     fn func_calls2() {
         let mut lexer = lexer!("select name, upper(name) from . depth 1");
+        assert_func_calls2_lexems(&mut lexer);
+    }
 
+    #[test]
+    fn func_calls2_with_multiple_input_parts() {
+        let mut lexer = lexer!("select", "name,", "upper(name)", "from", ".", "depth", "1");
+        assert_func_calls2_lexems(&mut lexer);
+    }
+
+    fn assert_func_calls2_lexems(lexer: &mut Lexer) {
         assert_eq!(
             lexer.next_lexem(),
             Some(Lexem::RawString(String::from("select")))
@@ -588,7 +606,18 @@ mod tests {
     #[test]
     fn func_calls3() {
         let mut lexer = lexer!("select name, rand() from . depth 1 order by rand() limit 10");
+        assert_func_calls3_lexems(&mut lexer);
+    }
 
+    #[test]
+    fn func_calls3_with_multiple_input_parts() {
+        let mut lexer = lexer!(
+            "select", "name,", "rand()", "from", ".", "depth", "1", "order", "by", "rand()", "limit", "10"
+        );
+        assert_func_calls3_lexems(&mut lexer);
+    }
+
+    fn assert_func_calls3_lexems(lexer: &mut Lexer) {
         assert_eq!(
             lexer.next_lexem(),
             Some(Lexem::RawString(String::from("select")))
@@ -635,7 +664,16 @@ mod tests {
     #[test]
     fn agg_func_calls() {
         let mut lexer = lexer!("COUNT(*), MIN(size), AVG(size), MAX(size) from .");
+        assert_agg_func_calls_lexems(&mut lexer);
+    }
 
+    #[test]
+    fn agg_func_calls_with_multiple_input_parts() {
+        let mut lexer = lexer!("COUNT(*),", "MIN(size),", "AVG(size),", "MAX(size)", "from", ".");
+        assert_agg_func_calls_lexems(&mut lexer);
+    }
+
+    fn assert_agg_func_calls_lexems(lexer: &mut Lexer) {
         assert_eq!(
             lexer.next_lexem(),
             Some(Lexem::RawString(String::from("COUNT")))
@@ -797,7 +835,16 @@ mod tests {
     #[test]
     fn root_with_dashes() {
         let mut lexer = lexer!("path from ./foo-bar");
+        assert_root_with_dashes_lexems(&mut lexer);
+    }
 
+    #[test]
+    fn root_with_dashes_with_multiple_input_parts() {
+        let mut lexer = lexer!("path", "from", "./foo-bar");
+        assert_root_with_dashes_lexems(&mut lexer);
+    }
+
+    fn assert_root_with_dashes_lexems(lexer: &mut Lexer) {
         assert_eq!(
             lexer.next_lexem(),
             Some(Lexem::RawString(String::from("path")))
@@ -842,7 +889,16 @@ mod tests {
     #[test]
     fn mime_types() {
         let mut lexer = lexer!("mime from . where mime = application/pkcs8+pem");
+        assert_mime_types_lexems(&mut lexer);
+    }
 
+    #[test]
+    fn mime_types_with_multiple_input_parts() {
+        let mut lexer = lexer!("mime", "from", ".", "where", "mime", "=", "application/pkcs8+pem");
+        assert_mime_types_lexems(&mut lexer);
+    }
+
+    fn assert_mime_types_lexems(lexer: &mut Lexer) {
         assert_eq!(
             lexer.next_lexem(),
             Some(Lexem::RawString(String::from("mime")))
@@ -1056,7 +1112,16 @@ mod tests {
     #[test]
     fn group_by() {
         let mut lexer = lexer!("select AVG(size) from /test group by mime");
+        assert_group_by_lexems(&mut lexer);
+    }
 
+    #[test]
+    fn group_by_with_multiple_input_parts() {
+        let mut lexer = lexer!("select", "AVG(size)", "from", "/test", "group", "by", "mime");
+        assert_group_by_lexems(&mut lexer);
+    }
+
+    fn assert_group_by_lexems(lexer: &mut Lexer) {
         assert_eq!(
             lexer.next_lexem(),
             Some(Lexem::RawString(String::from("select")))
@@ -1087,7 +1152,18 @@ mod tests {
     #[test]
     fn between_op() {
         let mut lexer = lexer!("select name from /home/user where size between 1000000 and 2000000");
+        assert_between_op_lexems(&mut lexer);
+    }
 
+    #[test]
+    fn between_op_with_multiple_input_parts() {
+        let mut lexer = lexer!(
+            "select", "name", "from", "/home/user", "where", "size", "between", "1000000", "and", "2000000"
+        );
+        assert_between_op_lexems(&mut lexer);
+    }
+
+    fn assert_between_op_lexems(lexer: &mut Lexer) {
         assert_eq!(
             lexer.next_lexem(),
             Some(Lexem::RawString(String::from("select")))

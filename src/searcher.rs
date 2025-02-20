@@ -879,7 +879,7 @@ impl<'a> Searcher<'a> {
 
         match field {
             Field::Name => match file_info {
-                Some(ref file_info) => {
+                Some(file_info) => {
                     return Variant::from_string(&format!(
                         "[{}] {}",
                         entry.file_name().to_string_lossy(),
@@ -894,7 +894,7 @@ impl<'a> Searcher<'a> {
                 }
             },
             Field::Extension => match file_info {
-                Some(ref file_info) => {
+                Some(file_info) => {
                     return Variant::from_string(&format!(
                         "[{}] {}",
                         entry.file_name().to_string_lossy(),
@@ -909,7 +909,7 @@ impl<'a> Searcher<'a> {
                 }
             },
             Field::Path => match file_info {
-                Some(ref file_info) => {
+                Some(file_info) => {
                     return Variant::from_string(&format!(
                         "[{}] {}",
                         entry.path().to_string_lossy(),
@@ -921,7 +921,7 @@ impl<'a> Searcher<'a> {
                 }
             },
             Field::AbsPath => match file_info {
-                Some(ref file_info) => {
+                Some(file_info) => {
                     return Variant::from_string(&format!(
                         "[{}] {}",
                         entry.path().to_string_lossy(),
@@ -936,7 +936,7 @@ impl<'a> Searcher<'a> {
             },
             Field::Directory => {
                 let file_path = match file_info {
-                    Some(ref file_info) => file_info.name.clone(),
+                    Some(file_info) => file_info.name.clone(),
                     _ => entry.path().to_string_lossy().to_string(),
                 };
                 let pb = PathBuf::from(file_path);
@@ -946,7 +946,7 @@ impl<'a> Searcher<'a> {
             }
             Field::AbsDir => {
                 let file_path = match file_info {
-                    Some(ref file_info) => file_info.name.clone(),
+                    Some(file_info) => file_info.name.clone(),
                     _ => entry.path().to_string_lossy().to_string(),
                 };
                 let pb = PathBuf::from(file_path);
@@ -961,7 +961,7 @@ impl<'a> Searcher<'a> {
                 }
             }
             Field::Size => match file_info {
-                Some(ref file_info) => {
+                Some(file_info) => {
                     return Variant::from_int(file_info.size as i64);
                 }
                 _ => {
@@ -974,7 +974,7 @@ impl<'a> Searcher<'a> {
                 }
             },
             Field::FormattedSize => match file_info {
-                Some(ref file_info) => {
+                Some(file_info) => {
                     return Variant::from_string(&format_filesize(
                         file_info.size,
                         self.config
@@ -999,7 +999,7 @@ impl<'a> Searcher<'a> {
                 }
             },
             Field::IsDir => match file_info {
-                Some(ref file_info) => {
+                Some(file_info) => {
                     return Variant::from_bool(
                         file_info.name.ends_with('/') || file_info.name.ends_with('\\'),
                     );
@@ -1014,7 +1014,7 @@ impl<'a> Searcher<'a> {
                 }
             },
             Field::IsFile => match file_info {
-                Some(ref file_info) => {
+                Some(file_info) => {
                     return Variant::from_bool(!file_info.name.ends_with('/'));
                 }
                 _ => {
@@ -1119,7 +1119,7 @@ impl<'a> Searcher<'a> {
                 return Variant::empty(VariantType::String);
             }
             Field::Mode => match file_info {
-                Some(ref file_info) => {
+                Some(file_info) => {
                     if let Some(mode) = file_info.mode {
                         return Variant::from_string(&mode::format_mode(mode));
                     }
@@ -1246,7 +1246,7 @@ impl<'a> Searcher<'a> {
                 );
             }
             Field::IsHidden => match file_info {
-                Some(ref file_info) => {
+                Some(file_info) => {
                     return Variant::from_bool(is_hidden(&file_info.name, &None, true));
                 }
                 _ => {
@@ -1333,7 +1333,7 @@ impl<'a> Searcher<'a> {
                 }
             }
             Field::Modified => match file_info {
-                Some(ref file_info) => {
+                Some(file_info) => {
                     if let Some(file_info_modified) = &file_info.modified {
                         let dt = to_local_datetime(file_info_modified);
                         return Variant::from_datetime(dt);
@@ -1385,7 +1385,7 @@ impl<'a> Searcher<'a> {
                 return Variant::from_bool(is_shebang(&entry.path()));
             }
             Field::IsEmpty => match file_info {
-                Some(ref file_info) => {
+                Some(file_info) => {
                     return Variant::from_bool(file_info.size == 0);
                 }
                 _ => {
@@ -1790,7 +1790,7 @@ impl<'a> Searcher<'a> {
         mode_func_i32: &dyn Fn(u32) -> bool,
     ) -> Variant {
         match file_info {
-            Some(ref file_info) => {
+            Some(file_info) => {
                 if let Some(mode) = file_info.mode {
                     return Variant::from_bool(mode_func_i32(mode));
                 }

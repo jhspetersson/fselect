@@ -197,7 +197,7 @@ impl Parser {
                 let lexem = self.next_lexem();
                 match lexem {
                     Some(ref lexem) => match lexem {
-                        Lexem::String(ref s) | Lexem::RawString(ref s) => match mode {
+                        Lexem::String(s) | Lexem::RawString(s) => match mode {
                             RootParsingMode::From | RootParsingMode::Comma => {
                                 path = s.to_string();
                                 if path.starts_with("~") {
@@ -281,7 +281,7 @@ impl Parser {
             let lexem = self.next_lexem();
             match lexem {
                 Some(ref lexem) => match lexem {
-                    Lexem::String(ref s) | Lexem::RawString(ref s) => match mode {
+                    Lexem::String(s) | Lexem::RawString(s) => match mode {
                         RootParsingMode::Unknown | RootParsingMode::Options => {
                             let s = s.to_ascii_lowercase();
                             if s == "mindepth" {

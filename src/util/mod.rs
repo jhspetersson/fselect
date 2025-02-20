@@ -621,7 +621,7 @@ pub fn is_hidden(file_name: &str, metadata: &Option<Metadata>, archive_mode: boo
 
     #[cfg(windows)]
     {
-        if let Some(ref metadata) = metadata {
+        if let Some(metadata) = metadata {
             return mode::get_mode(metadata).contains("Hidden");
         }
     }

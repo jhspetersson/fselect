@@ -118,6 +118,13 @@ pub fn parse_datetime(s: &str) -> Result<(NaiveDateTime, NaiveDateTime), String>
                     }
                     _ => Err("Error parsing date/time value: ".to_string() + s),
                 }
+            } else if s.len() >= 2 && (s.starts_with("+") || s.starts_with("-")) {
+                let days = s.parse::<i64>().unwrap();
+                let date = Local::now().date_naive() + Duration::days(days);
+                let start = date.and_hms_opt(0, 0, 0).unwrap();
+                let finish = date.and_hms_opt(23, 59, 59).unwrap();
+
+                Ok((start, finish))
             } else {
                 Err("Error parsing date/time value: ".to_string() + s)
             }
@@ -172,6 +179,28 @@ mod tests {
         let yesterday = Local::now().date_naive() - chrono::Duration::days(1);
         let start = yesterday.and_hms_opt(0, 0, 0).unwrap();
         let finish = yesterday.and_hms_opt(23, 59, 59).unwrap();
+
+        assert_eq!(result.0, start);
+        assert_eq!(result.1, finish);
+    }
+
+    #[test]
+    fn test_parse_two_days_ago() {
+        let result = parse_datetime("2 days ago 00:00").unwrap();
+        let two_days_ago = Local::now().date_naive() - chrono::Duration::days(2);
+        let start = two_days_ago.and_hms_opt(0, 0, 0).unwrap();
+        let finish = two_days_ago.and_hms_opt(23, 59, 59).unwrap();
+
+        assert_eq!(result.0, start);
+        assert_eq!(result.1, finish);
+    }
+
+    #[test]
+    fn test_parse_two_days_ago_simplified() {
+        let result = parse_datetime("-2").unwrap();
+        let two_days_ago = Local::now().date_naive() - chrono::Duration::days(2);
+        let start = two_days_ago.and_hms_opt(0, 0, 0).unwrap();
+        let finish = two_days_ago.and_hms_opt(23, 59, 59).unwrap();
 
         assert_eq!(result.0, start);
         assert_eq!(result.1, finish);

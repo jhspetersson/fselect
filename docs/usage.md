@@ -350,6 +350,10 @@ Other operators assume exact date and time, which could be specified in a more f
     fselect "path from /home/user where modified gte 'last fri'"
     fselect path from /home/user where modified gte '01/05'
 
+Or simply use relative offsets as days:
+
+    fselect created, path from /home/user where created gte -2
+
 [More about it](https://github.com/stevedonovan/chrono-english)
 
 **fselect** uses *UK* locale, not American style dates, i.e. `08/02` means *February 8th*.

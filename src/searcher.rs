@@ -405,9 +405,11 @@ impl<'a> Searcher<'a> {
                     .map(|f| f.to_string())
                     .collect();
                 let buffer_partitions = self.partitioned_output_buffer.clone();
-
+                let buffer_partitions = buffer_partitions.iter().collect::<Vec<_>>();                 
+                
+                let mut results = vec![];
+                
                 buffer_partitions.iter().for_each(|f| {
-                    let mut buf = WritableBuffer::new();
                     let mut items: Vec<(String, String)> = Vec::new();
 
                     let mut file_map = HashMap::new();
@@ -430,10 +432,67 @@ impl<'a> Searcher<'a> {
                         items.push((field_name, record));
                     }
 
-                    let _ = self.results_writer.write_row(&mut buf, items);
+                    results.push(items);
+                });
 
+                if !self.query.ordering_fields.is_empty() {
+                    let grouping_fields = self
+                        .query
+                        .grouping_fields
+                        .iter()
+                        .map(|f| f.to_string().to_lowercase())
+                        .collect::<Vec<String>>();
+                    let ordering_fields = self
+                        .query
+                        .ordering_fields
+                        .iter()
+                        .map(|f| f.to_string().to_lowercase())
+                        .collect::<Vec<String>>();
+                    let directions = self.query.ordering_asc.clone();
+                    let sorting_indices = ordering_fields
+                        .iter()
+                        .map(|f| {
+                            grouping_fields
+                                .iter()
+                                .position(|g| g == f)
+                                .unwrap_or(0)
+                        })
+                        .collect::<Vec<usize>>();
+
+                    results.sort_by(|a, b| {
+                        sorting_indices
+                            .iter()
+                            .enumerate()
+                            .map(|(idx, i)| {
+                                if let Some(a) = a.get(*i) {
+                                    if let Ok(a) = a.1.parse::<i64>() {
+                                        if let Some(b) = b.get(*i) {
+                                            if let Ok(b) = b.1.parse::<i64>() {
+                                                return if directions[idx] { 
+                                                    a.cmp(&b) 
+                                                } else { 
+                                                    b.cmp(&a) 
+                                                };
+                                            }
+                                        }
+                                    }
+                                }
+                                if directions[idx] { 
+                                    a.get(*i).unwrap().1.cmp(&b.get(*i).unwrap().1) 
+                                } else { 
+                                    b.get(*i).unwrap().1.cmp(&a.get(*i).unwrap().1) 
+                                } 
+                            })
+                            .find(|r| *r != std::cmp::Ordering::Equal)
+                            .unwrap_or(std::cmp::Ordering::Equal)
+                    });
+                }
+
+                results.iter().for_each(|items| {
+                    let mut buf = WritableBuffer::new();
+                    let _ = self.results_writer.write_row(&mut buf, items.to_owned());
                     let _ = write!(std::io::stdout(), "{}", String::from(buf));
-                })
+                });
             } else {
                 let mut buf = WritableBuffer::new();
                 let mut items: Vec<(String, String)> = Vec::new();

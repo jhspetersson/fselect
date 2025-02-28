@@ -13,7 +13,8 @@ license = "MIT OR Apache-2.0"
 edition = "2024"
 
 [features]
-default = ["users", "update-notifications"]
+default = ["git", "users", "update-notifications"]
+git = ["git2"]
 update-notifications = ["dep:update-informer"]
 users = ["dep:uzers"]
 
@@ -23,7 +24,7 @@ chrono = "0.4"
 chrono-english = "0.1"
 csv = "1.0"
 directories = "6.0"
-git2 = { version = "0.20.0", default-features = false }
+git2 = { version = "0.20.0", default-features = false, optional = true }
 human-time = "0.1.6"
 humansize = "2.0"
 imagesize = "0.13"

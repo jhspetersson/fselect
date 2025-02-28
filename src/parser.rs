@@ -1,7 +1,10 @@
 //! Handles the parsing of the query string
 
+use std::path::PathBuf;
 use std::rc::Rc;
 use std::str::FromStr;
+
+use directories::UserDirs;
 
 use crate::expr::Expr;
 use crate::field::Field;
@@ -15,8 +18,8 @@ use crate::query::Query;
 use crate::query::Root;
 use crate::query::TraversalMode::{Bfs, Dfs};
 use crate::query::{OutputFormat, RootOptions};
-use directories::UserDirs;
-use std::path::PathBuf;
+#[cfg(not(feature = "git"))]
+use crate::util::error_message;
 
 pub struct Parser {
     lexems: Vec<Lexem>,
@@ -295,8 +298,17 @@ impl Parser {
                                 symlinks = true;
                                 mode = RootParsingMode::Options;
                             } else if s.starts_with("git") {
-                                gitignore = Some(true);
-                                mode = RootParsingMode::Options;
+                                #[cfg(feature = "git")]
+                                {
+                                    gitignore = Some(true);
+                                    mode = RootParsingMode::Options;
+                                }
+                                #[cfg(not(feature = "git"))]
+                                {
+                                    error_message("parser", "git support is not enabled");
+                                    self.drop_lexem();
+                                    break;
+                                }
                             } else if s.starts_with("hg") {
                                 hgignore = Some(true);
                                 mode = RootParsingMode::Options;

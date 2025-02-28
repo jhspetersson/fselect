@@ -14,6 +14,7 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use chrono::{DateTime, Local};
+#[cfg(feature = "git")]
 use git2::Repository;
 use lscolors::{LsColors, Style};
 use mp3_metadata::MP3Metadata;
@@ -383,6 +384,7 @@ impl<'a> Searcher<'a> {
                 0,
                 search_archives,
                 apply_gitignore,
+                #[cfg(feature = "git")]
                 Repository::discover(&root_dir).ok().as_ref(),
                 apply_hgignore,
                 apply_dockerignore,
@@ -556,6 +558,7 @@ impl<'a> Searcher<'a> {
         root_depth: u32,
         search_archives: bool,
         apply_gitignore: bool,
+        #[cfg(feature = "git")]
         git_repository: Option<&Repository>,
         apply_hgignore: bool,
         apply_dockerignore: bool,
@@ -615,10 +618,14 @@ impl<'a> Searcher<'a> {
                             }
 
                             // Check the path against the filters
+                            #[cfg(feature = "git")]
                             let pass_gitignore = !apply_gitignore
                                 || !(git_repository.is_some() && 
                                     git_repository.unwrap().is_path_ignored(&path)
                                         .unwrap_or(false));
+                            #[cfg(not(feature = "git"))]
+                            let pass_gitignore = true;
+                            
                             let pass_hgignore = !apply_hgignore
                                 || !matches_hgignore_filter(
                                     &self.hgignore_filters,
@@ -681,7 +688,9 @@ impl<'a> Searcher<'a> {
 
                                         if ok && self.ok_to_visit_dir(&entry, file_type) {
                                             if traversal_mode == TraversalMode::Dfs {
+                                                #[cfg(feature = "git")]
                                                 let repo;
+                                                #[cfg(feature = "git")]
                                                 let git_repository = match git_repository {
                                                     Some(repo) => Some(repo),
                                                     None if apply_gitignore => {
@@ -697,6 +706,7 @@ impl<'a> Searcher<'a> {
                                                     base_depth,
                                                     search_archives,
                                                     apply_gitignore,
+                                                    #[cfg(feature = "git")]
                                                     git_repository,
                                                     apply_hgignore,
                                                     apply_dockerignore,
@@ -738,7 +748,9 @@ impl<'a> Searcher<'a> {
         if traversal_mode == Bfs && process_queue {
             while !self.dir_queue.is_empty() {
                 let path = self.dir_queue.pop_front().unwrap();
+                #[cfg(feature = "git")]
                 let repo;
+                #[cfg(feature = "git")]
                 let git_repository = match git_repository {
                     Some(repo) => Some(repo),
                     None if apply_gitignore => {
@@ -754,6 +766,7 @@ impl<'a> Searcher<'a> {
                     base_depth,
                     search_archives,
                     apply_gitignore,
+                    #[cfg(feature = "git")]
                     git_repository,
                     apply_hgignore,
                     apply_dockerignore,

@@ -14,7 +14,7 @@ edition = "2024"
 
 [features]
 default = ["git", "users", "update-notifications"]
-git = ["git2"]
+git = ["dep:git2"]
 update-notifications = ["dep:update-informer"]
 users = ["dep:uzers"]
 

@@ -438,12 +438,6 @@ impl<'a> Searcher<'a> {
                 });
 
                 if !self.query.ordering_fields.is_empty() {
-                    let grouping_fields = self
-                        .query
-                        .grouping_fields
-                        .iter()
-                        .map(|f| f.to_string().to_lowercase())
-                        .collect::<Vec<String>>();
                     let ordering_fields = self
                         .query
                         .ordering_fields
@@ -454,9 +448,11 @@ impl<'a> Searcher<'a> {
                     let sorting_indices = ordering_fields
                         .iter()
                         .map(|f| {
-                            grouping_fields
+                            self.query
+                                .fields
                                 .iter()
-                                .position(|g| g == f)
+                                .map(|f| f.to_string().to_lowercase())
+                                .position(|g| &g == f)
                                 .unwrap_or(0)
                         })
                         .collect::<Vec<usize>>();

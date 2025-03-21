@@ -890,7 +890,7 @@ impl<'a> Searcher<'a> {
                 buffer_key,
                 &column_expr.val,
             );
-            return Variant::from_string(&aggr_result);
+            Variant::from_string(&aggr_result)
         } else {
             let function_arg =
                 self.get_column_expr_value(entry, file_info, file_map, buffer_data, left_expr);
@@ -911,7 +911,7 @@ impl<'a> Searcher<'a> {
             );
             file_map.insert(column_expr.to_string(), result.to_string());
 
-            return result;
+            result
         }
     }
 

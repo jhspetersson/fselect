@@ -811,17 +811,23 @@ impl<'a> Searcher<'a> {
         buffer_data: Option<&Vec<HashMap<String, String>>>,
         column_expr: &Expr,
     ) -> Variant {
+        let column_expr_str = column_expr.to_string();
+
+        if file_map.contains_key(&column_expr_str) {
+            return Variant::from_string(&file_map[&column_expr_str]);
+        }
+        
         if let Some(ref _function) = column_expr.function {
             let result =
                 self.get_function_value(entry, file_info, file_map, buffer_data, column_expr);
-            file_map.insert(column_expr.to_string(), result.to_string());
+            file_map.insert(column_expr_str, result.to_string());
             return result;
         }
 
         if let Some(ref field) = column_expr.field {
             if entry.is_some() {
                 let result = self.get_field_value(entry.unwrap(), file_info, field);
-                file_map.insert(column_expr.to_string(), result.to_string());
+                file_map.insert(column_expr_str, result.to_string());
                 return result;
             } else if let Some(val) = file_map.get(&field.to_string()) {
                 return Variant::from_string(val);
@@ -845,7 +851,7 @@ impl<'a> Searcher<'a> {
                     let right_result =
                         self.get_column_expr_value(entry, file_info, file_map, buffer_data, right);
                     result = op.calc(&left_result, &right_result);
-                    file_map.insert(column_expr.to_string(), result.to_string());
+                    file_map.insert(column_expr_str, result.to_string());
                 } else {
                     result = left_result;
                 }

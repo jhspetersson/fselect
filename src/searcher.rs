@@ -234,13 +234,15 @@ impl<'a> Searcher<'a> {
 
     /// Searches directories based on configured query and outputs results to stdout.
     pub fn list_search_results(&mut self) -> io::Result<()> {
-        let current_dir = std::env::current_dir().unwrap();
+        let current_dir = std::env::current_dir()?;
 
         if let Err(e) = self.results_writer.write_header(&mut std::io::stdout()) {
             if e.kind() == ErrorKind::BrokenPipe {
                 return Ok(());
             }
         }
+
+        let start_time = std::time::Instant::now();
 
         let mut roots = vec![];
 
@@ -392,6 +394,8 @@ impl<'a> Searcher<'a> {
                 true,
             );
         }
+        
+        let compute_time = std::time::Instant::now();
 
         // ======== Compute results =========
         if self.has_aggregate_column() {
@@ -541,6 +545,14 @@ impl<'a> Searcher<'a> {
 
         self.results_writer.write_footer(&mut std::io::stdout())?;
 
+        let completion_time = std::time::Instant::now();
+        
+        if self.config.debug {
+            eprintln!("Search: {}ms\nCompute: {}ms", 
+                      compute_time.duration_since(start_time).as_millis(), 
+                      completion_time.duration_since(compute_time).as_millis());
+        }
+        
         Ok(())
     }
 

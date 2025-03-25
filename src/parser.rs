@@ -214,6 +214,18 @@ impl Parser {
                                 mode = RootParsingMode::Root;
                             }
                             RootParsingMode::Root => {
+                                if s.to_lowercase() == "group" {
+                                    if let Some(Lexem::By) = self.next_lexem() {
+                                        self.drop_lexem();
+                                        self.drop_lexem();
+
+                                        if !path.is_empty() {
+                                            roots.push(Root::new(path, root_options));
+                                        }
+                                        break;
+                                    }
+                                }
+                                
                                 self.drop_lexem();
                                 match self.parse_root_options() {
                                     Some(options) => root_options = options,
@@ -261,6 +273,7 @@ impl Parser {
     }
 
     fn parse_root_options(&mut self) -> Option<RootOptions> {
+        #[derive(Debug)]
         enum RootParsingMode {
             Unknown,
             Options,
@@ -397,9 +410,10 @@ impl Parser {
     }
 
     fn is_root_option_keyword(s: &str) -> bool {
-        s.to_ascii_lowercase() == "depth"
-            || s.to_ascii_lowercase() == "mindepth"
-            || s.to_ascii_lowercase() == "maxdepth"
+        let s = s.to_ascii_lowercase();
+        s == "depth"
+            || s == "mindepth"
+            || s == "maxdepth"
             || s.starts_with("arc")
             || s.starts_with("sym")
             || s.starts_with("git")
@@ -1384,5 +1398,20 @@ mod tests {
         let query2 = p2.parse(vec![query2.to_string()], false).unwrap();
 
         assert_eq!(query.expr, query2.expr);
+    }
+    
+    #[test]
+    fn query_with_dfs() {
+        let query = "select name from /test dfs group by mime";
+        let mut p = Parser::new();
+        let query = p.parse(vec![query.to_string()], false).unwrap();
+        
+        assert_eq!(
+            query.roots,
+            vec![Root::new(
+                String::from("/test"),
+                RootOptions::from(0, 0, false, false, None, None, None, Dfs, false)
+            ),]
+        );
     }
 }

@@ -488,8 +488,8 @@ pub fn format_absolute_path(path_buf: &Path) -> String {
 
 pub fn get_metadata(entry: &DirEntry, follow_symlinks: bool) -> Option<Metadata> {
     let metadata = match follow_symlinks {
-        false => symlink_metadata(entry.path()),
-        true => fs::metadata(entry.path()),
+        false => entry.metadata(),
+        true => symlink_metadata(entry.path()),
     };
 
     if let Ok(metadata) = metadata {

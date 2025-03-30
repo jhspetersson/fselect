@@ -1532,7 +1532,7 @@ mod tests {
         let file_info = None;
 
         let result = get_value(&Some(function), function_arg, function_args, entry, &file_info);
-        assert_eq!(result.to_string(), uzers::get_current_username().unwrap().to_string());
+        assert_eq!(result.to_string(), uzers::get_current_username().unwrap().to_string_lossy().to_string());
     }
     
     #[test]
@@ -1558,7 +1558,7 @@ mod tests {
         let file_info = None;
 
         let result = get_value(&Some(function), function_arg, function_args, entry, &file_info);
-        assert_eq!(result.to_string(), uzers::get_current_groupname().unwrap().to_string());
+        assert_eq!(result.to_string(), uzers::get_current_groupname().unwrap().to_string_lossy().to_string());
     }
     
     #[test]

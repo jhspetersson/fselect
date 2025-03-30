@@ -1076,6 +1076,270 @@ fn get_buffer_sum(raw_output_buffer: &Vec<HashMap<String, String>>, buffer_key: 
 #[cfg(test)]
 mod tests {
     use super::*;
+    
+    #[test]
+    fn function_lower() {
+        let function = Function::Lower;
+        let function_arg = String::from("HELLO");
+        let function_args = vec![];
+        let entry = None;
+        let file_info = None;
+
+        let result = get_value(&Some(function), function_arg, function_args, entry, &file_info);
+        assert_eq!(result.to_string(), "hello");
+    }
+    
+    #[test]
+    fn function_upper() {
+        let function = Function::Upper;
+        let function_arg = String::from("hello");
+        let function_args = vec![];
+        let entry = None;
+        let file_info = None;
+
+        let result = get_value(&Some(function), function_arg, function_args, entry, &file_info);
+        assert_eq!(result.to_string(), "HELLO");
+    }
+    
+    #[test]
+    fn function_initcap() {
+        let function = Function::InitCap;
+        let function_arg = String::from("hello world");
+        let function_args = vec![];
+        let entry = None;
+        let file_info = None;
+
+        let result = get_value(&Some(function), function_arg, function_args, entry, &file_info);
+        assert_eq!(result.to_string(), "Hello World");
+    }
+    
+    #[test]
+    fn function_length() {
+        let function = Function::Length;
+        let function_arg = String::from("hello");
+        let function_args = vec![];
+        let entry = None;
+        let file_info = None;
+
+        let result = get_value(&Some(function), function_arg, function_args, entry, &file_info);
+        assert_eq!(result.to_int(), 5);
+    }
+    
+    #[test]
+    fn function_to_base64() {
+        let function = Function::ToBase64;
+        let function_arg = String::from("hello");
+        let function_args = vec![];
+        let entry = None;
+        let file_info = None;
+
+        let result = get_value(&Some(function), function_arg, function_args, entry, &file_info);
+        assert_eq!(result.to_string(), "aGVsbG8=");
+    }
+    
+    #[test]
+    fn function_from_base64() {
+        let function = Function::FromBase64;
+        let function_arg = String::from("aGVsbG8=");
+        let function_args = vec![];
+        let entry = None;
+        let file_info = None;
+
+        let result = get_value(&Some(function), function_arg, function_args, entry, &file_info);
+        assert_eq!(result.to_string(), "hello");
+    }
+    
+    #[test]
+    fn function_concat() {
+        let function = Function::Concat;
+        let function_arg = String::from("hello");
+        let function_args = vec![String::from(" world")];
+        let entry = None;
+        let file_info = None;
+
+        let result = get_value(&Some(function), function_arg, function_args, entry, &file_info);
+        assert_eq!(result.to_string(), "hello world");
+    }
+    
+    #[test]
+    fn function_concat_ws() {
+        let function = Function::ConcatWs;
+        let function_arg = String::from(", ");
+        let function_args = vec![String::from("hello"), String::from("world")];
+        let entry = None;
+        let file_info = None;
+
+        let result = get_value(&Some(function), function_arg, function_args, entry, &file_info);
+        assert_eq!(result.to_string(), "hello, world");
+    }
+    
+    #[test]
+    fn function_substring() {
+        let function = Function::Substring;
+        let function_arg = String::from("hello world");
+        let function_args = vec![String::from("7"), String::from("5")];
+        let entry = None;
+        let file_info = None;
+
+        let result = get_value(&Some(function), function_arg, function_args, entry, &file_info);
+        assert_eq!(result.to_string(), "world");
+    }
+    
+    #[test]
+    fn function_replace() {
+        let function = Function::Replace;
+        let function_arg = String::from("hello world");
+        let function_args = vec![String::from("world"), String::from("Rust")];
+        let entry = None;
+        let file_info = None;
+
+        let result = get_value(&Some(function), function_arg, function_args, entry, &file_info);
+        assert_eq!(result.to_string(), "hello Rust");
+    }
+    
+    #[test]
+    fn function_trim() {
+        let function = Function::Trim;
+        let function_arg = String::from("   hello   ");
+        let function_args = vec![];
+        let entry = None;
+        let file_info = None;
+
+        let result = get_value(&Some(function), function_arg, function_args, entry, &file_info);
+        assert_eq!(result.to_string(), "hello");
+    }
+    
+    #[test]
+    fn function_ltrim() {
+        let function = Function::LTrim;
+        let function_arg = String::from("   hello   ");
+        let function_args = vec![];
+        let entry = None;
+        let file_info = None;
+
+        let result = get_value(&Some(function), function_arg, function_args, entry, &file_info);
+        assert_eq!(result.to_string(), "hello   ");
+    }
+    
+    #[test]
+    fn function_rtrim() {
+        let function = Function::RTrim;
+        let function_arg = String::from("   hello   ");
+        let function_args = vec![];
+        let entry = None;
+        let file_info = None;
+
+        let result = get_value(&Some(function), function_arg, function_args, entry, &file_info);
+        assert_eq!(result.to_string(), "   hello");
+    }
+    
+    #[test]
+    fn function_bin() {
+        let function = Function::Bin;
+        let function_arg = String::from("10");
+        let function_args = vec![];
+        let entry = None;
+        let file_info = None;
+
+        let result = get_value(&Some(function), function_arg, function_args, entry, &file_info);
+        assert_eq!(result.to_string(), "1010");
+    }
+    
+    #[test]
+    fn function_hex() {
+        let function = Function::Hex;
+        let function_arg = String::from("255");
+        let function_args = vec![];
+        let entry = None;
+        let file_info = None;
+
+        let result = get_value(&Some(function), function_arg, function_args, entry, &file_info);
+        assert_eq!(result.to_string(), "ff");
+    }
+    
+    #[test]
+    fn function_oct() {
+        let function = Function::Oct;
+        let function_arg = String::from("8");
+        let function_args = vec![];
+        let entry = None;
+        let file_info = None;
+
+        let result = get_value(&Some(function), function_arg, function_args, entry, &file_info);
+        assert_eq!(result.to_string(), "10");
+    }
+    
+    #[test]
+    fn function_abs() {
+        let function = Function::Abs;
+        let function_arg = String::from("-10");
+        let function_args = vec![];
+        let entry = None;
+        let file_info = None;
+
+        let result = get_value(&Some(function), function_arg, function_args, entry, &file_info);
+        assert_eq!(result.to_int(), 10);
+    }
+    
+    #[test]
+    fn function_power() {
+        let function = Function::Power;
+        let function_arg = String::from("2");
+        let function_args = vec![String::from("3")];
+        let entry = None;
+        let file_info = None;
+
+        let result = get_value(&Some(function), function_arg, function_args, entry, &file_info);
+        assert_eq!(result.to_int(), 8);
+    }
+    
+    #[test]
+    fn function_sqrt() {
+        let function = Function::Sqrt;
+        let function_arg = String::from("16");
+        let function_args = vec![];
+        let entry = None;
+        let file_info = None;
+
+        let result = get_value(&Some(function), function_arg, function_args, entry, &file_info);
+        assert_eq!(result.to_int(), 4);
+    }
+    
+    #[test]
+    fn function_log() {
+        let function = Function::Log;
+        let function_arg = String::from("100");
+        let function_args = vec![String::from("10")];
+        let entry = None;
+        let file_info = None;
+
+        let result = get_value(&Some(function), function_arg, function_args, entry, &file_info);
+        assert_eq!(result.to_int(), 2);
+    }
+    
+    #[test]
+    fn function_ln() {
+        let function = Function::Ln;
+        let function_arg = std::f64::consts::E.to_string();
+        let function_args = vec![];
+        let entry = None;
+        let file_info = None;
+
+        let result = get_value(&Some(function), function_arg, function_args, entry, &file_info);
+        assert_eq!(result.to_int(), 1);
+    }
+    
+    #[test]
+    fn function_exp() {
+        let function = Function::Exp;
+        let function_arg = String::from("1");
+        let function_args = vec![];
+        let entry = None;
+        let file_info = None;
+
+        let result = get_value(&Some(function), function_arg, function_args, entry, &file_info);
+        assert_eq!(result.to_float(), std::f64::consts::E);
+    }
 
     #[test]
     fn function_least() {
@@ -1099,5 +1363,213 @@ mod tests {
 
         let result = get_value(&Some(function), function_arg, function_args, entry, &file_info);
         assert_eq!(result.to_int(), 30);
+    }
+    
+    #[test]
+    fn function_contains_japanese() {
+        let function = Function::ContainsJapanese;
+        let function_arg = String::from("こんにちは");
+        let function_args = vec![];
+        let entry = None;
+        let file_info = None;
+
+        let result = get_value(&Some(function), function_arg, function_args, entry, &file_info);
+        assert_eq!(result.to_bool(), true);
+    }
+    
+    #[test]
+    fn function_contains_hiragana() {
+        let function = Function::ContainsHiragana;
+        let function_arg = String::from("こんにちは");
+        let function_args = vec![];
+        let entry = None;
+        let file_info = None;
+
+        let result = get_value(&Some(function), function_arg, function_args, entry, &file_info);
+        assert_eq!(result.to_bool(), true);
+    }
+    
+    #[test]
+    fn function_contains_katakana() {
+        let function = Function::ContainsKatakana;
+        let function_arg = String::from("カタカナ");
+        let function_args = vec![];
+        let entry = None;
+        let file_info = None;
+
+        let result = get_value(&Some(function), function_arg, function_args, entry, &file_info);
+        assert_eq!(result.to_bool(), true);
+    }
+    
+    #[test]
+    fn function_contains_kana() {
+        let function = Function::ContainsKana;
+        let function_arg = String::from("カタカナ");
+        let function_args = vec![];
+        let entry = None;
+        let file_info = None;
+
+        let result = get_value(&Some(function), function_arg, function_args, entry, &file_info);
+        assert_eq!(result.to_bool(), true);
+    }
+    
+    #[test]
+    fn function_contains_kanji() {
+        let function = Function::ContainsKanji;
+        let function_arg = String::from("漢字");
+        let function_args = vec![];
+        let entry = None;
+        let file_info = None;
+
+        let result = get_value(&Some(function), function_arg, function_args, entry, &file_info);
+        assert_eq!(result.to_bool(), true);
+    }
+    
+    #[test]
+    fn function_format_size() {
+        let function = Function::FormatSize;
+        let function_arg = String::from("1024");
+        let function_args = vec![String::from("%.0 k")];
+        let entry = None;
+        let file_info = None;
+
+        let result = get_value(&Some(function), function_arg, function_args, entry, &file_info);
+        assert_eq!(result.to_string(), "1 KiB");
+    }
+    
+    #[test]
+    fn function_format_time() {
+        let function = Function::FormatTime;
+        let function_arg = String::from("3600");
+        let function_args = vec![];
+        let entry = None;
+        let file_info = None;
+
+        let result = get_value(&Some(function), function_arg, function_args, entry, &file_info);
+        assert_eq!(result.to_string(), "1h");
+    }
+    
+    #[test]
+    fn function_current_date() {
+        let function = Function::CurrentDate;
+        let function_arg = String::new();
+        let function_args = vec![];
+        let entry = None;
+        let file_info = None;
+
+        let result = get_value(&Some(function), function_arg, function_args, entry, &file_info);
+        assert_eq!(result.to_string(), format_date(&Local::now().date_naive()));
+    }
+    
+    #[test]
+    fn function_day() {
+        let function = Function::Day;
+        let function_arg = String::from("2023-10-01");
+        let function_args = vec![];
+        let entry = None;
+        let file_info = None;
+
+        let result = get_value(&Some(function), function_arg, function_args, entry, &file_info);
+        assert_eq!(result.to_int(), 1);
+    }
+    
+    #[test]
+    fn function_month() {
+        let function = Function::Month;
+        let function_arg = String::from("2023-10-01");
+        let function_args = vec![];
+        let entry = None;
+        let file_info = None;
+
+        let result = get_value(&Some(function), function_arg, function_args, entry, &file_info);
+        assert_eq!(result.to_int(), 10);
+    }
+    
+    #[test]
+    fn function_year() {
+        let function = Function::Year;
+        let function_arg = String::from("2023-10-01");
+        let function_args = vec![];
+        let entry = None;
+        let file_info = None;
+
+        let result = get_value(&Some(function), function_arg, function_args, entry, &file_info);
+        assert_eq!(result.to_int(), 2023);
+    }
+    
+    #[test]
+    fn function_day_of_week() {
+        let function = Function::DayOfWeek;
+        let function_arg = String::from("2023-10-01");
+        let function_args = vec![];
+        let entry = None;
+        let file_info = None;
+
+        let result = get_value(&Some(function), function_arg, function_args, entry, &file_info);
+        assert_eq!(result.to_int(), 1);
+    }
+    
+    #[test]
+    #[cfg(all(unix, feature = "users"))]
+    fn function_current_uid() {
+        let function = Function::CurrentUid;
+        let function_arg = String::new();
+        let function_args = vec![];
+        let entry = None;
+        let file_info = None;
+
+        let result = get_value(&Some(function), function_arg, function_args, entry, &file_info);
+        assert_eq!(result.to_int(), uzers::get_current_uid() as i64);
+    }
+    
+    #[test]
+    #[cfg(all(unix, feature = "users"))]
+    fn function_current_user() {
+        let function = Function::CurrentUser;
+        let function_arg = String::new();
+        let function_args = vec![];
+        let entry = None;
+        let file_info = None;
+
+        let result = get_value(&Some(function), function_arg, function_args, entry, &file_info);
+        assert_eq!(result.to_string(), uzers::get_current_username().unwrap().to_string());
+    }
+    
+    #[test]
+    #[cfg(all(unix, feature = "users"))]
+    fn function_current_gid() {
+        let function = Function::CurrentGid;
+        let function_arg = String::new();
+        let function_args = vec![];
+        let entry = None;
+        let file_info = None;
+
+        let result = get_value(&Some(function), function_arg, function_args, entry, &file_info);
+        assert_eq!(result.to_int(), uzers::get_current_gid() as i64);
+    }
+    
+    #[test]
+    #[cfg(all(unix, feature = "users"))]
+    fn function_current_group() {
+        let function = Function::CurrentGroup;
+        let function_arg = String::new();
+        let function_args = vec![];
+        let entry = None;
+        let file_info = None;
+
+        let result = get_value(&Some(function), function_arg, function_args, entry, &file_info);
+        assert_eq!(result.to_string(), uzers::get_current_groupname().unwrap().to_string());
+    }
+    
+    #[test]
+    fn function_coalesce() {
+        let function = Function::Coalesce;
+        let function_arg = String::new();
+        let function_args = vec![String::new(), String::from("hello"), String::from("world")];
+        let entry = None;
+        let file_info = None;
+
+        let result = get_value(&Some(function), function_arg, function_args, entry, &file_info);
+        assert_eq!(result.to_string(), "hello");
     }
 }

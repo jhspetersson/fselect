@@ -483,6 +483,8 @@ Functions:
         LOG                         Returns logarithm of the value
         LN                          Returns natural logarithm of the value
         EXP                         Returns e raised to the power of the value
+        LEAST                       Returns the smallest value
+        GREATEST                    Returns the largest value
         CONTAINS                    Returns true, if file contains string, false if not
         COALESCE                    Returns first nonempty expression value
         CONCAT                      Returns concatenated string of expression values

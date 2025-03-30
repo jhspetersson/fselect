@@ -279,6 +279,10 @@ pub enum Function {
     Ln,
     /// Get e raised to the power of the specified number
     Exp,
+    /// Get the smallest value
+    Least,
+    /// Get the largest value
+    Greatest,
 
     //  Japanese string functions
     /// Check if the string contains Japanese characters
@@ -390,6 +394,8 @@ impl FromStr for Function {
             "log" => Ok(Function::Log),
             "ln" => Ok(Function::Ln),
             "exp" => Ok(Function::Exp),
+            "least" => Ok(Function::Least),
+            "greatest" => Ok(Function::Greatest),
 
             "contains_japanese" | "japanese" => Ok(Function::ContainsJapanese),
             "contains_hiragana" | "hiragana" => Ok(Function::ContainsHiragana),
@@ -506,6 +512,8 @@ impl Function {
                 | Function::Log
                 | Function::Ln
                 | Function::Exp
+                | Function::Least
+                | Function::Greatest
         )
     }
 
@@ -684,6 +692,36 @@ pub fn get_value(
         Some(Function::Exp) => match function_arg.parse::<f64>() {
             Ok(val) => Variant::from_float(val.exp()),
             _ => Variant::empty(VariantType::String),
+        }
+        Some(Function::Least) => {
+            match function_arg.parse::<f64>() {
+                Ok(val) => {
+                    let mut least = val;
+                    for arg in function_args {
+                        if let Ok(val) = arg.parse::<f64>() {
+                            least = least.min(val);
+                        }
+                    }
+
+                    Variant::from_float(least)
+                }
+                _ => Variant::empty(VariantType::String),
+            }
+        }
+        Some(Function::Greatest) => {
+            match function_arg.parse::<f64>() {
+                Ok(val) => {
+                    let mut greatest = val;
+                    for arg in function_args {
+                        if let Ok(val) = arg.parse::<f64>() {
+                            greatest = greatest.max(val);
+                        }
+                    }
+
+                    Variant::from_float(greatest)
+                }
+                _ => Variant::empty(VariantType::String),
+            }
         }
 
         // ===== Japanese string functions =====
@@ -1033,4 +1071,33 @@ fn get_buffer_sum(raw_output_buffer: &Vec<HashMap<String, String>>, buffer_key: 
     }
 
     sum
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn function_least() {
+        let function = Function::Least;
+        let function_arg = String::from("10");
+        let function_args = vec![String::from("20"), String::from("30")];
+        let entry = None;
+        let file_info = None;
+
+        let result = get_value(&Some(function), function_arg, function_args, entry, &file_info);
+        assert_eq!(result.to_int(), 10);
+    }
+    
+    #[test]
+    fn function_greatest() {
+        let function = Function::Greatest;
+        let function_arg = String::from("10");
+        let function_args = vec![String::from("20"), String::from("30")];
+        let entry = None;
+        let file_info = None;
+
+        let result = get_value(&Some(function), function_arg, function_args, entry, &file_info);
+        assert_eq!(result.to_int(), 30);
+    }
 }

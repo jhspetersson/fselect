@@ -7,7 +7,10 @@ pub struct FileInfo {
     pub modified: Option<DateTime>,
 }
 
-pub fn to_file_info(zipped_file: &zip::read::ZipFile) -> FileInfo {
+pub fn to_file_info<R>(zipped_file: &zip::read::ZipFile<R>) -> FileInfo
+where
+    R: std::io::Read + std::io::Seek
+{
     FileInfo {
         name: zipped_file.name().to_string(),
         size: zipped_file.size(),

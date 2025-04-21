@@ -29,7 +29,6 @@ use crate::expr::Expr;
 use crate::field::Field;
 use crate::fileinfo::{to_file_info, FileInfo};
 use crate::function;
-use crate::function::{Variant, VariantType};
 use crate::ignore::docker::{
     matches_dockerignore_filter, search_upstream_dockerignore, DockerignoreFilter,
 };
@@ -42,6 +41,7 @@ use crate::query::{Query, Root, TraversalMode};
 use crate::util::dimensions::get_dimensions;
 use crate::util::duration::get_duration;
 use crate::util::*;
+use crate::util::{Variant, VariantType};
 
 struct FileMetadataState {
     file_metadata_set: bool,

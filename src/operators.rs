@@ -1,6 +1,6 @@
 //! Defines the arithmetic operators used in the query language
 
-use crate::function::Variant;
+use crate::util::Variant;
 
 #[derive(Debug, Clone, Eq, Hash, PartialEq, PartialOrd, Serialize)]
 pub enum LogicalOp {

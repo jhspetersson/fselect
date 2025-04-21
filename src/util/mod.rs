@@ -6,6 +6,7 @@ pub mod duration;
 mod glob;
 pub(crate) mod japanese;
 mod top_n;
+pub(crate) mod variant;
 mod wbuf;
 
 use std::cmp::Ordering;
@@ -37,6 +38,7 @@ pub use self::glob::convert_glob_to_pattern;
 pub use self::glob::convert_like_to_pattern;
 pub use self::glob::is_glob;
 pub use self::top_n::TopN;
+pub use self::variant::{Variant, VariantType};
 pub use self::wbuf::WritableBuffer;
 use crate::expr::Expr;
 #[cfg(windows)]

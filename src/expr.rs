@@ -21,10 +21,14 @@ pub struct Expr {
     pub function: Option<Function>,
     pub args: Option<Vec<Expr>>,
     pub val: Option<String>,
+    pub weight: i32,
 }
 
 impl Expr {
     pub fn op(left: Expr, op: Op, right: Expr) -> Expr {
+        let left_weight = left.weight;
+        let right_weight = right.weight;
+
         Expr {
             left: Some(Box::new(left)),
             arithmetic_op: None,
@@ -36,10 +40,14 @@ impl Expr {
             function: None,
             args: None,
             val: None,
+            weight: left_weight + right_weight,
         }
     }
 
     pub fn logical_op(left: Expr, logical_op: LogicalOp, right: Expr) -> Expr {
+        let left_weight = left.weight;
+        let right_weight = right.weight;
+
         Expr {
             left: Some(Box::new(left)),
             arithmetic_op: None,
@@ -51,10 +59,14 @@ impl Expr {
             function: None,
             args: None,
             val: None,
+            weight: left_weight + right_weight,
         }
     }
 
     pub fn arithmetic_op(left: Expr, arithmetic_op: ArithmeticOp, right: Expr) -> Expr {
+        let left_weight = left.weight;
+        let right_weight = right.weight;
+
         Expr {
             left: Some(Box::new(left)),
             arithmetic_op: Some(arithmetic_op),
@@ -66,10 +78,13 @@ impl Expr {
             function: None,
             args: None,
             val: None,
+            weight: left_weight + right_weight,
         }
     }
 
     pub fn field(field: Field) -> Expr {
+        let weight = field.get_weight();
+        
         Expr {
             left: None,
             arithmetic_op: None,
@@ -81,10 +96,13 @@ impl Expr {
             function: None,
             args: None,
             val: None,
+            weight,
         }
     }
 
     pub fn function(function: Function) -> Expr {
+        let weight = function.get_weight();
+
         Expr {
             left: None,
             arithmetic_op: None,
@@ -96,10 +114,17 @@ impl Expr {
             function: Some(function),
             args: Some(vec![]),
             val: None,
+            weight,
         }
     }
 
     pub fn function_left(function: Function, left: Option<Box<Expr>>) -> Expr {
+        let weight = function.get_weight();
+        let left_weight = match left {
+            Some(ref expr) => expr.weight,
+            None => 0,
+        };
+        
         Expr {
             left,
             arithmetic_op: None,
@@ -111,6 +136,7 @@ impl Expr {
             function: Some(function),
             args: Some(vec![]),
             val: None,
+            weight: weight + left_weight,
         }
     }
 
@@ -126,7 +152,23 @@ impl Expr {
             function: None,
             args: None,
             val: Some(value),
+            weight: 0,
         }
+    }
+    
+    pub fn add_left(&mut self, left: Expr) {
+        let left_weight = left.weight;
+        self.left = Some(Box::new(left));
+        self.weight += left_weight;
+    }
+    
+    pub fn set_args(&mut self, args: Vec<Expr>) {
+        let mut args_weight = 0;
+        for arg in &args {
+            args_weight += arg.weight;
+        }
+        self.args = Some(args);
+        self.weight += args_weight;
     }
 
     pub fn has_aggregate_function(&self) -> bool {
@@ -289,5 +331,75 @@ impl Display for Expr {
         }
 
         Ok(())
+    }
+}
+
+mod tests {
+    use super::*;
+    use crate::field::Field;
+    use crate::function::Function;
+
+    #[test]
+    fn test_weight() {
+        let expr = Expr::field(Field::Name);
+        assert_eq!(expr.weight, 0);
+        
+        let expr = Expr::field(Field::Accessed);
+        assert_eq!(expr.weight, 1);
+        
+        let expr = Expr::function(Function::Concat);
+        assert_eq!(expr.weight, 0);
+        
+        let expr = Expr::function(Function::Contains);
+        assert_eq!(expr.weight, 1024);
+        
+        let expr = Expr::function_left(Function::Contains, Some(Box::new(Expr::value("foo".to_string()))));
+        assert_eq!(expr.weight, 1024);
+        
+        let expr = Expr::logical_op(
+            Expr::op(
+                Expr::field(Field::Size),
+                Op::Gt,
+                Expr::value(String::from("456")),
+            ),
+            LogicalOp::Or,
+            Expr::op(
+                Expr::field(Field::FormattedSize),
+                Op::Lte,
+                Expr::value(String::from("758")),
+            ),
+        );
+        assert_eq!(expr.weight, 2);
+        
+        let expr = Expr::logical_op(
+            Expr::logical_op(
+                Expr::op(
+                    Expr::field(Field::Name),
+                    Op::Ne,
+                    Expr::value(String::from("123")),
+                ),
+                LogicalOp::And,
+                Expr::logical_op(
+                    Expr::op(
+                        Expr::field(Field::Size),
+                        Op::Gt,
+                        Expr::value(String::from("456")),
+                    ),
+                    LogicalOp::Or,
+                    Expr::op(
+                        Expr::field(Field::FormattedSize),
+                        Op::Lte,
+                        Expr::value(String::from("758")),
+                    ),
+                ),
+            ),
+            LogicalOp::Or,
+            Expr::op(
+                Expr::field(Field::Name),
+                Op::Eq,
+                Expr::value(String::from("xxx")),
+            ),
+        );
+        assert_eq!(expr.weight, 2);
     }
 }

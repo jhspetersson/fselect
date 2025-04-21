@@ -334,6 +334,31 @@ impl Function {
                 | Function::ContainsJapanese
         )
     }
+    
+    pub fn get_weight(&self) -> i32 {
+        match self {
+            Function::CurrentDate
+            | Function::Random => 1,
+            
+            #[cfg(all(unix, feature = "users"))]
+            Function::CurrentUid
+            | Function::CurrentUser
+            | Function::CurrentGid
+            | Function::CurrentGroup => 1,
+
+            #[cfg(unix)]
+            Function::HasXattr
+            | Function::Xattr => 2,
+
+            #[cfg(target_os = "linux")]
+            Function::HasCapabilities
+            | Function::HasCapability => 2,
+
+            Function::Contains => 1024,
+            
+            _ => 0,
+        }
+    }
 }
 
 /// Applies a function to a value and returns the result.

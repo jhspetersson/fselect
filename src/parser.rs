@@ -472,7 +472,18 @@ impl Parser {
 
                     return match right {
                         Some(right) => {
-                            Ok(Some(Expr::logical_op(left.unwrap(), LogicalOp::Or, right)))
+                            match left.as_ref().unwrap().weight <= right.weight {
+                                true => Ok(Some(Expr::logical_op(
+                                    left.unwrap(),
+                                    LogicalOp::Or,
+                                    right,
+                                ))),
+                                false => Ok(Some(Expr::logical_op(
+                                    right,
+                                    LogicalOp::Or,
+                                    left.unwrap(),
+                                ))),
+                            }
                         }
                         None => Ok(left),
                     };
@@ -786,7 +797,7 @@ impl Parser {
         }
 
         if let Ok(Some(function_arg)) = self.parse_expr() {
-            function_expr.left = Some(Box::from(function_arg));
+            function_expr.add_left(function_arg);
         } else {
             return Ok(function_expr);
         }
@@ -805,7 +816,7 @@ impl Parser {
                     if (lexem == Lexem::Close && !curly_mode)
                         || (lexem == Lexem::CurlyClose && curly_mode) =>
                 {
-                    function_expr.args = Some(args);
+                    function_expr.set_args(args);
                     return Ok(function_expr);
                 }
                 _ => {
@@ -1056,6 +1067,12 @@ mod tests {
         );
 
         let expr = Expr::logical_op(
+            Expr::op(
+                Expr::field(Field::Name),
+                Op::Eq,
+                Expr::value(String::from("xxx")),
+            ),
+            LogicalOp::Or,
             Expr::logical_op(
                 Expr::op(
                     Expr::field(Field::Name),
@@ -1077,14 +1094,8 @@ mod tests {
                     ),
                 ),
             ),
-            LogicalOp::Or,
-            Expr::op(
-                Expr::field(Field::Name),
-                Op::Eq,
-                Expr::value(String::from("xxx")),
-            ),
         );
-
+        // Query expression must be reordered due to the weight difference of its branches
         assert_eq!(query.expr, Some(expr));
         assert_eq!(
             query.ordering_fields,
@@ -1413,5 +1424,18 @@ mod tests {
                 RootOptions::from(0, 0, false, false, None, None, None, Dfs, false)
             ),]
         );
+    }
+    
+    #[test]
+    fn reordered_expr_branches_with_different_weights() {
+        let query = "select name from /test where CONTAINS('foobar') or name like 'foobar'";
+        let mut p = Parser::new();
+        let query = p.parse(vec![query.to_string()], false).unwrap();
+
+        let query2 = "select name from /test where name like 'foobar' or CONTAINS('foobar')";
+        let mut p2 = Parser::new();
+        let query2 = p2.parse(vec![query2.to_string()], false).unwrap();
+        
+        assert_eq!(query.expr, query2.expr);
     }
 }

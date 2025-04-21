@@ -315,4 +315,85 @@ impl Field {
     pub fn is_colorized_field(&self) -> bool {
         matches!(self, Field::Name)
     }
+    
+    pub fn get_weight(&self) -> i32 {
+        match self {
+            Field::AbsPath
+            | Field::AbsDir
+            | Field::Size
+            | Field::FormattedSize
+            | Field::Uid
+            | Field::Gid
+            | Field::Created
+            | Field::Accessed
+            | Field::Modified
+            | Field::IsDir
+            | Field::IsFile
+            | Field::IsSymlink
+            | Field::IsPipe
+            | Field::IsCharacterDevice
+            | Field::IsBlockDevice
+            | Field::IsSocket
+            | Field::Device
+            | Field::Inode
+            | Field::Blocks
+            | Field::Hardlinks
+            | Field::Mode
+            | Field::UserRead
+            | Field::UserWrite
+            | Field::UserExec
+            | Field::UserAll
+            | Field::GroupRead
+            | Field::GroupWrite
+            | Field::GroupExec
+            | Field::GroupAll
+            | Field::OtherRead
+            | Field::OtherWrite
+            | Field::OtherExec
+            | Field::OtherAll
+            | Field::Suid
+            | Field::Sgid
+            | Field::IsHidden => 1,
+
+            #[cfg(all(unix, feature = "users"))]
+            Field::User => 1,
+            #[cfg(all(unix, feature = "users"))]
+            Field::Group => 1,
+            
+            Field::IsShebang 
+            | Field::IsEmpty
+            | Field::HasXattrs
+            | Field::Capabilities => 2,
+             
+            Field::Width
+            | Field::Height
+            | Field::Duration
+            | Field::Bitrate
+            | Field::Freq
+            | Field::Title
+            | Field::Artist
+            | Field::Album
+            | Field::Year
+            | Field::Genre
+            | Field::ExifDateTime
+            | Field::ExifGpsAltitude
+            | Field::ExifGpsLatitude
+            | Field::ExifGpsLongitude
+            | Field::ExifMake
+            | Field::ExifModel
+            | Field::ExifSoftware
+            | Field::ExifVersion
+            | Field::Mime
+            | Field::IsBinary
+            | Field::IsText => 16,
+
+            Field::LineCount
+            | Field::Sha1 
+            | Field::Sha256
+            | Field::Sha512
+            | Field::Sha3 => 1024,
+            
+            _ => 0,
+        }
+    }
 }

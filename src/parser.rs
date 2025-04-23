@@ -9,7 +9,7 @@ use directories::UserDirs;
 use crate::expr::Expr;
 use crate::field::Field;
 use crate::function::Function;
-use crate::lexer::Lexem;
+use crate::lexer::Lexeme;
 use crate::lexer::Lexer;
 use crate::operators::ArithmeticOp;
 use crate::operators::LogicalOp;
@@ -22,7 +22,7 @@ use crate::query::{OutputFormat, RootOptions};
 use crate::util::error_message;
 
 pub struct Parser {
-    lexems: Vec<Lexem>,
+    lexemes: Vec<Lexeme>,
     index: usize,
     roots_parsed: bool,
     where_parsed: bool,
@@ -31,7 +31,7 @@ pub struct Parser {
 impl Parser {
     pub fn new() -> Parser {
         Parser {
-            lexems: vec![],
+            lexemes: vec![],
             index: 0,
             roots_parsed: false,
             where_parsed: false,
@@ -40,15 +40,15 @@ impl Parser {
 
     pub fn parse(&mut self, query: Vec<String>, debug: bool) -> Result<Query, String> {
         let mut lexer = Lexer::new(query);
-        while let Some(lexem) = lexer.next_lexem() {
-            match lexem {
-                Lexem::String(s) if s.is_empty() => {}
-                _ => self.lexems.push(lexem) 
+        while let Some(lexeme) = lexer.next_lexeme() {
+            match lexeme {
+                Lexeme::String(s) if s.is_empty() => {}
+                _ => self.lexemes.push(lexeme) 
             }            
         }
 
         if debug {
-            dbg!(&self.lexems);
+            dbg!(&self.lexemes);
         }
 
         let fields = self.parse_fields()?;
@@ -70,7 +70,7 @@ impl Parser {
             roots.push(Root::default(root_options));
         }
 
-        if self.there_are_remaining_lexems() {
+        if self.there_are_remaining_lexemes() {
             if debug {
                 dbg!(&fields);
                 dbg!(&roots);
@@ -105,14 +105,14 @@ impl Parser {
         let mut fields = vec![];
 
         loop {
-            let lexem = self.next_lexem();
-            match lexem {
-                Some(Lexem::Comma) => {
+            let lexeme = self.next_lexeme();
+            match lexeme {
+                Some(Lexeme::Comma) => {
                     // skip
                 }
-                Some(Lexem::String(ref s))
-                | Some(Lexem::RawString(ref s))
-                | Some(Lexem::ArithmeticOperator(ref s)) => {
+                Some(Lexeme::String(ref s))
+                | Some(Lexeme::RawString(ref s))
+                | Some(Lexeme::ArithmeticOperator(ref s)) => {
                     if s.to_ascii_lowercase() != "select" {
                         if s == "*" {
                             #[cfg(unix)]
@@ -129,16 +129,16 @@ impl Parser {
                             fields.push(Expr::field(Field::Path));
                         } else {
                             if s.to_lowercase() == "group" {
-                                if let Some(Lexem::By) = self.next_lexem() {
-                                    self.drop_lexem();
-                                    self.drop_lexem();
+                                if let Some(Lexeme::By) = self.next_lexeme() {
+                                    self.drop_lexeme();
+                                    self.drop_lexeme();
                                     break;
                                 } else {
-                                    self.drop_lexem();
+                                    self.drop_lexeme();
                                 }
                             }
 
-                            self.drop_lexem();
+                            self.drop_lexeme();
 
                             if Self::is_root_option_keyword(s) {
                                 break;
@@ -150,14 +150,14 @@ impl Parser {
                         }
                     }
                 }
-                Some(Lexem::Open) | Some(Lexem::CurlyOpen) => {
-                    self.drop_lexem();
+                Some(Lexeme::Open) | Some(Lexeme::CurlyOpen) => {
+                    self.drop_lexeme();
                     if let Ok(Some(field)) = self.parse_expr() {
                         fields.push(field);
                     }
                 }
                 _ => {
-                    self.drop_lexem();
+                    self.drop_lexeme();
                     break;
                 }
             }
@@ -181,13 +181,13 @@ impl Parser {
         let mut roots: Vec<Root> = Vec::new();
         let mut mode = RootParsingMode::Unknown;
 
-        if let Some(ref lexem) = self.next_lexem() {
-            match lexem {
-                &Lexem::From => {
+        if let Some(ref lexeme) = self.next_lexeme() {
+            match lexeme {
+                &Lexeme::From => {
                     mode = RootParsingMode::From;
                 }
                 _ => {
-                    self.drop_lexem();
+                    self.drop_lexeme();
                 }
             }
         }
@@ -197,10 +197,10 @@ impl Parser {
             let mut root_options = RootOptions::new();
 
             loop {
-                let lexem = self.next_lexem();
-                match lexem {
-                    Some(ref lexem) => match lexem {
-                        Lexem::String(s) | Lexem::RawString(s) => match mode {
+                let lexeme = self.next_lexeme();
+                match lexeme {
+                    Some(ref lexeme) => match lexeme {
+                        Lexeme::String(s) | Lexeme::RawString(s) => match mode {
                             RootParsingMode::From | RootParsingMode::Comma => {
                                 path = s.to_string();
                                 if path.starts_with("~") {
@@ -215,9 +215,9 @@ impl Parser {
                             }
                             RootParsingMode::Root => {
                                 if s.to_lowercase() == "group" {
-                                    if let Some(Lexem::By) = self.next_lexem() {
-                                        self.drop_lexem();
-                                        self.drop_lexem();
+                                    if let Some(Lexeme::By) = self.next_lexeme() {
+                                        self.drop_lexeme();
+                                        self.drop_lexeme();
 
                                         if !path.is_empty() {
                                             roots.push(Root::new(path, root_options));
@@ -226,7 +226,7 @@ impl Parser {
                                     }
                                 }
                                 
-                                self.drop_lexem();
+                                self.drop_lexeme();
                                 match self.parse_root_options() {
                                     Some(options) => root_options = options,
                                     None => {
@@ -237,7 +237,7 @@ impl Parser {
                             }
                             _ => {}
                         },
-                        Lexem::Comma => {
+                        Lexeme::Comma => {
                             if !path.is_empty() {
                                 roots.push(Root::new(path, root_options));
 
@@ -246,7 +246,7 @@ impl Parser {
 
                                 mode = RootParsingMode::Comma;
                             } else {
-                                self.drop_lexem();
+                                self.drop_lexeme();
                                 break;
                             }
                         }
@@ -255,7 +255,7 @@ impl Parser {
                                 roots.push(Root::new(path, root_options));
                             }
 
-                            self.drop_lexem();
+                            self.drop_lexeme();
                             break;
                         }
                     },
@@ -294,10 +294,10 @@ impl Parser {
         let mut regexp = false;
 
         loop {
-            let lexem = self.next_lexem();
+            let lexem = self.next_lexeme();
             match lexem {
                 Some(ref lexem) => match lexem {
-                    Lexem::String(s) | Lexem::RawString(s) => match mode {
+                    Lexeme::String(s) | Lexeme::RawString(s) => match mode {
                         RootParsingMode::Unknown | RootParsingMode::Options => {
                             let s = s.to_ascii_lowercase();
                             if s == "mindepth" {
@@ -347,7 +347,7 @@ impl Parser {
                                 regexp = true;
                                 mode = RootParsingMode::Options;
                             } else {
-                                self.drop_lexem();
+                                self.drop_lexeme();
                                 break;
                             }
                         }
@@ -359,7 +359,7 @@ impl Parser {
                                     mode = RootParsingMode::Options;
                                 }
                                 _ => {
-                                    self.drop_lexem();
+                                    self.drop_lexeme();
                                     break;
                                 }
                             }
@@ -372,18 +372,18 @@ impl Parser {
                                     mode = RootParsingMode::Options;
                                 }
                                 _ => {
-                                    self.drop_lexem();
+                                    self.drop_lexeme();
                                     break;
                                 }
                             }
                         }
                     },
-                    Lexem::Operator(s) if s.eq("rx") => {
+                    Lexeme::Operator(s) if s.eq("rx") => {
                         regexp = true;
                         mode = RootParsingMode::Options;
                     }
                     _ => {
-                        self.drop_lexem();
+                        self.drop_lexeme();
                         break;
                     }
                 },
@@ -440,10 +440,10 @@ impl Parser {
     */
 
     fn parse_where(&mut self) -> Result<Option<Expr>, String> {
-        match self.next_lexem() {
-            Some(Lexem::Where) => self.parse_expr(),
+        match self.next_lexeme() {
+            Some(Lexeme::Where) => self.parse_expr(),
             _ => {
-                self.drop_lexem();
+                self.drop_lexeme();
                 Ok(None)
             }
         }
@@ -454,9 +454,9 @@ impl Parser {
 
         let mut right: Option<Expr> = None;
         loop {
-            let lexem = self.next_lexem();
+            let lexem = self.next_lexeme();
             match lexem {
-                Some(Lexem::Or) => {
+                Some(Lexeme::Or) => {
                     let expr = self.parse_and()?;
                     right = match right {
                         Some(right) => Some(Expr::logical_op(
@@ -468,7 +468,7 @@ impl Parser {
                     };
                 }
                 _ => {
-                    self.drop_lexem();
+                    self.drop_lexeme();
 
                     return match right {
                         Some(right) => {
@@ -497,9 +497,9 @@ impl Parser {
 
         let mut right: Option<Expr> = None;
         loop {
-            let lexem = self.next_lexem();
+            let lexem = self.next_lexeme();
             match lexem {
-                Some(Lexem::And) => {
+                Some(Lexeme::And) => {
                     let expr = self.parse_cond()?;
                     right = match right {
                         Some(right) => Some(Expr::logical_op(right, LogicalOp::And, expr.unwrap())),
@@ -507,7 +507,7 @@ impl Parser {
                     };
                 }
                 _ => {
-                    self.drop_lexem();
+                    self.drop_lexeme();
 
                     return match right {
                         Some(right) => {
@@ -524,10 +524,10 @@ impl Parser {
         let mut negate = false;
 
         loop {
-            if let Some(Lexem::Not) = self.next_lexem() {
+            if let Some(Lexeme::Not) = self.next_lexeme() {
                 negate = !negate;
             } else {
-                self.drop_lexem();
+                self.drop_lexeme();
                 break;
             }
         }
@@ -536,23 +536,23 @@ impl Parser {
 
         let mut not = false;
 
-        let lexem = self.next_lexem();
+        let lexem = self.next_lexeme();
         match lexem {
-            Some(Lexem::Not) => {
+            Some(Lexeme::Not) => {
                 not = true;
             }
             _ => {
-                self.drop_lexem();
+                self.drop_lexeme();
             }
         };
 
-        let lexem = self.next_lexem();
+        let lexem = self.next_lexeme();
         let mut result = match lexem {
-            Some(Lexem::Operator(s)) if s.as_str() == "between" => {
+            Some(Lexeme::Operator(s)) if s.as_str() == "between" => {
                 let left_between = self.parse_add_sub()?;
 
-                let and_lexem = self.next_lexem();
-                if and_lexem.is_none() || and_lexem.unwrap() != Lexem::And {
+                let and_lexem = self.next_lexeme();
+                if and_lexem.is_none() || and_lexem.unwrap() != Lexeme::And {
                     return Err(String::from("Error parsing BETWEEN operator"));
                 }
 
@@ -584,13 +584,13 @@ impl Parser {
                     right_expr,
                 )))
             }
-            Some(Lexem::Operator(s)) => {
+            Some(Lexeme::Operator(s)) => {
                 let right = self.parse_add_sub()?;
                 let op = Op::from_with_not(s, not);
                 Ok(Some(Expr::op(left.unwrap(), op.unwrap(), right.unwrap())))
             }
             _ => {
-                self.drop_lexem();
+                self.drop_lexeme();
                 Ok(left)
             }
         };
@@ -640,8 +640,8 @@ impl Parser {
 
         let mut op = None;
         loop {
-            let lexem = self.next_lexem();
-            if let Some(Lexem::ArithmeticOperator(s)) = lexem {
+            let lexem = self.next_lexeme();
+            if let Some(Lexeme::ArithmeticOperator(s)) = lexem {
                 let new_op = ArithmeticOp::from(s);
                 match new_op {
                     Some(ArithmeticOp::Add) | Some(ArithmeticOp::Subtract) => {
@@ -658,13 +658,13 @@ impl Parser {
                         };
                     }
                     _ => {
-                        self.drop_lexem();
+                        self.drop_lexeme();
 
                         return Ok(left);
                     }
                 }
             } else {
-                self.drop_lexem();
+                self.drop_lexeme();
 
                 return Ok(left);
             }
@@ -676,8 +676,8 @@ impl Parser {
 
         let mut op = None;
         loop {
-            let lexem = self.next_lexem();
-            if let Some(Lexem::ArithmeticOperator(s)) = lexem {
+            let lexem = self.next_lexeme();
+            if let Some(Lexeme::ArithmeticOperator(s)) = lexem {
                 let new_op = ArithmeticOp::from(s);
                 match new_op {
                     Some(ArithmeticOp::Multiply)
@@ -696,13 +696,13 @@ impl Parser {
                         };
                     }
                     _ => {
-                        self.drop_lexem();
+                        self.drop_lexeme();
 
                         return Ok(left);
                     }
                 }
             } else {
-                self.drop_lexem();
+                self.drop_lexeme();
 
                 return Ok(left);
             }
@@ -710,47 +710,47 @@ impl Parser {
     }
 
     fn parse_paren(&mut self) -> Result<Option<Expr>, String> {
-        match self.next_lexem() {
-            Some(Lexem::Open) => {
+        match self.next_lexeme() {
+            Some(Lexeme::Open) => {
                 let result = self.parse_expr();
-                if let Some(Lexem::Close) = self.next_lexem() {
+                if let Some(Lexeme::Close) = self.next_lexeme() {
                     result
                 } else {
                     Err("Unmatched parenthesis".to_string())
                 }
             }
-            Some(Lexem::CurlyOpen) => {
+            Some(Lexeme::CurlyOpen) => {
                 let result = self.parse_expr();
-                if let Some(Lexem::CurlyClose) = self.next_lexem() {
+                if let Some(Lexeme::CurlyClose) = self.next_lexeme() {
                     result
                 } else {
                     Err("Unmatched parenthesis".to_string())
                 }
             }
             _ => {
-                self.drop_lexem();
+                self.drop_lexeme();
                 self.parse_func_scalar()
             }
         }
     }
 
     fn parse_func_scalar(&mut self) -> Result<Option<Expr>, String> {
-        let mut lexem = self.next_lexem();
+        let mut lexem = self.next_lexeme();
         let mut minus = false;
 
-        if let Some(Lexem::ArithmeticOperator(ref s)) = lexem {
+        if let Some(Lexeme::ArithmeticOperator(ref s)) = lexem {
             if s == "-" {
                 minus = true;
-                lexem = self.next_lexem();
+                lexem = self.next_lexeme();
             } else if s == "+" {
                 // nop
             } else {
-                self.drop_lexem();
+                self.drop_lexeme();
             }
         }
 
         match lexem {
-            Some(Lexem::String(ref s)) | Some(Lexem::RawString(ref s)) => {
+            Some(Lexeme::String(ref s)) | Some(Lexeme::RawString(ref s)) => {
                 if let Ok(field) = Field::from_str(s) {
                     let mut expr = Expr::field(field);
                     expr.minus = minus;
@@ -782,8 +782,8 @@ impl Parser {
         let mut function_expr = Expr::function(function);
 
         let mut curly_mode = false;
-        if let Some(lexem) = self.next_lexem() {
-            if lexem != Lexem::Open && lexem != Lexem::CurlyOpen {
+        if let Some(lexem) = self.next_lexeme() {
+            if lexem != Lexeme::Open && lexem != Lexeme::CurlyOpen {
                 if is_boolean_function {
                     return Ok(function_expr);
                 }
@@ -791,7 +791,7 @@ impl Parser {
                 return Err("Error in function expression".to_string());
             }
 
-            if lexem == Lexem::CurlyOpen {
+            if lexem == Lexeme::CurlyOpen {
                 curly_mode = true;
             }
         }
@@ -805,16 +805,16 @@ impl Parser {
         let mut args = vec![];
 
         loop {
-            match self.next_lexem() {
-                Some(Lexem::Comma) => match self.parse_expr() {
+            match self.next_lexeme() {
+                Some(Lexeme::Comma) => match self.parse_expr() {
                     Ok(Some(expr)) => args.push(expr),
                     _ => {
                         return Err("Error in function expression".to_string());
                     }
                 },
                 Some(lexem)
-                    if (lexem == Lexem::Close && !curly_mode)
-                        || (lexem == Lexem::CurlyClose && curly_mode) =>
+                    if (lexem == Lexeme::Close && !curly_mode)
+                        || (lexem == Lexeme::CurlyClose && curly_mode) =>
                 {
                     function_expr.set_args(args);
                     return Ok(function_expr);
@@ -829,31 +829,31 @@ impl Parser {
     fn parse_group_by(&mut self) -> Result<Vec<Expr>, String> {
         let mut group_by_fields: Vec<Expr> = vec![];
 
-        if let Some(Lexem::RawString(s)) = self.next_lexem() {
+        if let Some(Lexeme::RawString(s)) = self.next_lexeme() {
             if s.to_lowercase() == "group" {
-                if let Some(Lexem::By) = self.next_lexem() {
+                if let Some(Lexeme::By) = self.next_lexeme() {
                     loop {
-                        match self.next_lexem() {
-                            Some(Lexem::Comma) => {}
-                            Some(Lexem::RawString(_)) => {
-                                self.drop_lexem();
+                        match self.next_lexeme() {
+                            Some(Lexeme::Comma) => {}
+                            Some(Lexeme::RawString(_)) => {
+                                self.drop_lexeme();
                                 let group_field = self.parse_expr().unwrap().unwrap();
                                 group_by_fields.push(group_field);
                             }
                             _ => {
-                                self.drop_lexem();
+                                self.drop_lexeme();
                                 break;
                             }
                         }
                     }
                 } else {
-                    self.drop_lexem();
+                    self.drop_lexeme();
                 }
             } else {
-                self.drop_lexem();
+                self.drop_lexeme();
             }            
         } else {
-            self.drop_lexem();
+            self.drop_lexeme();
         }
 
         Ok(group_by_fields)
@@ -863,49 +863,49 @@ impl Parser {
         let mut order_by_fields: Vec<Expr> = vec![];
         let mut order_by_directions: Vec<bool> = vec![];
 
-        if let Some(Lexem::Order) = self.next_lexem() {
-            if let Some(Lexem::By) = self.next_lexem() {
+        if let Some(Lexeme::Order) = self.next_lexeme() {
+            if let Some(Lexeme::By) = self.next_lexeme() {
                 loop {
-                    match self.next_lexem() {
-                        Some(Lexem::Comma) => {}
-                        Some(Lexem::RawString(ref ordering_field)) => {
+                    match self.next_lexeme() {
+                        Some(Lexeme::Comma) => {}
+                        Some(Lexeme::RawString(ref ordering_field)) => {
                             let actual_field = match ordering_field.parse::<usize>() {
                                 Ok(idx) => fields[idx - 1].clone(),
                                 _ => {
-                                    self.drop_lexem();
+                                    self.drop_lexeme();
                                     self.parse_expr().unwrap().unwrap()
                                 }
                             };
                             order_by_fields.push(actual_field);
                             order_by_directions.push(true);
                         }
-                        Some(Lexem::DescendingOrder) => {
+                        Some(Lexeme::DescendingOrder) => {
                             let cnt = order_by_directions.len();
                             order_by_directions[cnt - 1] = false;
                         }
                         _ => {
-                            self.drop_lexem();
+                            self.drop_lexeme();
                             break;
                         }
                     }
                 }
             } else {
-                self.drop_lexem();
+                self.drop_lexeme();
             }
         } else {
-            self.drop_lexem();
+            self.drop_lexeme();
         }
 
         Ok((order_by_fields, order_by_directions))
     }
 
     fn parse_limit(&mut self) -> Result<u32, &str> {
-        let lexem = self.next_lexem();
+        let lexem = self.next_lexeme();
         match lexem {
-            Some(Lexem::Limit) => {
-                let lexem = self.next_lexem();
+            Some(Lexeme::Limit) => {
+                let lexem = self.next_lexeme();
                 match lexem {
-                    Some(Lexem::RawString(s)) | Some(Lexem::String(s)) => {
+                    Some(Lexeme::RawString(s)) | Some(Lexeme::String(s)) => {
                         if let Ok(limit) = s.parse() {
                             return Ok(limit);
                         } else {
@@ -913,13 +913,13 @@ impl Parser {
                         }
                     }
                     _ => {
-                        self.drop_lexem();
+                        self.drop_lexeme();
                         return Err("Error parsing limit, limit value not found");
                     }
                 }
             }
             _ => {
-                self.drop_lexem();
+                self.drop_lexeme();
             }
         }
 
@@ -927,48 +927,48 @@ impl Parser {
     }
 
     fn parse_output_format(&mut self) -> Result<OutputFormat, &str> {
-        let lexem = self.next_lexem();
+        let lexem = self.next_lexeme();
         match lexem {
-            Some(Lexem::Into) => {
-                let lexem = self.next_lexem();
+            Some(Lexeme::Into) => {
+                let lexem = self.next_lexeme();
                 match lexem {
-                    Some(Lexem::RawString(s)) | Some(Lexem::String(s)) => {
+                    Some(Lexeme::RawString(s)) | Some(Lexeme::String(s)) => {
                         return match OutputFormat::from(&s) {
                             Some(output_format) => Ok(output_format),
                             None => Err("Unknown output format"),
                         };
                     }
                     _ => {
-                        self.drop_lexem();
+                        self.drop_lexeme();
                         return Err("Error parsing output format");
                     }
                 }
             }
             _ => {
-                self.drop_lexem();
+                self.drop_lexeme();
             }
         }
 
         Ok(OutputFormat::Tabs)
     }
 
-    fn there_are_remaining_lexems(&mut self) -> bool {
-        let result = self.next_lexem().is_some();
+    fn there_are_remaining_lexemes(&mut self) -> bool {
+        let result = self.next_lexeme().is_some();
         if result {
-            self.drop_lexem();
+            self.drop_lexeme();
         }
 
         result
     }
 
-    fn next_lexem(&mut self) -> Option<Lexem> {
-        let lexem = self.lexems.get(self.index);
+    fn next_lexeme(&mut self) -> Option<Lexeme> {
+        let lexeme = self.lexemes.get(self.index);
         self.index += 1;
 
-        lexem.cloned()
+        lexeme.cloned()
     }
 
-    fn drop_lexem(&mut self) {
+    fn drop_lexeme(&mut self) {
         self.index -= 1;
     }
 

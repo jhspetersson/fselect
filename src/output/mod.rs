@@ -1,9 +1,10 @@
+use std::io::Write;
+
 use crate::output::csv::CsvFormatter;
 use crate::output::flat::{LINES_FORMATTER, LIST_FORMATTER, TABS_FORMATTER};
 use crate::output::html::HtmlFormatter;
 use crate::output::json::JsonFormatter;
 use crate::query::OutputFormat;
-use std::io::Write;
 
 mod csv;
 mod flat;

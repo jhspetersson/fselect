@@ -1,9 +1,11 @@
-use crate::util::dimensions::DimensionsExtractor;
-use crate::util::Dimensions;
 use std::io;
 use std::path::Path;
+
 use svg::node::element::tag::SVG;
 use svg::parser::Event;
+
+use crate::util::dimensions::DimensionsExtractor;
+use crate::util::Dimensions;
 
 pub struct SvgDimensionsExtractor;
 

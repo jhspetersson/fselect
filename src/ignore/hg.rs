@@ -7,10 +7,12 @@ use std::ops::Add;
 use std::ops::Index;
 use std::path::Path;
 use std::sync::LazyLock;
-use crate::util::error_exit;
+
 use regex::Captures;
 use regex::Error;
 use regex::Regex;
+
+use crate::util::error_exit;
 
 #[derive(Clone, Debug)]
 pub struct HgignoreFilter {

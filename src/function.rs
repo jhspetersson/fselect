@@ -18,6 +18,7 @@ use rand::Rng;
 use serde::ser::{Serialize, Serializer};
 #[cfg(unix)]
 use xattr::FileExt;
+
 use crate::fileinfo::FileInfo;
 use crate::util::{capitalize, error_exit, format_date, parse_datetime};
 use crate::util::variant::{Variant, VariantType};

@@ -1,7 +1,8 @@
 //! Handles export of results in JSON format
 
-use crate::output::ResultsFormatter;
 use std::collections::BTreeMap;
+
+use crate::output::ResultsFormatter;
 
 #[derive(Default)]
 pub struct JsonFormatter {

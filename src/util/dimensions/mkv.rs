@@ -1,9 +1,11 @@
-use crate::util::dimensions::DimensionsExtractor;
-use crate::util::Dimensions;
-use matroska::MatroskaError;
 use std::fs::File;
 use std::io;
 use std::path::Path;
+
+use matroska::MatroskaError;
+
+use crate::util::dimensions::DimensionsExtractor;
+use crate::util::Dimensions;
 
 pub struct MkvDimensionsExtractor;
 

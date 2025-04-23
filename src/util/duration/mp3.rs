@@ -1,8 +1,10 @@
-use crate::util::duration::DurationExtractor;
-use crate::util::Duration;
-use mp3_metadata::MP3Metadata;
 use std::io;
 use std::path::Path;
+
+use mp3_metadata::MP3Metadata;
+
+use crate::util::duration::DurationExtractor;
+use crate::util::Duration;
 
 pub struct Mp3DurationExtractor;
 

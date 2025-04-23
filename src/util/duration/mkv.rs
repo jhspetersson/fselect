@@ -1,12 +1,12 @@
-use mp3_metadata::MP3Metadata;
 use std::fs::File;
 use std::io;
 use std::path::Path;
 
+use matroska::MatroskaError;
+use mp3_metadata::MP3Metadata;
+
 use crate::util::duration::DurationExtractor;
 use crate::util::Duration;
-
-use matroska::MatroskaError;
 
 pub struct MkvDurationExtractor;
 

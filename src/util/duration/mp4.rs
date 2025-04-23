@@ -1,10 +1,12 @@
-use crate::util::duration::DurationExtractor;
-use crate::util::Duration;
-use mp3_metadata::MP3Metadata;
 use std::fs::File;
 use std::io;
 use std::io::Read;
 use std::path::Path;
+
+use mp3_metadata::MP3Metadata;
+
+use crate::util::duration::DurationExtractor;
+use crate::util::Duration;
 
 pub struct Mp4DurationExtractor;
 

@@ -1,8 +1,10 @@
-use crate::util::dimensions::DimensionsExtractor;
-use crate::util::Dimensions;
-use imagesize::ImageError;
 use std::io;
 use std::path::Path;
+
+use imagesize::ImageError;
+
+use crate::util::dimensions::DimensionsExtractor;
+use crate::util::Dimensions;
 
 pub struct ImageDimensionsExtractor;
 

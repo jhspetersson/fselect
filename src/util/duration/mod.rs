@@ -1,10 +1,9 @@
-use std::io;
-
 mod mkv;
 mod mp3;
 mod mp4;
 mod wav;
 
+use std::io;
 use std::path::Path;
 
 use mp3_metadata::MP3Metadata;

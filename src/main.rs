@@ -21,6 +21,12 @@ use rustyline::DefaultEditor;
 #[cfg(feature = "update-notifications")]
 use update_informer::{registry, Check};
 
+use crate::config::Config;
+use crate::parser::Parser;
+use crate::searcher::Searcher;
+use crate::util::error_message;
+use crate::util::str_to_bool;
+
 mod config;
 mod expr;
 mod field;
@@ -35,12 +41,6 @@ mod parser;
 mod query;
 mod searcher;
 mod util;
-
-use crate::config::Config;
-use crate::parser::Parser;
-use crate::searcher::Searcher;
-use crate::util::error_message;
-use crate::util::str_to_bool;
 
 fn main() -> ExitCode {
     let default_config = Config::default();

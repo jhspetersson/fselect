@@ -334,6 +334,7 @@ impl Display for Expr {
     }
 }
 
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::field::Field;

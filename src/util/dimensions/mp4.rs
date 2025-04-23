@@ -1,9 +1,10 @@
-use crate::util::dimensions::DimensionsExtractor;
-use crate::util::Dimensions;
 use std::fs::File;
 use std::io;
 use std::io::Read;
 use std::path::Path;
+
+use crate::util::dimensions::DimensionsExtractor;
+use crate::util::Dimensions;
 
 pub struct Mp4DimensionsExtractor;
 

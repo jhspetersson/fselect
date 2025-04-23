@@ -1,7 +1,8 @@
-//! Lexer to tokenizes SQL-like syntax into lexems
+//! Lexer to tokenize SQL-like syntax into lexemes
 
 use std::str::FromStr;
 use std::sync::LazyLock;
+
 use regex::Regex;
 
 use crate::field::Field;

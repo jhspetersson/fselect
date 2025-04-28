@@ -45,6 +45,8 @@ pub enum Function {
     Concat,
     /// Concatenate the arguments, separated by the value
     ConcatWs,
+    /// Get the position of a substring in the value
+    Locate,
     /// Get a substring of the value, from a position and length
     Substring,
     /// Replace a substring in the value with another string
@@ -201,6 +203,7 @@ impl FromStr for Function {
 
             "concat" => Ok(Function::Concat),
             "concat_ws" => Ok(Function::ConcatWs),
+            "locate" | "position" => Ok(Function::Locate),
             "substr" | "substring" => Ok(Function::Substring),
             "replace" => Ok(Function::Replace),
             "trim" => Ok(Function::Trim),
@@ -415,6 +418,22 @@ pub fn get_value(
             Variant::from_string(&(String::from(&function_arg) + &function_args.join("")))
         }
         Some(Function::ConcatWs) => Variant::from_string(&function_args.join(&function_arg)),
+        Some(Function::Locate) => {
+            let string = String::from(&function_arg);
+            let substring = &function_args[0];
+            let pos: i32 = match &function_args.get(1) {
+                Some(pos) => pos.parse::<i32>().unwrap() - 1,
+                _ => 0,
+            };
+            let string = string.chars().skip(pos as usize).collect::<String>();
+
+            let result = string
+                .find(substring)
+                .map(|index| index as i64 + pos as i64 + 1)
+                .unwrap_or(0);
+
+            Variant::from_int(result)
+        },
         Some(Function::Substring) => {
             let string = String::from(&function_arg);
 
@@ -992,6 +1011,18 @@ mod tests {
 
         let result = get_value(&Some(function), function_arg, function_args, entry, &file_info);
         assert_eq!(result.to_string(), "hello, world");
+    }
+    
+    #[test]
+    fn function_locate() {
+        let function = Function::Locate;
+        let function_arg = String::from("hello world");
+        let function_args = vec![String::from("world"), String::from("1")];
+        let entry = None;
+        let file_info = None;
+
+        let result = get_value(&Some(function), function_arg, function_args, entry, &file_info);
+        assert_eq!(result.to_int(), 7);
     }
     
     #[test]

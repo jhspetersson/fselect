@@ -462,6 +462,7 @@ Functions:
         INITCAP                     Returns first letter of each word uppercase, all other letters lowercase
         TO_BASE64 | BASE64          Returns Base64 digest of a value
         FROM_BASE64                 Returns decoded value from a Base64 digest
+        LOCATE | POSITION           Returns position of the substring in the string
         SUBSTRING | SUBSTR          Returns part of the string value
         REPLACE                     Returns string with substring replaced with another one
         TRIM                        Returns string with whitespaces at the beginning and the end stripped

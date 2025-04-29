@@ -31,7 +31,7 @@ imagesize = "0.14"
 kamadak-exif = "0.6"
 lscolors = { version = "0.20", features = [ "nu-ansi-term" ] }
 matroska = "0.30"
-mp3-metadata = "0.3"
+mp3-metadata = "0.4"
 mp4parse = "0.17"
 nu-ansi-term = "0.50"
 rand = "0.9"

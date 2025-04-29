@@ -1254,9 +1254,9 @@ dependencies = [
 
 [[package]]
 name = "mp3-metadata"
-version = "0.3.4"
+version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e4eaa3a228dc218005d769b88ce3a0310f49152f2029125289e94c49474c9cc4"
+checksum = "e462514acb482a039cf915999d6cca0474dfa9d711f040025cf394d54f0f92e4"
 
 [[package]]
 name = "mp4parse"

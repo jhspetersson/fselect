@@ -584,6 +584,15 @@ impl Parser {
                     right_expr,
                 )))
             }
+            Some(Lexeme::Operator(s)) if s.as_str() == "in" => {
+                let list = self.parse_list()?;
+                let op = Op::from_with_not(s, not);
+                Ok(Some(Expr::op(
+                    left.unwrap(),
+                    op.unwrap(),
+                    list,
+                )))
+            }
             Some(Lexeme::Operator(s)) => {
                 let right = self.parse_add_sub()?;
                 let op = Op::from_with_not(s, not);
@@ -732,6 +741,57 @@ impl Parser {
                 self.parse_func_scalar()
             }
         }
+    }
+    
+    fn parse_list(&mut self) -> Result<Expr, String> {
+        match self.next_lexeme() {
+            Some(Lexeme::Open) => {
+                let mut result = Expr::new(); 
+                let args = self.parse_args()?;
+                result.set_args(args.unwrap());
+                if let Some(Lexeme::Close) = self.next_lexeme() {
+                    Ok(result)
+                } else {
+                    Err("Unmatched parenthesis".to_string())
+                }
+            }
+            Some(Lexeme::CurlyOpen) => {
+                let mut result = Expr::new();
+                let args = self.parse_args()?;
+                result.set_args(args.unwrap());
+                if let Some(Lexeme::CurlyClose) = self.next_lexeme() {
+                    Ok(result)
+                } else {
+                    Err("Unmatched parenthesis".to_string())
+                }
+            }
+            _ => {
+                self.drop_lexeme();
+                Err("Error parsing list".to_string())
+            }
+        }
+    }
+    
+    fn parse_args(&mut self) -> Result<Option<Vec<Expr>>, String> {
+        let mut args = vec![];
+
+        loop {
+            match self.next_lexeme() {
+                Some(Lexeme::Comma) => {}
+                _ => {
+                    self.drop_lexeme();
+                    match self.parse_expr() {
+                        Ok(Some(expr)) => args.push(expr),
+                        _ => {
+                            self.drop_lexeme();
+                            break
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(Some(args))
     }
 
     fn parse_func_scalar(&mut self) -> Result<Option<Expr>, String> {
@@ -1437,5 +1497,86 @@ mod tests {
         let query2 = p2.parse(vec![query2.to_string()], false).unwrap();
         
         assert_eq!(query.expr, query2.expr);
+    }
+    
+    #[test]
+    fn query_with_value_in_string_args() {
+        let query = "select name from /test where name in ('foo', 'bar')";
+        let mut p = Parser::new();
+        let query = p.parse(vec![query.to_string()], false).unwrap();
+        
+        let mut list_expr = Expr::new();
+        list_expr.set_args(vec![
+            Expr::value(String::from("foo")),
+            Expr::value(String::from("bar")),
+        ]);
+        
+        let expr = Expr::op(
+            Expr::field(Field::Name),
+            Op::In,
+            list_expr,
+        );
+        
+        assert_eq!(query.expr, Some(expr));
+        
+        let query = "select name from /test where name not in (foo, bar)";
+        let mut p = Parser::new();
+        let query = p.parse(vec![query.to_string()], false).unwrap();
+        
+        let mut list_expr = Expr::new();
+        list_expr.set_args(vec![
+            Expr::value(String::from("foo")),
+            Expr::value(String::from("bar")),
+        ]);
+        
+        let expr = Expr::op(
+            Expr::field(Field::Name),
+            Op::NotIn,
+            list_expr,
+        );
+        
+        assert_eq!(query.expr, Some(expr));
+    }
+
+    #[test]
+    fn query_with_value_in_int_args() {
+        let query = "select name from /test where size in (100, 200)";
+        let mut p = Parser::new();
+        let query = p.parse(vec![query.to_string()], false).unwrap();
+
+        let mut list_expr = Expr::new();
+        list_expr.set_args(vec![
+            Expr::value(String::from("100")),
+            Expr::value(String::from("200")),
+        ]);
+
+        let expr = Expr::op(
+            Expr::field(Field::Size),
+            Op::In,
+            list_expr,
+        );
+
+        assert_eq!(query.expr, Some(expr));
+    }
+    
+    #[test]
+    fn query_with_value_in_float_args() {
+        let query = "select name from /test where size in (100.0, 200.0)";
+        let mut p = Parser::new();
+        let query = p.parse(vec![query.to_string()], false).unwrap();
+
+        let mut list_expr = Expr::new();
+        list_expr.set_args(vec![
+            Expr::value(String::from("100.0")),
+            Expr::value(String::from("200.0")),
+        ]);
+
+        let expr = Expr::op(
+            Expr::field(Field::Size),
+            Op::In,
+            list_expr,
+        );
+
+        assert_eq!(query.expr, Some(expr));
     }
 }

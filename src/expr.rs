@@ -25,6 +25,22 @@ pub struct Expr {
 }
 
 impl Expr {
+    pub fn new() -> Expr {
+        Expr {
+            left: None,
+            arithmetic_op: None,
+            logical_op: None,
+            op: None,
+            right: None,
+            minus: false,
+            field: None,
+            function: None,
+            args: None,
+            val: None,
+            weight: 0,
+        }
+    }
+    
     pub fn op(left: Expr, op: Op, right: Expr) -> Expr {
         let left_weight = left.weight;
         let right_weight = right.weight;

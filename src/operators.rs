@@ -24,6 +24,8 @@ pub enum Op {
     NotLike,
     Between,
     NotBetween,
+    In,
+    NotIn,
 }
 
 impl Op {
@@ -42,6 +44,7 @@ impl Op {
             "like" => Some(Op::Like),
             "notlike" => Some(Op::NotLike),
             "between" => Some(Op::Between),
+            "in" => Some(Op::In),
             _ => None,
         }
     }
@@ -70,6 +73,8 @@ impl Op {
             Op::NotLike => Op::Like,
             Op::Between => Op::NotBetween,
             Op::NotBetween => Op::Between,
+            Op::In => Op::NotIn,
+            Op::NotIn => Op::In,
         }
     }
 }

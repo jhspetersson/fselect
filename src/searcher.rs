@@ -2082,6 +2082,40 @@ impl<'a> Searcher<'a> {
                         }
                         Op::Eeq => val.eq(&field_value.to_string()),
                         Op::Ene => val.ne(&field_value.to_string()),
+                        Op::In => {
+                            let field_value = field_value.to_string();
+                            let mut result = false;
+                            for item in expr.clone().right.unwrap().args.unwrap().iter().map(|arg| self.get_column_expr_value(
+                                Some(entry),
+                                file_info,
+                                &mut HashMap::new(),
+                                None,
+                                arg,
+                            )) {
+                                if item.to_string().eq(&field_value) {
+                                    result = true;
+                                    break;
+                                }
+                            }
+                            result
+                        }
+                        Op::NotIn => {
+                            let field_value = field_value.to_string();
+                            let mut result = true;
+                            for item in expr.clone().right.unwrap().args.unwrap().iter().map(|arg| self.get_column_expr_value(
+                                Some(entry),
+                                file_info,
+                                &mut HashMap::new(),
+                                None,
+                                arg,
+                            )) {
+                                if item.to_string().eq(&field_value) {
+                                    result = false;
+                                    break;
+                                }
+                            }
+                            result
+                        }
                         _ => false,
                     }
                 }
@@ -2095,6 +2129,40 @@ impl<'a> Searcher<'a> {
                         Op::Gte => int_value >= val,
                         Op::Lt => int_value < val,
                         Op::Lte => int_value <= val,
+                        Op::In => {
+                            let field_value = field_value.to_int();
+                            let mut result = false;
+                            for item in expr.clone().right.unwrap().args.unwrap().iter().map(|arg| self.get_column_expr_value(
+                                Some(entry),
+                                file_info,
+                                &mut HashMap::new(),
+                                None,
+                                arg,
+                            )) {
+                                if item.to_int() == field_value {
+                                    result = true;
+                                    break;
+                                }
+                            }
+                            result
+                        },
+                        Op::NotIn => {
+                            let field_value = field_value.to_int();
+                            let mut result = true;
+                            for item in expr.clone().right.unwrap().args.unwrap().iter().map(|arg| self.get_column_expr_value(
+                                Some(entry),
+                                file_info,
+                                &mut HashMap::new(),
+                                None,
+                                arg,
+                            )) {
+                                if item.to_int() == field_value {
+                                    result = false;
+                                    break;
+                                }
+                            }
+                            result
+                        }
                         _ => false,
                     }
                 }
@@ -2108,6 +2176,40 @@ impl<'a> Searcher<'a> {
                         Op::Gte => float_value >= val,
                         Op::Lt => float_value < val,
                         Op::Lte => float_value <= val,
+                        Op::In => {
+                            let field_value = field_value.to_float();
+                            let mut result = false;
+                            for item in expr.clone().right.unwrap().args.unwrap().iter().map(|arg| self.get_column_expr_value(
+                                Some(entry),
+                                file_info,
+                                &mut HashMap::new(),
+                                None,
+                                arg,
+                            )) {
+                                if item.to_float() == field_value {
+                                    result = true;
+                                    break;
+                                }
+                            }
+                            result
+                        },
+                        Op::NotIn => {
+                            let field_value = field_value.to_float();
+                            let mut result = true;
+                            for item in expr.clone().right.unwrap().args.unwrap().iter().map(|arg| self.get_column_expr_value(
+                                Some(entry),
+                                file_info,
+                                &mut HashMap::new(),
+                                None,
+                                arg,
+                            )) {
+                                if item.to_float() == field_value {
+                                    result = false;
+                                    break;
+                                }
+                            }
+                            result
+                        }
                         _ => false,
                     }
                 }
@@ -2120,6 +2222,40 @@ impl<'a> Searcher<'a> {
                         Op::Gte => field_value.to_bool() >= val,
                         Op::Lt => field_value.to_bool() < val,
                         Op::Lte => field_value.to_bool() <= val,
+                        Op::In => {
+                            let field_value = field_value.to_bool();
+                            let mut result = false;
+                            for item in expr.clone().right.unwrap().args.unwrap().iter().map(|arg| self.get_column_expr_value(
+                                Some(entry),
+                                file_info,
+                                &mut HashMap::new(),
+                                None,
+                                arg,
+                            )) {
+                                if item.to_bool() == field_value {
+                                    result = true;
+                                    break;
+                                }
+                            }
+                            result
+                        },
+                        Op::NotIn => {
+                            let field_value = field_value.to_bool();
+                            let mut result = true;
+                            for item in expr.clone().right.unwrap().args.unwrap().iter().map(|arg| self.get_column_expr_value(
+                                Some(entry),
+                                file_info,
+                                &mut HashMap::new(),
+                                None,
+                                arg,
+                            )) {
+                                if item.to_bool() == field_value {
+                                    result = false;
+                                    break;
+                                }
+                            }
+                            result
+                        }
                         _ => false,
                     }
                 }
@@ -2137,6 +2273,40 @@ impl<'a> Searcher<'a> {
                         Op::Gte => dt >= start,
                         Op::Lt => dt < start,
                         Op::Lte => dt <= finish,
+                        Op::In => {
+                            let field_value = field_value.to_datetime().0.and_utc().timestamp();
+                            let mut result = false;
+                            for item in expr.clone().right.unwrap().args.unwrap().iter().map(|arg| self.get_column_expr_value(
+                                Some(entry),
+                                file_info,
+                                &mut HashMap::new(),
+                                None,
+                                arg,
+                            )) {
+                                if item.to_datetime().0.and_utc().timestamp() == field_value {
+                                    result = true;
+                                    break;
+                                }
+                            }
+                            result
+                        },
+                        Op::NotIn => {
+                            let field_value = field_value.to_datetime().0.and_utc().timestamp();
+                            let mut result = true;
+                            for item in expr.clone().right.unwrap().args.unwrap().iter().map(|arg| self.get_column_expr_value(
+                                Some(entry),
+                                file_info,
+                                &mut HashMap::new(),
+                                None,
+                                arg,
+                            )) {
+                                if item.to_datetime().0.and_utc().timestamp() == field_value {
+                                    result = false;
+                                    break;
+                                }
+                            }
+                            result
+                        }
                         _ => false,
                     }
                 }

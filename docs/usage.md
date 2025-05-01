@@ -320,6 +320,7 @@ When you put a directory to search at, you can specify some options.
 * `like`
 * `notlike`
 * `between`
+* `in`
 
 ### Arithmetic operators
 

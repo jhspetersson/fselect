@@ -509,6 +509,7 @@ Expressions:
         like                        Used to check if the column value matches the pattern which follows SQL conventions
         notlike                     Used to check if the column value doesn't match the pattern which follows SQL conventions
         between                     Used to check if the column value lies between two values inclusive
+        in                          Used to check if the column value is in the list of values
     Logical Operators:
         and                         Used as an AND operator for two conditions made with the above operators
         or                          Used as an OR operator for two conditions made with the above operators

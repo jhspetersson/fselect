@@ -109,11 +109,11 @@ Search within a directory name with spaces (backticks are also supported):
     fselect "name from '/home/user/dir with spaces' where size > 0"
     fselect "name from `/home/user/dir with spaces` where size > 0"
 
-Or simply escape the single quotes:
+Or simply escape the single quote:
 
     fselect name from \'/home/user/dir with spaces\' where size gt 0
 
-Specify file size, get absolute path, and add it to the results:
+Specify the file size, get an absolute path, and add it to the results:
 
     cd /home/user
     fselect size, abspath from ./tmp where size gt 2g
@@ -125,7 +125,7 @@ More complex query:
 
     fselect "name from /tmp where (name = *.tmp and size = 0) or (name = *.cfg and size > 1000000)"
     
-Aggregate functions (you can use curly braces if you want, and even combine them with the regular parentheses):
+Aggregate functions (you can use curly braces if you want and even combine them with the regular parentheses):
 
     fselect "MIN(size), MAX{size}, AVG(size), SUM{size}, COUNT(*) from /home/user/Downloads"
     
@@ -169,7 +169,7 @@ Find files by date:
     fselect "path from /home/user where modified = 'apr 1'"
     fselect "path from /home/user where modified = 'last fri'"
     
-Be more specific to match all files created at interval between 3PM and 4PM:
+Be more specific to match all files created at an interval between 3PM and 4PM:
 
     fselect path from /home/user where created = '2017-05-01 15'
     
@@ -178,11 +178,11 @@ And even more specific:
     fselect path from /home/user where created = '2017-05-01 15:10'
     fselect path from /home/user where created = '2017-05-01 15:10:30'
     
-Date and time intervals possible (find everything updated since May 1st):
+Date and time intervals are possible (find everything updated since May 1st):
 
     fselect path from /home/user where modified gte 2017-05-01
     
-Default is current directory:
+Default is the current directory:
 
     fselect path, size where name = '*.jpg'
     
@@ -246,7 +246,7 @@ Find files with dangerous permissions:
     fselect mode, path from /home/user where other_write or other_exec
     fselect mode, path from /home/user where other_all
     
-Simple glob-like expressions or even regular expressions on file mode are possible:
+Simple glob-like expressions or even regular expressions in file mode are possible:
     
     fselect mode, path from /home/user where mode = '*rwx'
     fselect mode, path from /home/user where mode =~ '.*rwx$'
@@ -265,7 +265,7 @@ Find special files:
     fselect path from /tmp where is_pipe
     fselect path from /tmp where is_socket
     
-Find files with xattrs, check if particular xattr exists, or get its value:
+Find files with xattrs, check if a particular xattr exists, or get its value:
 
     fselect "path, has_xattrs, has_xattr(user.test), xattr(user.test) from /home/user"
     
@@ -282,7 +282,7 @@ Order results:
     fselect path from /tmp order by size desc, name
     fselect modified, fsize, path from ~ order by 1 desc, 3
     
-Finally limit the results:
+Finally, limit the results:
 
     fselect name from /home/user/samples limit 5 
     

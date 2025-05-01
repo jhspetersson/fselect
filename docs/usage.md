@@ -6,13 +6,14 @@ Find files with SQL-like queries
 
     fselect [ARGS] COLUMN[, COLUMN...] [from ROOT[, ROOT...]] [where EXPR] [group by COLUMNS] [order by COLUMNS] [limit N] [into FORMAT]
 
-You write SQL-like query, that's it.
+You write an SQL-like query, that's it.
 
 **fselect** command itself is like a first keyword (`select`, i.e., *file select*).
-But if you'll put one more `select` behind occasionally, that's not a problem.
+But if you put one more `select` behind occasionally, that's not a problem.
 
-Next you put columns you are interested in. It could be file name or path, size, modification date, etc.
-See full list of possible columns. You can add columns with arbitrary text (put in quotes if it contains spaces). A few functions (aggregating and formatting) are there for your service. You can use arithmetic expressions when it makes sense.
+Next you put columns you are interested in. It could be a file name or path, size, modification date, etc.
+See the full list of possible columns. You can add columns with arbitrary text (put in quotes if it contains spaces). 
+A few functions (aggregating and formatting) are there for your service. You can use arithmetic expressions when it makes sense.
 
 Where to search? Specify with `from` keyword. You can list one or more directories separated with comma.
 If you leave the `from`, then current directory will be processed.
@@ -26,7 +27,7 @@ Limiting search results is possible with `limit`. Formatting options are support
 
 If you want to use operators containing `>` or `<`, 
 put the whole query into the double quotes. 
-This will protect query from the shell and output redirection.
+This will protect a query from the shell and output redirection.
 The same applies to queries with parentheses or `*`, `?` and other special shell
 metacharacters.
 
@@ -35,15 +36,15 @@ It's ok to use any metacharacters in interactive mode.
 ### It's not a real SQL
 
 Directories to search at are listed with comma separators.
-In a real SQL such syntax would make a cross product. Here it means just search at A, next at B, and so on.
+In a real SQL such syntax would make a cross-product. Here it means just search at A, next at B, and so on.
 
-You can use curly braces instead of the regular parentheses! This helps to avoid a few of shell pitfalls a little bit.
+You can use curly braces instead of the regular parentheses! This helps to avoid a few of the shell pitfalls a little bit.
 Functions with no arguments don't require parentheses at all.
 
 String literals don't really need quotes. 
 You will need to put them just in case you query something with spaces inside. 
 And yes, you should use quotes for glob-patterns or regular expressions in the query 
-on Linux or Mac OS to prevent parameter expansion from the shell. 
+on Linux or macOS to prevent parameter expansion from the shell. 
 If you are on Windows, feel free to omit most of the quotes.
 
 Commas for column separation aren't needed as well. Column aliasing (with or without `as` keyword) is not supported.
@@ -182,8 +183,8 @@ These are only available on Unix platforms when `users` feature has been enabled
 
 #### Xattr functions
 
-Used to check if particular xattr exists, or to get its value.
-Supported platforms are Linux, MacOS, FreeBSD, and NetBSD. 
+Used to check if a particular xattr exists or to get its value.
+Supported platforms are Linux, macOS, FreeBSD, and NetBSD. 
 
 | Function                      | Meaning                                             | Example                                               |
 |-------------------------------|-----------------------------------------------------|-------------------------------------------------------|
@@ -348,7 +349,7 @@ When you specify inexact date and time with `=` or `!=` operator, **fselect** un
     
 `2017-05-01 15:10` is a 1-minute interval from 15:10:00 to 15:10:59.
 
-Other operators assume exact date and time, which could be specified in a more free way:
+Other operators assume the exact date and time, which could be specified in a freer way:
 
     fselect "path from /home/user where modified === 'apr 1'"
     fselect "path from /home/user where modified gte 'last fri'"
@@ -368,14 +369,14 @@ Or simply use relative offsets as days:
 
 ### MIME and file types
 
-For MIME guessing use field `mime`. It returns a simple string with deduced MIME type,
+For MIME guessing use field `mime`. It returns a simple string with a deduced MIME type,
 which is not always accurate.
 
     fselect path, mime, is_binary, is_text from /home/user
 
 `is_binary` and `is_text` return `true` or `false` based on MIME type detected. 
-Once again, this should not be considered as 100% accurate result, 
-or even possible at all to detect correct file type.
+Once again, this should not be considered as a 100% accurate result, 
+or even possible at all to detect a correct file type.
 
 Other fields listed below **do NOT** use MIME detection.
 Assumptions are being made based on file extension.
@@ -456,8 +457,8 @@ On Windows:
     
 Fresh config is filled with defaults, feel free to update it.
 
-If no config on the standard paths found, **fselect** checks its presence next to the executable. 
-You can also specify config location with runtime option, e.g.:
+If no config on the standard paths is found, **fselect** checks its presence next to the executable. 
+You can also specify a config location with a runtime option, e.g.:
 
     fselect --config /home/user_name/fselect_custom.toml name, size from /home/user_name/Music where is_audio = 1
 

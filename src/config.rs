@@ -161,7 +161,7 @@ impl Config {
                 ".svg", ".tga", ".tiff", ".webp"
             ],
             is_source: vec_of_strings![
-                ".asm", ".bas", ".c", ".cc", ".ceylon", ".clj", ".coffee", ".cpp", ".cs", ".d",
+                ".asm", ".awk", ".bas", ".c", ".cc", ".ceylon", ".clj", ".coffee", ".cpp", ".cs", ".d",
                 ".dart", ".elm", ".erl", ".go", ".gradle", ".groovy", ".h", ".hh", ".hpp", ".java",
                 ".jl", ".js", ".jsp", ".jsx", ".kt", ".kts", ".lua", ".nim", ".pas", ".php", ".pl",
                 ".pm", ".py", ".rb", ".rs", ".scala", ".sol", ".swift", ".tcl", ".ts", ".tsx",

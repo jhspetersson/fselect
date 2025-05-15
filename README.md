@@ -43,11 +43,11 @@ More is under way!
 
 #### Other Linux
 
-[Static build with musl](https://github.com/jhspetersson/fselect/releases/download/0.8.11/fselect-x86_64-linux-musl.gz).
+[Static build with musl](https://github.com/jhspetersson/fselect/releases/download/0.8.12/fselect-x86_64-linux-musl.gz).
 
 #### Windows 64bit
 
-A statically precompiled [binary](https://github.com/jhspetersson/fselect/releases/download/0.8.11/fselect-x86_64-win.zip) is available at GitHub downloads.
+A statically precompiled [binary](https://github.com/jhspetersson/fselect/releases/download/0.8.12/fselect-x86_64-win.zip) is available at GitHub downloads.
 
 #### Windows via winget
 

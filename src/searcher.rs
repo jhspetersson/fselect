@@ -394,7 +394,7 @@ impl<'a> Searcher<'a> {
                 true,
             );
         }
-        
+
         let compute_time = std::time::Instant::now();
 
         // ======== Compute results =========
@@ -412,9 +412,9 @@ impl<'a> Searcher<'a> {
                     .collect();
                 let buffer_partitions = self.partitioned_output_buffer.clone();
                 let buffer_partitions = buffer_partitions.iter().collect::<Vec<_>>();                 
-                
+
                 let mut results = vec![];
-                
+
                 buffer_partitions.iter().for_each(|f| {
                     let mut items: Vec<(String, String)> = Vec::new();
 
@@ -546,13 +546,13 @@ impl<'a> Searcher<'a> {
         self.results_writer.write_footer(&mut std::io::stdout())?;
 
         let completion_time = std::time::Instant::now();
-        
+
         if self.config.debug {
             eprintln!("Search: {}ms\nCompute: {}ms", 
                       compute_time.duration_since(start_time).as_millis(), 
                       completion_time.duration_since(compute_time).as_millis());
         }
-        
+
         Ok(())
     }
 
@@ -834,7 +834,7 @@ impl<'a> Searcher<'a> {
         if file_map.contains_key(&column_expr_str) {
             return Variant::from_string(&file_map[&column_expr_str]);
         }
-        
+
         if let Some(ref _function) = column_expr.function {
             let result =
                 self.get_function_value(entry, file_info, file_map, buffer_data, column_expr);
@@ -2404,5 +2404,301 @@ impl<'a> Searcher<'a> {
                 .as_ref()
                 .unwrap_or(self.default_config.is_video.as_ref().unwrap()),
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::expr::Expr;
+    use crate::field::Field;
+    use crate::function::Function;
+    use crate::query::{OutputFormat, Query};
+    use std::rc::Rc;
+
+    // Tests for FileMetadataState
+    #[test]
+    fn test_file_metadata_state_new() {
+        let state = FileMetadataState::new();
+
+        assert!(!state.file_metadata_set);
+        assert!(state.file_metadata.is_none());
+
+        assert!(!state.line_count_set);
+        assert!(state.line_count.is_none());
+
+        assert!(!state.dimensions_set);
+        assert!(state.dimensions.is_none());
+
+        assert!(!state.duration_set);
+        assert!(state.duration.is_none());
+
+        assert!(!state.mp3_metadata_set);
+        assert!(state.mp3_metadata.is_none());
+
+        assert!(!state.exif_metadata_set);
+        assert!(state.exif_metadata.is_none());
+    }
+
+    #[test]
+    fn test_file_metadata_state_clear() {
+        let mut state = FileMetadataState::new();
+
+        // Set some values
+        state.file_metadata_set = true;
+        state.line_count_set = true;
+        state.dimensions_set = true;
+        state.duration_set = true;
+        state.mp3_metadata_set = true;
+        state.exif_metadata_set = true;
+
+        // Clear the state
+        state.clear();
+
+        // Verify all values are reset
+        test_file_metadata_state_new();
+    }
+
+    fn create_test_searcher() -> Searcher<'static> {
+        // Create a minimal Query instance for testing
+        let query = Box::leak(Box::new(Query {
+            fields: Vec::new(),
+            roots: Vec::new(),
+            expr: None,
+            grouping_fields: Rc::new(Vec::new()),
+            ordering_fields: Rc::new(Vec::new()),
+            ordering_asc: Rc::new(Vec::new()),
+            limit: 0,
+            output_format: OutputFormat::Tabs,
+        }));
+
+        // Use default configurations
+        let config = Box::leak(Box::new(Config::default()));
+        let default_config = Box::leak(Box::new(Config::default()));
+
+        Searcher::new(query, config, default_config, false)
+    }
+
+    fn create_test_searcher_with_ordering() -> Searcher<'static> {
+        // Create a Query instance with ordering fields
+        let query = Box::leak(Box::new(Query {
+            fields: Vec::new(),
+            roots: Vec::new(),
+            expr: None,
+            grouping_fields: Rc::new(Vec::new()),
+            ordering_fields: Rc::new(vec![Expr::field(Field::Name)]),
+            ordering_asc: Rc::new(vec![true]),
+            limit: 0,
+            output_format: OutputFormat::Tabs,
+        }));
+
+        // Use default configurations
+        let config = Box::leak(Box::new(Config::default()));
+        let default_config = Box::leak(Box::new(Config::default()));
+
+        Searcher::new(query, config, default_config, false)
+    }
+
+    fn create_test_searcher_with_aggregate() -> Searcher<'static> {
+        // Create a Query instance with an aggregate function in fields
+        let mut expr = Expr::field(Field::Name);
+        expr.function = Some(Function::Count);
+
+        let query = Box::leak(Box::new(Query {
+            fields: vec![expr],
+            roots: Vec::new(),
+            expr: None,
+            grouping_fields: Rc::new(Vec::new()),
+            ordering_fields: Rc::new(Vec::new()),
+            ordering_asc: Rc::new(Vec::new()),
+            limit: 0,
+            output_format: OutputFormat::Tabs,
+        }));
+
+        // Use default configurations
+        let config = Box::leak(Box::new(Config::default()));
+        let default_config = Box::leak(Box::new(Config::default()));
+
+        Searcher::new(query, config, default_config, false)
+    }
+
+    #[test]
+    fn test_is_buffered_with_ordering() {
+        let searcher = create_test_searcher_with_ordering();
+        assert!(searcher.is_buffered());
+    }
+
+    #[test]
+    fn test_is_buffered_with_aggregate() {
+        let searcher = create_test_searcher_with_aggregate();
+        assert!(searcher.is_buffered());
+    }
+
+    #[test]
+    fn test_is_buffered_without_ordering_or_aggregate() {
+        let searcher = create_test_searcher();
+        assert!(!searcher.is_buffered());
+    }
+
+    #[test]
+    fn test_has_ordering() {
+        let searcher_with_ordering = create_test_searcher_with_ordering();
+        assert!(searcher_with_ordering.has_ordering());
+
+        let searcher_without_ordering = create_test_searcher();
+        assert!(!searcher_without_ordering.has_ordering());
+    }
+
+    #[test]
+    fn test_has_aggregate_column() {
+        let searcher_with_aggregate = create_test_searcher_with_aggregate();
+        assert!(searcher_with_aggregate.has_aggregate_column());
+
+        let searcher_without_aggregate = create_test_searcher();
+        assert!(!searcher_without_aggregate.has_aggregate_column());
+    }
+
+    #[test]
+    fn test_is_zip_archive() {
+        let searcher = create_test_searcher();
+
+        // Test with zip extensions
+        assert!(searcher.is_zip_archive("test.zip"));
+        assert!(searcher.is_zip_archive("test.jar"));
+        assert!(searcher.is_zip_archive("test.war"));
+        assert!(searcher.is_zip_archive("test.ear"));
+
+        // Test with non-zip extensions
+        assert!(!searcher.is_zip_archive("test.txt"));
+        assert!(!searcher.is_zip_archive("test.rar"));
+        assert!(!searcher.is_zip_archive("test"));
+    }
+
+    #[test]
+    fn test_is_archive() {
+        let searcher = create_test_searcher();
+
+        // Test with archive extensions
+        assert!(searcher.is_archive("test.zip"));
+        assert!(searcher.is_archive("test.tar"));
+        assert!(searcher.is_archive("test.gz"));
+        assert!(searcher.is_archive("test.rar"));
+
+        // Test with non-archive extensions
+        assert!(!searcher.is_archive("test.txt"));
+        assert!(!searcher.is_archive("test.jpg"));
+        assert!(!searcher.is_archive("test"));
+    }
+
+    #[test]
+    fn test_is_audio() {
+        let searcher = create_test_searcher();
+
+        // Test with audio extensions
+        assert!(searcher.is_audio("test.mp3"));
+        assert!(searcher.is_audio("test.wav"));
+        assert!(searcher.is_audio("test.flac"));
+        assert!(searcher.is_audio("test.ogg"));
+
+        // Test with non-audio extensions
+        assert!(!searcher.is_audio("test.txt"));
+        assert!(!searcher.is_audio("test.jpg"));
+        assert!(!searcher.is_audio("test"));
+    }
+
+    #[test]
+    fn test_is_book() {
+        let searcher = create_test_searcher();
+
+        // Test with book extensions
+        assert!(searcher.is_book("test.pdf"));
+        assert!(searcher.is_book("test.epub"));
+        assert!(searcher.is_book("test.mobi"));
+        assert!(searcher.is_book("test.djvu"));
+
+        // Test with non-book extensions
+        assert!(!searcher.is_book("test.txt"));
+        assert!(!searcher.is_book("test.jpg"));
+        assert!(!searcher.is_book("test"));
+    }
+
+    #[test]
+    fn test_is_doc() {
+        let searcher = create_test_searcher();
+
+        // Test with document extensions
+        assert!(searcher.is_doc("test.doc"));
+        assert!(searcher.is_doc("test.docx"));
+        assert!(searcher.is_doc("test.pdf"));
+        assert!(searcher.is_doc("test.xls"));
+
+        // Test with non-document extensions
+        assert!(!searcher.is_doc("test.txt"));
+        assert!(!searcher.is_doc("test.jpg"));
+        assert!(!searcher.is_doc("test"));
+    }
+
+    #[test]
+    fn test_is_font() {
+        let searcher = create_test_searcher();
+
+        // Test with font extensions
+        assert!(searcher.is_font("test.ttf"));
+        assert!(searcher.is_font("test.otf"));
+        assert!(searcher.is_font("test.woff"));
+        assert!(searcher.is_font("test.woff2"));
+
+        // Test with non-font extensions
+        assert!(!searcher.is_font("test.txt"));
+        assert!(!searcher.is_font("test.jpg"));
+        assert!(!searcher.is_font("test"));
+    }
+
+    #[test]
+    fn test_is_image() {
+        let searcher = create_test_searcher();
+
+        // Test with image extensions
+        assert!(searcher.is_image("test.jpg"));
+        assert!(searcher.is_image("test.png"));
+        assert!(searcher.is_image("test.gif"));
+        assert!(searcher.is_image("test.svg"));
+
+        // Test with non-image extensions
+        assert!(!searcher.is_image("test.txt"));
+        assert!(!searcher.is_image("test.mp3"));
+        assert!(!searcher.is_image("test"));
+    }
+
+    #[test]
+    fn test_is_source() {
+        let searcher = create_test_searcher();
+
+        // Test with source code extensions
+        assert!(searcher.is_source("test.rs"));
+        assert!(searcher.is_source("test.c"));
+        assert!(searcher.is_source("test.cpp"));
+        assert!(searcher.is_source("test.java"));
+
+        // Test with non-source extensions
+        assert!(!searcher.is_source("test.txt"));
+        assert!(!searcher.is_source("test.jpg"));
+        assert!(!searcher.is_source("test"));
+    }
+
+    #[test]
+    fn test_is_video() {
+        let searcher = create_test_searcher();
+
+        // Test with video extensions
+        assert!(searcher.is_video("test.mp4"));
+        assert!(searcher.is_video("test.avi"));
+        assert!(searcher.is_video("test.mkv"));
+        assert!(searcher.is_video("test.mov"));
+
+        // Test with non-video extensions
+        assert!(!searcher.is_video("test.txt"));
+        assert!(!searcher.is_video("test.jpg"));
+        assert!(!searcher.is_video("test"));
     }
 }

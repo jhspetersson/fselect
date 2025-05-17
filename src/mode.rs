@@ -502,3 +502,188 @@ pub fn get_gid(meta: &Metadata) -> Option<u32> {
         None
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_format_mode() {
+        #[cfg(unix)]
+        {
+            // Regular file with rwxr-xr-- permissions (0754 in octal)
+            let mode = 0o100754;
+            assert_eq!(format_mode(mode), "-rwxr-xr--");
+
+            // Directory with rwxr-xr-x permissions (0755 in octal)
+            let mode = 0o40755;
+            assert_eq!(format_mode(mode), "drwxr-xr-x");
+
+            // Symbolic link with rwxrwxrwx permissions (0777 in octal)
+            let mode = 0o120777;
+            assert_eq!(format_mode(mode), "lrwxrwxrwx");
+
+            // File with setuid bit (4755 in octal)
+            let mode = 0o104755;
+            assert_eq!(format_mode(mode), "-rwsr-xr-x");
+
+            // File with setgid bit (2755 in octal)
+            let mode = 0o102755;
+            assert_eq!(format_mode(mode), "-rwxr-sr-x");
+
+            // Directory with sticky bit (1755 in octal)
+            let mode = 0o41755;
+            assert_eq!(format_mode(mode), "drwxr-xr-t");
+        }
+
+        #[cfg(windows)]
+        {
+            const FILE_ATTRIBUTE_READONLY: u32 = 0x1;
+            const FILE_ATTRIBUTE_HIDDEN: u32 = 0x2;
+            const FILE_ATTRIBUTE_DIRECTORY: u32 = 0x10;
+
+            let mode = FILE_ATTRIBUTE_READONLY;
+            assert_eq!(format_mode(mode), "Readonly");
+
+            let mode = FILE_ATTRIBUTE_HIDDEN;
+            assert_eq!(format_mode(mode), "Hidden");
+
+            let mode = FILE_ATTRIBUTE_DIRECTORY;
+            assert_eq!(format_mode(mode), "Directory");
+
+            let mode = FILE_ATTRIBUTE_READONLY | FILE_ATTRIBUTE_HIDDEN;
+            assert_eq!(format_mode(mode), "Hidden, Readonly");
+        }
+    }
+
+    #[test]
+    fn test_mode_user_permissions() {
+        let mode = 0o754; // rwxr-xr--
+
+        assert!(mode_user_read(mode));
+        assert!(mode_user_write(mode));
+        assert!(mode_user_exec(mode));
+        assert!(mode_user_all(mode));
+
+        let mode = 0o654; // rw-r-xr--
+
+        assert!(mode_user_read(mode));
+        assert!(mode_user_write(mode));
+        assert!(!mode_user_exec(mode));
+        assert!(!mode_user_all(mode));
+    }
+
+    #[test]
+    fn test_mode_group_permissions() {
+        // Test group permission checks
+        let mode = 0o754; // rwxr-xr--
+
+        assert!(mode_group_read(mode));
+        assert!(!mode_group_write(mode));
+        assert!(mode_group_exec(mode));
+        assert!(!mode_group_all(mode));
+
+        let mode = 0o774; // rwxrwxr--
+
+        assert!(mode_group_read(mode));
+        assert!(mode_group_write(mode));
+        assert!(mode_group_exec(mode));
+        assert!(mode_group_all(mode));
+    }
+
+    #[test]
+    fn test_mode_other_permissions() {
+        let mode = 0o754; // rwxr-xr--
+
+        assert!(mode_other_read(mode));
+        assert!(!mode_other_write(mode));
+        assert!(!mode_other_exec(mode));
+        assert!(!mode_other_all(mode));
+
+        let mode = 0o757; // rwxr-xrwx
+
+        assert!(mode_other_read(mode));
+        assert!(mode_other_write(mode));
+        assert!(mode_other_exec(mode));
+        assert!(mode_other_all(mode));
+    }
+
+    #[test]
+    fn test_mode_special_bits() {
+        // Test setuid bit
+        let mode = 0o4755; // rwsr-xr-x
+        assert!(mode_suid(mode));
+
+        // Test setgid bit
+        let mode = 0o2755; // rwxr-sr-x
+        assert!(mode_sgid(mode));
+
+        // Test sticky bit (Unix only)
+        #[cfg(unix)]
+        {
+            let mode = 0o1755; // rwxr-xr-t
+            assert!(mode_sticky(mode));
+        }
+    }
+
+    #[test]
+    fn test_mode_file_types() {
+        // Test directory
+        #[cfg(unix)]
+        {
+            let mode = 0o40755; // drwxr-xr-x
+            assert!(mode_is_directory(mode));
+            assert!(!mode_is_link(mode));
+        }
+
+        // Test symbolic link
+        #[cfg(unix)]
+        {
+            let mode = 0o120755; // lrwxr-xr-x
+            assert!(mode_is_link(mode));
+            assert!(!mode_is_directory(mode));
+        }
+
+        // Test block device
+        let mode = 0o60644; // brw-r--r--
+        assert!(mode_is_block_device(mode));
+
+        // Test character device
+        let mode = 0o20644; // crw-r--r--
+        assert!(mode_is_char_device(mode));
+
+        // Test FIFO/pipe
+        let mode = 0o10644; // prw-r--r--
+        assert!(mode_is_pipe(mode));
+
+        // Test socket
+        let mode = 0o140644; // srw-r--r--
+        assert!(mode_is_socket(mode));
+    }
+
+    #[test]
+    fn test_get_uid_gid() {
+        // These functions are platform-specific, so we test the behavior
+        // rather than the actual values
+
+        #[cfg(unix)]
+        {
+            // On Unix, we should get Some value
+            use std::fs::File;
+            if let Ok(meta) = File::open("Cargo.toml").and_then(|f| f.metadata()) {
+                assert!(get_uid(&meta).is_some());
+                assert!(get_gid(&meta).is_some());
+            }
+        }
+
+        #[cfg(not(unix))]
+        {
+            // On non-Unix platforms, we should get None
+            use std::fs::File;
+            if let Ok(meta) = File::open("Cargo.toml").and_then(|f| f.metadata()) {
+                assert!(get_uid(&meta).is_none());
+                assert!(get_gid(&meta).is_none());
+            }
+        }
+    }
+}

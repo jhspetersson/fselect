@@ -70,17 +70,6 @@ impl Parser {
             roots.push(Root::default(root_options));
         }
 
-        if self.there_are_remaining_lexemes() {
-            if debug {
-                dbg!(&fields);
-                dbg!(&roots);
-            }
-
-            return Err(String::from(
-                "Could not parse tokens at the end of the query",
-            ));
-        }
-
         if limit == 0
             && fields
                 .iter()
@@ -1012,7 +1001,7 @@ impl Parser {
         Ok(OutputFormat::Tabs)
     }
 
-    fn there_are_remaining_lexemes(&mut self) -> bool {
+    pub(crate) fn there_are_remaining_lexemes(&mut self) -> bool {
         let result = self.next_lexeme().is_some();
         if result {
             self.drop_lexeme();
@@ -1294,7 +1283,8 @@ mod tests {
         let mut p = Parser::new();
         let query = p.parse(vec![query.to_string()], false);
 
-        assert!(query.is_err());
+        assert!(query.is_ok());
+        assert!(p.there_are_remaining_lexemes());
     }
 
     #[test]

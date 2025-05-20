@@ -24,7 +24,7 @@ use update_informer::{registry, Check};
 use crate::config::Config;
 use crate::parser::Parser;
 use crate::searcher::Searcher;
-use crate::util::error_message;
+use crate::util::{error_exit, error_message};
 use crate::util::str_to_bool;
 
 mod config;
@@ -205,11 +205,15 @@ fn exec_search(query: Vec<String>, config: &mut Config, default_config: &Config,
         dbg!(&query);
     }
 
-    let mut p = Parser::new();
-    let query = p.parse(query, config.debug);
+    let mut parser = Parser::new();
+    let query = parser.parse(query, config.debug);
 
     if config.debug {
         dbg!(&query);
+    }
+
+    if parser.there_are_remaining_lexemes() {
+        error_exit("query", "could not parse tokens at the end of the query");
     }
 
     match query {

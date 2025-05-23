@@ -41,3 +41,16 @@ jobs:
       run: cargo build --verbose
     - name: Run tests
       run: cargo test --verbose
+    - name: Build test image and run tests in Docker
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        cargo build --release
+        mkdir docker-test && cp target/release/fselect docker-test/
+        cat > docker-test/Dockerfile <<EOF
+        FROM jhspetersson/fselect-tests
+        COPY fselect /opt/fs/
+        ENTRYPOINT ["/opt/run_tests.sh"]
+        EOF
+        docker build -t fselect-test-img docker-test
+        docker run --rm fselect-test-img
+      shell: bash

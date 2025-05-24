@@ -48,7 +48,7 @@ jobs:
         mkdir docker-test && cp target/release/fselect docker-test/
         cat > docker-test/Dockerfile <<EOF
         FROM jhspetersson/fselect-tests
-        COPY fselect /opt/fs/
+        COPY fselect /opt/
         ENTRYPOINT ["/opt/run_tests.sh"]
         EOF
         docker build -t fselect-test-img docker-test

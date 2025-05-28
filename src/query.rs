@@ -68,6 +68,8 @@ pub struct RootOptions {
     pub archives: bool,
     /// Whether to follow symlinks
     pub symlinks: bool,
+    /// Whether to track hardlinks
+    pub hardlinks: bool,
     /// Whether to respect .gitignore files
     pub gitignore: Option<bool>,
     /// Whether to respect .hgignore files
@@ -87,6 +89,7 @@ impl RootOptions {
             max_depth: 0,
             archives: false,
             symlinks: false,
+            hardlinks: false,
             gitignore: None,
             hgignore: None,
             dockerignore: None,
@@ -101,6 +104,7 @@ impl RootOptions {
         max_depth: u32,
         archives: bool,
         symlinks: bool,
+        hardlinks: bool,
         gitignore: Option<bool>,
         hgignore: Option<bool>,
         dockerignore: Option<bool>,
@@ -112,6 +116,7 @@ impl RootOptions {
             max_depth,
             archives,
             symlinks,
+            hardlinks,
             gitignore,
             hgignore,
             dockerignore,

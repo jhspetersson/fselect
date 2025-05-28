@@ -370,13 +370,16 @@ impl<'a> Searcher<'a> {
 
             #[cfg(unix)]
             {
-                let metadata = match self.current_follow_symlinks {
-                    true => root_dir.metadata(),
-                    false => symlink_metadata(root_dir),
-                };
-                if let Ok(metadata) = metadata {
-                    self.visited_inodes.insert(metadata.ino());
-                }
+                let hardlinks = root.options.hardlinks;
+                if hardlinks {
+                    let metadata = match self.current_follow_symlinks {
+                        true => root_dir.metadata(),
+                        false => symlink_metadata(root_dir),
+                    };
+                    if let Ok(metadata) = metadata {
+                        self.visited_inodes.insert(metadata.ino());
+                    }
+                }                
             }
 
             let _result = self.visit_dir(
@@ -392,6 +395,8 @@ impl<'a> Searcher<'a> {
                 apply_dockerignore,
                 traversal_mode,
                 true,
+                #[cfg(unix)]
+                hardlinks,
             );
         }
 
@@ -572,6 +577,8 @@ impl<'a> Searcher<'a> {
         apply_dockerignore: bool,
         traversal_mode: TraversalMode,
         process_queue: bool,
+        #[cfg(unix)]
+        hardlinks: bool,
     ) -> io::Result<()> {
         // Prevents infinite loops when following symlinks
         if self.current_follow_symlinks {
@@ -700,7 +707,7 @@ impl<'a> Searcher<'a> {
                                             ok = true;
                                         }
 
-                                        if ok && self.ok_to_visit_dir(&entry, file_type) {
+                                        if ok && self.ok_to_visit_dir(&entry, file_type, #[cfg(unix)] hardlinks) {
                                             if traversal_mode == TraversalMode::Dfs {
                                                 #[cfg(feature = "git")]
                                                 let repo;
@@ -726,6 +733,8 @@ impl<'a> Searcher<'a> {
                                                     apply_dockerignore,
                                                     traversal_mode,
                                                     false,
+                                                    #[cfg(unix)]
+                                                    hardlinks,
                                                 );
 
                                                 if result.is_err() {
@@ -786,6 +795,8 @@ impl<'a> Searcher<'a> {
                     apply_dockerignore,
                     traversal_mode,
                     false,
+                    #[cfg(unix)]
+                    hardlinks,
                 );
 
                 if result.is_err() {
@@ -799,12 +810,14 @@ impl<'a> Searcher<'a> {
     }
 
     #[cfg(unix)]
-    fn ok_to_visit_dir(&mut self, entry: &DirEntry, file_type: FileType) -> bool {
-        let ino = entry.ino();
-        if self.visited_inodes.contains(&ino) {
-            return false;
-        } else {
-            self.visited_inodes.insert(ino);
+    fn ok_to_visit_dir(&mut self, entry: &DirEntry, file_type: FileType, hardlinks: bool) -> bool {
+        if hardlinks {
+            let ino = entry.ino();
+            if self.visited_inodes.contains(&ino) {
+                return false;
+            } else {
+                self.visited_inodes.insert(ino);
+            }
         }
 
         match self.current_follow_symlinks {

@@ -295,6 +295,7 @@ When you put a directory to search at, you can specify some options.
 | mindepth N     | Minimum search depth. Default is unlimited. Depth 1 means skip one directory level and search further.                                                                              |
 | maxdepth N     | Maximum search depth. Default is unlimited. Depth 1 means search the mentioned directory only. Depth 2 means search mentioned directory and its subdirectories. Synonym is `depth`. |
 | symlinks       | If specified, search process will follow symlinks. Default is not to follow. Synonym is `sym`.                                                                                      |
+| hardlinks      | If specified, search process will track and ignore hardlinks. `SLOW!` Default is not to track. Synonym is `hard`.                                                                   |
 | archives       | Search within archives. Only zip archives are supported. Default is not to include archived content into the search results. Synonym is `arc`.                                      |
 | gitignore      | Search respects `.gitignore` files found. Synonym is `git`.                                                                                                                         |
 | hgignore       | Search respects `.hgignore` files found. Synonym is `hg`.                                                                                                                           |

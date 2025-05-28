@@ -321,6 +321,7 @@ Path Options:
     mindepth N 	                    Minimum search depth. Default is unlimited. Depth 1 means skip one directory level and search further.
     maxdepth N | depth N 	        Maximum search depth. Default is unlimited. Depth 1 means search the mentioned directory only. Depth 2 means search mentioned directory and its subdirectories.
     symlinks | sym                  If specified, search process will follow symlinks. Default is not to follow.
+    hardlinks | hard                If specified, search process will track hardlinks. Default is not to track.
     archives | arc                  Search within archives. Only zip archives are supported. Default is not to include archived content into the search results.
     gitignore | git                 Search respects .gitignore files found.
     hgignore | hg                   Search respects .hgignore files found.

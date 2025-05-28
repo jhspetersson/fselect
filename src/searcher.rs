@@ -369,8 +369,10 @@ impl<'a> Searcher<'a> {
             self.dir_queue.clear();
 
             #[cfg(unix)]
+            let hardlinks = root.options.hardlinks;
+            
+            #[cfg(unix)]
             {
-                let hardlinks = root.options.hardlinks;
                 if hardlinks {
                     let metadata = match self.current_follow_symlinks {
                         true => root_dir.metadata(),

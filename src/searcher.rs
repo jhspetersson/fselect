@@ -639,7 +639,7 @@ impl<'a> Searcher<'a> {
                                 #[cfg(feature = "git")]
                                 let pass_gitignore = !apply_gitignore
                                     || !(git_repository.is_some() &&
-                                    git_repository.unwrap().is_path_ignored(&path)
+                                    git_repository.unwrap().is_path_ignored(&canonical_path)
                                         .unwrap_or(false));
                                 #[cfg(not(feature = "git"))]
                                 let pass_gitignore = true;

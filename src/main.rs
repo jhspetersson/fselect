@@ -406,6 +406,14 @@ Column Options:
     exif_model                      Returns camera model
     exif_software                   Returns software name with which the photo was taken
     exif_version                    Returns the version of EXIF metadata
+    exif_exposure_time | exif_exptime  Returns the exposure time of the photo
+    exif_aperture                   Returns the aperture of the photo
+    exif_shutter_speed              Returns the shutter speed of the photo
+    exif_f_number | exif_f_num      Returns the F-number of the photo
+    exif_iso_speed | exif_iso       Returns the ISO speed of the photo
+    exif_focal_length | exif_focal_len Returns the focal length of the photo
+    exif_lens_make                  Returns the lens manufacturer of the photo
+    exif_lens_model                 Returns the lens model of the photo
 
     mp3_title | title               Returns the title of the audio file taken from the file's metadata
     mp3_album | album               Returns the album name of the audio file taken from the file's metadata

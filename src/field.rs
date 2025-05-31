@@ -75,6 +75,14 @@ pub enum Field {
     ExifModel,
     ExifSoftware,
     ExifVersion,
+    ExifExposureTime,
+    ExifAperture,
+    ExifShutterSpeed,
+    ExifFNumber,
+    ExifIsoSpeed,
+    ExifFocalLength,
+    ExifLensMake,
+    ExifLensModel,
     Mime,
     LineCount,
     IsBinary,
@@ -168,6 +176,14 @@ impl FromStr for Field {
             "exif_model" => Ok(Field::ExifModel),
             "exif_software" => Ok(Field::ExifSoftware),
             "exif_version" => Ok(Field::ExifVersion),
+            "exif_exposure_time" | "exif_exptime" => Ok(Field::ExifExposureTime),
+            "exif_aperture" => Ok(Field::ExifAperture),
+            "exif_shutter_speed" => Ok(Field::ExifShutterSpeed),
+            "exif_f_number" | "exif_f_num" => Ok(Field::ExifFNumber),
+            "exif_iso_speed" | "exif_iso" => Ok(Field::ExifIsoSpeed),
+            "exif_focal_length" | "exif_focal_len" => Ok(Field::ExifFocalLength),
+            "exif_lens_make" => Ok(Field::ExifLensMake),
+            "exif_lens_model" => Ok(Field::ExifLensModel),
             "is_binary" => Ok(Field::IsBinary),
             "is_text" => Ok(Field::IsText),
             "is_archive" => Ok(Field::IsArchive),
@@ -383,6 +399,14 @@ impl Field {
             | Field::ExifModel
             | Field::ExifSoftware
             | Field::ExifVersion
+            | Field::ExifExposureTime
+            | Field::ExifAperture
+            | Field::ExifShutterSpeed
+            | Field::ExifFNumber
+            | Field::ExifIsoSpeed
+            | Field::ExifFocalLength
+            | Field::ExifLensMake
+            | Field::ExifLensModel
             | Field::Mime
             | Field::IsBinary
             | Field::IsText => 16,

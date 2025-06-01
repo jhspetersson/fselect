@@ -22,6 +22,7 @@ use rustyline::DefaultEditor;
 use update_informer::{registry, Check};
 
 use crate::config::Config;
+use crate::field::Field;
 use crate::parser::Parser;
 use crate::searcher::Searcher;
 use crate::util::{error_exit, error_message};
@@ -337,108 +338,7 @@ Regex syntax:
     {}
 
 Column Options:
-    name                            Returns the name (with extension) of the file
-    extension | ext                 Returns the extension of the file
-    path                            Returns the path of the file
-    abspath                         Returns the absolute path of the file
-    directory | dirname | dir       Returns the directory of the file
-    absdir                          Returns the absolute directory of the file
-    size                            Returns the size of the file in bytes
-    fsize | hsize                   Returns the size of the file accompanied with the unit
-    uid                             Returns the UID of the owner
-    gid                             Returns the GID of the owner's group
-
-    accessed                        Returns the time the file was last accessed (YYYY-MM-DD HH:MM:SS)
-    created                         Returns the file creation date (YYYY-MM-DD HH:MM:SS)
-    modified                        Returns the time the file was last modified (YYYY-MM-DD HH:MM:SS)
-
-    is_dir                          Returns a boolean signifying whether the file path is a directory
-    is_file                         Returns a boolean signifying whether the file path is a file
-    is_symlink                      Returns a boolean signifying whether the file path is a symlink
-    is_pipe | is_fifo               Returns a boolean signifying whether the file path is a FIFO or pipe file
-    is_char | is_character          Returns a boolean signifying whether the file path is a character device or character special file
-    is_block                        Returns a boolean signifying whether the file path is a block or block special file
-    is_socket                       Returns a boolean signifying whether the file path is a socket file
-    is_hidden                       Returns a boolean signifying whether the file is a hidden file (e.g., files that start with a dot on *nix)
-    has_xattrs                      Returns a boolean signifying whether the file has extended attributes
-    capabilities | caps             Returns a string describing Linux capabilities assigned to a file
-
-    device (Linux only)             Returns the code of device the file is stored on
-    inode (Linux only)              Returns the number of inode
-    blocks (Linux only)             Returns the number of blocks (256 bytes) the file occupies
-    hardlinks (Linux only)          Returns the number of hardlinks of the file
-
-    mode                            Returns the permissions of the owner, group, and everybody (similar to the first field in `ls -la`)
-
-    user                            Returns the name of the owner for this file
-    user_read                       Returns a boolean signifying whether the file can be read by the owner
-    user_write                      Returns a boolean signifying whether the file can be written by the owner
-    user_exec                       Returns a boolean signifying whether the file can be executed by the owner
-    user_all                        Returns a boolean signifying whether the file can be fully accessed by the owner
-
-    group                           Returns the name of the owner's group for this file
-    group_read                      Returns a boolean signifying whether the file can be read by the owner's group
-    group_write                     Returns a boolean signifying whether the file can be written by the owner's group
-    group_exec                      Returns a boolean signifying whether the file can be executed by the owner's group
-    group_all                       Returns a boolean signifying whether the file can be fully accessed by the group
-
-    other_read                      Returns a boolean signifying whether the file can be read by others
-    other_write                     Returns a boolean signifying whether the file can be written by others
-    other_exec                      Returns a boolean signifying whether the file can be executed by others
-    other_all                       Returns a boolean signifying whether the file can be fully accessed by the others
-
-    suid                            Returns a boolean signifying whether the file permissions have a SUID bit set
-    sgid                            Returns a boolean signifying whether the file permissions have a SGID bit set
-
-    width                           Returns the number of pixels along the width of the photo or MP4 file
-    height                          Returns the number of pixels along the height of the photo or MP4 file
-
-    mime                            Returns MIME type of the file
-    is_binary                       Returns a boolean signifying whether the file has binary contents
-    is_text                         Returns a boolean signifying whether the file has text contents
-    line_count                      Returns a number of lines in a text file
-
-    exif_datetime                   Returns date and time of taken photo
-    exif_altitude | exif_alt        Returns GPS altitude of taken photo
-    exif_latitude | exif_lat        Returns GPS latitude of taken photo
-    exif_longitude | exif_lng       Returns GPS longitude of taken photo
-    exif_make                       Returns name of the camera manufacturer
-    exif_model                      Returns camera model
-    exif_software                   Returns software name with which the photo was taken
-    exif_version                    Returns the version of EXIF metadata
-    exif_exposure_time | exif_exptime  Returns the exposure time of the photo
-    exif_aperture                   Returns the aperture of the photo
-    exif_shutter_speed              Returns the shutter speed of the photo
-    exif_f_number | exif_f_num      Returns the F-number of the photo
-    exif_iso_speed | exif_iso       Returns the ISO speed of the photo
-    exif_focal_length | exif_focal_len Returns the focal length of the photo
-    exif_lens_make                  Returns the lens manufacturer of the photo
-    exif_lens_model                 Returns the lens model of the photo
-
-    mp3_title | title               Returns the title of the audio file taken from the file's metadata
-    mp3_album | album               Returns the album name of the audio file taken from the file's metadata
-    mp3_artist | artist             Returns the artist of the audio file taken from the file's metadata
-    mp3_genre | genre               Returns the genre of the audio file taken from the file's metadata
-    mp3_year                        Returns the year of the audio file taken from the file's metadata
-    mp3_freq | freq                 Returns the sampling rate of audio or video file
-    mp3_bitrate | bitrate           Returns the bitrate of the audio file in kbps
-    duration                        Returns the duration of audio file in seconds
-
-    is_shebang                      Returns a boolean signifying whether the file starts with a shebang (#!)
-    is_empty                        Returns a boolean signifying whether the file is empty or the directory is empty
-    is_archive                      Returns a boolean signifying whether the file is an archival file
-    is_audio                        Returns a boolean signifying whether the file is an audio file
-    is_book                         Returns a boolean signifying whether the file is a book
-    is_doc                          Returns a boolean signifying whether the file is a document
-    is_font                         Returns a boolean signifying whether the file is a font file
-    is_image                        Returns a boolean signifying whether the file is an image
-    is_source                       Returns a boolean signifying whether the file is source code
-    is_video                        Returns a boolean signifying whether the file is a video file
-
-    sha1                            Returns SHA-1 digest of a file
-    sha2_256 | sha256               Returns SHA2-256 digest of a file
-    sha2_512 | sha512               Returns SHA2-512 digest of a file
-    sha3_512 | sha3                 Returns SHA-3 digest of a file
+    {}
 
 Functions:
     Aggregate:
@@ -534,5 +434,9 @@ Format:
     csv                             Outputs each file with its column value(s) on a line with each column value delimited by a comma
     json                            Outputs a JSON array with JSON objects holding the column value(s) of each file
     html                            Outputs HTML document with table
-    ", Cyan.underline().paint("https://docs.rs/regex/1.10.2/regex/#syntax"));
+    ", Cyan.underline().paint("https://docs.rs/regex/1.10.2/regex/#syntax"),
+        Field::get_names_and_descriptions().iter()
+            .map(|(names, description)| names.join(" | ").to_string() + " ".repeat(if 32 > names.join(" | ").to_string().len() { 32 - names.join(" | ").to_string().len() } else { 1 }).as_str() + description)
+            .collect::<Vec<_>>().join("\n    ")
+    );
 }

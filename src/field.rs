@@ -132,6 +132,15 @@ macro_rules! fields {
                     )*
                 }
             }
+
+            pub fn get_names_and_descriptions() -> Vec<(Vec<&'static str>, &'static str)> {
+                vec![
+                    $(
+                        $(#[$variant_attrs])*
+                        (vec![$($text,)*], $($description)?),
+                    )*
+                ]
+            }
         }
     };
 }

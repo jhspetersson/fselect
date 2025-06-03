@@ -95,6 +95,11 @@ fn main() -> ExitCode {
         usage_info(config, default_config, no_color);
         return ExitCode::SUCCESS;
     }
+    
+    if first_arg.starts_with("--fields") {
+        complete_fields_info();
+        return ExitCode::SUCCESS;
+    }
 
     let mut interactive = false;
 
@@ -438,5 +443,16 @@ Format:
         Field::get_names_and_descriptions().iter()
             .map(|(names, description)| names.join(" | ").to_string() + " ".repeat(if 32 > names.join(" | ").to_string().len() { 32 - names.join(" | ").to_string().len() } else { 1 }).as_str() + description)
             .collect::<Vec<_>>().join("\n    ")
+    );
+}
+
+fn complete_fields_info() {
+    println!(
+        "{}",
+        Field::get_names_and_descriptions()
+            .iter()
+            .map(|(names, _)| names.join(" "))
+            .collect::<Vec<_>>()
+            .join(" ")
     );
 }

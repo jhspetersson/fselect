@@ -96,7 +96,7 @@ fn main() -> ExitCode {
         usage_info(config, default_config, no_color);
         return ExitCode::SUCCESS;
     }
-    
+
     if first_arg.starts_with("--fields") {
         complete_fields_info();
         return ExitCode::SUCCESS;
@@ -352,71 +352,7 @@ Column Options:
     {}
 
 Functions:
-    Aggregate:
-        AVG                         Returns average of all values
-        COUNT                       Returns number of all values
-        MAX                         Returns maximum value
-        MIN                         Returns minimum value
-        SUM                         Returns sum of all values
-        STDDEV_POP | STDDEV | STD   Population standard deviation, the square root of variance
-        STDDEV_SAMP                 Sample standard deviation, the square root of sample variance
-        VAR_POP | VARIANCE          Population variance
-        VAR_SAMP                    Sample variance
-    Date:
-        CURRENT_DATE | CUR_DATE |
-        CURDATE                     Returns current date
-        DAY                         Returns day of the month
-        MONTH                       Returns month of the year
-        YEAR                        Returns year of the date
-        DOW | DAYOFWEEK             Returns day of the week (1 - Sunday, 2 - Monday, etc.)
-    User:
-        CURRENT_USER                Returns the current username (unix-only)
-        CURRENT_UID                 Returns the current real UID (unix-only)
-        CURRENT_GROUP               Returns the current primary groupname (unix-only)
-        CURRENT_GID                 Returns the current primary GID (unix-only)
-    Xattr:
-        HAS_XATTR                   Used to check if xattr exists (unix-only)
-        XATTR                       Returns value of xattr (unix-only)
-        HAS_CAPABILITIES | HAS_CAPS Check if any Linux capability exists for the file
-        HAS_CAPABILITY or HAS_CAP   Check if given Linux capability exists for the file
-    String:
-        LENGTH | LEN                Returns length of string value
-        LOWER | LOWERCASE | LCASE   Returns lowercase value
-        UPPER | UPPERCASE | UCASE   Returns uppercase value
-        INITCAP                     Returns first letter of each word uppercase, all other letters lowercase
-        TO_BASE64 | BASE64          Returns Base64 digest of a value
-        FROM_BASE64                 Returns decoded value from a Base64 digest
-        LOCATE | POSITION           Returns position of the substring in the string
-        SUBSTRING | SUBSTR          Returns part of the string value
-        REPLACE                     Returns string with substring replaced with another one
-        TRIM                        Returns string with whitespaces at the beginning and the end stripped
-        LTRIM                       Returns string with whitespaces at the beginning stripped
-        RTRIM                       Returns string with whitespaces at the end stripped
-    Japanese string:
-        CONTAINS_JAPANESE           Used to check if string value contains Japanese symbols
-        CONTAINS_KANA               Used to check if string value contains kana symbols
-        CONTAINS_HIRAGANA           Used to check if string value contains hiragana symbols
-        CONTAINS_KATAKANA           Used to check if string value contains katakana symbols
-        CONTAINS_KANJI              Used to check if string value contains kanji symbols
-    Other:
-        BIN                         Returns binary representation of an integer value
-        HEX                         Returns hexadecimal representation of an integer value
-        OCT                         Returns octal representation of an integer value
-        ABS                         Returns absolute value of the number
-        POWER | POW                 Raise the value to the specified power
-        SQRT                        Returns square root of the value
-        LOG                         Returns logarithm of the value
-        LN                          Returns natural logarithm of the value
-        EXP                         Returns e raised to the power of the value
-        LEAST                       Returns the smallest value
-        GREATEST                    Returns the largest value
-        CONTAINS                    Returns true, if file contains string, false if not
-        COALESCE                    Returns first nonempty expression value
-        CONCAT                      Returns concatenated string of expression values
-        CONCAT_WS                   Returns concatenated string of expression values with specified delimiter
-        FORMAT_SIZE                 Returns formatted size of a file
-        FORMAT_TIME | PRETTY_TIME   Returns human-readable durations of time in seconds
-        RANDOM | RAND               Returns random integer (from zero to max int, from zero to arg, or from arg1 to arg2)
+    {}
 
 Expressions:
     Operators:
@@ -446,10 +382,36 @@ Format:
     json                            Outputs a JSON array with JSON objects holding the column value(s) of each file
     html                            Outputs HTML document with table
     ", Cyan.underline().paint("https://docs.rs/regex/1.10.2/regex/#syntax"),
-        Field::get_names_and_descriptions().iter()
-            .map(|(names, description)| names.join(" | ").to_string() + " ".repeat(if 32 > names.join(" | ").to_string().len() { 32 - names.join(" | ").to_string().len() } else { 1 }).as_str() + description)
-            .collect::<Vec<_>>().join("\n    ")
+        format_field_usage(),
+        format_function_usage(),
     );
+}
+
+fn format_field_usage() -> String {
+    Field::get_names_and_descriptions().iter()
+        .map(|(names, description)| names.join(" | ").to_string() + " ".repeat(if 32 > names.join(" | ").to_string().len() { 32 - names.join(" | ").to_string().len() } else { 1 }).as_str() + description)
+        .collect::<Vec<_>>().join("\n    ")
+}
+
+fn format_function_usage() -> String {
+    let funcs = Function::get_names_and_descriptions();
+    Function::get_groups().iter()
+        .filter(|group| funcs.get(*group).is_some())
+        .map(|group| {
+            let funcs_in_group = funcs.get(*group).unwrap();
+            format!(
+                "{}:\n        {}",
+                group,
+                funcs_in_group
+                    .iter()
+                    .map(|(names, description)| {
+                        names.join(" | ").to_string().to_uppercase() + " ".repeat(if 28 > names.join(" | ").to_string().len() { 28 - names.join(" | ").to_string().len() } else { 1 }).as_str() + description
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n        ")
+            )
+        })
+        .collect::<Vec<_>>().join("\n\n    ")
 }
 
 fn complete_fields_info() {
@@ -468,6 +430,7 @@ fn complete_functions_info() {
         "{}",
         Function::get_names_and_descriptions()
             .iter()
+            .flat_map(|entry| entry.1.iter())
             .map(|(names, _)| names.join(" ").to_uppercase())
             .collect::<Vec<_>>()
             .join("\n")

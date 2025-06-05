@@ -23,6 +23,7 @@ use update_informer::{registry, Check};
 
 use crate::config::Config;
 use crate::field::Field;
+use crate::function::Function;
 use crate::parser::Parser;
 use crate::searcher::Searcher;
 use crate::util::{error_exit, error_message};
@@ -98,6 +99,11 @@ fn main() -> ExitCode {
     
     if first_arg.starts_with("--fields") {
         complete_fields_info();
+        return ExitCode::SUCCESS;
+    }
+
+    if first_arg.starts_with("--functions") {
+        complete_functions_info();
         return ExitCode::SUCCESS;
     }
 
@@ -454,5 +460,16 @@ fn complete_fields_info() {
             .map(|(names, _)| names.join(" "))
             .collect::<Vec<_>>()
             .join(" ")
+    );
+}
+
+fn complete_functions_info() {
+    println!(
+        "{}",
+        Function::get_names_and_descriptions()
+            .iter()
+            .map(|(names, _)| names.join(" ").to_uppercase())
+            .collect::<Vec<_>>()
+            .join("\n")
     );
 }

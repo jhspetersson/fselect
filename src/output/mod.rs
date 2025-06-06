@@ -4,7 +4,7 @@ use crate::output::csv::CsvFormatter;
 use crate::output::flat::{LINES_FORMATTER, LIST_FORMATTER, TABS_FORMATTER};
 use crate::output::html::HtmlFormatter;
 use crate::output::json::JsonFormatter;
-use crate::query::OutputFormat;
+pub(crate) use crate::query::OutputFormat;
 
 mod csv;
 mod flat;

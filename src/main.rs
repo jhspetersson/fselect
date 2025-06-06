@@ -24,6 +24,7 @@ use update_informer::{registry, Check};
 use crate::config::Config;
 use crate::field::Field;
 use crate::function::Function;
+use crate::output::OutputFormat;
 use crate::parser::Parser;
 use crate::query::RootOptions;
 use crate::searcher::Searcher;
@@ -110,6 +111,11 @@ fn main() -> ExitCode {
 
     if first_arg.starts_with("--root-options") {
         complete_root_options_info();
+        return ExitCode::SUCCESS;
+    }
+
+    if first_arg.starts_with("--output-format") {
+        complete_output_format_info();
         return ExitCode::SUCCESS;
     }
 
@@ -368,16 +374,12 @@ Expressions:
         or                          Used as an OR operator for two conditions made with the above operators
 
 Format:
-    tabs (default)                  Outputs each file with its column value(s) on a line with each column value delimited by a tab
-    lines                           Outputs each column value on a new line
-    list                            Outputs entire output onto a single line for xargs
-    csv                             Outputs each file with its column value(s) on a line with each column value delimited by a comma
-    json                            Outputs a JSON array with JSON objects holding the column value(s) of each file
-    html                            Outputs HTML document with table
+    {}
     ", format_root_options(), 
         Cyan.underline().paint("https://docs.rs/regex/1.10.2/regex/#syntax"),
         format_field_usage(),
         format_function_usage(),
+        format_output_usage()
     );
 }
 
@@ -414,6 +416,12 @@ fn format_function_usage() -> String {
         .collect::<Vec<_>>().join("\n\n    ")
 }
 
+fn format_output_usage() -> String {
+    output::OutputFormat::get_names_and_descriptions().iter()
+        .map(|(name, description)| name.to_string() + " ".repeat(32 - name.to_string().len()).as_str() + description)
+        .collect::<Vec<_>>().join("\n    ")
+}
+
 fn complete_fields_info() {
     println!(
         "{}",
@@ -443,6 +451,17 @@ fn complete_root_options_info() {
         RootOptions::get_names_and_descriptions()
             .iter()
             .map(|(names, _)| names.join(" "))
+            .collect::<Vec<_>>()
+            .join(" ")
+    )
+}
+
+fn complete_output_format_info() {
+    println!(
+        "{}",
+        OutputFormat::get_names_and_descriptions()
+            .iter()
+            .map(|entry| entry.0.to_string())
             .collect::<Vec<_>>()
             .join(" ")
     )

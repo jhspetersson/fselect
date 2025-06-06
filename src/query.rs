@@ -203,28 +203,73 @@ pub enum TraversalMode {
     Dfs,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum OutputFormat {
-    Tabs,
-    Lines,
-    List,
-    Csv,
-    Json,
-    Html,
+macro_rules! output_format {
+    (
+        $(#[$enum_attrs:meta])*
+        $vis:vis enum $enum_name:ident {
+            $(
+                @text = $text:literal
+                @description = $description:literal
+                $(#[$variant_attrs:meta])*
+                $variant:ident$(,)?
+            )*
+        }
+    ) => {
+        $(#[$enum_attrs])*
+        $vis enum $enum_name {
+            $(
+                $(#[$variant_attrs])*
+                $variant,
+            )*
+        }
+        
+        impl $enum_name {
+            pub fn from(s: &str) -> Option<OutputFormat> {
+                let s = s.to_lowercase();
+                match s.as_str() {
+                    $(
+                        $text => Some($enum_name::$variant),
+                    )*
+                    _ => None,
+                }
+            }
+            
+            pub fn get_names_and_descriptions() -> Vec<(&'static str, &'static str)> {
+                vec![
+                    $(
+                        ($text, $description),
+                    )*
+                ]
+            }
+        }
+    };
 }
 
-impl OutputFormat {
-    pub fn from(s: &str) -> Option<OutputFormat> {
-        let s = s.to_lowercase();
-
-        match s.as_str() {
-            "lines" => Some(OutputFormat::Lines),
-            "list" => Some(OutputFormat::List),
-            "csv" => Some(OutputFormat::Csv),
-            "json" => Some(OutputFormat::Json),
-            "tabs" => Some(OutputFormat::Tabs),
-            "html" => Some(OutputFormat::Html),
-            _ => None,
-        }
+output_format! {
+    #[derive(Debug, Clone, PartialEq)]
+    pub enum OutputFormat {
+        @text = "tabs"
+        @description = "Tab-separated values (default)"
+        Tabs,
+        
+        @text = "lines"
+        @description = "One item per line"
+        Lines,
+        
+        @text = "list"
+        @description = "Entire output onto a single line for xargs"
+        List,
+        
+        @text = "csv"
+        @description = "Comma-separated values"
+        Csv,
+        
+        @text = "json"
+        @description = "JSON format"
+        Json,
+        
+        @text = "html"
+        @description = "HTML format"
+        Html,
     }
 }

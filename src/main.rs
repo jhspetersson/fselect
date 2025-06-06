@@ -25,6 +25,7 @@ use crate::config::Config;
 use crate::field::Field;
 use crate::function::Function;
 use crate::parser::Parser;
+use crate::query::RootOptions;
 use crate::searcher::Searcher;
 use crate::util::{error_exit, error_message};
 use crate::util::str_to_bool;
@@ -104,6 +105,11 @@ fn main() -> ExitCode {
 
     if first_arg.starts_with("--functions") {
         complete_functions_info();
+        return ExitCode::SUCCESS;
+    }
+
+    if first_arg.starts_with("--root-options") {
+        complete_root_options_info();
         return ExitCode::SUCCESS;
     }
 
@@ -330,20 +336,7 @@ Files Detected as Source Code: {is_source}
 Files Detected as Video: {is_video}
 
 Path Options:
-    mindepth N 	                    Minimum search depth. Default is unlimited. Depth 1 means skip one directory level and search further.
-    maxdepth N | depth N 	        Maximum search depth. Default is unlimited. Depth 1 means search the mentioned directory only. Depth 2 means search mentioned directory and its subdirectories.
-    symlinks | sym                  If specified, search process will follow symlinks. Default is not to follow.
-    hardlinks | hard                If specified, search process will track hardlinks. Default is not to track.
-    archives | arc                  Search within archives. Only zip archives are supported. Default is not to include archived content into the search results.
-    gitignore | git                 Search respects .gitignore files found.
-    hgignore | hg                   Search respects .hgignore files found.
-    dockerignore | docker           Search respects .dockerignore files found.
-    nogitignore | nogit             Disable .gitignore parsing during the search.
-    nohgignore | nohg               Disable .hgignore parsing during the search.
-    nodockerignore | nodocker       Disable .dockerignore parsing during the search.
-    dfs 	                        Depth-first search mode.
-    bfs 	                        Breadth-first search mode. This is the default.
-    regexp | rx                     Use regular expressions to search within multiple roots.
+    {}
 
 Regex syntax:
     {}
@@ -381,10 +374,17 @@ Format:
     csv                             Outputs each file with its column value(s) on a line with each column value delimited by a comma
     json                            Outputs a JSON array with JSON objects holding the column value(s) of each file
     html                            Outputs HTML document with table
-    ", Cyan.underline().paint("https://docs.rs/regex/1.10.2/regex/#syntax"),
+    ", format_root_options(), 
+        Cyan.underline().paint("https://docs.rs/regex/1.10.2/regex/#syntax"),
         format_field_usage(),
         format_function_usage(),
     );
+}
+
+fn format_root_options() -> String {
+    RootOptions::get_names_and_descriptions().iter()
+        .map(|(names, description)| names.join(" | ").to_string() + " ".repeat(32 - names.join(" | ").to_string().len()).as_str() + description)
+        .collect::<Vec<_>>().join("\n    ")
 }
 
 fn format_field_usage() -> String {
@@ -435,4 +435,15 @@ fn complete_functions_info() {
             .collect::<Vec<_>>()
             .join("\n")
     );
+}
+
+fn complete_root_options_info() {
+    println!(
+        "{}",
+        RootOptions::get_names_and_descriptions()
+            .iter()
+            .map(|(names, _)| names.join(" "))
+            .collect::<Vec<_>>()
+            .join(" ")
+    )
 }

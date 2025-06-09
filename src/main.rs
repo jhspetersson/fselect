@@ -114,8 +114,8 @@ fn main() -> ExitCode {
         return ExitCode::SUCCESS;
     }
 
-    if first_arg.starts_with("--output-format") {
-        complete_output_format_info();
+    if first_arg.starts_with("--output-formats") {
+        complete_output_formats_info();
         return ExitCode::SUCCESS;
     }
 
@@ -417,7 +417,7 @@ fn format_function_usage() -> String {
 }
 
 fn format_output_usage() -> String {
-    output::OutputFormat::get_names_and_descriptions().iter()
+    OutputFormat::get_names_and_descriptions().iter()
         .map(|(name, description)| name.to_string() + " ".repeat(32 - name.to_string().len()).as_str() + description)
         .collect::<Vec<_>>().join("\n    ")
 }
@@ -441,7 +441,7 @@ fn complete_functions_info() {
             .flat_map(|entry| entry.1.iter())
             .map(|(names, _)| names.join(" ").to_uppercase())
             .collect::<Vec<_>>()
-            .join("\n")
+            .join(" ")
     );
 }
 
@@ -456,7 +456,7 @@ fn complete_root_options_info() {
     )
 }
 
-fn complete_output_format_info() {
+fn complete_output_formats_info() {
     println!(
         "{}",
         OutputFormat::get_names_and_descriptions()

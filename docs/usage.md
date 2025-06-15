@@ -295,7 +295,7 @@ Let's try `FORMAT_SIZE` with different format specifiers:
 ### Search roots
 
     path [option N] [option] [option] [option...][, path2 [option...]]
-    
+
 When you put a directory to search at, you can specify some options.
 
 | Option         | Meaning                                                                                                                                                                             |
@@ -347,15 +347,15 @@ When you put a directory to search at, you can specify some options.
 When you specify inexact date and time with `=` or `!=` operator, **fselect** understands it as an interval.
 
     fselect path from /home/user where modified = 2017-05-01
-    
+
 `2017-05-01` means all day long from 00:00:00 to 23:59:59.
 
     fselect path from /home/user where modified = '2017-05-01 15'
-    
+
 `2017-05-01 15` means one hour from 15:00:00 to 15:59:59.
 
     fselect path from /home/user where modified ne '2017-05-01 15:10'
-    
+
 `2017-05-01 15:10` is a 1-minute interval from 15:10:00 to 15:10:59.
 
 Other operators assume the exact date and time, which could be specified in a freer way:
@@ -459,11 +459,11 @@ Duration is measured in seconds.
 Usual location on Linux:
 
     /home/user_name/.config/fselect/config.toml
-    
+
 On Windows:
-    
+
     C:\Users\user_name\AppData\Roaming\jhspetersson\fselect\config.toml
-    
+
 Fresh config is filled with defaults, feel free to update it.
 
 If no config on the standard paths is found, **fselect** checks its presence next to the executable. 
@@ -479,6 +479,89 @@ This check is disabled by default. To enable it, put
     check_for_updates = true
 
 into the config file.
+
+### Bash completion
+
+**fselect** comes with a bash completion script (`fselect-completion.bash`) that provides tab completion for:
+- Directory paths after the `from` keyword
+- Output formats after the `into` keyword
+- Fields and functions in other contexts
+
+To enable bash completion for **fselect**, you need to install the completion script. The installation method varies depending on your Linux distribution:
+
+#### Ubuntu/Debian and Red Hat/Fedora/CentOS
+
+1. Copy the completion script to the bash completion directory:
+
+```bash
+sudo cp fselect-completion.bash /etc/bash_completion.d/fselect
+```
+
+2. Make the script executable:
+
+```bash
+sudo chmod +x /etc/bash_completion.d/fselect
+```
+
+3. Source the script or restart your shell:
+
+```bash
+source /etc/bash_completion.d/fselect
+```
+
+#### Arch Linux
+
+1. Copy the completion script to the bash completion directory:
+
+```bash
+sudo cp fselect-completion.bash /usr/share/bash-completion/completions/fselect
+```
+
+2. Make the script executable:
+
+```bash
+sudo chmod +x /usr/share/bash-completion/completions/fselect
+```
+
+3. Source the script or restart your shell:
+
+```bash
+source /usr/share/bash-completion/completions/fselect
+```
+
+#### Manual installation (any Linux distribution)
+
+If your distribution doesn't have a standard location for bash completion scripts, or if you don't have root access, you can install the script in your home directory:
+
+1. Create a directory for bash completion scripts if it doesn't exist:
+
+```bash
+mkdir -p ~/.bash_completion.d
+```
+
+2. Copy the completion script to this directory:
+
+```bash
+cp fselect-completion.bash ~/.bash_completion.d/fselect
+```
+
+3. Make the script executable:
+
+```bash
+chmod +x ~/.bash_completion.d/fselect
+```
+
+4. Add the following line to your `~/.bashrc` file:
+
+```bash
+source ~/.bash_completion.d/fselect
+```
+
+5. Source your `~/.bashrc` file or restart your shell:
+
+```bash
+source ~/.bashrc
+```
 
 ### Command-line arguments
 

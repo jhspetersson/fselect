@@ -21,6 +21,7 @@ pub struct Expr {
     pub function: Option<Function>,
     pub args: Option<Vec<Expr>>,
     pub val: Option<String>,
+    pub subselect: Option<Box<Expr>>,
     pub weight: i32,
 }
 
@@ -37,6 +38,7 @@ impl Expr {
             function: None,
             args: None,
             val: None,
+            subselect: None,
             weight: 0,
         }
     }
@@ -56,6 +58,7 @@ impl Expr {
             function: None,
             args: None,
             val: None,
+            subselect: None,
             weight: left_weight + right_weight,
         }
     }
@@ -75,6 +78,7 @@ impl Expr {
             function: None,
             args: None,
             val: None,
+            subselect: None,
             weight: left_weight + right_weight,
         }
     }
@@ -94,6 +98,7 @@ impl Expr {
             function: None,
             args: None,
             val: None,
+            subselect: None,
             weight: left_weight + right_weight,
         }
     }
@@ -112,6 +117,7 @@ impl Expr {
             function: None,
             args: None,
             val: None,
+            subselect: None,
             weight,
         }
     }
@@ -130,6 +136,7 @@ impl Expr {
             function: Some(function),
             args: Some(vec![]),
             val: None,
+            subselect: None,
             weight,
         }
     }
@@ -152,6 +159,7 @@ impl Expr {
             function: Some(function),
             args: Some(vec![]),
             val: None,
+            subselect: None,
             weight: weight + left_weight,
         }
     }
@@ -168,6 +176,7 @@ impl Expr {
             function: None,
             args: None,
             val: Some(value),
+            subselect: None,
             weight: 0,
         }
     }

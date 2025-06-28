@@ -10,6 +10,7 @@ use crate::function::Function;
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum Lexeme {
+    Select,
     RawString(String),
     Comma,
     From,
@@ -49,6 +50,7 @@ pub struct Lexer {
     input: Vec<String>,
     input_index: usize,
     char_index: isize,
+    first_lexeme: bool,
     before_from: bool,
     possible_search_root: bool,
     after_open: bool,
@@ -62,6 +64,7 @@ impl Lexer {
             input,
             input_index: 0,
             char_index: 0,
+            first_lexeme: true,
             before_from: true,
             possible_search_root: false,
             after_open: false,
@@ -204,6 +207,9 @@ impl Lexer {
                 Some(Lexeme::CurlyClose)
             }
             LexingMode::RawString => match s.to_lowercase().as_str() {
+                "select" if self.first_lexeme => {
+                    Some(Lexeme::Select)
+                }
                 "from" => {
                     self.before_from = false;
                     self.after_where = false;
@@ -230,6 +236,7 @@ impl Lexer {
             _ => None,
         };
 
+        self.first_lexeme = false;
         self.possible_search_root = matches!(lexeme, Some(Lexeme::From))
                 || (matches!(lexeme, Some(Lexeme::Comma)) && !self.before_from && !self.after_where);
         self.after_operator = matches!(lexeme, Some(Lexeme::Operator(_)));
@@ -324,7 +331,7 @@ mod tests {
         
         assert_eq!(
             lexer.next_lexeme(),
-            Some(Lexeme::RawString(String::from("select")))
+            Some(Lexeme::Select)
         );
         assert_eq!(
             lexer.next_lexeme(),
@@ -572,7 +579,7 @@ mod tests {
     fn assert_func_calls2_lexemes(lexer: &mut Lexer) {
         assert_eq!(
             lexer.next_lexeme(),
-            Some(Lexeme::RawString(String::from("select")))
+            Some(Lexeme::Select)
         );
         assert_eq!(
             lexer.next_lexeme(),
@@ -621,7 +628,7 @@ mod tests {
     fn assert_func_calls3_lexemes(lexer: &mut Lexer) {
         assert_eq!(
             lexer.next_lexeme(),
-            Some(Lexeme::RawString(String::from("select")))
+            Some(Lexeme::Select)
         );
         assert_eq!(
             lexer.next_lexeme(),
@@ -1047,7 +1054,7 @@ mod tests {
 
         assert_eq!(
             lexer.next_lexeme(),
-            Some(Lexeme::RawString(String::from("select")))
+            Some(Lexeme::Select)
         );
         assert_eq!(
             lexer.next_lexeme(),
@@ -1068,7 +1075,7 @@ mod tests {
 
         assert_eq!(
             lexer.next_lexeme(),
-            Some(Lexeme::RawString(String::from("select")))
+            Some(Lexeme::Select)
         );
         assert_eq!(
             lexer.next_lexeme(),
@@ -1092,7 +1099,7 @@ mod tests {
 
         assert_eq!(
             lexer.next_lexeme(),
-            Some(Lexeme::RawString(String::from("select")))
+            Some(Lexeme::Select)
         );
         assert_eq!(
             lexer.next_lexeme(),
@@ -1125,7 +1132,7 @@ mod tests {
     fn assert_group_by_lexemes(lexer: &mut Lexer) {
         assert_eq!(
             lexer.next_lexeme(),
-            Some(Lexeme::RawString(String::from("select")))
+            Some(Lexeme::Select)
         );
         assert_eq!(
             lexer.next_lexeme(),
@@ -1167,7 +1174,7 @@ mod tests {
     fn assert_between_op_lexemes(lexer: &mut Lexer) {
         assert_eq!(
             lexer.next_lexeme(),
-            Some(Lexeme::RawString(String::from("select")))
+            Some(Lexeme::Select)
         );
         assert_eq!(
             lexer.next_lexeme(),
@@ -1204,7 +1211,7 @@ mod tests {
 
         assert_eq!(
             lexer.next_lexeme(),
-            Some(Lexeme::RawString(String::from("select")))
+            Some(Lexeme::Select)
         );
         assert_eq!(
             lexer.next_lexeme(),
@@ -1223,7 +1230,7 @@ mod tests {
 
         assert_eq!(
             lexer.next_lexeme(),
-            Some(Lexeme::RawString(String::from("select")))
+            Some(Lexeme::Select)
         );
         assert_eq!(
             lexer.next_lexeme(),
@@ -1242,7 +1249,7 @@ mod tests {
 
         assert_eq!(
             lexer.next_lexeme(),
-            Some(Lexeme::RawString(String::from("select")))
+            Some(Lexeme::Select)
         );
         assert_eq!(
             lexer.next_lexeme(),

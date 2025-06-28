@@ -42,6 +42,7 @@ impl Parser {
         let mut lexer = Lexer::new(query);
         while let Some(lexeme) = lexer.next_lexeme() {
             match lexeme {
+                Lexeme::Select => {}
                 Lexeme::String(s) if s.is_empty() => {}
                 _ => self.lexemes.push(lexeme) 
             }            
@@ -102,40 +103,38 @@ impl Parser {
                 Some(Lexeme::String(ref s))
                 | Some(Lexeme::RawString(ref s))
                 | Some(Lexeme::ArithmeticOperator(ref s)) => {
-                    if s.to_ascii_lowercase() != "select" {
-                        if s == "*" {
-                            #[cfg(unix)]
-                            {
-                                fields.push(Expr::field(Field::Mode));
-                                #[cfg(feature = "users")]
-                                fields.push(Expr::field(Field::User));
-                                #[cfg(feature = "users")]
-                                fields.push(Expr::field(Field::Group));
-                            }
+                    if s == "*" {
+                        #[cfg(unix)]
+                        {
+                            fields.push(Expr::field(Field::Mode));
+                            #[cfg(feature = "users")]
+                            fields.push(Expr::field(Field::User));
+                            #[cfg(feature = "users")]
+                            fields.push(Expr::field(Field::Group));
+                        }
 
-                            fields.push(Expr::field(Field::Size));
-                            fields.push(Expr::field(Field::Modified));
-                            fields.push(Expr::field(Field::Path));
-                        } else {
-                            if s.to_lowercase() == "group" {
-                                if let Some(Lexeme::By) = self.next_lexeme() {
-                                    self.drop_lexeme();
-                                    self.drop_lexeme();
-                                    break;
-                                } else {
-                                    self.drop_lexeme();
-                                }
-                            }
-
-                            self.drop_lexeme();
-
-                            if Self::is_root_option_keyword(s) {
+                        fields.push(Expr::field(Field::Size));
+                        fields.push(Expr::field(Field::Modified));
+                        fields.push(Expr::field(Field::Path));
+                    } else {
+                        if s.to_lowercase() == "group" {
+                            if let Some(Lexeme::By) = self.next_lexeme() {
+                                self.drop_lexeme();
+                                self.drop_lexeme();
                                 break;
+                            } else {
+                                self.drop_lexeme();
                             }
+                        }
 
-                            if let Ok(Some(field)) = self.parse_expr() {
-                                fields.push(field);
-                            }
+                        self.drop_lexeme();
+
+                        if Self::is_root_option_keyword(s) {
+                            break;
+                        }
+
+                        if let Ok(Some(field)) = self.parse_expr() {
+                            fields.push(field);
                         }
                     }
                 }

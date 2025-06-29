@@ -24,6 +24,7 @@ use update_informer::{registry, Check};
 use crate::config::Config;
 use crate::field::Field;
 use crate::function::Function;
+use crate::lexer::Lexer;
 use crate::output::OutputFormat;
 use crate::parser::Parser;
 use crate::query::RootOptions;
@@ -229,8 +230,9 @@ fn exec_search(query: Vec<String>, config: &mut Config, default_config: &Config,
         dbg!(&query);
     }
 
-    let mut parser = Parser::new();
-    let query = parser.parse(query, config.debug);
+    let lexer = Lexer::new(query);
+    let mut parser = Parser::new(lexer);
+    let query = parser.parse(config.debug);
 
     if config.debug {
         dbg!(&query);

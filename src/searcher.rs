@@ -1926,9 +1926,9 @@ impl<'a> Searcher<'a> {
         if self.is_buffered() {
             self.output_buffer.insert(
                 Criteria::new(
-                    self.query.ordering_fields.clone(),
+                    Rc::new(self.query.ordering_fields.clone()),
                     criteria,
-                    self.query.ordering_asc.clone(),
+                    Rc::new(self.query.ordering_asc.clone()),
                 ),
                 String::from(buf),
             );
@@ -2501,7 +2501,6 @@ mod tests {
     use crate::field::Field;
     use crate::function::Function;
     use crate::query::{OutputFormat, Query};
-    use std::rc::Rc;
 
     // Tests for FileMetadataState
     #[test]
@@ -2552,9 +2551,9 @@ mod tests {
             fields: Vec::new(),
             roots: Vec::new(),
             expr: None,
-            grouping_fields: Rc::new(Vec::new()),
-            ordering_fields: Rc::new(Vec::new()),
-            ordering_asc: Rc::new(Vec::new()),
+            grouping_fields: Vec::new(),
+            ordering_fields: Vec::new(),
+            ordering_asc: Vec::new(),
             limit: 0,
             output_format: OutputFormat::Tabs,
         }));
@@ -2572,9 +2571,9 @@ mod tests {
             fields: Vec::new(),
             roots: Vec::new(),
             expr: None,
-            grouping_fields: Rc::new(Vec::new()),
-            ordering_fields: Rc::new(vec![Expr::field(Field::Name)]),
-            ordering_asc: Rc::new(vec![true]),
+            grouping_fields: Vec::new(),
+            ordering_fields: vec![Expr::field(Field::Name)],
+            ordering_asc: vec![true],
             limit: 0,
             output_format: OutputFormat::Tabs,
         }));
@@ -2595,9 +2594,9 @@ mod tests {
             fields: vec![expr],
             roots: Vec::new(),
             expr: None,
-            grouping_fields: Rc::new(Vec::new()),
-            ordering_fields: Rc::new(Vec::new()),
-            ordering_asc: Rc::new(Vec::new()),
+            grouping_fields: Vec::new(),
+            ordering_fields: Vec::new(),
+            ordering_asc: Vec::new(),
             limit: 0,
             output_format: OutputFormat::Tabs,
         }));

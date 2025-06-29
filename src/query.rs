@@ -2,13 +2,12 @@
 //! Query parsing is handled in the `parser` module
 
 use std::collections::HashSet;
-use std::rc::Rc;
 
 use crate::expr::Expr;
 use crate::field::Field;
 use crate::query::TraversalMode::Bfs;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialOrd, PartialEq, Eq, Hash, Serialize)]
 /// Represents a query to be executed on .
 ///
 pub struct Query {
@@ -19,11 +18,11 @@ pub struct Query {
     /// "where" filter expression
     pub expr: Option<Expr>,
     /// Fields to group by
-    pub grouping_fields: Rc<Vec<Expr>>,
+    pub grouping_fields: Vec<Expr>,
     /// Fields to order by
-    pub ordering_fields: Rc<Vec<Expr>>,
+    pub ordering_fields: Vec<Expr>,
     /// Ordering direction (true for asc, false for desc)
-    pub ordering_asc: Rc<Vec<bool>>,
+    pub ordering_asc: Vec<bool>,
     /// Max amount of results to return
     pub limit: u32,
     /// Output format
@@ -50,7 +49,7 @@ impl Query {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialOrd, PartialEq, Eq, Hash, Serialize)]
 /// Represents a root directory to start the search from, with traversal options.
 pub struct Root {
     pub path: String,
@@ -95,7 +94,7 @@ macro_rules! root_options {
 }
 
 root_options! {
-    #[derive(Debug, Clone, PartialEq)]
+    #[derive(Debug, Clone, PartialOrd, PartialEq, Eq, Hash, Serialize)]
     pub struct RootOptions {
         @text = ["mindepth"], description = "Minimum depth to search"
         pub min_depth: u32,
@@ -197,7 +196,7 @@ impl Root {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialOrd, PartialEq, Eq, Hash, Serialize)]
 pub enum TraversalMode {
     Bfs,
     Dfs,
@@ -246,7 +245,7 @@ macro_rules! output_format {
 }
 
 output_format! {
-    #[derive(Debug, Clone, PartialEq)]
+    #[derive(Debug, Clone, PartialOrd, PartialEq, Eq, Hash, Serialize)]
     pub enum OutputFormat {
         @text = "tabs"
         @description = "Tab-separated values (default)"

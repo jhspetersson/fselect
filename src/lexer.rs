@@ -46,6 +46,7 @@ enum LexingMode {
     Close,
 }
 
+#[derive(Clone)]
 pub struct Lexer {
     input: Vec<String>,
     input_index: usize,

@@ -22,9 +22,10 @@ use crate::util::error_message;
 pub struct Parser {
     lexer: Lexer,
     lexemes: Vec<Lexeme>,
-    index: usize,
+    index: isize,
     roots_parsed: bool,
     where_parsed: bool,
+    debug: bool,
 }
 
 impl Parser {
@@ -32,23 +33,20 @@ impl Parser {
         Parser {
             lexer,
             lexemes: vec![],
-            index: 0,
+            index: -1,
             roots_parsed: false,
             where_parsed: false,
+            debug: false,
         }
     }
 
     pub fn parse(&mut self, debug: bool) -> Result<Query, String> {
-        while let Some(lexeme) = self.lexer.next_lexeme() {
-            match lexeme {
-                Lexeme::Select => {}
-                Lexeme::String(s) if s.is_empty() => {}
-                _ => self.lexemes.push(lexeme) 
-            }            
-        }
+        self.debug = debug;
 
-        if debug {
-            dbg!(&self.lexemes);
+        if let Some(Lexeme::Select) = self.next_lexeme() {
+            // skip the "select" keyword
+        } else {
+            self.drop_lexeme();
         }
 
         let fields = self.parse_fields()?;
@@ -1022,10 +1020,30 @@ impl Parser {
     }
 
     fn next_lexeme(&mut self) -> Option<Lexeme> {
-        let lexeme = self.lexemes.get(self.index);
         self.index += 1;
 
-        lexeme.cloned()
+        match self.lexemes.get(self.index as usize) {
+            Some(lexeme) => {
+                Some(lexeme.clone())
+            }
+            None => {
+                let lexeme = self.lexer.next_lexeme();
+                match lexeme {
+                    Some(ref lexeme) => {
+                        if self.debug {
+                            dbg!(&lexeme);
+                        }
+
+                        self.lexemes.push(lexeme.clone());
+
+                        Some(lexeme.clone())
+                    }
+                    _ => {
+                        None
+                    }
+                }
+            }
+        }
     }
 
     fn drop_lexeme(&mut self) {

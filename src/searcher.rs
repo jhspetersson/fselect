@@ -563,6 +563,20 @@ impl<'a> Searcher<'a> {
         Ok(())
     }
 
+    fn get_list_from_subquery(&mut self, query: Query) -> Vec<String> {
+        let mut sub_searcher = Searcher::new(&query, self.config, self.default_config, self.use_colors);
+        sub_searcher.list_search_results().unwrap_or_default();
+        let buf = sub_searcher.raw_output_buffer;
+        if buf.is_empty() {
+            return vec![];
+        }
+        let column = buf.get(0).unwrap().keys().into_iter().next().unwrap();
+        buf.iter().map(|m| {
+            let value = m.get(column).unwrap_or(&String::new()).to_string();
+            value
+        }).collect()
+    }
+
     /// Recursively explore directories starting from a given path.
     /// Handles archives, and optionally applies filters.
     fn visit_dir(
@@ -2172,7 +2186,21 @@ impl<'a> Searcher<'a> {
                         Op::In => {
                             let field_value = field_value.to_string();
                             let mut result = false;
-                            for item in expr.clone().right.unwrap().args.unwrap().iter().map(|arg| self.get_column_expr_value(
+                            let right = expr.clone().right.unwrap();
+                            let args = match right.args {
+                                Some(args) => args,
+                                None => {
+                                    if let Some(subquery) = right.subquery {
+                                        self.get_list_from_subquery(*subquery).iter().map(|s| {
+                                            Expr::value(s.clone().to_string())
+                                        }).collect()
+                                    } else {
+                                        vec![]
+                                    }
+                                }
+                            };
+
+                            for item in args.iter().map(|arg| self.get_column_expr_value(
                                 Some(entry),
                                 file_info,
                                 &mut HashMap::new(),
@@ -2219,7 +2247,21 @@ impl<'a> Searcher<'a> {
                         Op::In => {
                             let field_value = field_value.to_int();
                             let mut result = false;
-                            for item in expr.clone().right.unwrap().args.unwrap().iter().map(|arg| self.get_column_expr_value(
+                            let right = expr.clone().right.unwrap();
+                            let args = match right.args {
+                                Some(args) => args,
+                                None => {
+                                    if let Some(subquery) = right.subquery {
+                                        self.get_list_from_subquery(*subquery).iter().map(|s| {
+                                            Expr::value(s.clone().to_string())
+                                        }).collect()
+                                    } else {
+                                        vec![]
+                                    }
+                                }
+                            };
+
+                            for item in args.iter().map(|arg| self.get_column_expr_value(
                                 Some(entry),
                                 file_info,
                                 &mut HashMap::new(),

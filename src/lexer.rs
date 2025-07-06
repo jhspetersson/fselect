@@ -47,10 +47,7 @@ enum LexingMode {
 }
 
 #[derive(Clone)]
-pub struct Lexer {
-    input: Vec<String>,
-    input_index: usize,
-    char_index: isize,
+struct LexerState {
     first_lexeme: bool,
     before_from: bool,
     possible_search_root: bool,
@@ -59,18 +56,49 @@ pub struct Lexer {
     after_operator: bool,
 }
 
-impl Lexer {
-    pub fn new(input: Vec<String>) -> Lexer {
-        Lexer {
-            input,
-            input_index: 0,
-            char_index: 0,
+impl LexerState {
+    fn new() -> Self {
+        LexerState {
             first_lexeme: true,
             before_from: true,
             possible_search_root: false,
             after_open: false,
             after_where: false,
             after_operator: false,
+        }
+    }
+}
+
+#[derive(Clone)]
+pub struct Lexer {
+    input: Vec<String>,
+    input_index: usize,
+    char_index: isize,
+    state: Box<LexerState>,
+    state_history: Vec<Box<LexerState>>,
+}
+
+impl Lexer {
+    pub fn new(input: Vec<String>) -> Lexer {
+        Lexer {
+            input,
+            input_index: 0,
+            char_index: 0,
+            state: Box::new(LexerState::new()),
+            state_history: vec![],
+        }
+    }
+
+    pub fn push_state(&mut self) {
+        self.state_history.push(self.state.clone());
+        self.state = Box::new(LexerState::new());
+    }
+
+    pub fn pop_state(&mut self) {
+        if let Some(state) = self.state_history.pop() {
+            self.state = state;
+        } else {
+            self.state = Box::new(LexerState::new());
         }
     }
 
@@ -93,7 +121,7 @@ impl Lexer {
                 if input_char.is_none() {
                     self.input_index += 1;
                     self.char_index = -1;
-                    self.possible_search_root = false;
+                    self.state.possible_search_root = false;
                     continue;
                 }
                 c = input_char.unwrap();
@@ -142,7 +170,7 @@ impl Lexer {
                                 break;
                             }
                         } else if (self.input.len() == 1 
-                                || (self.input.len() > 1 && !self.possible_search_root)) 
+                                || (self.input.len() > 1 && !self.state.possible_search_root))
                             && (c == ' ' || c == ',' || is_paren_char(c) || self.is_op_char(c)) {
                             break;
                         }
@@ -179,7 +207,7 @@ impl Lexer {
                         }
                     }
 
-                    self.after_open = mode == LexingMode::Open;
+                    self.state.after_open = mode == LexingMode::Open;
                 }
             }
         }
@@ -208,21 +236,21 @@ impl Lexer {
                 Some(Lexeme::CurlyClose)
             }
             LexingMode::RawString => match s.to_lowercase().as_str() {
-                "select" if self.first_lexeme => {
+                "select" => {
                     Some(Lexeme::Select)
                 }
                 "from" => {
-                    self.before_from = false;
-                    self.after_where = false;
+                    self.state.before_from = false;
+                    self.state.after_where = false;
                     Some(Lexeme::From)
                 }
                 "where" => {
-                    self.after_where = true;
+                    self.state.after_where = true;
                     Some(Lexeme::Where)
                 }
                 "or" => Some(Lexeme::Or),
                 "and" => Some(Lexeme::And),
-                "not" if self.after_where => Some(Lexeme::Not),
+                "not" if self.state.after_where => Some(Lexeme::Not),
                 "order" => Some(Lexeme::Order),
                 "by" => Some(Lexeme::By),
                 "asc" => self.next_lexeme(),
@@ -237,26 +265,26 @@ impl Lexer {
             _ => None,
         };
 
-        self.first_lexeme = false;
-        self.possible_search_root = matches!(lexeme, Some(Lexeme::From))
-                || (matches!(lexeme, Some(Lexeme::Comma)) && !self.before_from && !self.after_where);
-        self.after_operator = matches!(lexeme, Some(Lexeme::Operator(_)));
+        self.state.first_lexeme = false;
+        self.state.possible_search_root = matches!(lexeme, Some(Lexeme::From))
+                || (matches!(lexeme, Some(Lexeme::Comma)) && !self.state.before_from && !self.state.after_where);
+        self.state.after_operator = matches!(lexeme, Some(Lexeme::Operator(_)));
 
         lexeme
     }
 
     fn is_arithmetic_op_char(&self, c: char) -> bool {
         match c {
-            '+' | '-' => self.before_from || self.after_where,
+            '+' | '-' => self.state.before_from || self.state.after_where,
             '*' | '/' | '%' => {
-                (self.before_from || self.after_where) && !self.after_open && !self.after_operator
+                (self.state.before_from || self.state.after_where) && !self.state.after_open && !self.state.after_operator
             }
             _ => false,
         }
     }
 
     fn is_op_char(&self, c: char) -> bool {
-        if !self.before_from && !self.after_where {
+        if !self.state.before_from && !self.state.after_where {
             return false;
         }
 

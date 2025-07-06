@@ -19,8 +19,8 @@ use crate::query::{OutputFormat, RootOptions};
 #[cfg(not(feature = "git"))]
 use crate::util::error_message;
 
-pub struct Parser {
-    lexer: Lexer,
+pub struct Parser<'a> {
+    lexer: &'a mut Lexer,
     lexemes: Vec<Lexeme>,
     index: isize,
     roots_parsed: bool,
@@ -28,8 +28,8 @@ pub struct Parser {
     debug: bool,
 }
 
-impl Parser {
-    pub fn new(lexer: Lexer) -> Parser {
+impl <'a> Parser<'a> {
+    pub fn new(lexer: &mut Lexer) -> Parser {
         Parser {
             lexer,
             lexemes: vec![],
@@ -447,13 +447,6 @@ impl Parser {
         loop {
             let lexeme = self.next_lexeme();
             match lexeme {
-                Some(Lexeme::Select) => {
-                    let lexer = self.lexer.clone();
-                    let mut parser = Parser::new(lexer);
-                    let query = parser.parse(false)?;
-                    
-                    return Ok(Some(Expr::subquery(query)));
-                }
                 Some(Lexeme::Or) => {
                     let expr = self.parse_and()?;
                     right = match right {
@@ -744,12 +737,27 @@ impl Parser {
     fn parse_list(&mut self) -> Result<Expr, String> {
         match self.next_lexeme() {
             Some(Lexeme::Open) => {
-                let mut result = Expr::new(); 
-                let args = self.parse_args()?;
-                result.set_args(args.unwrap());
+                let result = {
+                    if let Some(Lexeme::Select) = self.next_lexeme() {
+                        self.lexer.push_state();
+                        let mut parser = Parser::new(&mut self.lexer);
+                        let query = parser.parse(self.debug)?;
+                        self.lexer.pop_state();
+                        self.push_lexeme(Lexeme::Close);
+                        Expr::subquery(query)
+                    } else {
+                        self.drop_lexeme();
+                        let mut result = Expr::new();
+                        let args = self.parse_args()?;
+                        result.set_args(args.unwrap());
+                        result
+                    }
+                };
+
                 if let Some(Lexeme::Close) = self.next_lexeme() {
                     Ok(result)
                 } else {
+                    self.drop_lexeme();
                     Err("Unmatched parenthesis".to_string())
                 }
             }
@@ -1046,6 +1054,10 @@ impl Parser {
         }
     }
 
+    fn push_lexeme(&mut self, lexeme: Lexeme) {
+        self.lexemes.push(lexeme);
+    }
+
     fn drop_lexeme(&mut self) {
         self.index -= 1;
     }
@@ -1076,8 +1088,8 @@ mod tests {
     #[test]
     fn simple_query() {
         let query = "select name, path ,size , fsize from /";
-        let lexer = Lexer::new(vec![query.to_string()]);
-        let mut p = Parser::new(lexer);
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
         let query = p.parse(false).unwrap();
 
         assert_eq!(
@@ -1094,8 +1106,8 @@ mod tests {
     #[test]
     fn query() {
         let query = "select name, path ,size , fsize from /test depth 2, /test2 archives,/test3 depth 3 archives , /test4 ,'/test5' gitignore , /test6 mindepth 3, /test7 archives DFS, /test8 dfs where name != 123 AND ( size gt 456 or fsize lte 758) or name = 'xxx' order by 2, size desc limit 50";
-        let lexer = Lexer::new(vec![query.to_string()]);
-        let mut p = Parser::new(lexer);
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
         let query = p.parse(false).unwrap();
 
         assert_eq!(
@@ -1188,8 +1200,8 @@ mod tests {
     #[test]
     fn query_with_not() {
         let query = "select name from /test where name not like '%.tmp'";
-        let lexer = Lexer::new(vec![query.to_string()]);
-        let mut p = Parser::new(lexer);
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
         let query = p.parse(false).unwrap();
 
         assert_eq!(query.fields, vec![Expr::field(Field::Name)]);
@@ -1214,8 +1226,8 @@ mod tests {
     #[test]
     fn query_with_single_not() {
         let query = "select name from /test where not name like '%.tmp'";
-        let lexer = Lexer::new(vec![query.to_string()]);
-        let mut p = Parser::new(lexer);
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
         let query = p.parse(false).unwrap();
 
         assert_eq!(query.fields, vec![Expr::field(Field::Name)]);
@@ -1240,8 +1252,8 @@ mod tests {
     #[test]
     fn query_with_multiple_not() {
         let query = "select name from /test where not name like '%.tmp' and not name like '%.tst'";
-        let lexer = Lexer::new(vec![query.to_string()]);
-        let mut p = Parser::new(lexer);
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
         let query = p.parse(false).unwrap();
 
         let left = Expr::op(
@@ -1263,8 +1275,8 @@ mod tests {
     fn query_with_multiple_not_paren() {
         let query =
             "select name from /test where (not name like '%.tmp') and (not name like '%.tst')";
-        let lexer = Lexer::new(vec![query.to_string()]);
-        let mut p = Parser::new(lexer);
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
         let query = p.parse(false).unwrap();
 
         let left = Expr::op(
@@ -1285,8 +1297,8 @@ mod tests {
     #[test]
     fn query_double_not() {
         let query = "select name from /test where not not name like '%.tmp'";
-        let lexer = Lexer::new(vec![query.to_string()]);
-        let mut p = Parser::new(lexer);
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
         let query = p.parse(false).unwrap();
 
         let expr = Expr::op(
@@ -1301,8 +1313,8 @@ mod tests {
     #[test]
     fn query_triple_not() {
         let query = "select name from /test where not not not name like '%.tmp'";
-        let lexer = Lexer::new(vec![query.to_string()]);
-        let mut p = Parser::new(lexer);
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
         let query = p.parse(false).unwrap();
 
         let expr = Expr::op(
@@ -1317,8 +1329,8 @@ mod tests {
     #[test]
     fn broken_query() {
         let query = "select name, path ,size , fsize from / where name != 'foobar' order by size desc limit 10 into csv this is unexpected";
-        let lexer = Lexer::new(vec![query.to_string()]);
-        let mut p = Parser::new(lexer);
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
         let query = p.parse(false);
 
         assert!(query.is_ok());
@@ -1328,8 +1340,8 @@ mod tests {
     #[test]
     fn path_with_spaces() {
         let query = "select name from '/opt/Some Cool Dir/Test This'";
-        let lexer = Lexer::new(vec![query.to_string()]);
-        let mut p = Parser::new(lexer);
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
         let query = p.parse(false).unwrap();
 
         assert_eq!(
@@ -1344,13 +1356,13 @@ mod tests {
     #[test]
     fn simple_boolean_syntax() {
         let query = "select name from /home/user where is_audio or is_video";
-        let lexer = Lexer::new(vec![query.to_string()]);
-        let mut p = Parser::new(lexer);
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
         let query = p.parse(false).unwrap();
 
         let query2 = "select name from /home/user where is_audio = true or is_video = true";
-        let lexer2 = Lexer::new(vec![query2.to_string()]);
-        let mut p2 = Parser::new(lexer2);
+        let mut lexer2 = Lexer::new(vec![query2.to_string()]);
+        let mut p2 = Parser::new(&mut lexer2);
         let query2 = p2.parse(false).unwrap();
 
         assert_eq!(query.expr, query2.expr);
@@ -1359,13 +1371,13 @@ mod tests {
     #[test]
     fn simple_boolean_function_syntax() {
         let query = "select name from /home/user where CONTAINS('foobar') or CONTAINS('bazz')";
-        let lexer = Lexer::new(vec![query.to_string()]);
-        let mut p = Parser::new(lexer);
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
         let query = p.parse(false).unwrap();
 
         let query2 = "select name from /home/user where CONTAINS('foobar') = true or CONTAINS('bazz') = true";
-        let lexer2 = Lexer::new(vec![query2.to_string()]);
-        let mut p2 = Parser::new(lexer2);
+        let mut lexer2 = Lexer::new(vec![query2.to_string()]);
+        let mut p2 = Parser::new(&mut lexer2);
         let query2 = p2.parse(false).unwrap();
 
         assert_eq!(query.expr, query2.expr);
@@ -1375,13 +1387,13 @@ mod tests {
     #[cfg(target_os = "linux")]
     fn simple_function_without_args_syntax_in_where() {
         let query = "select name, caps from /home/user where HAS_CAPS()";
-        let lexer = Lexer::new(vec![query.to_string()]);
-        let mut p = Parser::new(lexer);
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
         let query = p.parse(false).unwrap();
 
         let query2 = "select name, caps from /home/user where HAS_CAPS";
-        let lexer2 = Lexer::new(vec![query2.to_string()]);
-        let mut p2 = Parser::new(lexer2);
+        let mut lexer2 = Lexer::new(vec![query2.to_string()]);
+        let mut p2 = Parser::new(&mut lexer2);
         let query2 = p2.parse(false).unwrap();
 
         assert_eq!(query.expr, query2.expr);
@@ -1390,13 +1402,13 @@ mod tests {
     #[test]
     fn simple_function_without_args_syntax() {
         let query = "select CURDATE()";
-        let lexer = Lexer::new(vec![query.to_string()]);
-        let mut p = Parser::new(lexer);
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
         let query = p.parse(false).unwrap();
 
         let query2 = "select CURDATE";
-        let lexer2 = Lexer::new(vec![query2.to_string()]);
-        let mut p2 = Parser::new(lexer2);
+        let mut lexer2 = Lexer::new(vec![query2.to_string()]);
+        let mut p2 = Parser::new(&mut lexer2);
         let query2 = p2.parse(false).unwrap();
 
         assert_eq!(query.expr, query2.expr);
@@ -1405,8 +1417,8 @@ mod tests {
     #[test]
     fn from_at_the_end_of_the_query() {
         let query = "select name where not name like '%.tmp' from /test gitignore mindepth 2";
-        let lexer = Lexer::new(vec![query.to_string()]);
-        let mut p = Parser::new(lexer);
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
         let query = p.parse(false).unwrap();
 
         assert_eq!(query.fields, vec![Expr::field(Field::Name)]);
@@ -1431,8 +1443,8 @@ mod tests {
     #[test]
     fn query_with_implicit_root() {
         let query = "select name, size";
-        let lexer = Lexer::new(vec![query.to_string()]);
-        let mut p = Parser::new(lexer);
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
         let query = p.parse(false).unwrap();
 
         assert_eq!(
@@ -1444,8 +1456,8 @@ mod tests {
     #[test]
     fn query_with_implicit_root_and_root_options() {
         let query = "select name, size depth 2";
-        let lexer = Lexer::new(vec![query.to_string()]);
-        let mut p = Parser::new(lexer);
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
         let query = p.parse(false).unwrap();
 
         assert_eq!(
@@ -1460,13 +1472,13 @@ mod tests {
     #[test]
     fn use_curly_braces() {
         let query = "select name, (1 + 2) from /home/user limit 1";
-        let lexer = Lexer::new(vec![query.to_string()]);
-        let mut p = Parser::new(lexer);
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
         let query = p.parse(false).unwrap();
 
         let query2 = "select name, {1 + 2} from /home/user limit 1";
-        let lexer2 = Lexer::new(vec![query2.to_string()]);
-        let mut p2 = Parser::new(lexer2);
+        let mut lexer2 = Lexer::new(vec![query2.to_string()]);
+        let mut p2 = Parser::new(&mut lexer2);
         let query2 = p2.parse(false).unwrap();
 
         assert_eq!(query.expr, query2.expr);
@@ -1475,8 +1487,8 @@ mod tests {
     #[test]
     fn query_with_group_by() {
         let query = "select AVG(size) from /test group by mime";
-        let lexer = Lexer::new(vec![query.to_string()]);
-        let mut p = Parser::new(lexer);
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
         let query = p.parse(false).unwrap();
 
         assert_eq!(
@@ -1504,13 +1516,13 @@ mod tests {
     #[test]
     fn query_with_between() {
         let query = "select name, size from /test where size between 5mb and 6mb";
-        let lexer = Lexer::new(vec![query.to_string()]);
-        let mut p = Parser::new(lexer);
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
         let query = p.parse(false).unwrap();
 
         let query2 = "select name, size from /test where size gte 5mb and size lte 6mb";
-        let lexer2 = Lexer::new(vec![query2.to_string()]);
-        let mut p2 = Parser::new(lexer2);
+        let mut lexer2 = Lexer::new(vec![query2.to_string()]);
+        let mut p2 = Parser::new(&mut lexer2);
         let query2 = p2.parse(false).unwrap();
 
         assert_eq!(query.expr, query2.expr);
@@ -1519,8 +1531,8 @@ mod tests {
     #[test]
     fn query_with_dfs() {
         let query = "select name from /test dfs group by mime";
-        let lexer = Lexer::new(vec![query.to_string()]);
-        let mut p = Parser::new(lexer);
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
         let query = p.parse(false).unwrap();
         
         assert_eq!(
@@ -1535,13 +1547,13 @@ mod tests {
     #[test]
     fn reordered_expr_branches_with_different_weights() {
         let query = "select name from /test where CONTAINS('foobar') or name like 'foobar'";
-        let lexer = Lexer::new(vec![query.to_string()]);
-        let mut p = Parser::new(lexer);
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
         let query = p.parse(false).unwrap();
 
         let query2 = "select name from /test where name like 'foobar' or CONTAINS('foobar')";
-        let lexer2 = Lexer::new(vec![query2.to_string()]);
-        let mut p2 = Parser::new(lexer2);
+        let mut lexer2 = Lexer::new(vec![query2.to_string()]);
+        let mut p2 = Parser::new(&mut lexer2);
         let query2 = p2.parse(false).unwrap();
         
         assert_eq!(query.expr, query2.expr);
@@ -1550,8 +1562,8 @@ mod tests {
     #[test]
     fn query_with_value_in_string_args() {
         let query = "select name from /test where name in ('foo', 'bar')";
-        let lexer = Lexer::new(vec![query.to_string()]);
-        let mut p = Parser::new(lexer);
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
         let query = p.parse(false).unwrap();
         
         let mut list_expr = Expr::new();
@@ -1569,8 +1581,8 @@ mod tests {
         assert_eq!(query.expr, Some(expr));
         
         let query = "select name from /test where name not in (foo, bar)";
-        let lexer = Lexer::new(vec![query.to_string()]);
-        let mut p = Parser::new(lexer);
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
         let query = p.parse(false).unwrap();
         
         let mut list_expr = Expr::new();
@@ -1591,8 +1603,8 @@ mod tests {
     #[test]
     fn query_with_value_in_int_args() {
         let query = "select name from /test where size in (100, 200)";
-        let lexer = Lexer::new(vec![query.to_string()]);
-        let mut p = Parser::new(lexer);
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
         let query = p.parse(false).unwrap();
 
         let mut list_expr = Expr::new();
@@ -1613,8 +1625,8 @@ mod tests {
     #[test]
     fn query_with_value_in_float_args() {
         let query = "select name from /test where size in (100.0, 200.0)";
-        let lexer = Lexer::new(vec![query.to_string()]);
-        let mut p = Parser::new(lexer);
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
         let query = p.parse(false).unwrap();
 
         let mut list_expr = Expr::new();
@@ -1630,5 +1642,28 @@ mod tests {
         );
 
         assert_eq!(query.expr, Some(expr));
+    }
+
+    #[test]
+    fn simple_subquery() {
+        let query = "select name from /test where size > 100 and size in (select size from /test2 where size > 50)";
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
+        let query = p.parse(false).unwrap();
+
+        assert_eq!(
+            query.fields,
+            vec![Expr::field(Field::Name)]
+        );
+
+        assert_eq!(
+            query.roots,
+            vec![Root::new(
+                String::from("/test"),
+                RootOptions::from(0, 0, false, false, false, None, None, None, Bfs, false)
+            ),]
+        );
+
+        assert!(query.expr.unwrap().left.unwrap().right.is_some());
     }
 }

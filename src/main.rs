@@ -230,8 +230,8 @@ fn exec_search(query: Vec<String>, config: &mut Config, default_config: &Config,
         dbg!(&query);
     }
 
-    let lexer = Lexer::new(query);
-    let mut parser = Parser::new(lexer);
+    let mut lexer = Lexer::new(query);
+    let mut parser = Parser::new(&mut lexer);
     let query = parser.parse(config.debug);
 
     if config.debug {

@@ -174,6 +174,8 @@ pub struct Searcher<'a> {
     current_follow_symlinks: bool,
 
     fms: FileMetadataState,
+    subquery_cache: HashMap<String, Vec<String>>,
+    silent_mode: bool,
 
     pub error_count: i32,
 }
@@ -215,13 +217,15 @@ impl<'a> Searcher<'a> {
             current_follow_symlinks: false,
 
             fms: FileMetadataState::new(),
+            subquery_cache: HashMap::new(),
+            silent_mode: false,
 
             error_count: 0,
         }
     }
 
     pub fn is_buffered(&self) -> bool {
-        self.has_ordering() || self.has_aggregate_column()
+        self.has_ordering() || self.has_aggregate_column() || self.silent_mode
     }
 
     fn has_ordering(&self) -> bool {
@@ -236,9 +240,11 @@ impl<'a> Searcher<'a> {
     pub fn list_search_results(&mut self) -> io::Result<()> {
         let current_dir = std::env::current_dir()?;
 
-        if let Err(e) = self.results_writer.write_header(&mut std::io::stdout()) {
-            if e.kind() == ErrorKind::BrokenPipe {
-                return Ok(());
+        if !self.silent_mode {
+            if let Err(e) = self.results_writer.write_header(&mut std::io::stdout()) {
+                if e.kind() == ErrorKind::BrokenPipe {
+                    return Ok(());
+                }
             }
         }
 
@@ -497,11 +503,13 @@ impl<'a> Searcher<'a> {
                     });
                 }
 
-                results.iter().for_each(|items| {
-                    let mut buf = WritableBuffer::new();
-                    let _ = self.results_writer.write_row(&mut buf, items.to_owned());
-                    let _ = write!(std::io::stdout(), "{}", String::from(buf));
-                });
+                if !self.silent_mode {
+                    results.iter().for_each(|items| {
+                        let mut buf = WritableBuffer::new();
+                        let _ = self.results_writer.write_row(&mut buf, items.to_owned());
+                        let _ = write!(std::io::stdout(), "{}", String::from(buf));
+                    });
+                }
             } else {
                 let mut buf = WritableBuffer::new();
                 let mut items: Vec<(String, String)> = Vec::new();
@@ -521,15 +529,17 @@ impl<'a> Searcher<'a> {
                     items.push((field_name, record));
                 }
 
-                self.results_writer.write_row(&mut buf, items)?;
+                if !self.silent_mode {
+                    self.results_writer.write_row(&mut buf, items)?;
 
-                if let Err(e) = write!(std::io::stdout(), "{}", String::from(buf)) {
-                    if e.kind() == ErrorKind::BrokenPipe {
-                        return Ok(());
+                    if let Err(e) = write!(std::io::stdout(), "{}", String::from(buf)) {
+                        if e.kind() == ErrorKind::BrokenPipe {
+                            return Ok(());
+                        }
                     }
                 }
             }
-        } else if self.is_buffered() {
+        } else if self.is_buffered() && !self.silent_mode {
             let mut first = true;
             for piece in self.output_buffer.values() {
                 if first {
@@ -550,7 +560,9 @@ impl<'a> Searcher<'a> {
             }
         }
 
-        self.results_writer.write_footer(&mut std::io::stdout())?;
+        if !self.silent_mode {
+            self.results_writer.write_footer(&mut std::io::stdout())?;
+        }
 
         let completion_time = std::time::Instant::now();
 
@@ -564,17 +576,22 @@ impl<'a> Searcher<'a> {
     }
 
     fn get_list_from_subquery(&mut self, query: Query) -> Vec<String> {
-        let mut sub_searcher = Searcher::new(&query, self.config, self.default_config, self.use_colors);
-        sub_searcher.list_search_results().unwrap_or_default();
-        let buf = sub_searcher.raw_output_buffer;
-        if buf.is_empty() {
-            return vec![];
+        let query_str = format!("{:?}", query);
+        if let Some(cached) = self.subquery_cache.get(&query_str) {
+            return cached.clone();
         }
-        let column = buf.get(0).unwrap().keys().into_iter().next().unwrap();
-        buf.iter().map(|m| {
-            let value = m.get(column).unwrap_or(&String::new()).to_string();
-            value
-        }).collect()
+
+        let mut sub_searcher = Searcher::new(&query, self.config, self.default_config, self.use_colors);
+        sub_searcher.silent_mode = true;
+        sub_searcher.list_search_results().unwrap_or_default();
+
+        let result_values = sub_searcher.output_buffer.values().iter()
+            .map(|s| s.trim_end().to_string())
+            .collect::<Vec<String>>();
+
+        self.subquery_cache.insert(query_str, result_values.clone());
+
+        result_values
     }
 
     /// Recursively explore directories starting from a given path.

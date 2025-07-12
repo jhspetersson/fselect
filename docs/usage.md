@@ -36,7 +36,7 @@ It's ok to use any metacharacters in interactive mode.
 ### It's not a real SQL
 
 Directories to search at are listed with comma separators.
-In a real SQL such syntax would make a cross-product. Here it means just search at A, next at B, and so on.
+In a real SQL, such syntax would make a cross-product. Here it means just search at A, next at B, and so on.
 
 You can use curly braces instead of the regular parentheses! This helps to avoid a few of the shell pitfalls a little bit.
 Functions with no arguments don't require parentheses at all.
@@ -53,7 +53,8 @@ Commas for column separation aren't needed as well. Column aliasing (with or wit
 
 `into` keyword specifies output format, not output table.
 
-Joins, unions, and subselects are not supported (yet?).
+Joins and unions are not supported (yet?).
+Subqueries have only limited support.
 
 ### Columns and fields
 

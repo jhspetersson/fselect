@@ -9,7 +9,7 @@ Find files with SQL-like queries
 While it doesn't tend to fully replace traditional `find` and `ls`, **fselect** has these nice features:
 
 * SQL-like (not real SQL, but highly relaxed!) grammar easily understandable by humans
-* complex queries
+* complex queries, limited subqueries support
 * aggregate, statistics, date, and other functions
 * search within archives
 * `.gitignore`, `.hgignore`, and `.dockerignore` support (experimental)

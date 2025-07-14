@@ -161,7 +161,7 @@ fields! {
         
         #[text = ["path"]]
         @for_archived = true
-        @description = "Returns the path of the file"
+        @description = "Returns the relative path of the file"
         Path,
         
         #[text = ["abspath"]]

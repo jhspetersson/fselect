@@ -405,6 +405,7 @@ impl<'a> Searcher<'a> {
                 true,
                 #[cfg(unix)]
                 hardlinks,
+                root_dir,
             );
         }
 
@@ -442,6 +443,7 @@ impl<'a> Searcher<'a> {
                             self.get_column_expr_value(
                                 None,
                                 &None,
+                                &Path::new(""),
                                 &mut file_map,
                                 Some(f.1),
                                 column_expr
@@ -520,6 +522,7 @@ impl<'a> Searcher<'a> {
                         self.get_column_expr_value(
                             None,
                             &None,
+                            &Path::new(""),
                             &mut HashMap::new(),
                             None,
                             column_expr
@@ -612,6 +615,7 @@ impl<'a> Searcher<'a> {
         process_queue: bool,
         #[cfg(unix)]
         hardlinks: bool,
+        root_dir: &Path,
     ) -> io::Result<()> {
         // Prevents infinite loops when following symlinks
         if self.current_follow_symlinks {
@@ -694,7 +698,7 @@ impl<'a> Searcher<'a> {
                             // If the path passes the filters, process it
                             if pass_ignores {
                                 if min_depth == 0 || depth >= min_depth {
-                                    let checked = self.check_file(&entry, &None)?;
+                                    let checked = self.check_file(&entry, root_dir, &None)?;
                                     if !checked {
                                         return Ok(());
                                     }
@@ -714,7 +718,7 @@ impl<'a> Searcher<'a> {
                                                     if let Ok(afile) = archive.by_index(i) {
                                                         let file_info = to_file_info(&afile);
                                                         let checked = self
-                                                            .check_file(&entry, &Some(file_info))?;
+                                                            .check_file(&entry, root_dir, &Some(file_info))?;
                                                         if !checked {
                                                             return Ok(());
                                                         }
@@ -768,6 +772,7 @@ impl<'a> Searcher<'a> {
                                                     false,
                                                     #[cfg(unix)]
                                                     hardlinks,
+                                                    root_dir,
                                                 );
 
                                                 if result.is_err() {
@@ -830,6 +835,7 @@ impl<'a> Searcher<'a> {
                     false,
                     #[cfg(unix)]
                     hardlinks,
+                    root_dir,
                 );
 
                 if result.is_err() {
@@ -871,6 +877,7 @@ impl<'a> Searcher<'a> {
         &mut self,
         entry: Option<&DirEntry>,
         file_info: &Option<FileInfo>,
+        root_path: &Path,
         file_map: &mut HashMap<String, String>,
         buffer_data: Option<&Vec<HashMap<String, String>>>,
         column_expr: &Expr,
@@ -883,14 +890,14 @@ impl<'a> Searcher<'a> {
 
         if let Some(ref _function) = column_expr.function {
             let result =
-                self.get_function_value(entry, file_info, file_map, buffer_data, column_expr);
+                self.get_function_value(entry, file_info, root_path, file_map, buffer_data, column_expr);
             file_map.insert(column_expr_str, result.to_string());
             return result;
         }
 
         if let Some(ref field) = column_expr.field {
             if entry.is_some() {
-                let result = self.get_field_value(entry.unwrap(), file_info, field);
+                let result = self.get_field_value(entry.unwrap(), file_info, root_path, field);
                 file_map.insert(column_expr_str, result.to_string());
                 return result;
             } else if let Some(val) = file_map.get(&field.to_string()) {
@@ -908,12 +915,12 @@ impl<'a> Searcher<'a> {
 
         if let Some(ref left) = column_expr.left {
             let left_result =
-                self.get_column_expr_value(entry, file_info, file_map, buffer_data, left);
+                self.get_column_expr_value(entry, file_info, root_path, file_map, buffer_data, left);
 
             if let Some(ref op) = column_expr.arithmetic_op {
                 if let Some(ref right) = column_expr.right {
                     let right_result =
-                        self.get_column_expr_value(entry, file_info, file_map, buffer_data, right);
+                        self.get_column_expr_value(entry, file_info, root_path, file_map, buffer_data, right);
                     result = op.calc(&left_result, &right_result);
                     file_map.insert(column_expr_str, result.to_string());
                 } else {
@@ -933,6 +940,7 @@ impl<'a> Searcher<'a> {
         &mut self,
         entry: Option<&DirEntry>,
         file_info: &Option<FileInfo>,
+        root_path: &Path,
         file_map: &mut HashMap<String, String>,
         buffer_data: Option<&Vec<HashMap<String, String>>>,
         column_expr: &Expr,
@@ -948,7 +956,7 @@ impl<'a> Searcher<'a> {
         let function = &column_expr.function.as_ref().unwrap();
 
         if function.is_aggregate_function() {
-            let _ = self.get_column_expr_value(entry, file_info, file_map, buffer_data, left_expr);
+            let _ = self.get_column_expr_value(entry, file_info, root_path, file_map, buffer_data, left_expr);
             let buffer_key = left_expr.to_string();
             let aggr_result = function::get_aggregate_value(
                 &column_expr.function,
@@ -959,12 +967,12 @@ impl<'a> Searcher<'a> {
             Variant::from_string(&aggr_result)
         } else {
             let function_arg =
-                self.get_column_expr_value(entry, file_info, file_map, buffer_data, left_expr);
+                self.get_column_expr_value(entry, file_info, root_path, file_map, buffer_data, left_expr);
             let mut function_args = vec![];
             if let Some(args) = &column_expr.args {
                 for arg in args {
                     let arg_value =
-                        self.get_column_expr_value(entry, file_info, file_map, buffer_data, arg);
+                        self.get_column_expr_value(entry, file_info, root_path, file_map, buffer_data, arg);
                     function_args.push(arg_value.to_string());
                 }
             }
@@ -1009,6 +1017,7 @@ impl<'a> Searcher<'a> {
         &mut self,
         entry: &DirEntry,
         file_info: &Option<FileInfo>,
+        root_path: &Path,
         field: &Field,
     ) -> Variant {
         if file_info.is_some() && !field.is_available_for_archived_files() {
@@ -1046,16 +1055,26 @@ impl<'a> Searcher<'a> {
                     );
                 }
             },
-            Field::Path => match file_info {
+            Field::Path => return match file_info {
                 Some(file_info) => {
-                    return Variant::from_string(&format!(
+                    Variant::from_string(&format!(
                         "[{}] {}",
                         entry.path().to_string_lossy(),
                         file_info.name
-                    ));
+                    ))
                 }
                 _ => {
-                    return Variant::from_string(&format!("{}", entry.path().to_string_lossy()));
+                    match entry.path().strip_prefix(root_path) {
+                        Ok(stripped_path) => {
+                            Variant::from_string(&format!(
+                                "{}",
+                                stripped_path.to_string_lossy()
+                            ))
+                        }
+                        Err(_) => {
+                            Variant::from_string(&format!("{}", entry.path().to_string_lossy()))
+                        }
+                    }
                 }
             },
             Field::AbsPath => match file_info {
@@ -1896,11 +1915,11 @@ impl<'a> Searcher<'a> {
         return Variant::empty(VariantType::String);
     }
 
-    fn check_file(&mut self, entry: &DirEntry, file_info: &Option<FileInfo>) -> io::Result<bool> {
+    fn check_file(&mut self, entry: &DirEntry, root_path: &Path, file_info: &Option<FileInfo>) -> io::Result<bool> {
         self.fms.clear();
 
         if let Some(ref expr) = self.query.expr {
-            let result = self.conforms(entry, file_info, expr);
+            let result = self.conforms(entry, file_info, root_path, expr);
             if !result {
                 return Ok(true);
             }
@@ -1916,7 +1935,7 @@ impl<'a> Searcher<'a> {
         for field in self.query.get_all_fields() {
             file_map.insert(
                 field.to_string(),
-                self.get_field_value(entry, file_info, &field).to_string(),
+                self.get_field_value(entry, file_info, root_path, &field).to_string(),
             );
         }
 
@@ -1928,7 +1947,7 @@ impl<'a> Searcher<'a> {
 
         for field in self.query.fields.iter() {
             let record =
-                self.get_column_expr_value(Some(entry), file_info, &mut file_map, None, field);
+                self.get_column_expr_value(Some(entry), file_info, root_path, &mut file_map, None, field);
 
             let value = match self.use_colors && field.contains_colorized() {
                 true => self.colorize(&record.to_string()),
@@ -1939,7 +1958,7 @@ impl<'a> Searcher<'a> {
 
         for field in self.query.grouping_fields.iter() {
             if file_map.get(&field.to_string()).is_none() {
-                self.get_column_expr_value(Some(entry), file_info, &mut file_map, None, field);
+                self.get_column_expr_value(Some(entry), file_info, root_path, &mut file_map, None, field);
             }
         }
 
@@ -1947,7 +1966,7 @@ impl<'a> Searcher<'a> {
             criteria[idx] = match file_map.get(&field.to_string()) {
                 Some(record) => record.clone(),
                 None => self
-                    .get_column_expr_value(Some(entry), file_info, &mut file_map, None, field)
+                    .get_column_expr_value(Some(entry), file_info, root_path, &mut file_map, None, field)
                     .to_string(),
             }
         }
@@ -2018,7 +2037,7 @@ impl<'a> Searcher<'a> {
         Variant::from_bool(false)
     }
 
-    fn conforms(&mut self, entry: &DirEntry, file_info: &Option<FileInfo>, expr: &Expr) -> bool {
+    fn conforms(&mut self, entry: &DirEntry, file_info: &Option<FileInfo>, root_path: &Path, expr: &Expr) -> bool {
         let mut result = false;
 
         if let Some(ref logical_op) = expr.logical_op {
@@ -2026,7 +2045,7 @@ impl<'a> Searcher<'a> {
             let mut right_result = false;
 
             if let Some(ref left) = expr.left {
-                let left_res = self.conforms(entry, file_info, left);
+                let left_res = self.conforms(entry, file_info, root_path, left);
                 left_result = left_res;
             }
 
@@ -2036,7 +2055,7 @@ impl<'a> Searcher<'a> {
                         result = false;
                     } else {
                         if let Some(ref right) = expr.right {
-                            let right_res = self.conforms(entry, file_info, right);
+                            let right_res = self.conforms(entry, file_info, root_path, right);
                             right_result = right_res;
                         }
 
@@ -2048,7 +2067,7 @@ impl<'a> Searcher<'a> {
                         result = true;
                     } else {
                         if let Some(ref right) = expr.right {
-                            let right_res = self.conforms(entry, file_info, right);
+                            let right_res = self.conforms(entry, file_info, root_path, right);
                             right_result = right_res;
                         }
 
@@ -2060,6 +2079,7 @@ impl<'a> Searcher<'a> {
             let field_value = self.get_column_expr_value(
                 Some(entry),
                 file_info,
+                root_path,
                 &mut HashMap::new(),
                 None,
                 expr.left.as_ref().unwrap(),
@@ -2067,6 +2087,7 @@ impl<'a> Searcher<'a> {
             let value = self.get_column_expr_value(
                 Some(entry),
                 file_info,
+                root_path,
                 &mut HashMap::new(),
                 None,
                 expr.right.as_ref().unwrap(),
@@ -2220,6 +2241,7 @@ impl<'a> Searcher<'a> {
                             for item in args.iter().map(|arg| self.get_column_expr_value(
                                 Some(entry),
                                 file_info,
+                                root_path,
                                 &mut HashMap::new(),
                                 None,
                                 arg,
@@ -2237,6 +2259,7 @@ impl<'a> Searcher<'a> {
                             for item in expr.clone().right.unwrap().args.unwrap().iter().map(|arg| self.get_column_expr_value(
                                 Some(entry),
                                 file_info,
+                                root_path,
                                 &mut HashMap::new(),
                                 None,
                                 arg,
@@ -2281,6 +2304,7 @@ impl<'a> Searcher<'a> {
                             for item in args.iter().map(|arg| self.get_column_expr_value(
                                 Some(entry),
                                 file_info,
+                                root_path,
                                 &mut HashMap::new(),
                                 None,
                                 arg,
@@ -2298,6 +2322,7 @@ impl<'a> Searcher<'a> {
                             for item in expr.clone().right.unwrap().args.unwrap().iter().map(|arg| self.get_column_expr_value(
                                 Some(entry),
                                 file_info,
+                                root_path,
                                 &mut HashMap::new(),
                                 None,
                                 arg,
@@ -2328,6 +2353,7 @@ impl<'a> Searcher<'a> {
                             for item in expr.clone().right.unwrap().args.unwrap().iter().map(|arg| self.get_column_expr_value(
                                 Some(entry),
                                 file_info,
+                                root_path,
                                 &mut HashMap::new(),
                                 None,
                                 arg,
@@ -2345,6 +2371,7 @@ impl<'a> Searcher<'a> {
                             for item in expr.clone().right.unwrap().args.unwrap().iter().map(|arg| self.get_column_expr_value(
                                 Some(entry),
                                 file_info,
+                                root_path,
                                 &mut HashMap::new(),
                                 None,
                                 arg,
@@ -2374,6 +2401,7 @@ impl<'a> Searcher<'a> {
                             for item in expr.clone().right.unwrap().args.unwrap().iter().map(|arg| self.get_column_expr_value(
                                 Some(entry),
                                 file_info,
+                                root_path,
                                 &mut HashMap::new(),
                                 None,
                                 arg,
@@ -2391,6 +2419,7 @@ impl<'a> Searcher<'a> {
                             for item in expr.clone().right.unwrap().args.unwrap().iter().map(|arg| self.get_column_expr_value(
                                 Some(entry),
                                 file_info,
+                                root_path,
                                 &mut HashMap::new(),
                                 None,
                                 arg,
@@ -2425,6 +2454,7 @@ impl<'a> Searcher<'a> {
                             for item in expr.clone().right.unwrap().args.unwrap().iter().map(|arg| self.get_column_expr_value(
                                 Some(entry),
                                 file_info,
+                                root_path,
                                 &mut HashMap::new(),
                                 None,
                                 arg,
@@ -2442,6 +2472,7 @@ impl<'a> Searcher<'a> {
                             for item in expr.clone().right.unwrap().args.unwrap().iter().map(|arg| self.get_column_expr_value(
                                 Some(entry),
                                 file_info,
+                                root_path,
                                 &mut HashMap::new(),
                                 None,
                                 arg,

@@ -210,7 +210,7 @@ impl <'a> Parser<'a> {
                                         break;
                                     }
                                 }
-                                
+
                                 self.drop_lexeme();
                                 match self.parse_root_options() {
                                     Some(options) => root_options = options,
@@ -733,7 +733,7 @@ impl <'a> Parser<'a> {
             }
         }
     }
-    
+
     fn parse_list(&mut self) -> Result<Expr, String> {
         match self.next_lexeme() {
             Some(Lexeme::Open) => {
@@ -777,7 +777,7 @@ impl <'a> Parser<'a> {
             }
         }
     }
-    
+
     fn parse_args(&mut self) -> Result<Option<Vec<Expr>>, String> {
         let mut args = vec![];
 
@@ -1527,14 +1527,14 @@ mod tests {
 
         assert_eq!(query.expr, query2.expr);
     }
-    
+
     #[test]
     fn query_with_dfs() {
         let query = "select name from /test dfs group by mime";
         let mut lexer = Lexer::new(vec![query.to_string()]);
         let mut p = Parser::new(&mut lexer);
         let query = p.parse(false).unwrap();
-        
+
         assert_eq!(
             query.roots,
             vec![Root::new(
@@ -1543,7 +1543,7 @@ mod tests {
             ),]
         );
     }
-    
+
     #[test]
     fn reordered_expr_branches_with_different_weights() {
         let query = "select name from /test where CONTAINS('foobar') or name like 'foobar'";
@@ -1555,48 +1555,48 @@ mod tests {
         let mut lexer2 = Lexer::new(vec![query2.to_string()]);
         let mut p2 = Parser::new(&mut lexer2);
         let query2 = p2.parse(false).unwrap();
-        
+
         assert_eq!(query.expr, query2.expr);
     }
-    
+
     #[test]
     fn query_with_value_in_string_args() {
         let query = "select name from /test where name in ('foo', 'bar')";
         let mut lexer = Lexer::new(vec![query.to_string()]);
         let mut p = Parser::new(&mut lexer);
         let query = p.parse(false).unwrap();
-        
+
         let mut list_expr = Expr::new();
         list_expr.set_args(vec![
             Expr::value(String::from("foo")),
             Expr::value(String::from("bar")),
         ]);
-        
+
         let expr = Expr::op(
             Expr::field(Field::Name),
             Op::In,
             list_expr,
         );
-        
+
         assert_eq!(query.expr, Some(expr));
-        
+
         let query = "select name from /test where name not in (foo, bar)";
         let mut lexer = Lexer::new(vec![query.to_string()]);
         let mut p = Parser::new(&mut lexer);
         let query = p.parse(false).unwrap();
-        
+
         let mut list_expr = Expr::new();
         list_expr.set_args(vec![
             Expr::value(String::from("foo")),
             Expr::value(String::from("bar")),
         ]);
-        
+
         let expr = Expr::op(
             Expr::field(Field::Name),
             Op::NotIn,
             list_expr,
         );
-        
+
         assert_eq!(query.expr, Some(expr));
     }
 
@@ -1621,7 +1621,7 @@ mod tests {
 
         assert_eq!(query.expr, Some(expr));
     }
-    
+
     #[test]
     fn query_with_value_in_float_args() {
         let query = "select name from /test where size in (100.0, 200.0)";
@@ -1665,5 +1665,61 @@ mod tests {
         );
 
         assert!(query.expr.unwrap().left.unwrap().right.is_some());
+    }
+
+    #[test]
+    fn complex_subquery() {
+        let query = "select name from /test1 where size > 100 and size in (select size from /test2 where name in (select name from /test3 where modified in (select modified from /test4 where size < 200)))";
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
+        let query = p.parse(false).unwrap();
+
+        assert_eq!(
+            query.fields,
+            vec![Expr::field(Field::Name)]
+        );
+
+        assert_eq!(
+            query.roots,
+            vec![Root::new(
+                String::from("/test1"),
+                RootOptions::from(0, 0, false, false, false, None, None, None, Bfs, false)
+            ),]
+        );
+
+        // Verify the main query expression exists
+        assert!(query.expr.is_some());
+
+        // Function to recursively find subqueries in an expression
+        fn find_subqueries(expr: &Expr, count: &mut usize) {
+            // Check if this expression has a subquery
+            if expr.subquery.is_some() {
+                *count += 1;
+                // Check if the subquery has an expression
+                if let Some(subquery) = &expr.subquery {
+                    if let Some(subquery_expr) = &subquery.expr {
+                        // Continue searching in the subquery's expression
+                        find_subqueries(subquery_expr, count);
+                    }
+                }
+            }
+
+            // Check the left branch
+            if let Some(left) = &expr.left {
+                find_subqueries(left, count);
+            }
+
+            // Check the right branch
+            if let Some(right) = &expr.right {
+                find_subqueries(right, count);
+            }
+        }
+
+        // Count the number of subqueries
+        let mut subquery_count = 0;
+        find_subqueries(&query.expr.unwrap(), &mut subquery_count);
+
+        // We expect 3 levels of nested subqueries
+        assert_eq!(subquery_count, 3);
     }
 }

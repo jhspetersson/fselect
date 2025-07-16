@@ -124,6 +124,10 @@ Specify the file size, get an absolute path, and add it to the results:
 More complex query:
 
     fselect "name from /tmp where (name = *.tmp and size = 0) or (name = *.cfg and size > 1000000)"
+
+You can use subqueries:
+
+    select name from /test1 where size > 100 and size in (select size from /test2 where name in (select name from /test3 where modified in (select modified from /test4 where size < 200)))
     
 Aggregate functions (you can use curly braces if you want and even combine them with the regular parentheses):
 

@@ -264,6 +264,7 @@ impl <'a> Parser<'a> {
             Options,
             MinDepth,
             Depth,
+            Alias,
         }
 
         let mut mode = RootParsingMode::Unknown;
@@ -278,6 +279,7 @@ impl <'a> Parser<'a> {
         let mut dockerignore = None;
         let mut traversal = Bfs;
         let mut regexp = false;
+        let mut alias: Option<String> = None;
 
         loop {
             let lexem = self.next_lexeme();
@@ -335,6 +337,8 @@ impl <'a> Parser<'a> {
                             } else if s.starts_with("regex") {
                                 regexp = true;
                                 mode = RootParsingMode::Options;
+                            } else if s == "as" {
+                                mode = RootParsingMode::Alias;
                             } else {
                                 self.drop_lexeme();
                                 break;
@@ -366,6 +370,10 @@ impl <'a> Parser<'a> {
                                 }
                             }
                         }
+                        RootParsingMode::Alias => {
+                            alias = Some(s.to_string());
+                            mode = RootParsingMode::Options;
+                        }
                     },
                     Lexeme::Operator(s) if s.eq("rx") => {
                         regexp = true;
@@ -395,6 +403,7 @@ impl <'a> Parser<'a> {
                 dockerignore,
                 traversal,
                 regexp,
+                alias,
             }),
         }
     }
@@ -416,6 +425,7 @@ impl <'a> Parser<'a> {
             || s == "bfs"
             || s == "dfs"
             || s.starts_with("regex")
+            || s == "as"
     }
 
     /*
@@ -1125,35 +1135,35 @@ mod tests {
             vec![
                 Root::new(
                     String::from("/test"),
-                    RootOptions::from(0, 2, false, false, false, None, None, None, Bfs, false)
+                    RootOptions::from(0, 2, false, false, false, None, None, None, Bfs, false, None)
                 ),
                 Root::new(
                     String::from("/test2"),
-                    RootOptions::from(0, 0, true, false, false, None, None, None, Bfs, false)
+                    RootOptions::from(0, 0, true, false, false, None, None, None, Bfs, false, None)
                 ),
                 Root::new(
                     String::from("/test3"),
-                    RootOptions::from(0, 3, true, false, false, None, None, None, Bfs, false)
+                    RootOptions::from(0, 3, true, false, false, None, None, None, Bfs, false, None)
                 ),
                 Root::new(
                     String::from("/test4"),
-                    RootOptions::from(0, 0, false, false, false, None, None, None, Bfs, false)
+                    RootOptions::from(0, 0, false, false, false, None, None, None, Bfs, false, None)
                 ),
                 Root::new(
                     String::from("/test5"),
-                    RootOptions::from(0, 0, false, false, false, Some(true), None, None, Bfs, false)
+                    RootOptions::from(0, 0, false, false, false, Some(true), None, None, Bfs, false, None)
                 ),
                 Root::new(
                     String::from("/test6"),
-                    RootOptions::from(3, 0, false, false, false, None, None, None, Bfs, false)
+                    RootOptions::from(3, 0, false, false, false, None, None, None, Bfs, false, None)
                 ),
                 Root::new(
                     String::from("/test7"),
-                    RootOptions::from(0, 0, true, false, false, None, None, None, Dfs, false)
+                    RootOptions::from(0, 0, true, false, false, None, None, None, Dfs, false, None)
                 ),
                 Root::new(
                     String::from("/test8"),
-                    RootOptions::from(0, 0, false, false, false, None, None, None, Dfs, false)
+                    RootOptions::from(0, 0, false, false, false, None, None, None, Dfs, false, None)
                 ),
             ]
         );
@@ -1210,7 +1220,7 @@ mod tests {
             query.roots,
             vec![Root::new(
                 String::from("/test"),
-                RootOptions::from(0, 0, false, false, false, None, None, None, Bfs, false)
+                RootOptions::from(0, 0, false, false, false, None, None, None, Bfs, false, None)
             ),]
         );
 
@@ -1236,7 +1246,7 @@ mod tests {
             query.roots,
             vec![Root::new(
                 String::from("/test"),
-                RootOptions::from(0, 0, false, false, false, None, None, None, Bfs, false)
+                RootOptions::from(0, 0, false, false, false, None, None, None, Bfs, false, None)
             ),]
         );
 
@@ -1348,7 +1358,7 @@ mod tests {
             query.roots,
             vec![Root::new(
                 String::from("/opt/Some Cool Dir/Test This"),
-                RootOptions::from(0, 0, false, false, false, None, None, None, Bfs, false)
+                RootOptions::from(0, 0, false, false, false, None, None, None, Bfs, false, None)
             ),]
         );
     }
@@ -1427,7 +1437,7 @@ mod tests {
             query.roots,
             vec![Root::new(
                 String::from("/test"),
-                RootOptions::from(2, 0, false, false, false, Some(true), None, None, Bfs, false)
+                RootOptions::from(2, 0, false, false, false, Some(true), None, None, Bfs, false, None)
             ),]
         );
 
@@ -1464,7 +1474,7 @@ mod tests {
             query.roots,
             vec![Root::new(
                 String::from("."),
-                RootOptions::from(0, 2, false, false, false, None, None, None, Bfs, false)
+                RootOptions::from(0, 2, false, false, false, None, None, None, Bfs, false, None)
             ),]
         );
     }
@@ -1503,7 +1513,7 @@ mod tests {
             query.roots,
             vec![Root::new(
                 String::from("/test"),
-                RootOptions::from(0, 0, false, false, false, None, None, None, Bfs, false)
+                RootOptions::from(0, 0, false, false, false, None, None, None, Bfs, false, None)
             ),]
         );
 
@@ -1539,7 +1549,7 @@ mod tests {
             query.roots,
             vec![Root::new(
                 String::from("/test"),
-                RootOptions::from(0, 0, false, false, false, None, None, None, Dfs, false)
+                RootOptions::from(0, 0, false, false, false, None, None, None, Dfs, false, None)
             ),]
         );
     }
@@ -1660,7 +1670,7 @@ mod tests {
             query.roots,
             vec![Root::new(
                 String::from("/test"),
-                RootOptions::from(0, 0, false, false, false, None, None, None, Bfs, false)
+                RootOptions::from(0, 0, false, false, false, None, None, None, Bfs, false, None)
             ),]
         );
 
@@ -1683,7 +1693,7 @@ mod tests {
             query.roots,
             vec![Root::new(
                 String::from("/test1"),
-                RootOptions::from(0, 0, false, false, false, None, None, None, Bfs, false)
+                RootOptions::from(0, 0, false, false, false, None, None, None, Bfs, false, None)
             ),]
         );
 
@@ -1721,5 +1731,26 @@ mod tests {
 
         // We expect 3 levels of nested subqueries
         assert_eq!(subquery_count, 3);
+    }
+
+    #[test]
+    fn root_with_alias() {
+        let query = "select name from /test as test_alias";
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
+        let query = p.parse(false).unwrap();
+
+        assert_eq!(
+            query.fields,
+            vec![Expr::field(Field::Name)]
+        );
+
+        assert_eq!(
+            query.roots,
+            vec![Root::new(
+                String::from("/test"),
+                RootOptions::from(0, 0, false, false, false, None, None, None, Bfs, false, Some(String::from("test_alias")))
+            ),]
+        );
     }
 }

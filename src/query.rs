@@ -129,6 +129,9 @@ root_options! {
         
         @text = ["regexp", "rx"], description = "Treat the path as a regular expression"
         pub regexp: bool,
+
+        @text = ["as"], description = "Alias for the root path"
+        pub alias: Option<String>,
     }
 }
 
@@ -145,6 +148,7 @@ impl RootOptions {
             dockerignore: None,
             traversal: Bfs,
             regexp: false,
+            alias: None,
         }
     }
 
@@ -160,6 +164,7 @@ impl RootOptions {
         dockerignore: Option<bool>,
         traversal: TraversalMode,
         regexp: bool,
+        alias: Option<String>,
     ) -> RootOptions {
         RootOptions {
             min_depth,
@@ -172,6 +177,7 @@ impl RootOptions {
             dockerignore,
             traversal,
             regexp,
+            alias,
         }
     }
 }

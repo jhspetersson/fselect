@@ -3,7 +3,6 @@
 use std::fmt::Display;
 use std::fmt::Error;
 use std::fmt::Formatter;
-use std::str::FromStr;
 
 use serde::ser::{Serialize, Serializer};
 
@@ -31,26 +30,7 @@ macro_rules! fields {
                 $variant,
             )*
         }
-        
-        impl FromStr for $enum_name {
-            type Err = String;
 
-            fn from_str(s: &str) -> Result<Self, Self::Err> {
-                let field = s.to_ascii_lowercase();
-
-                match field.as_str() {
-                    $(
-                        $(#[$variant_attrs])*
-                        $($text)|* => Ok($enum_name::$variant),
-                    )*
-                    _ => {
-                        let err = String::from("Unknown field ") + &field;
-                        Err(err)
-                    }
-                }
-            }
-        }
-        
         impl Display for $enum_name {
            fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
                 write!(f, "{:?}", self)
@@ -67,6 +47,37 @@ macro_rules! fields {
         }
         
         impl $enum_name {
+            pub fn parse_field(s: &str) -> Result<(Self, Option<String>), String> {
+                let field = s.to_ascii_lowercase();
+
+                if field.contains('.') {
+                    let parts: Vec<&str> = field.split('.').collect();
+
+                    if parts.len() != 2 {
+                        return Err(String::from("Invalid field format, expected 'root_alias.field'"));
+                    }
+
+                    let root_alias = parts[0];
+                    let field_name = parts[1];
+
+                    return match Self::parse_field(field_name) {
+                        Ok((field, _)) => Ok((field, Some(root_alias.to_string()))),
+                        Err(err) => Err(err),
+                    }
+                }
+
+                match field.as_str() {
+                    $(
+                        $(#[$variant_attrs])*
+                        $($text)|* => Ok(($enum_name::$variant, None)),
+                    )*
+                    _ => {
+                        let err = String::from("Unknown field ") + &field;
+                        Err(err)
+                    }
+                }
+            }
+
             pub fn is_numeric_field(&self) -> bool {
                 match self {
                     $(

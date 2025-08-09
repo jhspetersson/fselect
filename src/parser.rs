@@ -29,7 +29,7 @@ pub struct Parser<'a> {
 }
 
 impl <'a> Parser<'a> {
-    pub fn new(lexer: &mut Lexer) -> Parser {
+    pub fn new(lexer: &mut Lexer) -> Parser<'_> {
         Parser {
             lexer,
             lexemes: vec![],
@@ -827,8 +827,8 @@ impl <'a> Parser<'a> {
 
         match lexem {
             Some(Lexeme::String(ref s)) | Some(Lexeme::RawString(ref s)) => {
-                if let Ok(field) = Field::from_str(s) {
-                    let mut expr = Expr::field(field);
+                if let Ok((field, root_alias)) = Field::parse_field(s) {
+                    let mut expr = Expr::field_with_root_alias(field, root_alias);
                     expr.minus = minus;
                     return Ok(Some(expr));
                 }

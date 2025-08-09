@@ -23,6 +23,7 @@ pub struct Expr {
     pub args: Option<Vec<Expr>>,
     pub val: Option<String>,
     pub subquery: Option<Box<Query>>,
+    pub root_alias: Option<String>,
     pub weight: i32,
 }
 
@@ -40,6 +41,7 @@ impl Expr {
             args: None,
             val: None,
             subquery: None,
+            root_alias: None,
             weight: 0,
         }
     }
@@ -60,6 +62,7 @@ impl Expr {
             args: None,
             val: None,
             subquery: None,
+            root_alias: None,
             weight: left_weight + right_weight,
         }
     }
@@ -80,6 +83,7 @@ impl Expr {
             args: None,
             val: None,
             subquery: None,
+            root_alias: None,
             weight: left_weight + right_weight,
         }
     }
@@ -100,6 +104,7 @@ impl Expr {
             args: None,
             val: None,
             subquery: None,
+            root_alias: None,
             weight: left_weight + right_weight,
         }
     }
@@ -119,6 +124,27 @@ impl Expr {
             args: None,
             val: None,
             subquery: None,
+            root_alias: None,
+            weight,
+        }
+    }
+
+    pub fn field_with_root_alias(field: Field, root_alias: Option<String>) -> Expr {
+        let weight = field.get_weight();
+
+        Expr {
+            left: None,
+            arithmetic_op: None,
+            logical_op: None,
+            op: None,
+            right: None,
+            minus: false,
+            field: Some(field),
+            function: None,
+            args: None,
+            val: None,
+            subquery: None,
+            root_alias,
             weight,
         }
     }
@@ -138,6 +164,7 @@ impl Expr {
             args: Some(vec![]),
             val: None,
             subquery: None,
+            root_alias: None,
             weight,
         }
     }
@@ -161,6 +188,7 @@ impl Expr {
             args: Some(vec![]),
             val: None,
             subquery: None,
+            root_alias: None,
             weight: weight + left_weight,
         }
     }
@@ -178,6 +206,7 @@ impl Expr {
             args: None,
             val: Some(value),
             subquery: None,
+            root_alias: None,
             weight: 0,
         }
     }
@@ -200,6 +229,7 @@ impl Expr {
             args: None,
             val: None,
             subquery: Some(Box::new(subquery)),
+            root_alias: None,
             weight,
         }
     }

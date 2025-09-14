@@ -50,8 +50,8 @@ impl <'a> Parser<'a> {
         }
 
         let fields = self.parse_fields()?;
-        let mut roots = self.parse_roots();
-        let root_options = self.parse_root_options();
+        let mut roots = self.parse_roots()?;
+        let root_options = self.parse_root_options()?;
         self.roots_parsed = true;
         let expr = self.parse_where()?;
         self.where_parsed = true;
@@ -61,7 +61,7 @@ impl <'a> Parser<'a> {
         let output_format = self.parse_output_format()?;
 
         if roots.is_empty() {
-            roots = self.parse_roots();
+            roots = self.parse_roots()?;
         }
 
         if roots.is_empty() {
@@ -155,7 +155,7 @@ impl <'a> Parser<'a> {
         Ok(fields)
     }
 
-    fn parse_roots(&mut self) -> Vec<Root> {
+    fn parse_roots(&mut self) -> Result<Vec<Root>, String> {
         enum RootParsingMode {
             Unknown,
             From,
@@ -212,7 +212,7 @@ impl <'a> Parser<'a> {
                                 }
 
                                 self.drop_lexeme();
-                                match self.parse_root_options() {
+                                match self.parse_root_options()? {
                                     Some(options) => root_options = options,
                                     None => {
                                         roots.push(Root::new(path, RootOptions::new()));
@@ -254,11 +254,11 @@ impl <'a> Parser<'a> {
             }
         }
 
-        roots
+        Ok(roots)
     }
 
-    fn parse_root_options(&mut self) -> Option<RootOptions> {
-        #[derive(Debug)]
+    fn parse_root_options(&mut self) -> Result<Option<RootOptions>, String> {
+        #[derive(Debug, PartialEq)]
         enum RootParsingMode {
             Unknown,
             Options,
@@ -385,14 +385,17 @@ impl <'a> Parser<'a> {
                     }
                 },
                 None => {
+                    if mode != RootParsingMode::Unknown && mode != RootParsingMode::Options {
+                        return Err(String::from("Error parsing root options"));
+                    }
                     break;
                 }
             }
         }
 
         match mode {
-            RootParsingMode::Unknown => None,
-            _ => Some(RootOptions {
+            RootParsingMode::Unknown => Ok(None),
+            _ => Ok(Some(RootOptions {
                 min_depth,
                 max_depth,
                 archives,
@@ -404,7 +407,7 @@ impl <'a> Parser<'a> {
                 traversal,
                 regexp,
                 alias,
-            }),
+            })),
         }
     }
 
@@ -1752,5 +1755,35 @@ mod tests {
                 RootOptions::from(0, 0, false, false, false, None, None, None, Bfs, false, Some(String::from("test_alias")))
             ),]
         );
+    }
+
+    #[test]
+    fn broken_root_path() {
+        // Comma immediately after FROM means no valid root path provided
+        // Parser should fall back to default root "."
+        let query = "select name from , where size > 0";
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
+        let query = p.parse(false).unwrap();
+
+        assert_eq!(
+            query.fields,
+            vec![Expr::field(Field::Name)]
+        );
+
+        assert_eq!(
+            query.roots,
+            vec![Root::new(String::from("."), RootOptions::new())]
+        );
+    }
+
+    #[test]
+    fn parse_root_options_fails_on_incomplete_option() {
+        // "mindepth" requires a number, omitting it must produce an error
+        let query = "select name from /test mindepth";
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
+        let result = p.parse(false);
+        assert!(result.is_err());
     }
 }

@@ -29,7 +29,7 @@ human-time = "0.1.6"
 humansize = "2.0"
 imagesize = "0.14"
 kamadak-exif = "0.6"
-lscolors = { version = "0.20", features = [ "nu-ansi-term" ] }
+lscolors = { version = "0.21", features = [ "nu-ansi-term" ] }
 matroska = "0.30"
 mp3-metadata = "0.4"
 mp4parse = "0.17"

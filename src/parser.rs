@@ -1831,3 +1831,185 @@ mod tests {
         assert!(result.is_err());
     }
 }
+
+
+#[cfg(test)]
+mod exists_tests {
+    use super::*;
+
+    #[test]
+    fn query_with_exists_operator() {
+        let query = "select t.name from /test as t where exists('user.test')";
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
+        let query = p.parse(false).unwrap();
+
+        let mut list_expr = Expr::new();
+        list_expr.set_args(vec![Expr::value(String::from("user.test"))]);
+
+        let expr = Expr::op(Expr::field(Field::Name), Op::Exists, list_expr);
+        assert_eq!(query.expr, Some(expr));
+    }
+
+    #[test]
+    fn query_with_not_exists_operator() {
+        let query = "select t.name from /test as t where not exists('user.test')";
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
+        let query = p.parse(false).unwrap();
+
+        let mut list_expr = Expr::new();
+        list_expr.set_args(vec![Expr::value(String::from("user.test"))]);
+
+        let expr = Expr::op(Expr::field(Field::Name), Op::NotExists, list_expr);
+        assert_eq!(query.expr, Some(expr));
+    }
+
+    fn count_subqueries(expr: &Expr) -> usize {
+        let mut count = 0;
+        fn walk(e: &Expr, c: &mut usize) {
+            if e.subquery.is_some() {
+                *c += 1;
+                if let Some(subq) = &e.subquery {
+                    if let Some(subexpr) = &subq.expr {
+                        walk(subexpr, c);
+                    }
+                }
+            }
+            if let Some(left) = &e.left { walk(left, c); }
+            if let Some(right) = &e.right { walk(right, c); }
+        }
+        walk(expr, &mut count);
+        count
+    }
+
+    #[test]
+    fn exists_with_simple_subquery() {
+        let query = "select t1.name from /test as t1 where exists(select t2.name from /t2 as t2 where t2.size > t1.size and t2.name = t1.name)";
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
+        let query = p.parse(false).unwrap();
+
+        let expr = query.expr.expect("query.expr should be present");
+        assert_eq!(expr.op, Some(Op::Exists));
+        let right = expr.right.as_ref().expect("EXISTS should have right side");
+        assert!(right.subquery.is_some(), "Right side should be a subquery");
+
+        let total = count_subqueries(&expr);
+        assert_eq!(total, 1);
+    }
+
+    #[test]
+    fn not_exists_with_simple_subquery() {
+        let query = "select t1.name from /test as t1 where not exists(select t2.name from /t2 as t2 where t2.size > 0)";
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
+        let query = p.parse(false).unwrap();
+
+        let expr = query.expr.expect("query.expr should be present");
+        assert_eq!(expr.op, Some(Op::NotExists));
+        let right = expr.right.as_ref().expect("NOT EXISTS should have right side");
+        assert!(right.subquery.is_some(), "Right side should be a subquery");
+
+        let total = count_subqueries(&expr);
+        assert_eq!(total, 1);
+    }
+
+    #[test]
+    fn exists_with_nested_subqueries() {
+        let query = "select t1.name from /t1 as t1 where exists (select t2.name from /t2 as t2 where t2.name in (select t3.name from /t3 as t3 where t3.size > 0))";
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
+        let query = p.parse(false).unwrap();
+
+        let expr = query.expr.expect("expr should be present");
+        assert_eq!(expr.op, Some(Op::Exists));
+        let right = expr.right.as_ref().expect("EXISTS should have right side");
+        assert!(right.subquery.is_some(), "Right side should be a subquery");
+
+        let total = count_subqueries(&expr);
+        assert_eq!(total, 2);
+    }
+
+    #[test]
+    fn not_exists_with_double_nested_subqueries() {
+        let query = "select t1.name from /t1 as t1 where not exists (select t2.name from /t2 as t2 where t2.name in (select t3.name from /t3 as t3 where t3.modified in (select t4.modified from /t4 as t4 where t4.size < 200)))";
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
+        let query = p.parse(false).unwrap();
+
+        let expr = query.expr.expect("expr should be present");
+        assert_eq!(expr.op, Some(Op::NotExists));
+        let right = expr.right.as_ref().expect("NOT EXISTS should have right side");
+        assert!(right.subquery.is_some(), "Right side should be a subquery");
+
+        let total = count_subqueries(&expr);
+        assert_eq!(total, 3);
+    }
+
+    #[test]
+    fn exists_with_binding_subqueries() {
+        let query = "select t1.name from /t1 as t1 where exists(select t2.name from /t2 as t2 where t2.name = t1.name and t2.size > t1.size and t2.name in (select t3.name from /t3 as t3 where t3.name = t2.name and t3.size > t2.size))";
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
+        let query = p.parse(false).unwrap();
+
+        fn contains_field_with_alias(expr: &Expr, field: Field, alias: &str) -> bool {
+            let mut found = false;
+            fn walk(e: &Expr, field: Field, alias: &str, found: &mut bool) {
+                if *found { return; }
+                if let Some(f) = &e.field {
+                    if *f == field {
+                        if let Some(a) = &e.root_alias {
+                            if a == alias { *found = true; }
+                        }
+                    }
+                }
+                if let Some(left) = &e.left { walk(left, field, alias, found); }
+                if let Some(right) = &e.right { walk(right, field, alias, found); }
+                if let Some(args) = &e.args {
+                    for a in args { walk(a, field, alias, found); }
+                }
+                if let Some(subq) = &e.subquery {
+                    if let Some(subexpr) = &subq.expr {
+                        walk(subexpr, field, alias, found);
+                    }
+                }
+            }
+            walk(expr, field, alias, &mut found);
+            found
+        }
+
+        let expr = query.expr.expect("expr should be present");
+        assert_eq!(expr.op, Some(Op::Exists));
+        let right = expr.right.as_ref().expect("EXISTS should have right side");
+        assert!(right.subquery.is_some(), "Right side should be a subquery");
+
+        let sub1 = right.subquery.as_ref().unwrap();
+        let sub1_expr = sub1.expr.as_ref().expect("sub1 expr should exist");
+
+        assert!(contains_field_with_alias(sub1_expr, Field::Name, "t2"));
+        assert!(contains_field_with_alias(sub1_expr, Field::Name, "t1"));
+        assert!(contains_field_with_alias(sub1_expr, Field::Size, "t2"));
+        assert!(contains_field_with_alias(sub1_expr, Field::Size, "t1"));
+
+        fn find_first_subquery(e: &Expr) -> Option<&Expr> {
+            if e.subquery.is_some() { return Some(e); }
+            if let Some(left) = &e.left { if let Some(f) = find_first_subquery(left) { return Some(f); } }
+            if let Some(right) = &e.right { if let Some(f) = find_first_subquery(right) { return Some(f); } }
+            if let Some(args) = &e.args { for a in args { if let Some(f) = find_first_subquery(a) { return Some(f); } } }
+            None
+        }
+        let subnode = find_first_subquery(sub1_expr).expect("second-level subquery node should be present");
+        let sub2 = subnode.subquery.as_ref().unwrap();
+        let sub2_expr = sub2.expr.as_ref().expect("sub2 expr should exist");
+
+        assert!(contains_field_with_alias(sub2_expr, Field::Name, "t3"));
+        assert!(contains_field_with_alias(sub2_expr, Field::Name, "t2"));
+        assert!(contains_field_with_alias(sub2_expr, Field::Size, "t3"));
+        assert!(contains_field_with_alias(sub2_expr, Field::Size, "t2"));
+
+        let total = count_subqueries(&expr);
+        assert_eq!(total, 2);
+    }
+}

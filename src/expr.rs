@@ -303,27 +303,29 @@ impl Expr {
         result
     }
     
-    pub fn get_fields_required_in_subqueries(&self, alias: &str) -> HashSet<Field> {
+    pub fn get_fields_required_in_subqueries(&self, alias: &str, parent_subquery: bool) -> HashSet<Field> {
         let mut result = HashSet::new();
 
         if let Some(ref subquery) = self.subquery {
             if let Some(ref expr) = subquery.expr {
-                result.extend(expr.get_fields_required_in_subqueries(alias));
+                result.extend(expr.get_fields_required_in_subqueries(alias, true));
             }
         }
         
         if let Some(ref left) = self.left {
-            result.extend(left.get_fields_required_in_subqueries(alias));
+            result.extend(left.get_fields_required_in_subqueries(alias, parent_subquery));
         }
         
         if let Some(ref right) = self.right {
-            result.extend(right.get_fields_required_in_subqueries(alias));
+            result.extend(right.get_fields_required_in_subqueries(alias, parent_subquery));
         }
         
         if let Some(ref expr_alias) = self.root_alias {
             if expr_alias == alias {
                 if let Some(field) = self.field {
-                    result.insert(field);
+                    if parent_subquery {
+                        result.insert(field);
+                    }
                 }
             }
         }
@@ -449,6 +451,8 @@ mod tests {
     use super::*;
     use crate::field::Field;
     use crate::function::Function;
+    use crate::lexer::Lexer;
+    use crate::parser::Parser;
 
     #[test]
     fn test_weight() {
@@ -512,5 +516,71 @@ mod tests {
             ),
         );
         assert_eq!(expr.weight, 2);
+    }
+
+    fn parse_where_expr(sql: &str) -> Expr {
+        let mut lexer = Lexer::new(vec![sql.to_string()]);
+        let mut parser = Parser::new(&mut lexer);
+        let query = parser.parse(false).expect("parse should succeed");
+        query.expr.expect("query should have where expr")
+    }
+
+    fn set_of(fields: Vec<Field>) -> HashSet<Field> {
+        let mut s = HashSet::new();
+        for f in fields { s.insert(f); }
+        s
+    }
+
+    #[test]
+    fn no_subqueries_returns_fields_from_top_level_for_alias() {
+        let expr = parse_where_expr("select t1.name from /t1 as t1 where t1.size > 10");
+        let set = expr.get_fields_required_in_subqueries("t1", false);
+        assert!(set.is_empty());
+    }
+
+    #[test]
+    fn uncorrelated_exists_returns_empty_for_outer_alias() {
+        let expr = parse_where_expr(
+            "select t1.name from /t1 as t1 where exists(select t2.name from /t2 as t2 where t2.size > 0)"
+        );
+        let set = expr.get_fields_required_in_subqueries("t1", false);
+        assert!(set.is_empty(), "Expected no required fields for t1 in uncorrelated subquery");
+    }
+
+    #[test]
+    fn correlated_exists_collects_parent_fields() {
+        let expr = parse_where_expr(
+            "select t1.name from /t1 as t1 where exists(select t2.name from /t2 as t2 where t2.name = t1.name and t2.size > t1.size)"
+        );
+        let set = expr.get_fields_required_in_subqueries("t1", false);
+        assert_eq!(set, set_of(vec![Field::Name, Field::Size]));
+        let set = expr.right.unwrap().subquery.unwrap().expr.unwrap().get_fields_required_in_subqueries("t2", false);
+        assert!(set.is_empty(), "Expected no required fields for t2 in correlated subquery");
+    }
+
+    #[test]
+    fn correlated_not_exists_collects_parent_fields() {
+        let expr = parse_where_expr(
+            "select t1.name from /t1 as t1 where not exists(select t2.name from /t2 as t2 where t2.name = t1.name and t2.size > t1.size)"
+        );
+        let set = expr.get_fields_required_in_subqueries("t1", false);
+        assert_eq!(set, set_of(vec![Field::Name, Field::Size]));
+        let set = expr.right.unwrap().subquery.unwrap().expr.unwrap().get_fields_required_in_subqueries("t2", false);
+        assert!(set.is_empty(), "Expected no required fields for t2 in correlated subquery");
+    }
+
+    #[test]
+    fn deeply_nested_subquery_can_reference_outer_alias() {
+        let expr = parse_where_expr(
+            "select t1.name from /t1 as t1 where exists(select t2.name from /t2 as t2 where t2.name in (select t3.name from /t3 as t3 where t3.modified = t1.modified) and t2.size > t1.size)"
+        );
+        let set = expr.get_fields_required_in_subqueries("t1", false);
+        assert_eq!(set, set_of(vec![Field::Modified, Field::Size]));
+        let set = expr.clone().right.unwrap().subquery.unwrap().expr.unwrap().get_fields_required_in_subqueries("t2", false);
+        assert!(set.is_empty(), "Expected no required fields for t2 in correlated subquery");
+        let set = expr.clone().right.unwrap().subquery.unwrap().expr.unwrap().left.unwrap().right.unwrap().subquery.unwrap().expr.unwrap().get_fields_required_in_subqueries("t3", false);
+        assert!(set.is_empty(), "Expected no required fields for t3 in correlated subquery");
+        let set = expr.right.unwrap().subquery.unwrap().expr.unwrap().left.unwrap().right.unwrap().subquery.unwrap().expr.unwrap().get_fields_required_in_subqueries("t1", false);
+        assert!(set.is_empty(), "Expected no required fields for t1 in correlated subquery");
     }
 }

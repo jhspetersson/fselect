@@ -1989,7 +1989,7 @@ impl<'a> Searcher<'a> {
     fn get_required_field_values(&mut self, expr: &Expr, current_alias: &str, entry: &DirEntry, root_path: &Path, file_info: &Option<FileInfo>) -> HashMap<Field, Variant> {
         let mut field_values = HashMap::new();
 
-        let required_fields = expr.get_fields_required_in_subqueries(current_alias);
+        let required_fields = expr.get_fields_required_in_subqueries(current_alias, false);
         if !required_fields.is_empty() {
             for field in required_fields {
                 let field_value = self.get_field_value(entry, file_info, root_path, &field);

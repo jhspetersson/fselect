@@ -1,5 +1,6 @@
 //! Handles directory traversal and file processing.
 
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs;
 #[cfg(unix)]
@@ -164,6 +165,10 @@ pub struct Searcher<'a> {
     raw_output_buffer: Vec<HashMap<String, String>>,
     partitioned_output_buffer: Rc<HashMap<Vec<String>, Vec<HashMap<String, String>>>>,
     output_buffer: TopN<Criteria<String>, String>,
+
+    record_context: Rc<RefCell<HashMap<String, HashMap<String, String>>>>,
+    current_alias: Option<String>,
+
     hgignore_filters: Vec<HgignoreFilter>,
     dockerignore_filters: Vec<DockerignoreFilter>,
     visited_dirs: HashSet<PathBuf>,
@@ -183,6 +188,17 @@ pub struct Searcher<'a> {
 impl<'a> Searcher<'a> {
     pub fn new(
         query: &'a Query,
+        config: &'a Config,
+        default_config: &'a Config,
+        use_colors: bool,
+    ) -> Self {
+        let record_context = Rc::new(RefCell::new(HashMap::new()));
+        Self::new_with_context(query, record_context, config, default_config, use_colors)
+    }
+
+    pub fn new_with_context(
+        query: &'a Query,
+        record_context: Rc<RefCell<HashMap<String, HashMap<String, String>>>>,
         config: &'a Config,
         default_config: &'a Config,
         use_colors: bool,
@@ -207,6 +223,10 @@ impl<'a> Searcher<'a> {
             } else {
                 TopN::new(limit)
             },
+
+            record_context,
+            current_alias: None,
+
             hgignore_filters: vec![],
             dockerignore_filters: vec![],
             visited_dirs: HashSet::new(),
@@ -344,6 +364,7 @@ impl<'a> Searcher<'a> {
         // ======== Explore each root =========
         for root in roots {
             self.current_follow_symlinks = root.options.symlinks;
+            self.current_alias = root.options.alias.clone();
 
             let root_dir = Path::new(&root.path);
             let min_depth = root.options.min_depth;
@@ -584,7 +605,13 @@ impl<'a> Searcher<'a> {
             return cached.clone();
         }
 
-        let mut sub_searcher = Searcher::new(&query, self.config, self.default_config, self.use_colors);
+        let mut sub_searcher = Searcher::new_with_context(
+            &query,
+            self.record_context.clone(),
+            self.config,
+            self.default_config,
+            self.use_colors
+        );
         sub_searcher.silent_mode = true;
         sub_searcher.list_search_results().unwrap_or_default();
 
@@ -884,6 +911,29 @@ impl<'a> Searcher<'a> {
     ) -> Variant {
         let column_expr_str = column_expr.to_string();
 
+        if column_expr_str.contains(".") {
+            let parts: Vec<&str> = column_expr_str.split('.').collect();
+            if parts.len() == 2 {
+                let column_expr_context_name = parts[0];
+                if let Some(ref current_alias) = self.current_alias {
+                    if column_expr_context_name != current_alias {
+                        let context = self.record_context.borrow();
+                        if let Some(ctx) = context.get(column_expr_context_name) {
+                            if let Some(val) = ctx.get(parts[1]) {
+                                return Variant::from_string(val);
+                            } else {
+                                //TODO: this should be propagated up to the higher context
+                                return Variant::empty(VariantType::String)
+                            }
+                        } else {
+                            //this is a syntax error actually
+                            error_exit("Invalid root alias", column_expr_context_name);
+                        }
+                    }
+                }
+            }
+        }
+
         if file_map.contains_key(&column_expr_str) {
             return Variant::from_string(&file_map[&column_expr_str]);
         }
@@ -899,6 +949,10 @@ impl<'a> Searcher<'a> {
             if entry.is_some() {
                 let result = self.get_field_value(entry.unwrap(), file_info, root_path, field);
                 file_map.insert(column_expr_str, result.to_string());
+                let mut context = self.record_context.borrow_mut();
+                let context_key = self.current_alias.clone().unwrap_or_else(|| String::from(""));
+                let context_entry = context.entry(context_key).or_insert(HashMap::new());
+                context_entry.insert(field.to_string(), result.to_string());
                 return result;
             } else if let Some(val) = file_map.get(&field.to_string()) {
                 return Variant::from_string(val);

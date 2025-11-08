@@ -1758,6 +1758,27 @@ mod tests {
     }
 
     #[test]
+    fn root_and_field_with_alias() {
+        let query = "select test_alias.name from /test as test_alias";
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
+        let query = p.parse(false).unwrap();
+
+        assert_eq!(
+            query.fields,
+            vec![Expr::field_with_root_alias(Field::Name, Some(String::from("test_alias")))]
+        );
+
+        assert_eq!(
+            query.roots,
+            vec![Root::new(
+                String::from("/test"),
+                RootOptions::from(0, 0, false, false, false, None, None, None, Bfs, false, Some(String::from("test_alias")))
+            ),]
+        );
+    }
+
+    #[test]
     fn broken_root_path() {
         // Comma immediately after FROM means no valid root path provided
         // Parser should fall back to default root "."

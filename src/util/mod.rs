@@ -179,6 +179,7 @@ pub fn error_message(source: &str, description: &str) {
 
 pub fn error_exit(source: &str, description: &str) -> ! {
     error_message(source, description);
+    eprintln!();
     std::process::exit(2);
 }
 

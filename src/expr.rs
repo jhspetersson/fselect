@@ -397,6 +397,10 @@ impl Display for Expr {
         }
 
         if let Some(ref field) = self.field {
+            if let Some(ref root_alias) = self.root_alias {
+                fmt.write_str(&root_alias.to_string())?;
+                fmt.write_char('.')?;
+            }
             fmt.write_str(&field.to_string())?;
         }
 

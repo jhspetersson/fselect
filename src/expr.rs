@@ -302,6 +302,34 @@ impl Expr {
 
         result
     }
+    
+    pub fn get_fields_required_in_subqueries(&self, alias: &str) -> HashSet<Field> {
+        let mut result = HashSet::new();
+
+        if let Some(ref subquery) = self.subquery {
+            if let Some(ref expr) = subquery.expr {
+                result.extend(expr.get_fields_required_in_subqueries(alias));
+            }
+        }
+        
+        if let Some(ref left) = self.left {
+            result.extend(left.get_fields_required_in_subqueries(alias));
+        }
+        
+        if let Some(ref right) = self.right {
+            result.extend(right.get_fields_required_in_subqueries(alias));
+        }
+        
+        if let Some(ref expr_alias) = self.root_alias {
+            if expr_alias == alias {
+                if let Some(field) = self.field {
+                    result.insert(field);
+                }
+            }
+        }
+        
+        result
+    }
 
     pub fn contains_numeric(&self) -> bool {
         Self::contains_numeric_field(self)

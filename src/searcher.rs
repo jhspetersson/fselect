@@ -2325,6 +2325,32 @@ impl<'a> Searcher<'a> {
                             }
                             result
                         }
+                        Op::Exists => {
+                            let right = expr.clone().right.unwrap();
+                            match right.args {
+                                Some(args) => !args.is_empty(),
+                                None => {
+                                    if let Some(subquery) = right.subquery {
+                                        !self.get_list_from_subquery(*subquery).is_empty()
+                                    } else {
+                                        false
+                                    }
+                                }
+                            }
+                        }
+                        Op::NotExists => {
+                            let right = expr.clone().right.unwrap();
+                            match right.args {
+                                Some(args) => args.is_empty(),
+                                None => {
+                                    if let Some(subquery) = right.subquery {
+                                        self.get_list_from_subquery(*subquery).is_empty()
+                                    } else {
+                                        true
+                                    }
+                                }
+                            }
+                        }
                         _ => false,
                     }
                 }
@@ -2388,6 +2414,32 @@ impl<'a> Searcher<'a> {
                             }
                             result
                         }
+                        Op::Exists => {
+                            let right = expr.clone().right.unwrap();
+                            match right.args {
+                                Some(args) => !args.is_empty(),
+                                None => {
+                                    if let Some(subquery) = right.subquery {
+                                        !self.get_list_from_subquery(*subquery).is_empty()
+                                    } else {
+                                        false
+                                    }
+                                }
+                            }
+                        }
+                        Op::NotExists => {
+                            let right = expr.clone().right.unwrap();
+                            match right.args {
+                                Some(args) => args.is_empty(),
+                                None => {
+                                    if let Some(subquery) = right.subquery {
+                                        self.get_list_from_subquery(*subquery).is_empty()
+                                    } else {
+                                        true
+                                    }
+                                }
+                            }
+                        }
                         _ => false,
                     }
                 }
@@ -2437,6 +2489,32 @@ impl<'a> Searcher<'a> {
                             }
                             result
                         }
+                        Op::Exists => {
+                            let right = expr.clone().right.unwrap();
+                            match right.args {
+                                Some(args) => !args.is_empty(),
+                                None => {
+                                    if let Some(subquery) = right.subquery {
+                                        !self.get_list_from_subquery(*subquery).is_empty()
+                                    } else {
+                                        false
+                                    }
+                                }
+                            }
+                        }
+                        Op::NotExists => {
+                            let right = expr.clone().right.unwrap();
+                            match right.args {
+                                Some(args) => args.is_empty(),
+                                None => {
+                                    if let Some(subquery) = right.subquery {
+                                        self.get_list_from_subquery(*subquery).is_empty()
+                                    } else {
+                                        true
+                                    }
+                                }
+                            }
+                        }
                         _ => false,
                     }
                 }
@@ -2484,6 +2562,32 @@ impl<'a> Searcher<'a> {
                                 }
                             }
                             result
+                        }
+                        Op::Exists => {
+                            let right = expr.clone().right.unwrap();
+                            match right.args {
+                                Some(args) => !args.is_empty(),
+                                None => {
+                                    if let Some(subquery) = right.subquery {
+                                        !self.get_list_from_subquery(*subquery).is_empty()
+                                    } else {
+                                        false
+                                    }
+                                }
+                            }
+                        }
+                        Op::NotExists => {
+                            let right = expr.clone().right.unwrap();
+                            match right.args {
+                                Some(args) => args.is_empty(),
+                                None => {
+                                    if let Some(subquery) = right.subquery {
+                                        self.get_list_from_subquery(*subquery).is_empty()
+                                    } else {
+                                        true
+                                    }
+                                }
+                            }
                         }
                         _ => false,
                     }
@@ -2537,6 +2641,32 @@ impl<'a> Searcher<'a> {
                                 }
                             }
                             result
+                        }
+                        Op::Exists => {
+                            let right = expr.clone().right.unwrap();
+                            match right.args {
+                                Some(args) => !args.is_empty(),
+                                None => {
+                                    if let Some(subquery) = right.subquery {
+                                        !self.get_list_from_subquery(*subquery).is_empty()
+                                    } else {
+                                        false
+                                    }
+                                }
+                            }
+                        }
+                        Op::NotExists => {
+                            let right = expr.clone().right.unwrap();
+                            match right.args {
+                                Some(args) => args.is_empty(),
+                                None => {
+                                    if let Some(subquery) = right.subquery {
+                                        self.get_list_from_subquery(*subquery).is_empty()
+                                    } else {
+                                        true
+                                    }
+                                }
+                            }
                         }
                         _ => false,
                     }

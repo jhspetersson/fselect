@@ -536,7 +536,9 @@ impl <'a> Parser<'a> {
             }
         }
 
-        let left = self.parse_add_sub()?;
+        let mut exists_present = false;
+
+        let left = self.parse_add_sub();
 
         let mut not = false;
 
@@ -547,6 +549,25 @@ impl <'a> Parser<'a> {
             }
             _ => {
                 self.drop_lexeme();
+            }
+        };
+
+        let lexeme = self.next_lexeme();
+
+        if left.is_err() {
+            if let Some(Lexeme::Operator(s)) = lexeme {
+                if s.to_lowercase() == "exists" {
+                    exists_present = true;
+                }
+            }
+        }
+        self.drop_lexeme();
+        let left = match exists_present {
+            true => {
+                Some(Expr::field(Field::Name))
+            },
+            false => {
+                left?
             }
         };
 
@@ -588,7 +609,7 @@ impl <'a> Parser<'a> {
                     right_expr,
                 )))
             }
-            Some(Lexeme::Operator(s)) if s.as_str() == "in" => {
+            Some(Lexeme::Operator(s)) if s.as_str() == "in" || s.as_str() == "exists" => {
                 let list = self.parse_list()?;
                 let op = Op::from_with_not(s, not);
                 Ok(Some(Expr::op(
@@ -802,7 +823,6 @@ impl <'a> Parser<'a> {
                     match self.parse_expr() {
                         Ok(Some(expr)) => args.push(expr),
                         _ => {
-                            self.drop_lexeme();
                             break
                         }
                     }
@@ -852,7 +872,10 @@ impl <'a> Parser<'a> {
 
                 Ok(Some(expr))
             }
-            _ => Err("Error parsing expression, expecting string".to_string()),
+            _ => {
+                self.drop_lexeme();
+                Err("Error parsing expression, expecting string".to_string())
+            }
         }
     }
 

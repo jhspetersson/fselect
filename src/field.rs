@@ -165,6 +165,11 @@ fields! {
         @description = "Returns the name (with extension) of the file"
         Name,
         
+        #[text = ["filename", "fname"]]
+        @for_archived = true
+        @description = "Returns the file name without extension"
+        Filename,
+        
         #[text = ["ext", "extension"]]
         @for_archived = true
         @description = "Returns the extension of the file"

@@ -190,6 +190,13 @@ pub fn get_extension(s: &str) -> String {
     }
 }
 
+pub fn get_stem(s: &str) -> String {
+    match Path::new(s).file_stem() {
+        Some(stem) => stem.to_string_lossy().to_string(),
+        None => String::new(),
+    }
+}
+
 pub fn parse_filesize(s: &str) -> Option<u64> {
     let string = s.to_string().to_ascii_lowercase().replace(" ", "");
     let length = string.len();

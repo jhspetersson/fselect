@@ -1112,6 +1112,21 @@ impl<'a> Searcher<'a> {
                     ));
                 }
             },
+            Field::Filename => match file_info {
+                Some(file_info) => {
+                    return Variant::from_string(&format!(
+                        "[{}] {}",
+                        entry.file_name().to_string_lossy(),
+                        get_stem(&file_info.name)
+                    ));
+                }
+                _ => {
+                    return Variant::from_string(
+                        &get_stem(&entry.file_name().to_string_lossy())
+                            .to_string(),
+                    );
+                }
+            },
             Field::Extension => match file_info {
                 Some(file_info) => {
                     return Variant::from_string(&format!(

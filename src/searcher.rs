@@ -2400,7 +2400,8 @@ impl<'a> Searcher<'a> {
                             match right.args {
                                 Some(args) => !args.is_empty(),
                                 None => {
-                                    if let Some(subquery) = right.subquery {
+                                    if let Some(mut subquery) = right.subquery {
+                                        subquery.limit = 1;
                                         !self.get_list_from_subquery(*subquery).is_empty()
                                     } else {
                                         false
@@ -2413,7 +2414,8 @@ impl<'a> Searcher<'a> {
                             match right.args {
                                 Some(args) => args.is_empty(),
                                 None => {
-                                    if let Some(subquery) = right.subquery {
+                                    if let Some(mut subquery) = right.subquery {
+                                        subquery.limit = 1;
                                         self.get_list_from_subquery(*subquery).is_empty()
                                     } else {
                                         true

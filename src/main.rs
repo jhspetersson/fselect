@@ -371,6 +371,7 @@ Expressions:
         notlike                     Used to check if the column value doesn't match the pattern which follows SQL conventions
         between                     Used to check if the column value lies between two values inclusive
         in                          Used to check if the column value is in the list of values
+        exists                      Used to check if there is results in the subquery (optionally bound with the main query)
     Logical Operators:
         and                         Used as an AND operator for two conditions made with the above operators
         or                          Used as an OR operator for two conditions made with the above operators

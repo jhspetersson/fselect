@@ -88,7 +88,7 @@ A statically precompiled [binary](https://github.com/jhspetersson/fselect/releas
 
 ### Documentation
 
-[More detailed description. Look at examples first.](docs/usage.md)
+[Detailed description of all the supported features.](docs/usage.md)
 
 ### Examples
 
@@ -128,6 +128,7 @@ More complex query:
 You can use subqueries:
 
     select name from /test1 where size > 100 and size in (select size from /test2 where name in (select name from /test3 where modified in (select modified from /test4 where size < 200)))
+    select name, path, size from /data as data where exists (select * from /backup as backup where backup.name = data.name)
     
 Aggregate functions (you can use curly braces if you want and even combine them with the regular parentheses):
 

@@ -1,6 +1,28 @@
 # fselect
 
-Find files with SQL-like queries
+Find files with SQL-like queries.
+
+[Basic usage](#basic-usage)  
+[Restrictions](#its-not-a-real-sql)  
+[Columns and fields](#columns-and-fields)  
+[Functions](#functions)
+[File size units](#file-size-units)  
+[Search roots](#search-roots)
+[Operators](#operators)
+[Arithmetic operators](#arithmetic-operators)
+[Subqueries for IN and EXISTS](#subqueries-for-in-and-exists)
+[Date and time specifiers](#date-and-time-specifiers)
+[Regular expressions](#regular-expressions)
+[MIME and file types](#mime-and-file-types)
+[MP3 support](#mp3-support)
+[File hashes](#file-hashes)
+[Output formats](#output-formats)
+[Configuration file](#configuration-file)
+[Bash completion](#bash-completion)
+[Command-line arguments](#command-line-arguments)
+[Interactive mode](#interactive-mode)
+[Environment variables](#environment-variables)
+[Exit values](#exit-values)
 
 ### Basic usage
 
@@ -206,20 +228,22 @@ Supported platforms are Linux, macOS, FreeBSD, and NetBSD.
 
 Used mostly for formatting results.
 
-| Function                              | Meaning                                                                                                                                                   | Example                                                                         |
-|---------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------|
-| LENGTH or LEN                         | Length of string value                                                                                                                                    | `select length(name) from /home/user/Downloads order by 1 desc limit 10`        |
-| LOWER or LOWERCASE or LCASE           | Convert value to lowercase                                                                                                                                | `select lower(name) from /home/user/Downloads`                                  |
-| UPPER or UPPERCASE or UCASE           | Convert value to uppercase                                                                                                                                | `select upper(name) from /home/user/Downloads`                                  |
-| INITCAP                               | Returns first letter of each word uppercase, all other letters lowercase                                                                                  | `select initcap('MICHAEL SMITH')`                                               |
-| TO_BASE64 or BASE64                   | Encode value to Base64                                                                                                                                    | `select base64(name) from /home/user/Downloads`                                 |
-| FROM_BASE64                           | Decode value from Base64                                                                                                                                  | `select from_base64('ZnNlbGVjdCByb2Nrcw==')`                                    |
-| LOCATE or POSITION (str, substr, pos) | Returns position of `substr` in `str` value (optionally starting from `pos`)                                                                              | `select locate('foo', 'barfoo')`                                                |
-| SUBSTRING or SUBSTR (str, pos, len)   | Part of `str` value starting from `pos` of (optionally) `len` characters long. Negative `pos` means starting `pos` characters from the end of the string. | `select substr(name, 1, 8) from /home/user/Downloads`                           |
-| REPLACE (str, from, to)               | Replace all occurrences of `from` by `to`                                                                                                                 | `select replace(name, metallica, MetaLLicA) from /home/user/Music/Rock`         |
-| TRIM                                  | Returns string with whitespaces at the beginning and the end stripped                                                                                     | `select trim(title), trim(artist), trim(album) from /home/user/Music into json` |
-| LTRIM                                 | Returns string with whitespaces at the beginning stripped                                                                                                 | `select ltrim(title) from /home/user/Music into json`                           |
-| RTRIM                                 | Returns string with whitespaces at the end stripped                                                                                                       | `select rtrim(title) from /home/user/Music into json`                           |
+| Function                              | Meaning                                                                                                                                                   | Example                                                                                |
+|---------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------|
+| LENGTH or LEN                         | Length of string value                                                                                                                                    | `select length(name) from /home/user/Downloads order by 1 desc limit 10`               |
+| LOWER or LOWERCASE or LCASE           | Convert value to lowercase                                                                                                                                | `select lower(name) from /home/user/Downloads`                                         |
+| UPPER or UPPERCASE or UCASE           | Convert value to uppercase                                                                                                                                | `select upper(name) from /home/user/Downloads`                                         |
+| INITCAP                               | Returns first letter of each word uppercase, all other letters lowercase                                                                                  | `select initcap('MICHAEL SMITH')`                                                      |
+| TO_BASE64 or BASE64                   | Encode value to Base64                                                                                                                                    | `select base64(name) from /home/user/Downloads`                                        |
+| FROM_BASE64                           | Decode value from Base64                                                                                                                                  | `select from_base64('ZnNlbGVjdCByb2Nrcw==')`                                           |
+| CONCAT                                | Returns concatenated string of expression values                                                                                                          | `select CONCAT('Name is ', name, ' size is ', fsize, '!!!') from /home/user/Downloads` |
+| CONCAT_WS                             | Returns concatenated string of expression values with specified delimiter                                                                                 | `select name, fsize, CONCAT_WS('x', width, height) from /home/user/Images`             |
+| LOCATE or POSITION (str, substr, pos) | Returns position of `substr` in `str` value (optionally starting from `pos`)                                                                              | `select locate('foo', 'barfoo')`                                                       |
+| SUBSTRING or SUBSTR (str, pos, len)   | Part of `str` value starting from `pos` of (optionally) `len` characters long. Negative `pos` means starting `pos` characters from the end of the string. | `select substr(name, 1, 8) from /home/user/Downloads`                                  |
+| REPLACE (str, from, to)               | Replace all occurrences of `from` by `to`                                                                                                                 | `select replace(name, metallica, MetaLLicA) from /home/user/Music/Rock`                |
+| TRIM                                  | Returns string with whitespaces at the beginning and the end stripped                                                                                     | `select trim(title), trim(artist), trim(album) from /home/user/Music into json`        |
+| LTRIM                                 | Returns string with whitespaces at the beginning stripped                                                                                                 | `select ltrim(title) from /home/user/Music into json`                                  |
+| RTRIM                                 | Returns string with whitespaces at the end stripped                                                                                                       | `select rtrim(title) from /home/user/Music into json`                                  |
 
 #### Japanese string functions
 
@@ -250,8 +274,6 @@ Used for detecting Japanese symbols in file names and such.
 | GREATEST                   | Returns the largest of the expression values                                                | `select greatest(1, 2, 3)`                                                                    |
 | CONTAINS                   | `true` if file contains string, `false` if not                                              | `select contains(TODO) from /home/user/Projects/foo/src`                                      |
 | COALESCE                   | Returns first nonempty expression value                                                     | `select name, size, COALESCE(sha256, '---') from /home/user/Downloads`                        |
-| CONCAT                     | Returns concatenated string of expression values                                            | `select CONCAT('Name is ', name, ' size is ', fsize, '!!!') from /home/user/Downloads`        |
-| CONCAT_WS                  | Returns concatenated string of expression values with specified delimiter                   | `select name, fsize, CONCAT_WS('x', width, height) from /home/user/Images`                    |
 | RANDOM or RAND             | Returns random integer (from zero to max int, from zero to *arg*, or from *arg1* to *arg2*) | `select path from /home/user/Music order by RAND()`                                           |
 | FORMAT_TIME or PRETTY_TIME | Returns human-readable durations of time in seconds like *2min 26s*                         | `select format_time(duration) from /home/user/Music`                                          |
 | FORMAT_SIZE                | Returns formatted size of a file                                                            | `select name, FORMAT_SIZE(size, '%.0') from /home/user/Downloads order by size desc limit 10` |
@@ -332,6 +354,7 @@ When you put a directory to search at, you can specify some options.
 * `notlike`
 * `between`
 * `in`
+* `exists`
 
 ### Arithmetic operators
 
@@ -342,6 +365,170 @@ When you put a directory to search at, you can specify some options.
 | *        | mul    |
 | /        | div    |
 | %        | mod    |
+
+### Subqueries for `IN` and `EXISTS`
+
+Subqueries in `fselect` allow you to nest queries within queries, enabling powerful file search operations that compare results across different directory trees. 
+Subqueries can be used with the `IN`, `NOT IN`, `EXISTS`, and `NOT EXISTS` operators to create sophisticated filtering logic.
+
+**Important:** When using subqueries that need to reference the parent query's results, you must bind search roots using aliases with the `AS` keyword. 
+This creates a correlated subquery where the inner query can reference columns from the outer query.
+
+> [!CAUTION]
+> This feature is still in development. Random queries can fail for no obvious reason.
+
+#### General Subquery Syntax
+```sql
+SELECT columns FROM root AS alias
+WHERE column operator (SELECT columns2 FROM root2 AS alias2 WHERE condition)
+```
+
+#### Supported Operators
+- `IN` - Tests if a value exists in the subquery result set
+- `NOT IN` - Tests if a value does not exist in the subquery result set
+- `EXISTS` - Tests if the subquery returns any rows
+- `NOT EXISTS` - Tests if the subquery returns no rows
+
+#### `IN` Operator
+
+The `IN` operator checks if a value from the outer query matches any value returned by the subquery.
+
+**Example:** Find files in `/backup` that have the same size as files in `/production`:
+
+```bash
+fselect name, size from /backup 
+where size in (select size from /production)
+```
+
+**Example:** Find files with multiple levels of correlation:
+
+```bash
+select name from /test1 
+where size > 100 and size in (
+  select size from /test2 
+  where name in (
+    select name from /test3 
+    where modified in (
+      select modified from /test4 
+      where size < 200
+    )
+  )
+)
+```
+
+This query finds files in `/test1` where:
+1. Size is greater than 100 bytes
+2. Size matches files in `/test2`
+3. Those `/test2` files have names matching files in `/test3`
+4. Those `/test3` files have modification times matching files in `/test4` (smaller than 200 bytes)
+
+**Example:** Find files in `/home/user/docs` where the filename appears in subdirectories with the same extension:
+
+```bash
+fselect name, path from /home/user/docs as parent
+where name in (
+  select name from /home/user/docs/archive as child
+  where child.ext = parent.ext
+)
+```
+
+The `as parent` and `as child` aliases allow the subquery to reference the outer query's `ext` column.
+
+#### `NOT IN` Operator
+
+The `NOT IN` operator checks if a value from the outer query does NOT match any value in the subquery.
+
+**Example:** Find files in `/current` that don't exist in `/backup` (by name):
+
+```bash
+fselect name, path from /current
+where name not in (select name from /backup)
+```
+
+**Example:** Find config files that exist in production but not in staging:
+
+```bash
+fselect name, path from /production/config as prod
+where name not in (
+  select name from /staging/config where ext = 'cfg'
+)
+```
+
+**Example:** Find files unique to a directory by both name and size:
+
+```bash
+fselect name, size, path from /home/user/projects as proj
+where name not in (
+  select name from /home/user/archive as arch
+  where arch.size = proj.size
+)
+```
+
+**Important Note:** `NOT IN` can produce unexpected results if the subquery returns any NULL/empty values. 
+When in doubt, use `NOT EXISTS` instead (see below).
+
+#### `EXISTS` Operator
+
+The `EXISTS` operator returns true if the subquery returns at least one row. 
+It's often more efficient than `IN` and handles NULL/empty values better.
+
+**Example:** Find directories that contain image files:
+
+```bash
+fselect path from /home/user as parent
+where is_dir and exists (
+  select * from /home/user as child
+  where child.dir = parent.path and child.is_image
+)
+```
+
+**Example:** Find files in `/data` that have a backup in `/backup` with the same name:
+
+```bash
+fselect name, path, size from /data as data
+where exists (
+  select * from /backup as backup
+  where backup.name = data.name
+)
+```
+
+**Example:** Find directories that have been modified recently (contain files modified in the last 7 days):
+
+```bash
+fselect path from /home/user/projects gitignore as proj
+where is_dir 
+  and exists (
+      select * from /home/user/projects as files
+      where is_file 
+        and files.dir = proj.abspath 
+        and files.modified >= 'last week'
+  )
+```
+
+#### `NOT EXISTS` Operator
+
+The `NOT EXISTS` operator returns true if the subquery returns zero rows. This is the safest way to check for non-matching data.
+
+**Example:** Find files in `/production` that don't have a backup:
+
+```bash
+fselect name, path from /production as prod
+where not exists (
+  select * from /backup as backup
+  where backup.name = prod.name
+)
+```
+
+**Example:** Find files in `/cache` that don't have corresponding source files:
+
+```bash
+fselect name, path from /cache as cache
+where not exists (
+  select * from /source as source
+  where source.name = cache.name
+    and source.size > 0
+)
+```
 
 ### Date and time specifiers
 
@@ -373,7 +560,7 @@ Or simply use relative offsets as days:
 
 **fselect** uses *UK* locale, not American style dates, i.e. `08/02` means *February 8th*.
 
-### Regular expressions ###
+### Regular expressions
 
 [Rust flavor regular expressions](https://docs.rs/regex/latest/regex/index.html#syntax) are used.
 
@@ -566,11 +753,22 @@ source ~/.bashrc
 
 ### Command-line arguments
 
-| Argument                                  | Meaning                      |
-|-------------------------------------------|------------------------------|
-| `--config` or `-c` or `/config`           | Specify config file location |
-| `--nocolor` or `--no-color` or `/nocolor` | Disable colors               |
-| `--help` or `-h` or `/?` or `/h`          | Show help and exit           |
+| Argument                                  | Meaning                                      |
+|-------------------------------------------|----------------------------------------------|
+| `--interactive` or `-i` or `/i`           | Run in [interactive mode](#interactive-mode) |
+| `--config` or `-c` or `/config`           | Specify config file location                 |
+| `--nocolor` or `--no-color` or `/nocolor` | Disable colors                               |
+| `--help` or `-h` or `/?` or `/h`          | Show help and exit                           |
+
+### Interactive mode
+
+In interactive mode, you can:
+- execute queries directly without calling `fselect` every time
+- use any characters without escaping them from the shell
+- run multiple searches sequentially without restarting the tool
+- edit and refine queries iteratively
+- use command history (up/down arrows) to recall previous queries
+- exit with `quit`, `exit`, Ctrl+C or Ctrl+D
 
 ### Environment variables
 

@@ -13,7 +13,7 @@ use std::ops::Add;
 use std::os::unix::fs::{DirEntryExt, MetadataExt};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
-
+use std::sync::LazyLock;
 use chrono::{DateTime, Local};
 #[cfg(feature = "git")]
 use git2::Repository;
@@ -184,6 +184,10 @@ pub struct Searcher<'a> {
 
     pub error_count: i32,
 }
+
+static FIELD_WITH_ALIAS: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new("^([a-zA-Z_]+)\\.([a-zA-Z_]+)$").unwrap()
+});
 
 impl<'a> Searcher<'a> {
     pub fn new(
@@ -919,27 +923,24 @@ impl<'a> Searcher<'a> {
 
         let mut should_update_context = false;
 
-        if column_expr_str.contains(".") {
-            let parts: Vec<&str> = column_expr_str.split('.').collect();
-            if parts.len() == 2 {
-                let column_expr_context_name = parts[0];
-                if let Some(ref current_alias) = self.current_alias {
-                    if column_expr_context_name != current_alias {
-                        let context = self.record_context.borrow();
-                        if let Some(ctx) = context.get(column_expr_context_name) {
-                            if let Some(val) = ctx.get(parts[1]) {
-                                return Variant::from_string(val);
-                            } else {
-                                //TODO: this should be propagated up to the higher context
-                                return Variant::empty(VariantType::String)
-                            }
+        if let Some(captures) = FIELD_WITH_ALIAS.captures(&column_expr_str) {
+            let column_expr_context_name = captures.get(1).unwrap().as_str();
+            if let Some(ref current_alias) = self.current_alias {
+                if column_expr_context_name != current_alias {
+                    let context = self.record_context.borrow();
+                    if let Some(ctx) = context.get(column_expr_context_name) {
+                        if let Some(val) = ctx.get(captures.get(2).unwrap().as_str()) {
+                            return Variant::from_string(val);
                         } else {
-                            //this is a syntax error actually
-                            error_exit("Invalid root alias", column_expr_context_name);
+                            //TODO: this should be propagated up to the higher context
+                            return Variant::empty(VariantType::String)
                         }
                     } else {
-                        should_update_context = true;
+                        //this is a syntax error actually
+                        error_exit("Invalid root alias", column_expr_context_name);
                     }
+                } else {
+                    should_update_context = true;
                 }
             }
         }

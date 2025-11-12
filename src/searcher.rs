@@ -1181,7 +1181,10 @@ impl<'a> Searcher<'a> {
             Field::Directory => {
                 let file_path = match file_info {
                     Some(file_info) => file_info.name.clone(),
-                    _ => entry.path().to_string_lossy().to_string(),
+                    _ => match entry.path().strip_prefix(root_path) {
+                        Ok(relative_path) => relative_path.to_string_lossy().to_string(),
+                        Err(_) => entry.path().to_string_lossy().to_string()
+                    },
                 };
                 let pb = PathBuf::from(file_path);
                 if let Some(parent) = pb.parent() {

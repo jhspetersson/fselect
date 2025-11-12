@@ -258,7 +258,7 @@ impl Lexer {
                 "limit" => Some(Lexeme::Limit),
                 "into" => Some(Lexeme::Into),
                 "eq" | "ne" | "gt" | "lt" | "ge" | "le" | "gte" | "lte" | "regexp" | "rx"
-                | "like" | "between" | "in" | "exists" => Some(Lexeme::Operator(s)),
+                | "like" | "between" | "in" | "exists" => Some(Lexeme::Operator(s.to_lowercase())),
                 "mul" | "div" | "mod" | "plus" | "minus" => Some(Lexeme::ArithmeticOperator(s)),
                 _ => Some(Lexeme::RawString(s)),
             },

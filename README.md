@@ -9,7 +9,7 @@ Find files with SQL-like queries
 While it doesn't tend to fully replace traditional `find` and `ls`, **fselect** has these nice features:
 
 * SQL-like (not real SQL, but highly relaxed!) grammar easily understandable by humans
-* complex queries, limited subqueries support
+* complex queries, compare results in several directories with subqueries
 * aggregate, statistics, date, and other functions
 * search within archives
 * `.gitignore`, `.hgignore`, and `.dockerignore` support (experimental)
@@ -127,8 +127,8 @@ More complex query:
 
 You can use subqueries:
 
-    select name from /test1 where size > 100 and size in (select size from /test2 where name in (select name from /test3 where modified in (select modified from /test4 where size < 200)))
-    select name, path, size from /data as data where exists (select * from /backup as backup where backup.name = data.name)
+    fselect "name from /test1 where size > 100 and size in (select size from /test2 where name in (select name from /test3 where modified in (select modified from /test4 where size < 200)))"
+    fselect "name, path, size from /data as data where exists (select * from /backup as backup where backup.name = data.name)"
     
 Aggregate functions (you can use curly braces if you want and even combine them with the regular parentheses):
 

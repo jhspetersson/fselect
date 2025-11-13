@@ -396,14 +396,14 @@ The `IN` operator checks if a value from the outer query matches any value retur
 
 **Example:** Find files in `/backup` that have the same size as files in `/production`:
 
-```bash
-fselect name, size from /backup 
+```sql
+select name, size from /backup 
 where size in (select size from /production)
 ```
 
 **Example:** Find files with multiple levels of correlation:
 
-```bash
+```sql
 select name from /test1 
 where size > 100 and size in (
   select size from /test2 
@@ -425,8 +425,8 @@ This query finds files in `/test1` where:
 
 **Example:** Find files in `/home/user/docs` where the filename appears in subdirectories with the same extension:
 
-```bash
-fselect name, path from /home/user/docs as parent
+```sql
+select name, path from /home/user/docs as parent
 where name in (
   select name from /home/user/docs/archive as child
   where child.ext = parent.ext
@@ -441,15 +441,15 @@ The `NOT IN` operator checks if a value from the outer query does NOT match any 
 
 **Example:** Find files in `/current` that don't exist in `/backup` (by name):
 
-```bash
-fselect name, path from /current
+```sql
+select name, path from /current
 where name not in (select name from /backup)
 ```
 
 **Example:** Find config files that exist in production but not in staging:
 
-```bash
-fselect name, path from /production/config as prod
+```sql
+select name, path from /production/config as prod
 where name not in (
   select name from /staging/config where ext = 'cfg'
 )
@@ -457,8 +457,8 @@ where name not in (
 
 **Example:** Find files unique to a directory by both name and size:
 
-```bash
-fselect name, size, path from /home/user/projects as proj
+```sql
+select name, size, path from /home/user/projects as proj
 where name not in (
   select name from /home/user/archive as arch
   where arch.size = proj.size
@@ -475,8 +475,8 @@ It's often more efficient than `IN` and handles NULL/empty values better.
 
 **Example:** Find directories that contain image files:
 
-```bash
-fselect path from /home/user as parent
+```sql
+select path from /home/user as parent
 where is_dir and exists (
   select * from /home/user as child
   where child.dir = parent.path and child.is_image
@@ -485,8 +485,8 @@ where is_dir and exists (
 
 **Example:** Find files in `/data` that have a backup in `/backup` with the same name:
 
-```bash
-fselect name, path, size from /data as data
+```sql
+select name, path, size from /data as data
 where exists (
   select * from /backup as backup
   where backup.name = data.name
@@ -495,8 +495,8 @@ where exists (
 
 **Example:** Find directories that have been modified recently (contain files modified in the last 7 days):
 
-```bash
-fselect path from /home/user/projects gitignore as proj
+```sql
+select path from /home/user/projects gitignore as proj
 where is_dir 
   and exists (
       select * from /home/user/projects as files
@@ -512,8 +512,8 @@ The `NOT EXISTS` operator returns true if the subquery returns zero rows. This i
 
 **Example:** Find files in `/production` that don't have a backup:
 
-```bash
-fselect name, path from /production as prod
+```sql
+select name, path from /production as prod
 where not exists (
   select * from /backup as backup
   where backup.name = prod.name
@@ -522,8 +522,8 @@ where not exists (
 
 **Example:** Find files in `/cache` that don't have corresponding source files:
 
-```bash
-fselect name, path from /cache as cache
+```sql
+select name, path from /cache as cache
 where not exists (
   select * from /source as source
   where source.name = cache.name
@@ -557,7 +557,7 @@ Or simply use relative offsets as days:
 
     fselect created, path from /home/user where created gte -2
 
-[More about it](https://github.com/stevedonovan/chrono-english)
+[More about writing dates in plain English](https://github.com/stevedonovan/chrono-english)
 
 **fselect** uses *UK* locale, not American style dates, i.e. `08/02` means *February 8th*.
 

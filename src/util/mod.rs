@@ -174,12 +174,11 @@ pub fn path_error_message(p: &Path, e: io::Error) {
 }
 
 pub fn error_message(source: &str, description: &str) {
-    eprint!("{}: {}", source, description);
+    eprintln!("{}: {}", source, description);
 }
 
 pub fn error_exit(source: &str, description: &str) -> ! {
     error_message(source, description);
-    eprintln!();
     std::process::exit(2);
 }
 

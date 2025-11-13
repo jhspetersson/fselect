@@ -178,7 +178,7 @@ fn main() -> ExitCode {
                     }
                     Ok(query) => {
                         let _ = rl.add_history_entry(query.as_str());
-                        exec_search(vec![query], &mut config, &default_config, no_color);
+                        exec_search(vec![query], &mut config, &default_config, no_color, true);
                     }
                     Err(ReadlineError::Interrupted) => {
                         println!("CTRL-C");
@@ -201,7 +201,7 @@ fn main() -> ExitCode {
             }
         }
     } else {
-        exit_value = Some(exec_search(args, &mut config, &default_config, no_color));
+        exit_value = Some(exec_search(args, &mut config, &default_config, no_color, false));
     }
 
     config.save();
@@ -225,7 +225,7 @@ fn main() -> ExitCode {
     ExitCode::SUCCESS
 }
 
-fn exec_search(query: Vec<String>, config: &mut Config, default_config: &Config, no_color: bool) -> u8 {
+fn exec_search(query: Vec<String>, config: &mut Config, default_config: &Config, no_color: bool, interactive: bool) -> u8 {
     if config.debug {
         dbg!(&query);
     }
@@ -239,7 +239,11 @@ fn exec_search(query: Vec<String>, config: &mut Config, default_config: &Config,
     }
 
     if parser.there_are_remaining_lexemes() {
-        error_exit("query", "could not parse tokens at the end of the query");
+        error_message("query", "could not parse tokens at the end of the query");
+
+        if !interactive {
+            std::process::exit(2);
+        }
     }
 
     match query {

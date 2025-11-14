@@ -189,6 +189,8 @@ Let's see how all these are different:
 | `filename` | readme                                       |
 | `ext`      | md                                           |
 
+![File Naming Terminology](terminology.svg)
+
 ### Functions
 
 #### Aggregate functions

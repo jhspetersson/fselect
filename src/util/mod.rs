@@ -33,6 +33,7 @@ use sha1::Digest;
 
 pub use self::datetime::format_date;
 pub use self::datetime::format_datetime;
+pub use self::datetime::format_time;
 pub use self::datetime::parse_datetime;
 pub use self::datetime::to_local_datetime;
 pub use self::glob::convert_glob_to_pattern;

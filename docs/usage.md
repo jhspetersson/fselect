@@ -216,6 +216,7 @@ Used mostly for formatting results.
 | Function                            | Meaning                                                | Example                                                                  |
 |-------------------------------------|--------------------------------------------------------|--------------------------------------------------------------------------|
 | CURRENT_DATE or CUR_DATE or CURDATE | Returns current date                                   | `select modified, path where modified = CURDATE()`                       |
+| CURRENT_TIME or CUR_TIME or CURTIME | Returns current local time (HH:MM:SS)                  | `select CURRENT_TIME()`                                                  |
 | DAY                                 | Extract day of the month                               | `select day(modified) from /home/user/Downloads`                         |
 | MONTH                               | Extract month of the year                              | `select month(name) from /home/user/Downloads`                           |
 | YEAR                                | Extract year of the date                               | `select year(name) from /home/user/Downloads`                            |

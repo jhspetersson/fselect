@@ -20,7 +20,7 @@ use serde::ser::{Serialize, Serializer};
 use xattr::FileExt;
 
 use crate::fileinfo::FileInfo;
-use crate::util::{capitalize, error_exit, format_date, parse_datetime};
+use crate::util::{capitalize, error_exit, format_date, format_time, parse_datetime};
 use crate::util::variant::{Variant, VariantType};
 
 macro_rules! functions {
@@ -323,6 +323,12 @@ functions! {
         @group = "Datetime"
         @description = "Get the current date"
         CurrentDate,
+        
+        #[text = ["current_time", "cur_time", "curtime"]]
+        @weight = 1
+        @group = "Datetime"
+        @description = "Get the current time (HH:MM:SS)"
+        CurrentTime,
         
         #[text = ["day"], data_type = "numeric"]
         @group = "Datetime"
@@ -720,6 +726,10 @@ pub fn get_value(
         Some(Function::CurrentDate) => {
             let now = Local::now().date_naive();
             Variant::from_string(&format_date(&now))
+        }
+        Some(Function::CurrentTime) => {
+            let now = Local::now().time();
+            Variant::from_string(&format_time(&now))
         }
         Some(Function::Year) => match parse_datetime(&function_arg) {
             Ok(date) => Variant::from_int(date.0.year() as i64),

@@ -1,6 +1,6 @@
 use std::sync::LazyLock;
 
-use chrono::{Datelike, Duration, Local, LocalResult, NaiveDate, NaiveDateTime, TimeZone, Timelike};
+use chrono::{Datelike, Duration, Local, LocalResult, NaiveDate, NaiveDateTime, NaiveTime, TimeZone, Timelike};
 use chrono_english::{parse_date_string, Dialect};
 use regex::Regex;
 
@@ -155,6 +155,10 @@ pub fn format_datetime(dt: &NaiveDateTime) -> String {
 
 pub fn format_date(date: &NaiveDate) -> String {
     format!("{}", date.format("%Y-%m-%d"))
+}
+
+pub fn format_time(time: &NaiveTime) -> String {
+    format!("{}", time.format("%H:%M:%S"))
 }
 
 #[cfg(test)]

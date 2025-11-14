@@ -5,6 +5,7 @@ Find files with SQL-like queries.
 [Basic usage](#basic-usage)  
 [Restrictions](#its-not-a-real-sql)  
 [Columns and fields](#columns-and-fields)  
+[File naming terminology](#file-naming-terminology)
 [Functions](#functions)  
 [File size units](#file-size-units)  
 [Search roots](#search-roots)  
@@ -171,6 +172,22 @@ Subqueries have only limited support.
 | `sha2_256` or `sha256`                       | Returns SHA2-256 digest of a file                                                                          |                                                               |
 | `sha2_512` or `sha512`                       | Returns SHA2-512 digest of a file                                                                          |                                                               |
 | `sha3_512` or `sha3`                         | Returns SHA-3 digest of a file                                                                             |                                                               |
+
+### File naming terminology
+
+Let's see how all these are different:
+
+    fselect abspath, absdir, path, dir, name, filename, ext from /home/user/projects where is_file
+
+| Column     | Value                                        | Comment                                                        |
+|------------|----------------------------------------------|----------------------------------------------------------------|
+| `abspath`  | /home/user/projects/foobar/content/readme.md | Absolute path includes everything                              |
+| `absdir`   | /home/user/projects/foobar/content           | Absolute directory includes everything except the last segment | 
+| `path`     | foobar/content/readme.md                     | Path is relative to the search root `/home/user/projects`      |
+| `dir`      | foobar/content                               | Relative directory                                             |
+| `name`     | readme.md                                    | `name` = `filename` + `ext`                                    |
+| `filename` | readme                                       |
+| `ext`      | md                                           |
 
 ### Functions
 

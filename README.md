@@ -9,8 +9,8 @@ Find files with SQL-like queries
 While it doesn't tend to fully replace traditional `find` and `ls`, **fselect** has these nice features:
 
 * SQL-like (not real SQL, but highly relaxed!) grammar easily understandable by humans
-* complex queries, compare results in several directories with subqueries
-* aggregate, statistics, date, and other functions
+* complex queries, compare results in several directories with [subqueries](docs/usage.md#subqueries-for-in-and-exists)
+* aggregate, statistics, date, and other [functions](docs/usage.md#functions)
 * search within archives
 * `.gitignore`, `.hgignore`, and `.dockerignore` support (experimental)
 * search by width and height of images, EXIF metadata
@@ -19,7 +19,7 @@ While it doesn't tend to fully replace traditional `find` and `ls`, **fselect** 
 * search by file hashes
 * search by MIME type
 * shortcuts to common file types
-* interactive mode
+* [interactive mode](docs/usage.md#interactive-mode)
 * various output formatting (CSV, JSON, and others)
 
 More is under way!

@@ -901,6 +901,7 @@ impl <'a> Parser<'a> {
         if let Ok(Some(function_arg)) = self.parse_expr() {
             function_expr.add_left(function_arg);
         } else {
+            self.next_lexeme();
             return Ok(function_expr);
         }
 

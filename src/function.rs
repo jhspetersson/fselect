@@ -20,7 +20,7 @@ use serde::ser::{Serialize, Serializer};
 use xattr::FileExt;
 
 use crate::fileinfo::FileInfo;
-use crate::util::{capitalize, error_exit, format_date, format_time, parse_datetime};
+use crate::util::{capitalize, error_exit, format_date, format_time, format_datetime, parse_datetime};
 use crate::util::variant::{Variant, VariantType};
 
 macro_rules! functions {
@@ -329,6 +329,12 @@ functions! {
         @group = "Datetime"
         @description = "Get the current time (HH:MM:SS)"
         CurrentTime,
+        
+        #[text = ["current_timestamp", "now"]]
+        @weight = 1
+        @group = "Datetime"
+        @description = "Get the current timestamp (YYYY-MM-DD HH:MM:SS)"
+        CurrentTimestamp,
         
         #[text = ["day"], data_type = "numeric"]
         @group = "Datetime"
@@ -730,6 +736,10 @@ pub fn get_value(
         Some(Function::CurrentTime) => {
             let now = Local::now().time();
             Variant::from_string(&format_time(&now))
+        }
+        Some(Function::CurrentTimestamp) => {
+            let now = Local::now().naive_local();
+            Variant::from_string(&format_datetime(&now))
         }
         Some(Function::Year) => match parse_datetime(&function_arg) {
             Ok(date) => Variant::from_int(date.0.year() as i64),
@@ -1429,6 +1439,26 @@ mod tests {
 
         let result = get_value(&Some(function), function_arg, function_args, entry, &file_info);
         assert_eq!(result.to_string(), format_date(&Local::now().date_naive()));
+    }
+    
+    #[test]
+    fn function_current_timestamp() {
+        let function = Function::CurrentTimestamp;
+        let function_arg = String::new();
+        let function_args: Vec<String> = vec![];
+        let entry = None;
+        let file_info = None;
+
+        let result = get_value(&Some(function), function_arg, function_args, entry, &file_info);
+        let s = result.to_string();
+        // Expect format YYYY-MM-DD HH:MM:SS → length 19 and separators at fixed positions
+        assert_eq!(s.len(), 19, "Unexpected CURRENT_TIMESTAMP length: {}", s);
+        let bytes = s.as_bytes();
+        assert_eq!(bytes[4] as char, '-', "expected '-' at pos 4 in {}", s);
+        assert_eq!(bytes[7] as char, '-', "expected '-' at pos 7 in {}", s);
+        assert_eq!(bytes[10] as char, ' ', "expected space at pos 10 in {}", s);
+        assert_eq!(bytes[13] as char, ':', "expected ':' at pos 13 in {}", s);
+        assert_eq!(bytes[16] as char, ':', "expected ':' at pos 16 in {}", s);
     }
     
     #[test]

@@ -1,4 +1,4 @@
-<svg viewBox="0 0 1200 900" xmlns="http://www.w3.org/2000/svg">
+<svg viewBox="0 0 1050 900" xmlns="http://www.w3.org/2000/svg">
     <defs>
         <style>
             .title { font: bold 24px sans-serif; fill: #2d3748; }
@@ -21,14 +21,14 @@
     </defs>
 
     <!-- Background -->
-    <rect width="1200" height="900" fill="#f7fafc"/>
+    <rect width="1050" height="900" fill="#f7fafc"/>
 
     <!-- Title -->
-    <text x="600" y="40" text-anchor="middle" class="title">File Naming Terminology</text>
-    <text x="600" y="65" text-anchor="middle" class="subtitle">Visual breakdown of path components</text>
+    <text x="500" y="40" text-anchor="middle" class="title">File Naming Terminology</text>
+    <text x="500" y="65" text-anchor="middle" class="subtitle">Visual breakdown of path components</text>
 
     <!-- Search Root Info -->
-    <rect x="50" y="85" width="1100" height="40" fill="#edf2f7" rx="4"/>
+    <rect x="50" y="85" width="950" height="40" fill="#edf2f7" rx="4"/>
     <rect x="50" y="85" width="4" height="40" fill="#667eea"/>
     <text x="70" y="110" class="value">
         <tspan fill="#667eea" font-weight="bold">Search Root:</tspan> /home/user/projects

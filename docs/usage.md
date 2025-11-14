@@ -552,6 +552,17 @@ where not exists (
 )
 ```
 
+**Example:** Find source files that have no corresponding test files:
+
+```sql
+select name, path from /home/user/src as src
+where ext = 'rs' and not exists (
+  select * from /home/user/tests as tests
+  where tests.name like concat(src.name, '_test%')
+    and tests.ext = 'rs'
+)
+```
+
 ### Date and time specifiers
 
 When you specify inexact date and time with `=` or `!=` operator, **fselect** understands it as an interval.

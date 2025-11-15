@@ -31,6 +31,10 @@ More is under way!
 * Install [Rust with Cargo](https://www.rust-lang.org/en-US/install.html) and its dependencies to build a binary
 * Run `cargo install fselect`
 
+#### Debian/Ubuntu
+
+[deb package](https://github.com/jhspetersson/fselect/releases/download/0.9.1/fselect_0.9.1-1_amd64.deb)
+
 #### Arch Linux
 
 [AUR package](https://aur.archlinux.org/packages/fselect/), thanks to [@asm0dey](https://github.com/asm0dey)

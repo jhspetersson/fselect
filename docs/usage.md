@@ -5,7 +5,7 @@ Find files with SQL-like queries.
 [Basic usage](#basic-usage)  
 [Restrictions](#its-not-a-real-sql)  
 [Columns and fields](#columns-and-fields)  
-[File naming terminology](#file-naming-terminology)
+[File naming terminology](#file-naming-terminology)  
 [Functions](#functions)  
 [File size units](#file-size-units)  
 [Search roots](#search-roots)  

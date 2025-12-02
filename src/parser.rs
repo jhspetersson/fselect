@@ -745,19 +745,39 @@ impl <'a> Parser<'a> {
     fn parse_paren(&mut self) -> Result<Option<Expr>, String> {
         match self.next_lexeme() {
             Some(Lexeme::Open) => {
-                let result = self.parse_expr();
-                if let Some(Lexeme::Close) = self.next_lexeme() {
-                    result
-                } else {
-                    Err("Unmatched parenthesis".to_string())
+                match self.next_lexeme() {
+                    Some(Lexeme::Select) => {
+                        self.drop_lexeme();
+                        self.drop_lexeme();
+                        Ok(Some(self.parse_list()?))
+                    },
+                    _ => {
+                        self.drop_lexeme();
+                        let result = self.parse_expr();
+                        if let Some(Lexeme::Close) = self.next_lexeme() {
+                            result
+                        } else {
+                            Err("Unmatched parenthesis".to_string())
+                        }
+                    }
                 }
             }
             Some(Lexeme::CurlyOpen) => {
-                let result = self.parse_expr();
-                if let Some(Lexeme::CurlyClose) = self.next_lexeme() {
-                    result
-                } else {
-                    Err("Unmatched parenthesis".to_string())
+                match self.next_lexeme() {
+                    Some(Lexeme::Select) => {
+                        self.drop_lexeme();
+                        self.drop_lexeme();
+                        Ok(Some(self.parse_list()?))
+                    },
+                    _ => {
+                        self.drop_lexeme();
+                        let result = self.parse_expr();
+                        if let Some(Lexeme::CurlyClose) = self.next_lexeme() {
+                            result
+                        } else {
+                            Err("Unmatched parenthesis".to_string())
+                        }
+                    }
                 }
             }
             _ => {

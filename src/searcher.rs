@@ -956,6 +956,16 @@ impl<'a> Searcher<'a> {
             return Variant::from_string(&file_map[&column_expr_str]);
         }
 
+        if let Some(ref subquery) = column_expr.subquery {
+            let mut subquery = subquery.clone();
+            subquery.limit = 1;
+            let list = self.get_list_from_subquery(*subquery);
+            if !list.is_empty() {
+                let result = list.first().unwrap().to_string();
+                return Variant::from_string(&result);
+            }
+        }
+
         if let Some(ref _function) = column_expr.function {
             let result =
                 self.get_function_value(entry, file_info, root_path, file_map, buffer_data, column_expr);

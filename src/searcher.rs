@@ -3146,4 +3146,35 @@ mod tests {
         assert!(!searcher.is_video("test.jpg"));
         assert!(!searcher.is_video("test"));
     }
+
+    #[test]
+    fn test_bound_column_resolution_across_root_aliases() {
+        use crate::field::Field;
+
+        // Build a searcher and simulate two roots with aliases `a` and `b`
+        let mut searcher = create_test_searcher();
+
+        // Current file belongs to alias `b`
+        searcher.current_alias = Some(String::from("b"));
+
+        // Pre-populate record_context with a value for alias `a`
+        {
+            let mut ctx = searcher.record_context.borrow_mut();
+            use crate::field::Field;
+            let key = Field::Name.to_string();
+            ctx.insert("a".to_string(), HashMap::from([(key, String::from("foo.txt"))]));
+        }
+
+        // Build an expression that references a bound column from a different root alias
+        let mut bound_expr = Expr::field(Field::Name);
+        bound_expr.root_alias = Some(String::from("a"));
+
+        let mut file_map: HashMap<String, String> = HashMap::new();
+        let root_path = Path::new(".");
+
+        // Since current_alias is `b`, and the expression requests `a.name`,
+        // get_column_expr_value should read the value from record_context rather than the current entry
+        let v = searcher.get_column_expr_value(None, &None, root_path, &mut file_map, None, &bound_expr);
+        assert_eq!(v.to_string(), "foo.txt");
+    }
 }

@@ -624,7 +624,7 @@ impl<'a> Searcher<'a> {
         sub_searcher.list_search_results().unwrap_or_default();
 
         let result_values = sub_searcher.output_buffer.values().iter()
-            .map(|s| s.to_string())
+            .map(|s| s.trim_end().to_string())
             .collect::<Vec<String>>();
 
         if ok_to_cache {
@@ -2117,7 +2117,7 @@ impl<'a> Searcher<'a> {
                     criteria,
                     Rc::new(self.query.ordering_asc.clone()),
                 ),
-                String::from(buf).trim_end().to_string(),
+                String::from(buf).to_string(),
             );
 
             if self.has_aggregate_column() {

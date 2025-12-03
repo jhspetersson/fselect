@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 
+#[derive(Debug)]
 pub struct TopN<K: Ord, V> {
     limit: Option<u32>,
     count: u32,

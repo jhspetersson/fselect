@@ -186,7 +186,7 @@ pub struct Searcher<'a> {
 }
 
 static FIELD_WITH_ALIAS: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new("^([a-zA-Z_]+)\\.([a-zA-Z_]+)$").unwrap()
+    Regex::new("^([a-zA-Z0-9_]+)\\.([a-zA-Z0-9_]+)$").unwrap()
 });
 
 impl<'a> Searcher<'a> {
@@ -611,7 +611,7 @@ impl<'a> Searcher<'a> {
             if let Some(cached) = self.subquery_cache.get(&query_str) {
                 return cached.clone();
             }
-        }        
+        }
 
         let mut sub_searcher = Searcher::new_with_context(
             &query,
@@ -624,7 +624,7 @@ impl<'a> Searcher<'a> {
         sub_searcher.list_search_results().unwrap_or_default();
 
         let result_values = sub_searcher.output_buffer.values().iter()
-            .map(|s| s.trim_end().to_string())
+            .map(|s| s.to_string())
             .collect::<Vec<String>>();
 
         if ok_to_cache {
@@ -2117,7 +2117,7 @@ impl<'a> Searcher<'a> {
                     criteria,
                     Rc::new(self.query.ordering_asc.clone()),
                 ),
-                String::from(buf),
+                String::from(buf).trim_end().to_string(),
             );
 
             if self.has_aggregate_column() {

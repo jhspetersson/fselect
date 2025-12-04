@@ -24,6 +24,7 @@ pub struct Expr {
     pub val: Option<String>,
     pub subquery: Option<Box<Query>>,
     pub root_alias: Option<String>,
+    pub alias: Option<String>,
     pub weight: i32,
 }
 
@@ -42,6 +43,7 @@ impl Expr {
             val: None,
             subquery: None,
             root_alias: None,
+            alias: None,
             weight: 0,
         }
     }
@@ -63,6 +65,7 @@ impl Expr {
             val: None,
             subquery: None,
             root_alias: None,
+            alias: None,
             weight: left_weight + right_weight,
         }
     }
@@ -84,6 +87,7 @@ impl Expr {
             val: None,
             subquery: None,
             root_alias: None,
+            alias: None,
             weight: left_weight + right_weight,
         }
     }
@@ -105,6 +109,7 @@ impl Expr {
             val: None,
             subquery: None,
             root_alias: None,
+            alias: None,
             weight: left_weight + right_weight,
         }
     }
@@ -125,6 +130,7 @@ impl Expr {
             val: None,
             subquery: None,
             root_alias: None,
+            alias: None,
             weight,
         }
     }
@@ -145,6 +151,7 @@ impl Expr {
             val: None,
             subquery: None,
             root_alias,
+            alias: None,
             weight,
         }
     }
@@ -165,6 +172,7 @@ impl Expr {
             val: None,
             subquery: None,
             root_alias: None,
+            alias: None,
             weight,
         }
     }
@@ -189,6 +197,7 @@ impl Expr {
             val: None,
             subquery: None,
             root_alias: None,
+            alias: None,
             weight: weight + left_weight,
         }
     }
@@ -207,6 +216,7 @@ impl Expr {
             val: Some(value),
             subquery: None,
             root_alias: None,
+            alias: None,
             weight: 0,
         }
     }
@@ -230,6 +240,7 @@ impl Expr {
             val: None,
             subquery: Some(Box::new(subquery)),
             root_alias: None,
+            alias: None,
             weight,
         }
     }

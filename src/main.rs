@@ -249,7 +249,7 @@ fn exec_search(query: Vec<String>, config: &mut Config, default_config: &Config,
     match query {
         Ok(query) => {
             let is_terminal = stdout().is_terminal();
-            let use_colors = !no_color && is_terminal;
+            let use_colors = !no_color && is_terminal && query.output_format.supports_colorization();
 
             let mut searcher = Searcher::new(&query, config, default_config, use_colors);
             searcher.list_search_results().unwrap();

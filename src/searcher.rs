@@ -980,7 +980,8 @@ impl<'a> Searcher<'a> {
                 let mut context = self.record_context.borrow_mut();
                 let context_key = self.current_alias.clone().unwrap_or_else(|| String::from(""));
                 let context_entry = context.entry(context_key.to_string()).or_insert(HashMap::new());
-                context_entry.insert(field.to_string(), result.to_string());
+                let entry_key = if let Some(alias) = column_expr.alias.clone() { alias } else { field.to_string() };
+                context_entry.insert(entry_key, result.to_string());
                 return result;
             } else if let Some(val) = file_map.get(&field.to_string()) {
                 return Variant::from_string(val);
@@ -2015,14 +2016,14 @@ impl<'a> Searcher<'a> {
         return Variant::empty(VariantType::String);
     }
 
-    fn get_required_field_values(&mut self, expr: &Expr, current_alias: &str, entry: &DirEntry, root_path: &Path, file_info: &Option<FileInfo>) -> HashMap<Field, Variant> {
+    fn get_required_field_values(&mut self, expr: &Expr, current_alias: &str, entry: &DirEntry, root_path: &Path, file_info: &Option<FileInfo>) -> HashMap<String, Variant> {
         let mut field_values = HashMap::new();
 
         let required_fields = expr.get_fields_required_in_subqueries(current_alias, false);
         if !required_fields.is_empty() {
-            for field in required_fields {
+            for (field, alias) in required_fields {
                 let field_value = self.get_field_value(entry, file_info, root_path, &field);
-                field_values.insert(field, field_value);
+                field_values.insert(alias, field_value);
             }
         }
         
@@ -2051,7 +2052,7 @@ impl<'a> Searcher<'a> {
                 let mut context = self.record_context.borrow_mut();
                 let context_entry = context.entry(current_alias.to_string()).or_insert(HashMap::new());
                 for (field, field_value) in field_values {
-                    context_entry.insert(field.to_string(), field_value.to_string());
+                    context_entry.insert(field, field_value.to_string());
                 }
             }
         }

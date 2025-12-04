@@ -1,8 +1,8 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::fmt::Display;
 use std::fmt::Formatter;
-
+use std::hash::{DefaultHasher, Hash, Hasher};
 use crate::field::Field;
 use crate::function::Function;
 use crate::operators::ArithmeticOp;
@@ -314,8 +314,8 @@ impl Expr {
         result
     }
     
-    pub fn get_fields_required_in_subqueries(&self, alias: &str, parent_subquery: bool) -> HashSet<Field> {
-        let mut result = HashSet::new();
+    pub fn get_fields_required_in_subqueries(&self, alias: &str, parent_subquery: bool) -> HashMap<Field, String> {
+        let mut result = HashMap::new();
 
         if let Some(ref subquery) = self.subquery {
             if let Some(ref expr) = subquery.expr {
@@ -335,7 +335,8 @@ impl Expr {
             if expr_alias == alias {
                 if let Some(field) = self.field {
                     if parent_subquery {
-                        result.insert(field);
+                        let alias = if let Some(ref alias) = self.alias { alias } else { &field.to_string() };
+                        result.insert(field, alias.clone());
                     }
                 }
             }
@@ -422,17 +423,37 @@ impl Display for Expr {
     fn fmt(&self, fmt: &mut Formatter) -> fmt::Result {
         use std::fmt::Write;
 
+        if let Some(ref subquery) = self.subquery {
+            if let Some(ref alias) = self.alias {
+                if let Some(ref root_alias) = self.root_alias {
+                    fmt.write_str(&root_alias.to_string())?;
+                    fmt.write_char('.')?;
+                }
+                fmt.write_str(&alias.to_string())?;
+            } else {
+                let subquery_str = format!("{:?}", subquery);
+                let mut s = DefaultHasher::new();
+                subquery_str.hash(&mut s);
+                let hash = s.finish();
+                fmt.write_str(("subquery_".to_string() + hash.to_string().as_str()).as_str())?;
+            }
+        }
+
         if self.minus {
             fmt.write_char('-')?;
         }
 
         if let Some(ref function) = self.function {
-            fmt.write_str(&function.to_string())?;
-            fmt.write_char('(')?;
-            if let Some(ref left) = self.left {
-                fmt.write_str(&left.to_string())?;
+            if let Some(ref alias) = self.alias {
+                fmt.write_str(&alias.to_string())?;
+            } else {
+                fmt.write_str(&function.to_string())?;
+                fmt.write_char('(')?;
+                if let Some(ref left) = self.left {
+                    fmt.write_str(&left.to_string())?;
+                }
+                fmt.write_char(')')?;
             }
-            fmt.write_char(')')?;
         } else if let Some(ref left) = self.left {
             fmt.write_str(&left.to_string())?;
         }
@@ -442,7 +463,11 @@ impl Display for Expr {
                 fmt.write_str(&root_alias.to_string())?;
                 fmt.write_char('.')?;
             }
-            fmt.write_str(&field.to_string())?;
+            if let Some(ref alias) = self.alias {
+                fmt.write_str(&alias.to_string())?;
+            } else {
+                fmt.write_str(&field.to_string())?;
+            }
         }
 
         if let Some(ref val) = self.val {
@@ -536,12 +561,6 @@ mod tests {
         query.expr.expect("query should have where expr")
     }
 
-    fn set_of(fields: Vec<Field>) -> HashSet<Field> {
-        let mut s = HashSet::new();
-        for f in fields { s.insert(f); }
-        s
-    }
-
     #[test]
     fn no_subqueries_returns_fields_from_top_level_for_alias() {
         let expr = parse_where_expr("select t1.name from /t1 as t1 where t1.size > 10");
@@ -563,8 +582,8 @@ mod tests {
         let expr = parse_where_expr(
             "select t1.name from /t1 as t1 where exists(select t2.name from /t2 as t2 where t2.name = t1.name and t2.size > t1.size)"
         );
-        let set = expr.get_fields_required_in_subqueries("t1", false);
-        assert_eq!(set, set_of(vec![Field::Name, Field::Size]));
+        let map = expr.get_fields_required_in_subqueries("t1", false);
+        assert_eq!(map, HashMap::from([(Field::Name, String::from("Name")), (Field::Size, String::from("Size"))]));
         let set = expr.right.unwrap().subquery.unwrap().expr.unwrap().get_fields_required_in_subqueries("t2", false);
         assert!(set.is_empty(), "Expected no required fields for t2 in correlated subquery");
     }
@@ -574,10 +593,10 @@ mod tests {
         let expr = parse_where_expr(
             "select t1.name from /t1 as t1 where not exists(select t2.name from /t2 as t2 where t2.name = t1.name and t2.size > t1.size)"
         );
-        let set = expr.get_fields_required_in_subqueries("t1", false);
-        assert_eq!(set, set_of(vec![Field::Name, Field::Size]));
-        let set = expr.right.unwrap().subquery.unwrap().expr.unwrap().get_fields_required_in_subqueries("t2", false);
-        assert!(set.is_empty(), "Expected no required fields for t2 in correlated subquery");
+        let map = expr.get_fields_required_in_subqueries("t1", false);
+        assert_eq!(map, HashMap::from([(Field::Name, String::from("Name")), (Field::Size, String::from("Size"))]));
+        let map = expr.right.unwrap().subquery.unwrap().expr.unwrap().get_fields_required_in_subqueries("t2", false);
+        assert!(map.is_empty(), "Expected no required fields for t2 in correlated subquery");
     }
 
     #[test]
@@ -585,13 +604,13 @@ mod tests {
         let expr = parse_where_expr(
             "select t1.name from /t1 as t1 where exists(select t2.name from /t2 as t2 where t2.name in (select t3.name from /t3 as t3 where t3.modified = t1.modified) and t2.size > t1.size)"
         );
-        let set = expr.get_fields_required_in_subqueries("t1", false);
-        assert_eq!(set, set_of(vec![Field::Modified, Field::Size]));
-        let set = expr.clone().right.unwrap().subquery.unwrap().expr.unwrap().get_fields_required_in_subqueries("t2", false);
-        assert!(set.is_empty(), "Expected no required fields for t2 in correlated subquery");
-        let set = expr.clone().right.unwrap().subquery.unwrap().expr.unwrap().left.unwrap().right.unwrap().subquery.unwrap().expr.unwrap().get_fields_required_in_subqueries("t3", false);
-        assert!(set.is_empty(), "Expected no required fields for t3 in correlated subquery");
-        let set = expr.right.unwrap().subquery.unwrap().expr.unwrap().left.unwrap().right.unwrap().subquery.unwrap().expr.unwrap().get_fields_required_in_subqueries("t1", false);
-        assert!(set.is_empty(), "Expected no required fields for t1 in correlated subquery");
+        let map = expr.get_fields_required_in_subqueries("t1", false);
+        assert_eq!(map, HashMap::from([(Field::Modified, String::from("Modified")), (Field::Size, String::from("Size"))]));
+        let map = expr.clone().right.unwrap().subquery.unwrap().expr.unwrap().get_fields_required_in_subqueries("t2", false);
+        assert!(map.is_empty(), "Expected no required fields for t2 in correlated subquery");
+        let map = expr.clone().right.unwrap().subquery.unwrap().expr.unwrap().left.unwrap().right.unwrap().subquery.unwrap().expr.unwrap().get_fields_required_in_subqueries("t3", false);
+        assert!(map.is_empty(), "Expected no required fields for t3 in correlated subquery");
+        let map = expr.right.unwrap().subquery.unwrap().expr.unwrap().left.unwrap().right.unwrap().subquery.unwrap().expr.unwrap().get_fields_required_in_subqueries("t1", false);
+        assert!(map.is_empty(), "Expected no required fields for t1 in correlated subquery");
     }
 }

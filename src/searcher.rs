@@ -606,7 +606,7 @@ impl<'a> Searcher<'a> {
     fn get_list_from_subquery(&mut self, query: Query) -> Vec<String> {
         let query_str = format!("{:?}", query);
         
-        let ok_to_cache = query.roots.iter().all(|root| root.options.alias.is_none()); 
+        let ok_to_cache = query.roots.iter().all(|root| root.options.alias.is_none());
         if ok_to_cache {
             if let Some(cached) = self.subquery_cache.get(&query_str) {
                 return cached.clone();
@@ -620,7 +620,7 @@ impl<'a> Searcher<'a> {
             self.default_config,
             self.use_colors
         );
-        sub_searcher.silent_mode = true;
+        sub_searcher.silent_mode = !self.config.debug;
         sub_searcher.list_search_results().unwrap_or_default();
 
         let result_values = sub_searcher.output_buffer.values().iter()

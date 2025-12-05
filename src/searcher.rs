@@ -2499,7 +2499,21 @@ impl<'a> Searcher<'a> {
                         Op::NotIn => {
                             let field_value = field_value.to_int();
                             let mut result = true;
-                            for item in expr.clone().right.unwrap().args.unwrap().iter().map(|arg| self.get_column_expr_value(
+                            let right = expr.clone().right.unwrap();
+                            let args = match right.args {
+                                Some(args) => args,
+                                None => {
+                                    if let Some(subquery) = right.subquery {
+                                        self.get_list_from_subquery(*subquery).iter().map(|s| {
+                                            Expr::value(s.clone().to_string())
+                                        }).collect()
+                                    } else {
+                                        vec![]
+                                    }
+                                }
+                            };
+
+                            for item in args.iter().map(|arg| self.get_column_expr_value(
                                 Some(entry),
                                 file_info,
                                 root_path,

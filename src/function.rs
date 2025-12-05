@@ -489,7 +489,7 @@ functions! {
 /// If no function is provided, the original value is returned.
 ///
 /// Args:
-///  function: Optional specification of which function to apply.
+///  function: The specification of which function to apply.
 ///  function_arg: The value to apply the function to.
 ///  function_args: Additional arguments to the function.
 ///  entry: Optional directory entry to read the file contents from.
@@ -498,7 +498,7 @@ functions! {
 /// Returns:
 ///   A variant containing the value computed or the original value if no function is provided.
 pub fn get_value(
-    function: &Option<Function>,
+    function: &Function,
     function_arg: String,
     function_args: Vec<String>,
     entry: Option<&DirEntry>,
@@ -506,9 +506,9 @@ pub fn get_value(
 ) -> Variant {
     match function {
         // ===== String functions =====
-        Some(Function::Lower) => Variant::from_string(&function_arg.to_lowercase()),
-        Some(Function::Upper) => Variant::from_string(&function_arg.to_uppercase()),
-        Some(Function::InitCap) => {
+        Function::Lower => Variant::from_string(&function_arg.to_lowercase()),
+        Function::Upper => Variant::from_string(&function_arg.to_uppercase()),
+        Function::InitCap => {
             let result = function_arg
                 .split_whitespace()
                 .map(|s| capitalize(&s.to_lowercase()))
@@ -516,16 +516,13 @@ pub fn get_value(
                 .join(" ");
             Variant::from_string(&result)
         }
-        // Get the length of the string
-        Some(Function::Length) => {
+        Function::Length => {
             Variant::from_int(function_arg.chars().count() as i64)
         }
-        // Convert the value to base64
-        Some(Function::ToBase64) => {
+        Function::ToBase64 => {
             Variant::from_string(&rbase64::encode((function_arg).as_ref()))
         }
-        // Read the value as base64
-        Some(Function::FromBase64) => {
+        Function::FromBase64 => {
             Variant::from_string(
                 &String::from_utf8_lossy(&rbase64::decode(&function_arg).unwrap_or_default())
                     .to_string(),
@@ -533,11 +530,11 @@ pub fn get_value(
         }
 
         // ===== String manipulation functions =====
-        Some(Function::Concat) => {
+        Function::Concat => {
             Variant::from_string(&(String::from(&function_arg) + &function_args.join("")))
         }
-        Some(Function::ConcatWs) => Variant::from_string(&function_args.join(&function_arg)),
-        Some(Function::Locate) => {
+        Function::ConcatWs => Variant::from_string(&function_args.join(&function_arg)),
+        Function::Locate => {
             let string = String::from(&function_arg);
             let substring = &function_args[0];
             let pos: i32 = match &function_args.get(1) {
@@ -553,7 +550,7 @@ pub fn get_value(
 
             Variant::from_int(result)
         },
-        Some(Function::Substring) => {
+        Function::Substring => {
             let string = String::from(&function_arg);
 
             let mut pos: i32 = match &function_args.is_empty() {
@@ -578,7 +575,7 @@ pub fn get_value(
 
             Variant::from_string(&result)
         }
-        Some(Function::Replace) => {
+        Function::Replace => {
             let source = function_arg;
             let from = &function_args[0];
             let to = &function_args[1];
@@ -587,34 +584,34 @@ pub fn get_value(
 
             Variant::from_string(&result)
         }
-        Some(Function::Trim) => {
+        Function::Trim => {
             Variant::from_string(&function_arg.trim().to_string())
         }
-        Some(Function::LTrim) => {
+        Function::LTrim => {
             Variant::from_string(&function_arg.trim_start().to_string())
         }
-        Some(Function::RTrim) => {
+        Function::RTrim => {
             Variant::from_string(&function_arg.trim_end().to_string())
         }
 
         // ===== Numeric functions =====
-        Some(Function::Bin) => match function_arg.parse::<i64>() {
+        Function::Bin => match function_arg.parse::<i64>() {
             Ok(val) => Variant::from_string(&format!("{:b}", val)),
             _ => Variant::empty(VariantType::String),
         },
-        Some(Function::Hex) => match function_arg.parse::<i64>() {
+        Function::Hex => match function_arg.parse::<i64>() {
             Ok(val) => Variant::from_string(&format!("{:x}", val)),
             _ => Variant::empty(VariantType::String),
         },
-        Some(Function::Oct) => match function_arg.parse::<i64>() {
+        Function::Oct => match function_arg.parse::<i64>() {
             Ok(val) => Variant::from_string(&format!("{:o}", val)),
             _ => Variant::empty(VariantType::String),
         },
-        Some(Function::Abs) => match function_arg.parse::<f64>() {
+        Function::Abs => match function_arg.parse::<f64>() {
             Ok(val) => Variant::from_float(val.abs()),
             _ => Variant::empty(VariantType::String),
         }
-        Some(Function::Power) => {
+        Function::Power => {
             match function_arg.parse::<f64>() {
                 Ok(val) => {
                     let power = match function_args.first() {
@@ -627,11 +624,11 @@ pub fn get_value(
                 _ => Variant::empty(VariantType::String),
             }
         }
-        Some(Function::Sqrt) => match function_arg.parse::<f64>() {
+        Function::Sqrt => match function_arg.parse::<f64>() {
             Ok(val) => Variant::from_float(val.sqrt()),
             _ => Variant::empty(VariantType::String),
         },
-        Some(Function::Log) => {
+        Function::Log => {
             match function_arg.parse::<f64>() {
                 Ok(val) => {
                     let base = match function_args.first() {
@@ -644,15 +641,15 @@ pub fn get_value(
                 _ => Variant::empty(VariantType::String),
             }
         }
-        Some(Function::Ln) => match function_arg.parse::<f64>() {
+        Function::Ln => match function_arg.parse::<f64>() {
             Ok(val) => Variant::from_float(val.ln()),
             _ => Variant::empty(VariantType::String),
         }
-        Some(Function::Exp) => match function_arg.parse::<f64>() {
+        Function::Exp => match function_arg.parse::<f64>() {
             Ok(val) => Variant::from_float(val.exp()),
             _ => Variant::empty(VariantType::String),
         }
-        Some(Function::Least) => {
+        Function::Least => {
             match function_arg.parse::<f64>() {
                 Ok(val) => {
                     let mut least = val;
@@ -667,7 +664,7 @@ pub fn get_value(
                 _ => Variant::empty(VariantType::String),
             }
         }
-        Some(Function::Greatest) => {
+        Function::Greatest => {
             match function_arg.parse::<f64>() {
                 Ok(val) => {
                     let mut greatest = val;
@@ -684,24 +681,24 @@ pub fn get_value(
         }
 
         // ===== Japanese string functions =====
-        Some(Function::ContainsJapanese) => {
+        Function::ContainsJapanese => {
             Variant::from_bool(crate::util::japanese::contains_japanese(&function_arg))
         }
-        Some(Function::ContainsHiragana) => {
+        Function::ContainsHiragana => {
             Variant::from_bool(crate::util::japanese::contains_hiragana(&function_arg))
         }
-        Some(Function::ContainsKatakana) => {
+        Function::ContainsKatakana => {
             Variant::from_bool(crate::util::japanese::contains_katakana(&function_arg))
         }
-        Some(Function::ContainsKana) => {
+        Function::ContainsKana => {
             Variant::from_bool(crate::util::japanese::contains_kana(&function_arg))
         }
-        Some(Function::ContainsKanji) => {
+        Function::ContainsKanji => {
             Variant::from_bool(crate::util::japanese::contains_kanji(&function_arg))
         }
 
         // ===== Formatting functions =====
-        Some(Function::FormatSize) => {
+        Function::FormatSize => {
             if function_arg.is_empty() {
                 return Variant::empty(VariantType::String);
             }
@@ -717,7 +714,7 @@ pub fn get_value(
 
             Variant::empty(VariantType::String)
         }
-        Some(Function::FormatTime) => {
+        Function::FormatTime => {
             if function_arg.is_empty() {
                 return Variant::empty(VariantType::String);
             }
@@ -728,55 +725,55 @@ pub fn get_value(
         }
 
         // ===== Datetime functions =====
-        Some(Function::CurrentDate) => {
+        Function::CurrentDate => {
             let now = Local::now().date_naive();
             Variant::from_string(&format_date(&now))
         }
-        Some(Function::CurrentTime) => {
+        Function::CurrentTime => {
             let now = Local::now().time();
             Variant::from_string(&format_time(&now))
         }
-        Some(Function::CurrentTimestamp) => {
+        Function::CurrentTimestamp => {
             let now = Local::now().naive_local();
             Variant::from_string(&format_datetime(&now))
         }
-        Some(Function::Year) => match parse_datetime(&function_arg) {
+        Function::Year => match parse_datetime(&function_arg) {
             Ok(date) => Variant::from_int(date.0.year() as i64),
             _ => Variant::empty(VariantType::Int),
         },
-        Some(Function::Month) => match parse_datetime(&function_arg) {
+        Function::Month => match parse_datetime(&function_arg) {
             Ok(date) => Variant::from_int(date.0.month() as i64),
             _ => Variant::empty(VariantType::Int),
         },
-        Some(Function::Day) => match parse_datetime(&function_arg) {
+        Function::Day => match parse_datetime(&function_arg) {
             Ok(date) => Variant::from_int(date.0.day() as i64),
             _ => Variant::empty(VariantType::Int),
         },
-        Some(Function::DayOfWeek) => match parse_datetime(&function_arg) {
+        Function::DayOfWeek => match parse_datetime(&function_arg) {
             Ok(date) => Variant::from_int(date.0.weekday().number_from_sunday() as i64),
             _ => Variant::empty(VariantType::Int),
         },
         
         #[cfg(all(unix, feature = "users"))]
-        Some(Function::CurrentUid) => Variant::from_int(uzers::get_current_uid() as i64),
+        Function::CurrentUid => Variant::from_int(uzers::get_current_uid() as i64),
         #[cfg(all(unix, feature = "users"))]
-        Some(Function::CurrentUser) => {
+        Function::CurrentUser => {
             match uzers::get_current_username().and_then(|u| u.into_string().ok()) {
                 Some(s) => Variant::from_string(&s),
                 None => Variant::empty(VariantType::String),
             }
         }
         #[cfg(all(unix, feature = "users"))]
-        Some(Function::CurrentGid) => Variant::from_int(uzers::get_current_gid() as i64),
+        Function::CurrentGid => Variant::from_int(uzers::get_current_gid() as i64),
         #[cfg(all(unix, feature = "users"))]
-        Some(Function::CurrentGroup) => {
+        Function::CurrentGroup => {
             match uzers::get_current_groupname().and_then(|u| u.into_string().ok()) {
                 Some(s) => Variant::from_string(&s),
                 None => Variant::empty(VariantType::String),
             }
         }
         // ===== File functions =====
-        Some(Function::Contains) => {
+        Function::Contains => {
             if file_info.is_some() {
                 return Variant::empty(VariantType::Bool);
             }
@@ -797,7 +794,7 @@ pub fn get_value(
             Variant::empty(VariantType::Bool)
         }
         #[cfg(unix)]
-        Some(Function::HasXattr) => {
+        Function::HasXattr => {
             if let Some(entry) = entry {
                 if let Ok(file) = File::open(entry.path()) {
                     if let Ok(xattr) = file.get_xattr(&function_arg) {
@@ -809,7 +806,7 @@ pub fn get_value(
             Variant::empty(VariantType::Bool)
         }
         #[cfg(unix)]
-        Some(Function::Xattr) => {
+        Function::Xattr => {
             if let Some(entry) = entry {
                 if let Ok(file) = File::open(entry.path()) {
                     if let Ok(Some(xattr)) = file.get_xattr(&function_arg) {
@@ -823,7 +820,7 @@ pub fn get_value(
             Variant::empty(VariantType::String)
         }
         #[cfg(target_os = "linux")]
-        Some(Function::HasCapabilities) => {
+        Function::HasCapabilities => {
             if let Some(entry) = entry {
                 if let Ok(file) = File::open(entry.path()) {
                     if let Ok(caps_xattr) = file.get_xattr("security.capability") {
@@ -835,7 +832,7 @@ pub fn get_value(
             Variant::empty(VariantType::Bool)
         }
         #[cfg(target_os = "linux")]
-        Some(Function::HasCapability) => {
+        Function::HasCapability => {
             if let Some(entry) = entry {
                 if let Ok(file) = File::open(entry.path()) {
                     if let Ok(Some(caps_xattr)) = file.get_xattr("security.capability") {
@@ -848,7 +845,7 @@ pub fn get_value(
             Variant::empty(VariantType::Bool)
         }
         // ===== Miscellaneous functions =====
-        Some(Function::Coalesce) => {
+        Function::Coalesce => {
             if !&function_arg.is_empty() {
                 return Variant::from_string(&function_arg);
             }
@@ -861,7 +858,7 @@ pub fn get_value(
 
             Variant::empty(VariantType::String)
         }
-        Some(Function::Random) => {
+        Function::Random => {
             let mut rng = rand::rng();
 
             if function_arg.is_empty() {
@@ -889,7 +886,6 @@ pub fn get_value(
                 ),
             }
         }
-        // If no function is specified, return the original value
         _ => Variant::empty(VariantType::String),
     }
 }
@@ -897,7 +893,7 @@ pub fn get_value(
 /// Retrieves an aggregated value from a data buffer based on the specified function and key.
 ///
 /// Args:
-///   function: Optional specification of which aggregate function to apply.
+///   function: The specification which aggregate function to apply.
 ///   raw_output_buffer: A vector of hashmaps, where each hashmap contains string key-value pairs.
 ///   buffer_key: The key to look up in each hashmap of the buffer.
 ///   default_value: An optional default value to return if the function is not specified.
@@ -905,13 +901,13 @@ pub fn get_value(
 /// Returns:
 ///   A string representation of the aggregate value computed or the default value if no function is provided.
 pub fn get_aggregate_value(
-    function: &Option<Function>,
+    function: &Function,
     raw_output_buffer: &Vec<HashMap<String, String>>,
     buffer_key: String,
     default_value: &Option<String>,
 ) -> String {
     match function {
-        Some(Function::Min) => {
+        Function::Min => {
             let min = raw_output_buffer
                 .iter()
                 .filter_map(|item| item.get(&buffer_key)) // Get the value from the buffer
@@ -921,7 +917,7 @@ pub fn get_aggregate_value(
 
             min.to_string()
         }
-        Some(Function::Max) => {
+        Function::Max => {
             let max = raw_output_buffer
                 .iter()
                 .filter_map(|item| item.get(&buffer_key)) // Get the values from the buffer
@@ -931,16 +927,16 @@ pub fn get_aggregate_value(
 
             max.to_string()
         }
-        Some(Function::Avg) => {
+        Function::Avg => {
             if raw_output_buffer.is_empty() {
                 return String::from("0");
             }
 
             get_mean(raw_output_buffer, &buffer_key).to_string()
         }
-        Some(Function::Sum) => get_buffer_sum(raw_output_buffer, &buffer_key).to_string(),
-        Some(Function::Count) => raw_output_buffer.len().to_string(),
-        Some(Function::StdDevPop) => {
+        Function::Sum => get_buffer_sum(raw_output_buffer, &buffer_key).to_string(),
+        Function::Count => raw_output_buffer.len().to_string(),
+        Function::StdDevPop => {
             if raw_output_buffer.is_empty() {
                 return String::new();
             }
@@ -951,7 +947,7 @@ pub fn get_aggregate_value(
 
             result.to_string()
         }
-        Some(Function::StdDevSamp) => {
+        Function::StdDevSamp => {
             if raw_output_buffer.is_empty() {
                 return String::new();
             }
@@ -963,7 +959,7 @@ pub fn get_aggregate_value(
 
             result.to_string()
         }
-        Some(Function::VarPop) => {
+        Function::VarPop => {
             if raw_output_buffer.is_empty() {
                 return String::new();
             }
@@ -973,7 +969,7 @@ pub fn get_aggregate_value(
 
             variance.to_string()
         }
-        Some(Function::VarSamp) => {
+        Function::VarSamp => {
             if raw_output_buffer.is_empty() {
                 return String::new();
             }
@@ -1049,7 +1045,7 @@ mod tests {
         let entry = None;
         let file_info = None;
 
-        let result = get_value(&Some(function), function_arg, function_args, entry, &file_info);
+        let result = get_value(&function, function_arg, function_args, entry, &file_info);
         assert_eq!(result.to_string(), "hello");
     }
     
@@ -1061,7 +1057,7 @@ mod tests {
         let entry = None;
         let file_info = None;
 
-        let result = get_value(&Some(function), function_arg, function_args, entry, &file_info);
+        let result = get_value(&function, function_arg, function_args, entry, &file_info);
         assert_eq!(result.to_string(), "HELLO");
     }
     
@@ -1073,7 +1069,7 @@ mod tests {
         let entry = None;
         let file_info = None;
 
-        let result = get_value(&Some(function), function_arg, function_args, entry, &file_info);
+        let result = get_value(&function, function_arg, function_args, entry, &file_info);
         assert_eq!(result.to_string(), "Hello World");
     }
     
@@ -1085,7 +1081,7 @@ mod tests {
         let entry = None;
         let file_info = None;
 
-        let result = get_value(&Some(function), function_arg, function_args, entry, &file_info);
+        let result = get_value(&function, function_arg, function_args, entry, &file_info);
         assert_eq!(result.to_int(), 5);
     }
     
@@ -1097,7 +1093,7 @@ mod tests {
         let entry = None;
         let file_info = None;
 
-        let result = get_value(&Some(function), function_arg, function_args, entry, &file_info);
+        let result = get_value(&function, function_arg, function_args, entry, &file_info);
         assert_eq!(result.to_string(), "aGVsbG8=");
     }
     
@@ -1109,7 +1105,7 @@ mod tests {
         let entry = None;
         let file_info = None;
 
-        let result = get_value(&Some(function), function_arg, function_args, entry, &file_info);
+        let result = get_value(&function, function_arg, function_args, entry, &file_info);
         assert_eq!(result.to_string(), "hello");
     }
     
@@ -1121,7 +1117,7 @@ mod tests {
         let entry = None;
         let file_info = None;
 
-        let result = get_value(&Some(function), function_arg, function_args, entry, &file_info);
+        let result = get_value(&function, function_arg, function_args, entry, &file_info);
         assert_eq!(result.to_string(), "hello world");
     }
     
@@ -1133,7 +1129,7 @@ mod tests {
         let entry = None;
         let file_info = None;
 
-        let result = get_value(&Some(function), function_arg, function_args, entry, &file_info);
+        let result = get_value(&function, function_arg, function_args, entry, &file_info);
         assert_eq!(result.to_string(), "hello, world");
     }
     
@@ -1145,7 +1141,7 @@ mod tests {
         let entry = None;
         let file_info = None;
 
-        let result = get_value(&Some(function), function_arg, function_args, entry, &file_info);
+        let result = get_value(&function, function_arg, function_args, entry, &file_info);
         assert_eq!(result.to_int(), 7);
     }
     
@@ -1157,7 +1153,7 @@ mod tests {
         let entry = None;
         let file_info = None;
 
-        let result = get_value(&Some(function), function_arg, function_args, entry, &file_info);
+        let result = get_value(&function, function_arg, function_args, entry, &file_info);
         assert_eq!(result.to_string(), "world");
     }
     
@@ -1169,7 +1165,7 @@ mod tests {
         let entry = None;
         let file_info = None;
 
-        let result = get_value(&Some(function), function_arg, function_args, entry, &file_info);
+        let result = get_value(&function, function_arg, function_args, entry, &file_info);
         assert_eq!(result.to_string(), "hello Rust");
     }
     
@@ -1181,7 +1177,7 @@ mod tests {
         let entry = None;
         let file_info = None;
 
-        let result = get_value(&Some(function), function_arg, function_args, entry, &file_info);
+        let result = get_value(&function, function_arg, function_args, entry, &file_info);
         assert_eq!(result.to_string(), "hello");
     }
     
@@ -1193,7 +1189,7 @@ mod tests {
         let entry = None;
         let file_info = None;
 
-        let result = get_value(&Some(function), function_arg, function_args, entry, &file_info);
+        let result = get_value(&function, function_arg, function_args, entry, &file_info);
         assert_eq!(result.to_string(), "hello   ");
     }
     
@@ -1205,7 +1201,7 @@ mod tests {
         let entry = None;
         let file_info = None;
 
-        let result = get_value(&Some(function), function_arg, function_args, entry, &file_info);
+        let result = get_value(&function, function_arg, function_args, entry, &file_info);
         assert_eq!(result.to_string(), "   hello");
     }
     
@@ -1217,7 +1213,7 @@ mod tests {
         let entry = None;
         let file_info = None;
 
-        let result = get_value(&Some(function), function_arg, function_args, entry, &file_info);
+        let result = get_value(&function, function_arg, function_args, entry, &file_info);
         assert_eq!(result.to_string(), "1010");
     }
     
@@ -1229,7 +1225,7 @@ mod tests {
         let entry = None;
         let file_info = None;
 
-        let result = get_value(&Some(function), function_arg, function_args, entry, &file_info);
+        let result = get_value(&function, function_arg, function_args, entry, &file_info);
         assert_eq!(result.to_string(), "ff");
     }
     
@@ -1241,7 +1237,7 @@ mod tests {
         let entry = None;
         let file_info = None;
 
-        let result = get_value(&Some(function), function_arg, function_args, entry, &file_info);
+        let result = get_value(&function, function_arg, function_args, entry, &file_info);
         assert_eq!(result.to_string(), "10");
     }
     
@@ -1253,7 +1249,7 @@ mod tests {
         let entry = None;
         let file_info = None;
 
-        let result = get_value(&Some(function), function_arg, function_args, entry, &file_info);
+        let result = get_value(&function, function_arg, function_args, entry, &file_info);
         assert_eq!(result.to_int(), 10);
     }
     
@@ -1265,7 +1261,7 @@ mod tests {
         let entry = None;
         let file_info = None;
 
-        let result = get_value(&Some(function), function_arg, function_args, entry, &file_info);
+        let result = get_value(&function, function_arg, function_args, entry, &file_info);
         assert_eq!(result.to_int(), 8);
     }
     
@@ -1277,7 +1273,7 @@ mod tests {
         let entry = None;
         let file_info = None;
 
-        let result = get_value(&Some(function), function_arg, function_args, entry, &file_info);
+        let result = get_value(&function, function_arg, function_args, entry, &file_info);
         assert_eq!(result.to_int(), 4);
     }
     
@@ -1289,7 +1285,7 @@ mod tests {
         let entry = None;
         let file_info = None;
 
-        let result = get_value(&Some(function), function_arg, function_args, entry, &file_info);
+        let result = get_value(&function, function_arg, function_args, entry, &file_info);
         assert_eq!(result.to_int(), 2);
     }
     
@@ -1301,7 +1297,7 @@ mod tests {
         let entry = None;
         let file_info = None;
 
-        let result = get_value(&Some(function), function_arg, function_args, entry, &file_info);
+        let result = get_value(&function, function_arg, function_args, entry, &file_info);
         assert_eq!(result.to_int(), 1);
     }
     
@@ -1313,7 +1309,7 @@ mod tests {
         let entry = None;
         let file_info = None;
 
-        let result = get_value(&Some(function), function_arg, function_args, entry, &file_info);
+        let result = get_value(&function, function_arg, function_args, entry, &file_info);
         assert_eq!(result.to_float(), std::f64::consts::E);
     }
 
@@ -1325,7 +1321,7 @@ mod tests {
         let entry = None;
         let file_info = None;
 
-        let result = get_value(&Some(function), function_arg, function_args, entry, &file_info);
+        let result = get_value(&function, function_arg, function_args, entry, &file_info);
         assert_eq!(result.to_int(), 10);
     }
     
@@ -1337,7 +1333,7 @@ mod tests {
         let entry = None;
         let file_info = None;
 
-        let result = get_value(&Some(function), function_arg, function_args, entry, &file_info);
+        let result = get_value(&function, function_arg, function_args, entry, &file_info);
         assert_eq!(result.to_int(), 30);
     }
     
@@ -1349,7 +1345,7 @@ mod tests {
         let entry = None;
         let file_info = None;
 
-        let result = get_value(&Some(function), function_arg, function_args, entry, &file_info);
+        let result = get_value(&function, function_arg, function_args, entry, &file_info);
         assert_eq!(result.to_bool(), true);
     }
     
@@ -1361,7 +1357,7 @@ mod tests {
         let entry = None;
         let file_info = None;
 
-        let result = get_value(&Some(function), function_arg, function_args, entry, &file_info);
+        let result = get_value(&function, function_arg, function_args, entry, &file_info);
         assert_eq!(result.to_bool(), true);
     }
     
@@ -1373,7 +1369,7 @@ mod tests {
         let entry = None;
         let file_info = None;
 
-        let result = get_value(&Some(function), function_arg, function_args, entry, &file_info);
+        let result = get_value(&function, function_arg, function_args, entry, &file_info);
         assert_eq!(result.to_bool(), true);
     }
     
@@ -1385,7 +1381,7 @@ mod tests {
         let entry = None;
         let file_info = None;
 
-        let result = get_value(&Some(function), function_arg, function_args, entry, &file_info);
+        let result = get_value(&function, function_arg, function_args, entry, &file_info);
         assert_eq!(result.to_bool(), true);
     }
     
@@ -1397,7 +1393,7 @@ mod tests {
         let entry = None;
         let file_info = None;
 
-        let result = get_value(&Some(function), function_arg, function_args, entry, &file_info);
+        let result = get_value(&function, function_arg, function_args, entry, &file_info);
         assert_eq!(result.to_bool(), true);
     }
     
@@ -1409,7 +1405,7 @@ mod tests {
         let entry = None;
         let file_info = None;
 
-        let result = get_value(&Some(function), function_arg, function_args, entry, &file_info);
+        let result = get_value(&function, function_arg, function_args, entry, &file_info);
         assert_eq!(result.to_string(), "1 KiB");
     }
     
@@ -1421,7 +1417,7 @@ mod tests {
         let entry = None;
         let file_info = None;
 
-        let result = get_value(&Some(function), function_arg, function_args, entry, &file_info);
+        let result = get_value(&function, function_arg, function_args, entry, &file_info);
         assert_eq!(result.to_string(), "1h");
     }
     
@@ -1433,7 +1429,7 @@ mod tests {
         let entry = None;
         let file_info = None;
 
-        let result = get_value(&Some(function), function_arg, function_args, entry, &file_info);
+        let result = get_value(&function, function_arg, function_args, entry, &file_info);
         assert_eq!(result.to_string(), format_date(&Local::now().date_naive()));
     }
     
@@ -1445,7 +1441,7 @@ mod tests {
         let entry = None;
         let file_info = None;
 
-        let result = get_value(&Some(function), function_arg, function_args, entry, &file_info);
+        let result = get_value(&function, function_arg, function_args, entry, &file_info);
         let s = result.to_string();
         // Expect format YYYY-MM-DD HH:MM:SS → length 19 and separators at fixed positions
         assert_eq!(s.len(), 19, "Unexpected CURRENT_TIMESTAMP length: {}", s);
@@ -1465,7 +1461,7 @@ mod tests {
         let entry = None;
         let file_info = None;
 
-        let result = get_value(&Some(function), function_arg, function_args, entry, &file_info);
+        let result = get_value(&function, function_arg, function_args, entry, &file_info);
         assert_eq!(result.to_int(), 1);
     }
     
@@ -1477,7 +1473,7 @@ mod tests {
         let entry = None;
         let file_info = None;
 
-        let result = get_value(&Some(function), function_arg, function_args, entry, &file_info);
+        let result = get_value(&function, function_arg, function_args, entry, &file_info);
         assert_eq!(result.to_int(), 10);
     }
     
@@ -1489,7 +1485,7 @@ mod tests {
         let entry = None;
         let file_info = None;
 
-        let result = get_value(&Some(function), function_arg, function_args, entry, &file_info);
+        let result = get_value(&function, function_arg, function_args, entry, &file_info);
         assert_eq!(result.to_int(), 2023);
     }
     
@@ -1501,7 +1497,7 @@ mod tests {
         let entry = None;
         let file_info = None;
 
-        let result = get_value(&Some(function), function_arg, function_args, entry, &file_info);
+        let result = get_value(&function, function_arg, function_args, entry, &file_info);
         assert_eq!(result.to_int(), 1);
     }
     
@@ -1514,7 +1510,7 @@ mod tests {
         let entry = None;
         let file_info = None;
 
-        let result = get_value(&Some(function), function_arg, function_args, entry, &file_info);
+        let result = get_value(&function, function_arg, function_args, entry, &file_info);
         assert_eq!(result.to_int(), uzers::get_current_uid() as i64);
     }
     
@@ -1527,7 +1523,7 @@ mod tests {
         let entry = None;
         let file_info = None;
 
-        let result = get_value(&Some(function), function_arg, function_args, entry, &file_info);
+        let result = get_value(&function, function_arg, function_args, entry, &file_info);
         assert_eq!(result.to_string(), uzers::get_current_username().unwrap().to_string_lossy().to_string());
     }
     
@@ -1540,7 +1536,7 @@ mod tests {
         let entry = None;
         let file_info = None;
 
-        let result = get_value(&Some(function), function_arg, function_args, entry, &file_info);
+        let result = get_value(&function, function_arg, function_args, entry, &file_info);
         assert_eq!(result.to_int(), uzers::get_current_gid() as i64);
     }
     
@@ -1553,7 +1549,7 @@ mod tests {
         let entry = None;
         let file_info = None;
 
-        let result = get_value(&Some(function), function_arg, function_args, entry, &file_info);
+        let result = get_value(&function, function_arg, function_args, entry, &file_info);
         assert_eq!(result.to_string(), uzers::get_current_groupname().unwrap().to_string_lossy().to_string());
     }
     
@@ -1565,7 +1561,7 @@ mod tests {
         let entry = None;
         let file_info = None;
 
-        let result = get_value(&Some(function), function_arg, function_args, entry, &file_info);
+        let result = get_value(&function, function_arg, function_args, entry, &file_info);
         assert_eq!(result.to_string(), "hello");
     }
 }

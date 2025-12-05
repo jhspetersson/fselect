@@ -1042,7 +1042,7 @@ impl<'a> Searcher<'a> {
             let _ = self.get_column_expr_value(entry, file_info, root_path, file_map, buffer_data, left_expr);
             let buffer_key = left_expr.to_string();
             let aggr_result = function::get_aggregate_value(
-                &column_expr.function,
+                &column_expr.function.as_ref().unwrap(),
                 buffer_data.unwrap_or(&self.raw_output_buffer),
                 buffer_key,
                 &column_expr.val,
@@ -1060,7 +1060,7 @@ impl<'a> Searcher<'a> {
                 }
             }
             let result = function::get_value(
-                &column_expr.function,
+                &column_expr.function.as_ref().unwrap(),
                 function_arg.to_string(),
                 function_args,
                 entry,

@@ -62,6 +62,10 @@ impl<K: Ord, V> TopN<K, V> {
             .flat_map(|v| v.iter().cloned())
             .collect()
     }
+
+    pub fn clear(&mut self) {
+        self.echelons.clear();
+    }
 }
 
 #[cfg(test)]

@@ -165,6 +165,7 @@ pub struct Searcher<'a> {
     raw_output_buffer: Vec<HashMap<String, String>>,
     partitioned_output_buffer: Rc<HashMap<Vec<String>, Vec<HashMap<String, String>>>>,
     output_buffer: TopN<Criteria<String>, String>,
+    aux_buffer: Vec<String>,
 
     record_context: Rc<RefCell<HashMap<String, HashMap<String, String>>>>,
     current_alias: Option<String>,
@@ -227,6 +228,7 @@ impl<'a> Searcher<'a> {
             } else {
                 TopN::new(limit)
             },
+            aux_buffer: vec![],
 
             record_context,
             current_alias: None,
@@ -540,6 +542,7 @@ impl<'a> Searcher<'a> {
             } else {
                 let mut buf = WritableBuffer::new();
                 let mut items: Vec<(String, String)> = Vec::new();
+                let mut item_list = vec![];
 
                 for column_expr in &self.query.fields {
                     let record = format!(
@@ -554,8 +557,12 @@ impl<'a> Searcher<'a> {
                         )
                     );
                     let field_name = column_expr.to_string().to_lowercase();
-                    items.push((field_name, record));
+                    items.push((field_name, record.clone()));
+                    item_list.push(record.clone());
                 }
+
+                self.output_buffer.clear();
+                self.aux_buffer.extend(item_list);
 
                 if !self.silent_mode {
                     self.results_writer.write_row(&mut buf, items)?;
@@ -621,11 +628,14 @@ impl<'a> Searcher<'a> {
             self.use_colors
         );
         sub_searcher.silent_mode = !self.config.debug;
-        sub_searcher.list_search_results().unwrap_or_default();
+        sub_searcher.list_search_results().unwrap();
 
-        let result_values = sub_searcher.output_buffer.values().iter()
+        let mut result_values = sub_searcher.output_buffer.values().iter()
             .map(|s| s.trim_end().to_string())
             .collect::<Vec<String>>();
+        if result_values.is_empty() {
+            result_values = sub_searcher.aux_buffer;
+        }
 
         if ok_to_cache {
             self.subquery_cache.insert(query_str, result_values.clone());

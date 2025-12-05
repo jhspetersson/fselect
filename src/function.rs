@@ -504,7 +504,6 @@ pub fn get_value(
     entry: Option<&DirEntry>,
     file_info: &Option<FileInfo>,
 ) -> Variant {
-    //* Refer to the Function enum for a list of available functions and their descriptions
     match function {
         // ===== String functions =====
         Some(Function::Lower) => Variant::from_string(&function_arg.to_lowercase()),
@@ -911,7 +910,6 @@ pub fn get_aggregate_value(
     buffer_key: String,
     default_value: &Option<String>,
 ) -> String {
-    //* Refer to the Function enum for a list of available functions and their descriptions
     match function {
         Some(Function::Min) => {
             let min = raw_output_buffer
@@ -987,8 +985,6 @@ pub fn get_aggregate_value(
             variance.to_string()
         }
 
-        // If no function is specified, return the default value
-        // If no default value was specified, return an empty string
         _ => match &default_value {
             Some(val) => val.to_owned(),
             _ => String::new(),

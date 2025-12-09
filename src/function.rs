@@ -282,6 +282,12 @@ functions! {
         @group = "Numeric"
         @description = "Get the largest value"
         Greatest,
+        
+        #[text = ["pi"], data_type = "numeric"]
+        @weight = 1
+        @group = "Numeric"
+        @description = "Get the value of Pi (π)"
+        Pi,
     
         #[text = ["contains_japanese", "japanese"], data_type = "boolean"]
         @group = "Japanese string"
@@ -678,6 +684,9 @@ pub fn get_value(
                 }
                 _ => Variant::empty(VariantType::String),
             }
+        }
+        Function::Pi => {
+            Variant::from_float(std::f64::consts::PI)
         }
 
         // ===== Japanese string functions =====
@@ -1335,6 +1344,18 @@ mod tests {
 
         let result = get_value(&function, function_arg, function_args, entry, &file_info);
         assert_eq!(result.to_int(), 30);
+    }
+    
+    #[test]
+    fn function_pi() {
+        let function = Function::Pi;
+        let function_arg = String::new();
+        let function_args = vec![];
+        let entry = None;
+        let file_info = None;
+
+        let result = get_value(&function, function_arg, function_args, entry, &file_info);
+        assert_eq!(result.to_float(), std::f64::consts::PI);
     }
     
     #[test]

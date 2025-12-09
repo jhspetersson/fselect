@@ -294,6 +294,7 @@ Used for detecting Japanese symbols in file names and such.
 | EXP                        | Returns Euler's number raised to the power of the value                                     | `select exp(2)`                                                                               |
 | LEAST                      | Returns the smallest of the expression values                                               | `select least(1, 2, 3)`                                                                       |
 | GREATEST                   | Returns the largest of the expression values                                                | `select greatest(1, 2, 3)`                                                                    |
+| PI                         | Returns `pi` (π) constant                                                                   |
 | CONTAINS                   | `true` if file contains string, `false` if not                                              | `select contains(TODO) from /home/user/Projects/foo/src`                                      |
 | COALESCE                   | Returns first nonempty expression value                                                     | `select name, size, COALESCE(sha256, '---') from /home/user/Downloads`                        |
 | RANDOM or RAND             | Returns random integer (from zero to max int, from zero to *arg*, or from *arg1* to *arg2*) | `select path from /home/user/Music order by RAND()`                                           |

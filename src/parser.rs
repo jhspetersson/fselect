@@ -76,6 +76,7 @@ impl <'a> Parser<'a> {
             limit = 1;
         }
 
+        let raw_query = self.lexer.get_input_string();
         Ok(Query {
             fields,
             roots,
@@ -85,6 +86,7 @@ impl <'a> Parser<'a> {
             ordering_asc,
             limit,
             output_format,
+            raw_query,
         })
     }
 

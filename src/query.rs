@@ -27,6 +27,7 @@ pub struct Query {
     pub limit: u32,
     /// Output format
     pub output_format: OutputFormat,
+    pub raw_query: String,
 }
 
 impl Query {

@@ -10,7 +10,7 @@ pub struct JsonFormatter {
 }
 
 impl ResultsFormatter for JsonFormatter {
-    fn header(&mut self) -> Option<String> {
+    fn header(&mut self, _: String, _: usize) -> Option<String> {
         Some("[".to_owned())
     }
 

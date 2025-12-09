@@ -23,7 +23,7 @@ pub struct FlatWriter {
 }
 
 impl ResultsFormatter for FlatWriter {
-    fn header(&mut self) -> Option<String> {
+    fn header(&mut self, _: String, _: usize) -> Option<String> {
         None
     }
 

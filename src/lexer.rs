@@ -89,6 +89,10 @@ impl Lexer {
         }
     }
 
+    pub fn get_input_string(&self) -> String {
+        self.input.join(" ")
+    }
+
     pub fn push_state(&mut self) {
         self.state_history.push(self.state.clone());
         self.state = Box::new(LexerState::new());

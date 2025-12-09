@@ -267,7 +267,9 @@ impl<'a> Searcher<'a> {
         let current_dir = std::env::current_dir()?;
 
         if !self.silent_mode {
-            if let Err(e) = self.results_writer.write_header(&mut std::io::stdout()) {
+            let raw_query = self.query.raw_query.clone();
+            let col_count = self.query.fields.len();
+            if let Err(e) = self.results_writer.write_header(raw_query, col_count, &mut std::io::stdout()) {
                 if e.kind() == ErrorKind::BrokenPipe {
                     return Ok(());
                 }
@@ -2954,6 +2956,7 @@ mod tests {
             ordering_asc: Vec::new(),
             limit: 0,
             output_format: OutputFormat::Tabs,
+            raw_query: String::new(),
         }));
 
         // Use default configurations
@@ -2974,6 +2977,7 @@ mod tests {
             ordering_asc: vec![true],
             limit: 0,
             output_format: OutputFormat::Tabs,
+            raw_query: String::new(),
         }));
 
         // Use default configurations
@@ -2997,6 +3001,7 @@ mod tests {
             ordering_asc: Vec::new(),
             limit: 0,
             output_format: OutputFormat::Tabs,
+            raw_query: String::new(),
         }));
 
         // Use default configurations

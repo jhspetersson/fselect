@@ -12,7 +12,7 @@ mod html;
 mod json;
 
 pub trait ResultsFormatter {
-    fn header(&mut self) -> Option<String>;
+    fn header(&mut self, raw_query: String, col_count: usize) -> Option<String>;
     fn row_started(&mut self) -> Option<String>;
     fn format_element(&mut self, name: &str, record: &str, is_last: bool) -> Option<String>;
     fn row_ended(&mut self) -> Option<String>;
@@ -34,9 +34,9 @@ impl ResultsWriter {
         }
     }
 
-    pub fn write_header(&mut self, writer: &mut dyn Write) -> std::io::Result<()> {
+    pub fn write_header(&mut self, raw_query: String, col_count: usize, writer: &mut dyn Write) -> std::io::Result<()> {
         self.formatter
-            .header()
+            .header(raw_query, col_count)
             .map_or(Ok(()), |value| write!(writer, "{}", value))
     }
 
@@ -106,7 +106,7 @@ mod test {
 
     pub(crate) fn write_test_items<T: ResultsFormatter>(under_test: &mut T) -> String {
         let mut result = String::from("");
-        under_test.header().and_then(|s| Some(result.push_str(&s)));
+        under_test.header(String::from("select key, value"), 2).and_then(|s| Some(result.push_str(&s)));
         under_test
             .row_started()
             .and_then(|s| Some(result.push_str(&s)));

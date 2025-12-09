@@ -5,8 +5,8 @@ use crate::output::ResultsFormatter;
 pub struct HtmlFormatter;
 
 impl ResultsFormatter for HtmlFormatter {
-    fn header(&mut self) -> Option<String> {
-        Some("<html><body><table>".to_owned())
+    fn header(&mut self, raw_query: String, col_count: usize) -> Option<String> {
+        Some(format!("<html><head><title>{}</title></head><body><table><tr><th colspan=\"{}\">{}</th></tr>", raw_query, col_count, raw_query))
     }
 
     fn row_started(&mut self) -> Option<String> {
@@ -34,6 +34,6 @@ mod test {
     #[test]
     fn test() {
         let result = write_test_items(&mut HtmlFormatter);
-        assert_eq!("<html><body><table><tr><td>foo_value</td><td>BAR value</td></tr><tr><td>123</td><td></td></tr></table></body></html>", result);
+        assert_eq!("<html><head><title>select key, value</title></head><body><table><tr><th colspan=\"2\">select key, value</th></tr><tr><td>foo_value</td><td>BAR value</td></tr><tr><td>123</td><td></td></tr></table></body></html>", result);
     }
 }

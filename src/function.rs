@@ -288,6 +288,21 @@ functions! {
         @group = "Numeric"
         @description = "Get the value of Pi (π)"
         Pi,
+        
+        #[text = ["floor"], data_type = "numeric"]
+        @group = "Numeric"
+        @description = "Round down to the nearest integer"
+        Floor,
+        
+        #[text = ["ceil", "ceiling"], data_type = "numeric"]
+        @group = "Numeric"
+        @description = "Round up to the nearest integer"
+        Ceil,
+        
+        #[text = ["round"], data_type = "numeric"]
+        @group = "Numeric"
+        @description = "Round to the nearest integer"
+        Round,
     
         #[text = ["contains_japanese", "japanese"], data_type = "boolean"]
         @group = "Japanese string"
@@ -688,6 +703,18 @@ pub fn get_value(
         Function::Pi => {
             Variant::from_float(std::f64::consts::PI)
         }
+        Function::Floor => match function_arg.parse::<f64>() {
+            Ok(val) => Variant::from_float(val.floor()),
+            _ => Variant::empty(VariantType::String),
+        },
+        Function::Ceil => match function_arg.parse::<f64>() {
+            Ok(val) => Variant::from_float(val.ceil()),
+            _ => Variant::empty(VariantType::String),
+        },
+        Function::Round => match function_arg.parse::<f64>() {
+            Ok(val) => Variant::from_float(val.round()),
+            _ => Variant::empty(VariantType::String),
+        },
 
         // ===== Japanese string functions =====
         Function::ContainsJapanese => {

@@ -1,6 +1,6 @@
 [package]
 name = "fselect"
-version = "0.9.1"
+version = "0.9.2"
 authors = ["jhspetersson <jhspetersson@gmail.com>"]
 description = "Find files with SQL-like queries"
 keywords = ["find", "files", "sql", "query", "tool"]

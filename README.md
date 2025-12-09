@@ -33,7 +33,7 @@ More is under way!
 
 #### Debian/Ubuntu
 
-[deb package](https://github.com/jhspetersson/fselect/releases/download/0.9.1/fselect_0.9.1-1_amd64.deb)
+[deb package](https://github.com/jhspetersson/fselect/releases/download/0.9.2/fselect_0.9.2-1_amd64.deb)
 
 #### Arch Linux
 
@@ -47,11 +47,11 @@ More is under way!
 
 #### Other Linux
 
-[Static build with musl](https://github.com/jhspetersson/fselect/releases/download/0.9.1/fselect-x86_64-linux-musl.gz).
+[Static build with musl](https://github.com/jhspetersson/fselect/releases/download/0.9.2/fselect-x86_64-linux-musl.gz).
 
 #### Windows 64bit
 
-A statically precompiled [binary](https://github.com/jhspetersson/fselect/releases/download/0.9.1/fselect-x86_64-win.zip) is available at GitHub downloads.
+A statically precompiled [binary](https://github.com/jhspetersson/fselect/releases/download/0.9.2/fselect-x86_64-win.zip) is available at GitHub downloads.
 
 #### Windows via winget
 

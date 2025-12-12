@@ -329,6 +329,11 @@ functions! {
         @description = "Check if the string contains Kanji characters"
         ContainsKanji,
     
+        #[text = ["contains_greek", "greek"], data_type = "boolean"]
+        @group = "Greek string"
+        @description = "Check if the string contains Greek characters"
+        ContainsGreek,
+
         #[text = ["format_size", "format_filesize"]]
         @group = "Other"
         @description = "Format a file size in human-readable format"
@@ -731,6 +736,11 @@ pub fn get_value(
         }
         Function::ContainsKanji => {
             Variant::from_bool(crate::util::japanese::contains_kanji(&function_arg))
+        }
+
+        // ===== Greek string functions =====
+        Function::ContainsGreek => {
+            Variant::from_bool(crate::util::greek::contains_greek(&function_arg))
         }
 
         // ===== Formatting functions =====
@@ -1437,6 +1447,18 @@ mod tests {
     fn function_contains_kanji() {
         let function = Function::ContainsKanji;
         let function_arg = String::from("漢字");
+        let function_args = vec![];
+        let entry = None;
+        let file_info = None;
+
+        let result = get_value(&function, function_arg, function_args, entry, &file_info);
+        assert_eq!(result.to_bool(), true);
+    }
+    
+    #[test]
+    fn function_contains_greek() {
+        let function = Function::ContainsGreek;
+        let function_arg = String::from("Ελληνικά");
         let function_args = vec![];
         let entry = None;
         let file_info = None;

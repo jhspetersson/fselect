@@ -279,6 +279,14 @@ Used for detecting Japanese symbols in file names and such.
 | CONTAINS_KATAKANA or KATAKANA | Check if string value contains katakana symbols | `select katakana(name) from /home/user/Downloads`          |
 | CONTAINS_KANJI or KANJI       | Check if string value contains kanji symbols    | `select kanji(name) from /home/user/Downloads`             |
 
+#### Greek string functions
+
+Used for detecting Greek symbols in file names and such.
+
+| Function                  | Meaning                                       | Example                                           |
+|---------------------------|-----------------------------------------------|---------------------------------------------------|
+| CONTAINS_GREEK or GREEK   | Check if string value contains Greek symbols  | `select greek(name) from /home/user/Downloads`    |
+
 #### Other functions
 
 | Function                   | Meaning                                                                                     | Example                                                                                       |

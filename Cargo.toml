@@ -50,7 +50,7 @@ tree_magic_mini = { version = "3.0", features = [ "with-gpl-data" ] }
 update-informer = { version = "1.1.0", optional = true }
 wana_kana = "4.0"
 wavers = "1.1"
-zip = "6"
+zip = "7"
 
 [target.'cfg(unix)'.dependencies]
 uzers = { version = "0.12", optional = true }

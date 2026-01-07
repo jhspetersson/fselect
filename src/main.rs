@@ -252,7 +252,9 @@ fn exec_search(query: Vec<String>, config: &mut Config, default_config: &Config,
             let use_colors = !no_color && is_terminal && query.output_format.supports_colorization();
 
             let mut searcher = Searcher::new(&query, config, default_config, use_colors);
-            searcher.list_search_results().unwrap();
+            if let Err(err) = searcher.list_search_results() {
+                error_message("result", err.to_string().as_str());
+            }
 
             let error_count = searcher.error_count;
             match error_count {

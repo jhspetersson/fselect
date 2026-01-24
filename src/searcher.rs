@@ -747,7 +747,13 @@ impl<'a> Searcher<'a> {
                             // If the path passes the filters, process it
                             if pass_ignores {
                                 if min_depth == 0 || depth >= min_depth {
-                                    let checked = self.check_file(&entry, root_dir, &None)?;
+                                    let checked = self.check_file(&entry, root_dir, &None);
+                                    if checked.is_err() {
+                                        self.error_count += 1;
+                                        path_error_message(&path, checked.err().unwrap());
+                                        return Ok(());
+                                    }
+                                    let checked = checked?;
                                     if !checked {
                                         return Ok(());
                                     }
@@ -2071,6 +2077,13 @@ impl<'a> Searcher<'a> {
 
         if let Some(ref expr) = self.query.expr {
             let result = self.conforms(entry, file_info, root_path, expr);
+            if result.is_err() {
+                return Err(io::Error::new(
+                    io::ErrorKind::Other,
+                    result.err().unwrap(),
+                ));
+            }
+            let result = result.unwrap();
             if !result {
                 return Ok(true);
             }
@@ -2187,17 +2200,19 @@ impl<'a> Searcher<'a> {
         Variant::from_bool(false)
     }
 
-    fn conforms(&mut self, entry: &DirEntry, file_info: &Option<FileInfo>, root_path: &Path, expr: &Expr) -> bool {
+    fn conforms(&mut self, entry: &DirEntry, file_info: &Option<FileInfo>, root_path: &Path, expr: &Expr) -> Result<bool, String> {
         let mut result = false;
 
         if let Some(ref logical_op) = expr.logical_op {
-            let mut left_result = false;
-            let mut right_result = false;
+            let mut left_result = Ok(false);
+            let mut right_result = Ok(false);
 
             if let Some(ref left) = expr.left {
                 let left_res = self.conforms(entry, file_info, root_path, left);
                 left_result = left_res;
             }
+
+            let left_result = left_result?;
 
             match logical_op {
                 LogicalOp::And => {
@@ -2209,7 +2224,7 @@ impl<'a> Searcher<'a> {
                             right_result = right_res;
                         }
 
-                        result = left_result && right_result;
+                        result = left_result && right_result?;
                     }
                 }
                 LogicalOp::Or => {
@@ -2221,7 +2236,7 @@ impl<'a> Searcher<'a> {
                             right_result = right_res;
                         }
 
-                        result = left_result || right_result
+                        result = left_result || right_result?;
                     }
                 }
             }
@@ -2252,7 +2267,7 @@ impl<'a> Searcher<'a> {
                                 let regex = self.regex_cache.get(&val);
                                 match regex {
                                     Some(regex) => {
-                                        return regex.is_match(&field_value.to_string());
+                                        return Ok(regex.is_match(&field_value.to_string()));
                                     }
                                     None => {
                                         let pattern = convert_glob_to_pattern(&val);
@@ -2260,10 +2275,10 @@ impl<'a> Searcher<'a> {
                                         match regex {
                                             Ok(ref regex) => {
                                                 self.regex_cache.insert(val, regex.clone());
-                                                return regex.is_match(&field_value.to_string());
+                                                return Ok(regex.is_match(&field_value.to_string()));
                                             }
                                             _ => {
-                                                return val.eq(&field_value.to_string());
+                                                return Ok(val.eq(&field_value.to_string()));
                                             }
                                         }
                                     }
@@ -2276,7 +2291,7 @@ impl<'a> Searcher<'a> {
                                 let regex = self.regex_cache.get(&val);
                                 match regex {
                                     Some(regex) => {
-                                        return !regex.is_match(&field_value.to_string());
+                                        return Ok(!regex.is_match(&field_value.to_string()));
                                     }
                                     None => {
                                         let pattern = convert_glob_to_pattern(&val);
@@ -2284,10 +2299,10 @@ impl<'a> Searcher<'a> {
                                         match regex {
                                             Ok(ref regex) => {
                                                 self.regex_cache.insert(val, regex.clone());
-                                                return !regex.is_match(&field_value.to_string());
+                                                return Ok(!regex.is_match(&field_value.to_string()));
                                             }
                                             _ => {
-                                                return val.ne(&field_value.to_string());
+                                                return Ok(val.ne(&field_value.to_string()));
                                             }
                                         }
                                     }
@@ -2299,14 +2314,14 @@ impl<'a> Searcher<'a> {
                             let regex = self.regex_cache.get(&val);
                             match regex {
                                 Some(regex) => {
-                                    return regex.is_match(&field_value.to_string());
+                                    return Ok(regex.is_match(&field_value.to_string()));
                                 }
                                 None => {
                                     let regex = Regex::new(&val);
                                     match regex {
                                         Ok(ref regex) => {
                                             self.regex_cache.insert(val, regex.clone());
-                                            return regex.is_match(&field_value.to_string());
+                                            return Ok(regex.is_match(&field_value.to_string()));
                                         }
                                         _ => error_exit("Incorrect regex expression", val.as_str()),
                                     }
@@ -2317,14 +2332,14 @@ impl<'a> Searcher<'a> {
                             let regex = self.regex_cache.get(&val);
                             match regex {
                                 Some(regex) => {
-                                    return !regex.is_match(&field_value.to_string());
+                                    return Ok(!regex.is_match(&field_value.to_string()));
                                 }
                                 None => {
                                     let regex = Regex::new(&val);
                                     match regex {
                                         Ok(ref regex) => {
                                             self.regex_cache.insert(val, regex.clone());
-                                            return !regex.is_match(&field_value.to_string());
+                                            return Ok(!regex.is_match(&field_value.to_string()));
                                         }
                                         _ => error_exit("Incorrect regex expression", val.as_str()),
                                     }
@@ -2335,7 +2350,7 @@ impl<'a> Searcher<'a> {
                             let regex = self.regex_cache.get(&val);
                             match regex {
                                 Some(regex) => {
-                                    return regex.is_match(&field_value.to_string());
+                                    return Ok(regex.is_match(&field_value.to_string()));
                                 }
                                 None => {
                                     let pattern = convert_like_to_pattern(&val);
@@ -2343,7 +2358,7 @@ impl<'a> Searcher<'a> {
                                     match regex {
                                         Ok(ref regex) => {
                                             self.regex_cache.insert(val, regex.clone());
-                                            return regex.is_match(&field_value.to_string());
+                                            return Ok(regex.is_match(&field_value.to_string()));
                                         }
                                         _ => error_exit("Incorrect LIKE expression", val.as_str()),
                                     }
@@ -2354,7 +2369,7 @@ impl<'a> Searcher<'a> {
                             let regex = self.regex_cache.get(&val);
                             match regex {
                                 Some(regex) => {
-                                    return !regex.is_match(&field_value.to_string());
+                                    return Ok(!regex.is_match(&field_value.to_string()));
                                 }
                                 None => {
                                     let pattern = convert_like_to_pattern(&val);
@@ -2362,7 +2377,7 @@ impl<'a> Searcher<'a> {
                                     match regex {
                                         Ok(ref regex) => {
                                             self.regex_cache.insert(val, regex.clone());
-                                            return !regex.is_match(&field_value.to_string());
+                                            return Ok(!regex.is_match(&field_value.to_string()));
                                         }
                                         _ => error_exit("Incorrect LIKE expression", val.as_str()),
                                     }
@@ -2719,10 +2734,10 @@ impl<'a> Searcher<'a> {
                     }
                 }
                 VariantType::DateTime => {
-                    let (start, finish) = value.to_datetime();
+                    let (start, finish) = value.to_datetime()?;
                     let start = start.and_utc().timestamp();
                     let finish = finish.and_utc().timestamp();
-                    let dt = field_value.to_datetime().0.and_utc().timestamp();
+                    let dt = field_value.to_datetime()?.0.and_utc().timestamp();
                     match op {
                         Op::Eeq => dt == start,
                         Op::Ene => dt != start,
@@ -2733,7 +2748,7 @@ impl<'a> Searcher<'a> {
                         Op::Lt => dt < start,
                         Op::Lte => dt <= finish,
                         Op::In => {
-                            let field_value = field_value.to_datetime().0.and_utc().timestamp();
+                            let field_value = field_value.to_datetime()?.0.and_utc().timestamp();
                             let mut result = false;
                             for item in expr.clone().right.unwrap().args.unwrap().iter().map(|arg| self.get_column_expr_value(
                                 Some(entry),
@@ -2743,7 +2758,7 @@ impl<'a> Searcher<'a> {
                                 None,
                                 arg,
                             )) {
-                                if item.to_datetime().0.and_utc().timestamp() == field_value {
+                                if item.to_datetime()?.0.and_utc().timestamp() == field_value {
                                     result = true;
                                     break;
                                 }
@@ -2751,7 +2766,7 @@ impl<'a> Searcher<'a> {
                             result
                         },
                         Op::NotIn => {
-                            let field_value = field_value.to_datetime().0.and_utc().timestamp();
+                            let field_value = field_value.to_datetime()?.0.and_utc().timestamp();
                             let mut result = true;
                             for item in expr.clone().right.unwrap().args.unwrap().iter().map(|arg| self.get_column_expr_value(
                                 Some(entry),
@@ -2761,7 +2776,7 @@ impl<'a> Searcher<'a> {
                                 None,
                                 arg,
                             )) {
-                                if item.to_datetime().0.and_utc().timestamp() == field_value {
+                                if item.to_datetime()?.0.and_utc().timestamp() == field_value {
                                     result = false;
                                     break;
                                 }
@@ -2800,7 +2815,7 @@ impl<'a> Searcher<'a> {
             };
         }
 
-        result
+        Ok(result)
     }
 
     fn is_zip_archive(&self, file_name: &str) -> bool {

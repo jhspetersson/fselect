@@ -2,7 +2,7 @@ use std::fmt::{Display, Error, Formatter};
 
 use chrono::NaiveDateTime;
 
-use crate::util::{error_exit, format_datetime, parse_datetime, parse_filesize, str_to_bool};
+use crate::util::{format_datetime, parse_datetime, parse_filesize, str_to_bool};
 
 #[derive(Clone, Debug)]
 pub enum VariantType {
@@ -187,17 +187,17 @@ impl Variant {
         }
     }
 
-    pub fn to_datetime(&self) -> (NaiveDateTime, NaiveDateTime) {
+    pub fn to_datetime(&self) -> Result<(NaiveDateTime, NaiveDateTime), String> {
         if self.dt_from.is_none() {
             match parse_datetime(&self.string_value) {
                 Ok((dt_from, dt_to)) => {
-                    return (dt_from, dt_to);
+                    Ok((dt_from, dt_to))
                 }
-                _ => error_exit("Can't parse datetime", &self.string_value),
+                _ => Err(String::from("Can't parse datetime: ") + &self.string_value),
             }
+        } else {
+            Ok((self.dt_from.unwrap(), self.dt_to.unwrap()))
         }
-
-        (self.dt_from.unwrap(), self.dt_to.unwrap())
     }
 }
 

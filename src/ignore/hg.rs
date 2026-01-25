@@ -9,10 +9,7 @@ use std::path::Path;
 use std::sync::LazyLock;
 
 use regex::Captures;
-use regex::Error;
 use regex::Regex;
-
-use crate::util::error::error_exit;
 
 #[derive(Clone, Debug)]
 pub struct HgignoreFilter {
@@ -158,11 +155,11 @@ fn convert_hgignore_pattern(
     match syntax {
         Syntax::Glob => match convert_hgignore_glob(pattern, file_path) {
             Ok(regex) => Ok(HgignoreFilter::new(regex)),
-            _ => Err("Error creating regex while parsing .hgignore glob: ".to_string() + pattern),
+            Err(e) => Err(e),
         },
         Syntax::Regexp => match convert_hgignore_regexp(pattern, file_path) {
             Ok(regex) => Ok(HgignoreFilter::new(regex)),
-            _ => Err("Error creating regex while parsing .hgignore regexp: ".to_string() + pattern),
+            Err(e) => Err(e),
         },
     }
 }
@@ -171,7 +168,7 @@ static HG_CONVERT_REPLACE_REGEX: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new("(\\*\\*|\\?|\\.|\\*)").unwrap()
 });
 
-fn convert_hgignore_glob(glob: &str, file_path: &Path) -> Result<Regex, Error> {
+fn convert_hgignore_glob(glob: &str, file_path: &Path) -> Result<Regex, String> {
     #[cfg(not(windows))]
     {
         let mut pattern = HG_CONVERT_REPLACE_REGEX
@@ -187,11 +184,15 @@ fn convert_hgignore_glob(glob: &str, file_path: &Path) -> Result<Regex, Error> {
                     ")" => "\\)",
                     "^" => "\\^",
                     "$" => "\\$",
-                    _ => error_exit(".hgignore", "Error parsing pattern"),
+                    _ => "",
                 }
                 .to_string()
             })
             .to_string();
+
+        if pattern.is_empty() {
+            return Err("Error parsing .hgignore pattern: ".to_string() + glob);
+        }
 
         pattern = file_path
             .to_string_lossy()
@@ -200,7 +201,7 @@ fn convert_hgignore_glob(glob: &str, file_path: &Path) -> Result<Regex, Error> {
             .add("/([^/]+/)*")
             .add(&pattern);
 
-        Regex::new(&pattern)
+        Regex::new(&pattern).map_err(|_| "Error creating regex pattern: ".to_string() + pattern.as_str())
     }
 
     #[cfg(windows)]
@@ -218,11 +219,15 @@ fn convert_hgignore_glob(glob: &str, file_path: &Path) -> Result<Regex, Error> {
                     ")" => "\\)",
                     "^" => "\\^",
                     "$" => "\\$",
-                    _ => error_exit(".hgignore", "Error parsing pattern"),
+                    _ => "",
                 }
                 .to_string()
             })
             .to_string();
+
+        if pattern.is_empty() {
+            return Err("Error parsing .hgignore pattern: ".to_string() + glob);
+        }
 
         pattern = file_path
             .to_string_lossy()
@@ -231,11 +236,11 @@ fn convert_hgignore_glob(glob: &str, file_path: &Path) -> Result<Regex, Error> {
             .add("\\\\([^\\\\]+\\\\)*")
             .add(&pattern);
 
-        Regex::new(&pattern)
+        Regex::new(&pattern).map_err(|_| "Error creating regex pattern: ".to_string() + pattern.as_str())
     }
 }
 
-fn convert_hgignore_regexp(regexp: &str, file_path: &Path) -> Result<Regex, Error> {
+fn convert_hgignore_regexp(regexp: &str, file_path: &Path) -> Result<Regex, String> {
     #[cfg(not(windows))]
     {
         let mut pattern = file_path.to_string_lossy().to_string();
@@ -249,7 +254,7 @@ fn convert_hgignore_regexp(regexp: &str, file_path: &Path) -> Result<Regex, Erro
 
         pattern = pattern.add(&regexp.trim_start_matches("^"));
 
-        Regex::new(&pattern)
+        Regex::new(&pattern).map_err(|_| "Error creating regex pattern: ".to_string() + pattern.as_str())
     }
 
     #[cfg(windows)]
@@ -265,6 +270,6 @@ fn convert_hgignore_regexp(regexp: &str, file_path: &Path) -> Result<Regex, Erro
 
         pattern = pattern.add(&regexp.trim_start_matches("^"));
 
-        Regex::new(&pattern)
+        Regex::new(&pattern).map_err(|_| "Error creating regex pattern: ".to_string() + pattern.as_str())
     }
 }

@@ -2271,20 +2271,26 @@ impl<'a> Searcher<'a> {
                         Op::Eq => match is_glob(&val) {
                             true => {
                                 let regex = self.regex_cache.get(&val);
-                                match regex {
+                                return match regex {
                                     Some(regex) => {
-                                        return Ok(regex.is_match(&field_value.to_string()));
+                                        Ok(regex.is_match(&field_value.to_string()))
                                     }
                                     None => {
-                                        let pattern = convert_glob_to_pattern(&val);
-                                        let regex = Regex::new(&pattern);
-                                        match regex {
-                                            Ok(ref regex) => {
-                                                self.regex_cache.insert(val, regex.clone());
-                                                return Ok(regex.is_match(&field_value.to_string()));
-                                            }
-                                            _ => {
-                                                return Ok(val.eq(&field_value.to_string()));
+                                        match convert_glob_to_pattern(&val) {
+                                            Ok(pattern) => {
+                                                let regex = Regex::new(&pattern);
+                                                match regex {
+                                                    Ok(ref regex) => {
+                                                        self.regex_cache.insert(val, regex.clone());
+                                                        Ok(regex.is_match(&field_value.to_string()))
+                                                    }
+                                                    _ => {
+                                                        Ok(val.eq(&field_value.to_string()))
+                                                    }
+                                                }
+                                            },
+                                            Err(e) => {
+                                                Err(e)
                                             }
                                         }
                                     }
@@ -2300,15 +2306,21 @@ impl<'a> Searcher<'a> {
                                         return Ok(!regex.is_match(&field_value.to_string()));
                                     }
                                     None => {
-                                        let pattern = convert_glob_to_pattern(&val);
-                                        let regex = Regex::new(&pattern);
-                                        match regex {
-                                            Ok(ref regex) => {
-                                                self.regex_cache.insert(val, regex.clone());
-                                                return Ok(!regex.is_match(&field_value.to_string()));
-                                            }
-                                            _ => {
-                                                return Ok(val.ne(&field_value.to_string()));
+                                        return match convert_glob_to_pattern(&val) {
+                                            Ok(pattern) => {
+                                                let regex = Regex::new(&pattern);
+                                                match regex {
+                                                    Ok(ref regex) => {
+                                                        self.regex_cache.insert(val, regex.clone());
+                                                        Ok(!regex.is_match(&field_value.to_string()))
+                                                    }
+                                                    _ => {
+                                                        Ok(val.ne(&field_value.to_string()))
+                                                    }
+                                                }
+                                            },
+                                            Err(e) => {
+                                                Err(e)
                                             }
                                         }
                                     }
@@ -2318,74 +2330,94 @@ impl<'a> Searcher<'a> {
                         },
                         Op::Rx => {
                             let regex = self.regex_cache.get(&val);
-                            match regex {
+                            return match regex {
                                 Some(regex) => {
-                                    return Ok(regex.is_match(&field_value.to_string()));
+                                    Ok(regex.is_match(&field_value.to_string()))
                                 }
                                 None => {
                                     let regex = Regex::new(&val);
                                     match regex {
                                         Ok(ref regex) => {
                                             self.regex_cache.insert(val, regex.clone());
-                                            return Ok(regex.is_match(&field_value.to_string()));
+                                            Ok(regex.is_match(&field_value.to_string()))
                                         }
-                                        _ => error_exit("Incorrect regex expression", val.as_str()),
+                                        _ => {
+                                            Err("Incorrect regex expression: ".to_string() + val.as_str())
+                                        }
                                     }
                                 }
                             }
                         }
                         Op::NotRx => {
                             let regex = self.regex_cache.get(&val);
-                            match regex {
+                            return match regex {
                                 Some(regex) => {
-                                    return Ok(!regex.is_match(&field_value.to_string()));
+                                    Ok(!regex.is_match(&field_value.to_string()))
                                 }
                                 None => {
                                     let regex = Regex::new(&val);
                                     match regex {
                                         Ok(ref regex) => {
                                             self.regex_cache.insert(val, regex.clone());
-                                            return Ok(!regex.is_match(&field_value.to_string()));
+                                            Ok(!regex.is_match(&field_value.to_string()))
                                         }
-                                        _ => error_exit("Incorrect regex expression", val.as_str()),
+                                        _ => {
+                                            Err("Incorrect regex expression: ".to_string() + val.as_str())
+                                        }
                                     }
                                 }
                             }
                         }
                         Op::Like => {
                             let regex = self.regex_cache.get(&val);
-                            match regex {
+                            return match regex {
                                 Some(regex) => {
-                                    return Ok(regex.is_match(&field_value.to_string()));
+                                    Ok(regex.is_match(&field_value.to_string()))
                                 }
                                 None => {
-                                    let pattern = convert_like_to_pattern(&val);
-                                    let regex = Regex::new(&pattern);
-                                    match regex {
-                                        Ok(ref regex) => {
-                                            self.regex_cache.insert(val, regex.clone());
-                                            return Ok(regex.is_match(&field_value.to_string()));
+                                    match convert_like_to_pattern(&val) {
+                                        Ok(pattern) => {
+                                            let regex = Regex::new(&pattern);
+                                            match regex {
+                                                Ok(ref regex) => {
+                                                    self.regex_cache.insert(val, regex.clone());
+                                                    Ok(regex.is_match(&field_value.to_string()))
+                                                }
+                                                _ => {
+                                                    Err("Incorrect LIKE expression: ".to_string() + val.as_str())
+                                                }
+                                            }
+                                        },
+                                        Err(e) => {
+                                            Err(e)
                                         }
-                                        _ => error_exit("Incorrect LIKE expression", val.as_str()),
                                     }
                                 }
                             }
                         }
                         Op::NotLike => {
                             let regex = self.regex_cache.get(&val);
-                            match regex {
+                            return match regex {
                                 Some(regex) => {
-                                    return Ok(!regex.is_match(&field_value.to_string()));
+                                    Ok(!regex.is_match(&field_value.to_string()))
                                 }
                                 None => {
-                                    let pattern = convert_like_to_pattern(&val);
-                                    let regex = Regex::new(&pattern);
-                                    match regex {
-                                        Ok(ref regex) => {
-                                            self.regex_cache.insert(val, regex.clone());
-                                            return Ok(!regex.is_match(&field_value.to_string()));
+                                    match convert_like_to_pattern(&val) {
+                                        Ok(pattern) => {
+                                            let regex = Regex::new(&pattern);
+                                            match regex {
+                                                Ok(ref regex) => {
+                                                    self.regex_cache.insert(val, regex.clone());
+                                                    Ok(!regex.is_match(&field_value.to_string()))
+                                                }
+                                                _ => {
+                                                    Err("Incorrect NOT LIKE expression: ".to_string() + val.as_str())
+                                                }
+                                            }
+                                        },
+                                        Err(e) => {
+                                            Err(e)
                                         }
-                                        _ => error_exit("Incorrect LIKE expression", val.as_str()),
                                     }
                                 }
                             }

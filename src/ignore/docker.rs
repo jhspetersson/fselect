@@ -9,10 +9,7 @@ use std::path::Path;
 use std::sync::LazyLock;
 
 use regex::Captures;
-use regex::Error;
 use regex::Regex;
-
-use crate::util::error::error_exit;
 
 #[derive(Clone, Debug)]
 pub struct DockerignoreFilter {
@@ -146,7 +143,7 @@ static DOCKER_CONVERT_REPLACE_REGEX: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new("(\\*\\*|\\?|\\.|\\*)").unwrap()
 });
 
-fn convert_dockerignore_glob(glob: &str, file_path: &Path) -> Result<Regex, Error> {
+fn convert_dockerignore_glob(glob: &str, file_path: &Path) -> Result<Regex, String> {
     let mut pattern = DOCKER_CONVERT_REPLACE_REGEX
         .replace_all(glob, |c: &Captures| {
             match c.index(0) {
@@ -154,11 +151,15 @@ fn convert_dockerignore_glob(glob: &str, file_path: &Path) -> Result<Regex, Erro
                 "." => "\\.",
                 "*" => "[^/]*",
                 "?" => "[^/]",
-                _ => error_exit(".dockerignore", "Error parsing pattern"),
+                _ => "",
             }
             .to_string()
         })
         .to_string();
+
+    if pattern.is_empty() {
+        return Err("Error parsing .dockerignore pattern: ".to_string() + glob);
+    }
 
     while pattern.starts_with("/") || pattern.starts_with("\\") {
         pattern.remove(0);
@@ -176,5 +177,5 @@ fn convert_dockerignore_glob(glob: &str, file_path: &Path) -> Result<Regex, Erro
 
     pattern = path.replace("\\", "\\\\").add("/([^/]+/)*").add(&pattern);
 
-    Regex::new(&pattern)
+    Regex::new(&pattern).map_err(|_| "Error creating regex pattern: ".to_string() + pattern.as_str())
 }

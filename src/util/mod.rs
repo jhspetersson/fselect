@@ -279,7 +279,7 @@ static FILE_SIZE_FORMAT_REGEX: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new("(%\\.(?P<zeroes>\\d+))?(?P<space>\\s)?(?P<units>\\w+)?").unwrap()
 });
 
-pub fn format_filesize(size: u64, modifier: &str) -> String {
+pub fn format_filesize(size: u64, modifier: &str) -> Result<String, String> {
     let mut modifier = modifier.to_ascii_lowercase();
 
     let mut zeroes = -1;
@@ -391,7 +391,9 @@ pub fn format_filesize(size: u64, modifier: &str) -> String {
             fixed_at = None;
             format = humansize::BINARY;
         }
-        _ => error_exit("Unknown file size modifier", modifier.as_str()),
+        _ => {
+            return Err(format!("Invalid file size format modifier: {}", modifier));
+        }
     };
 
     if zeroes == -1 {
@@ -424,7 +426,7 @@ pub fn format_filesize(size: u64, modifier: &str) -> String {
             .replace("EB", "E");
     }
 
-    result
+    Ok(result)
 }
 
 pub fn str_to_bool(val: &str) -> Option<bool> {
@@ -839,33 +841,33 @@ mod tests {
     fn test_format_filesize() {
         let file_size = 1678123;
 
-        assert_eq!(format_filesize(file_size, ""), String::from("1.60MiB"));
-        assert_eq!(format_filesize(file_size, " "), String::from("1.60 MiB"));
-        assert_eq!(format_filesize(file_size, "%.0"), String::from("2MiB"));
-        assert_eq!(format_filesize(file_size, "%.1"), String::from("1.6MiB"));
-        assert_eq!(format_filesize(file_size, "%.2"), String::from("1.60MiB"));
-        assert_eq!(format_filesize(file_size, "%.2 "), String::from("1.60 MiB"));
-        assert_eq!(format_filesize(file_size, "%.2 d"), String::from("1.68 MB"));
-        assert_eq!(format_filesize(file_size, "%.2 c"), String::from("1.60 MB"));
+        assert_eq!(format_filesize(file_size, "").unwrap(), String::from("1.60MiB"));
+        assert_eq!(format_filesize(file_size, " ").unwrap(), String::from("1.60 MiB"));
+        assert_eq!(format_filesize(file_size, "%.0").unwrap(), String::from("2MiB"));
+        assert_eq!(format_filesize(file_size, "%.1").unwrap(), String::from("1.6MiB"));
+        assert_eq!(format_filesize(file_size, "%.2").unwrap(), String::from("1.60MiB"));
+        assert_eq!(format_filesize(file_size, "%.2 ").unwrap(), String::from("1.60 MiB"));
+        assert_eq!(format_filesize(file_size, "%.2 d").unwrap(), String::from("1.68 MB"));
+        assert_eq!(format_filesize(file_size, "%.2 c").unwrap(), String::from("1.60 MB"));
         assert_eq!(
-            format_filesize(file_size, "%.2 k"),
+            format_filesize(file_size, "%.2 k").unwrap(),
             String::from("1638.79 KiB")
         );
         assert_eq!(
-            format_filesize(file_size, "%.2 ck"),
+            format_filesize(file_size, "%.2 ck").unwrap(),
             String::from("1638.79 KB")
         );
         assert_eq!(
-            format_filesize(file_size, "%.0 ck"),
+            format_filesize(file_size, "%.0 ck").unwrap(),
             String::from("1639 KB")
         );
         assert_eq!(
-            format_filesize(file_size, "%.0 kb"),
+            format_filesize(file_size, "%.0 kb").unwrap(),
             String::from("1678 KB")
         );
-        assert_eq!(format_filesize(file_size, "%.0kb"), String::from("1678KB"));
-        assert_eq!(format_filesize(file_size, "%.0s"), String::from("2M"));
-        assert_eq!(format_filesize(file_size, "%.0 s"), String::from("2 M"));
+        assert_eq!(format_filesize(file_size, "%.0kb").unwrap(), String::from("1678KB"));
+        assert_eq!(format_filesize(file_size, "%.0s").unwrap(), String::from("2M"));
+        assert_eq!(format_filesize(file_size, "%.0 s").unwrap(), String::from("2 M"));
     }
 
     #[test]

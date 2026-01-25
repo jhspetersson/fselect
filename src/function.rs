@@ -754,7 +754,7 @@ pub fn get_value(
                     Some(modifier) => modifier,
                     _ => "",
                 };
-                let file_size = crate::util::format_filesize(size, modifier);
+                let file_size = crate::util::format_filesize(size, modifier).unwrap_or(String::new());
                 return Variant::from_string(&file_size);
             }
 

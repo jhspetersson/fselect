@@ -993,7 +993,7 @@ impl<'a> Searcher<'a> {
 
         if let Some(ref field) = column_expr.field {
             if entry.is_some() {
-                let result = self.get_field_value(entry.unwrap(), file_info, root_path, field);
+                let result = self.get_field_value(entry.unwrap(), file_info, root_path, field).unwrap_or(Variant::empty(VariantType::String));
                 file_map.insert(column_expr_str, result.to_string());
                 let mut context = self.record_context.borrow_mut();
                 let context_key = self.current_alias.clone().unwrap_or_else(|| String::from(""));
@@ -1120,90 +1120,95 @@ impl<'a> Searcher<'a> {
         file_info: &Option<FileInfo>,
         root_path: &Path,
         field: &Field,
-    ) -> Variant {
+    ) -> Result<Variant, String> {
         if file_info.is_some() && !field.is_available_for_archived_files() {
-            return Variant::empty(VariantType::String);
+            return Ok(Variant::empty(VariantType::String));
         }
 
         match field {
-            Field::Name => match file_info {
+            Field::Name => return match file_info {
                 Some(file_info) => {
-                    return Variant::from_string(&format!(
+                    Ok(Variant::from_string(&format!(
                         "[{}] {}",
                         entry.file_name().to_string_lossy(),
                         file_info.name
-                    ));
+                    )))
                 }
                 _ => {
-                    return Variant::from_string(&format!(
+                    Ok(Variant::from_string(&format!(
                         "{}",
                         entry.file_name().to_string_lossy()
-                    ));
+                    )))
                 }
             },
-            Field::Filename => match file_info {
+            Field::Filename => return match file_info {
                 Some(file_info) => {
-                    return Variant::from_string(&format!(
+                    Ok(Variant::from_string(&format!(
                         "[{}] {}",
                         entry.file_name().to_string_lossy(),
                         get_stem(&file_info.name)
-                    ));
+                    )))
                 }
                 _ => {
-                    return Variant::from_string(
+                    Ok(Variant::from_string(
                         &get_stem(&entry.file_name().to_string_lossy())
                             .to_string(),
-                    );
+                    ))
                 }
             },
-            Field::Extension => match file_info {
+            Field::Extension => return match file_info {
                 Some(file_info) => {
-                    return Variant::from_string(&format!(
+                    Ok(Variant::from_string(&format!(
                         "[{}] {}",
                         entry.file_name().to_string_lossy(),
                         crate::util::get_extension(&file_info.name)
-                    ));
+                    )))
                 }
                 _ => {
-                    return Variant::from_string(
+                    Ok(Variant::from_string(
                         &crate::util::get_extension(&entry.file_name().to_string_lossy())
                             .to_string(),
-                    );
+                    ))
                 }
             },
             Field::Path => return match file_info {
                 Some(file_info) => {
-                    Variant::from_string(&format!(
+                    Ok(Variant::from_string(&format!(
                         "[{}] {}",
                         entry.path().to_string_lossy(),
                         file_info.name
-                    ))
+                    )))
                 }
                 _ => {
                     match entry.path().strip_prefix(root_path) {
                         Ok(stripped_path) => {
-                            Variant::from_string(&format!(
+                            Ok(Variant::from_string(&format!(
                                 "{}",
                                 stripped_path.to_string_lossy()
-                            ))
+                            )))
                         }
                         Err(_) => {
-                            Variant::from_string(&format!("{}", entry.path().to_string_lossy()))
+                            Ok(Variant::from_string(&format!("{}", entry.path().to_string_lossy())))
                         }
                     }
                 }
             },
-            Field::AbsPath => match file_info {
+            Field::AbsPath => return match file_info {
                 Some(file_info) => {
-                    return Variant::from_string(&format!(
+                    Ok(Variant::from_string(&format!(
                         "[{}] {}",
                         entry.path().to_string_lossy(),
                         file_info.name
-                    ));
+                    )))
                 }
                 _ => {
-                    if let Ok(path) = crate::util::canonical_path(&entry.path()) {
-                        return Variant::from_string(&path);
+                    match crate::util::canonical_path(&entry.path()) {
+                        Ok(path) => {
+                            Ok(Variant::from_string(&path))
+                        },
+                        Err(e) => {
+                            Err(format!("could not get absolute path: {}", e))
+                        }
                     }
                 }
             },
@@ -1217,7 +1222,7 @@ impl<'a> Searcher<'a> {
                 };
                 let pb = PathBuf::from(file_path);
                 if let Some(parent) = pb.parent() {
-                    return Variant::from_string(&parent.to_string_lossy().to_string());
+                    return Ok(Variant::from_string(&parent.to_string_lossy().to_string()));
                 }
             }
             Field::AbsDir => {
@@ -1228,35 +1233,56 @@ impl<'a> Searcher<'a> {
                 let pb = PathBuf::from(file_path);
                 if let Some(parent) = pb.parent() {
                     if file_info.is_some() {
-                        return Variant::from_string(&parent.to_string_lossy().to_string());
+                        return Ok(Variant::from_string(&parent.to_string_lossy().to_string()));
                     }
 
                     if let Ok(path) = crate::util::canonical_path(&parent.to_path_buf()) {
-                        return Variant::from_string(&path);
+                        return Ok(Variant::from_string(&path));
                     }
                 }
             }
             Field::Size => match file_info {
                 Some(file_info) => {
-                    return Variant::from_int(file_info.size as i64);
+                    return Ok(Variant::from_int(file_info.size as i64));
                 }
                 _ => {
                     self.fms
                         .update_file_metadata(entry, self.current_follow_symlinks);
 
                     if let Some(ref attrs) = self.fms.file_metadata {
-                        return Variant::from_int(attrs.len() as i64);
+                        return Ok(Variant::from_int(attrs.len() as i64));
                     }
                 }
             },
             Field::FormattedSize => match file_info {
                 Some(file_info) => {
-                    return Variant::from_string(&format_filesize(
+                    return Ok(Variant::from_string(&format_filesize(
                         file_info.size,
                         self.config
                             .default_file_size_format
                             .as_ref()
                             .unwrap_or(&String::new()),
+                    )?));
+                }
+                _ => {
+                    self.fms
+                        .update_file_metadata(entry, self.current_follow_symlinks);
+
+                    if let Some(ref attrs) = self.fms.file_metadata {
+                        return Ok(Variant::from_string(&format_filesize(
+                            attrs.len(),
+                            self.config
+                                .default_file_size_format
+                                .as_ref()
+                                .unwrap_or(&String::new()),
+                        )?));
+                    }
+                }
+            },
+            Field::IsDir => match file_info {
+                Some(file_info) => {
+                    return Ok(Variant::from_bool(
+                        file_info.name.ends_with('/') || file_info.name.ends_with('\\'),
                     ));
                 }
                 _ => {
@@ -1264,83 +1290,62 @@ impl<'a> Searcher<'a> {
                         .update_file_metadata(entry, self.current_follow_symlinks);
 
                     if let Some(ref attrs) = self.fms.file_metadata {
-                        return Variant::from_string(&format_filesize(
-                            attrs.len(),
-                            self.config
-                                .default_file_size_format
-                                .as_ref()
-                                .unwrap_or(&String::new()),
-                        ));
-                    }
-                }
-            },
-            Field::IsDir => match file_info {
-                Some(file_info) => {
-                    return Variant::from_bool(
-                        file_info.name.ends_with('/') || file_info.name.ends_with('\\'),
-                    );
-                }
-                _ => {
-                    self.fms
-                        .update_file_metadata(entry, self.current_follow_symlinks);
-
-                    if let Some(ref attrs) = self.fms.file_metadata {
-                        return Variant::from_bool(attrs.is_dir());
+                        return Ok(Variant::from_bool(attrs.is_dir()));
                     }
                 }
             },
             Field::IsFile => match file_info {
                 Some(file_info) => {
-                    return Variant::from_bool(!file_info.name.ends_with('/'));
+                    return Ok(Variant::from_bool(!file_info.name.ends_with('/')));
                 }
                 _ => {
                     self.fms
                         .update_file_metadata(entry, self.current_follow_symlinks);
 
                     if let Some(ref attrs) = self.fms.file_metadata {
-                        return Variant::from_bool(attrs.is_file());
+                        return Ok(Variant::from_bool(attrs.is_file()));
                     }
                 }
             },
             Field::IsSymlink => match file_info {
                 Some(_) => {
-                    return Variant::from_bool(false);
+                    return Ok(Variant::from_bool(false));
                 }
                 _ => {
                     self.fms
                         .update_file_metadata(entry, self.current_follow_symlinks);
 
                     if let Some(ref attrs) = self.fms.file_metadata {
-                        return Variant::from_bool(attrs.file_type().is_symlink());
+                        return Ok(Variant::from_bool(attrs.file_type().is_symlink()));
                     }
                 }
             },
             Field::IsPipe => {
-                return self.check_file_mode(entry, &mode::is_pipe, file_info, &mode::mode_is_pipe);
+                return Ok(self.check_file_mode(entry, &mode::is_pipe, file_info, &mode::mode_is_pipe));
             }
             Field::IsCharacterDevice => {
-                return self.check_file_mode(
+                return Ok(self.check_file_mode(
                     entry,
                     &mode::is_char_device,
                     file_info,
                     &mode::mode_is_char_device,
-                );
+                ));
             }
             Field::IsBlockDevice => {
-                return self.check_file_mode(
+                return Ok(self.check_file_mode(
                     entry,
                     &mode::is_block_device,
                     file_info,
                     &mode::mode_is_block_device,
-                );
+                ));
             }
             Field::IsSocket => {
-                return self.check_file_mode(
+                return Ok(self.check_file_mode(
                     entry,
                     &mode::is_socket,
                     file_info,
                     &mode::mode_is_socket,
-                );
+                ));
             }
             Field::Device => {
                 #[cfg(unix)]
@@ -1349,11 +1354,11 @@ impl<'a> Searcher<'a> {
                         .update_file_metadata(entry, self.current_follow_symlinks);
 
                     if let Some(ref attrs) = self.fms.file_metadata {
-                        return Variant::from_int(attrs.dev() as i64);
+                        return Ok(Variant::from_int(attrs.dev() as i64));
                     }
                 }
 
-                return Variant::empty(VariantType::String);
+                return Ok(Variant::empty(VariantType::String));
             }
             Field::Inode => {
                 #[cfg(unix)]
@@ -1362,11 +1367,11 @@ impl<'a> Searcher<'a> {
                         .update_file_metadata(entry, self.current_follow_symlinks);
 
                     if let Some(ref attrs) = self.fms.file_metadata {
-                        return Variant::from_int(attrs.ino() as i64);
+                        return Ok(Variant::from_int(attrs.ino() as i64));
                     }
                 }
 
-                return Variant::empty(VariantType::String);
+                return Ok(Variant::empty(VariantType::String));
             }
             Field::Blocks => {
                 #[cfg(unix)]
@@ -1375,11 +1380,11 @@ impl<'a> Searcher<'a> {
                         .update_file_metadata(entry, self.current_follow_symlinks);
 
                     if let Some(ref attrs) = self.fms.file_metadata {
-                        return Variant::from_int(attrs.blocks() as i64);
+                        return Ok(Variant::from_int(attrs.blocks() as i64));
                     }
                 }
 
-                return Variant::empty(VariantType::String);
+                return Ok(Variant::empty(VariantType::String));
             }
             Field::Hardlinks => {
                 #[cfg(unix)]
@@ -1388,16 +1393,16 @@ impl<'a> Searcher<'a> {
                         .update_file_metadata(entry, self.current_follow_symlinks);
 
                     if let Some(ref attrs) = self.fms.file_metadata {
-                        return Variant::from_int(attrs.nlink() as i64);
+                        return Ok(Variant::from_int(attrs.nlink() as i64));
                     }
                 }
 
-                return Variant::empty(VariantType::String);
+                return Ok(Variant::empty(VariantType::String));
             }
             Field::Mode => match file_info {
                 Some(file_info) => {
                     if let Some(mode) = file_info.mode {
-                        return Variant::from_string(&mode::format_mode(mode));
+                        return Ok(Variant::from_string(&mode::format_mode(mode)));
                     }
                 }
                 _ => {
@@ -1405,135 +1410,135 @@ impl<'a> Searcher<'a> {
                         .update_file_metadata(entry, self.current_follow_symlinks);
 
                     if let Some(ref attrs) = self.fms.file_metadata {
-                        return Variant::from_string(&mode::get_mode(attrs));
+                        return Ok(Variant::from_string(&mode::get_mode(attrs)));
                     }
                 }
             },
             Field::UserRead => {
-                return self.check_file_mode(
+                return Ok(self.check_file_mode(
                     entry,
                     &mode::user_read,
                     file_info,
                     &mode::mode_user_read,
-                );
+                ));
             }
             Field::UserWrite => {
-                return self.check_file_mode(
+                return Ok(self.check_file_mode(
                     entry,
                     &mode::user_write,
                     file_info,
                     &mode::mode_user_write,
-                );
+                ));
             }
             Field::UserExec => {
-                return self.check_file_mode(
+                return Ok(self.check_file_mode(
                     entry,
                     &mode::user_exec,
                     file_info,
                     &mode::mode_user_exec,
-                );
+                ));
             }
             Field::UserAll => {
-                return self.check_file_mode(
+                return Ok(self.check_file_mode(
                     entry,
                     &mode::user_all,
                     file_info,
                     &mode::mode_user_all,
-                );
+                ));
             }
             Field::GroupRead => {
-                return self.check_file_mode(
+                return Ok(self.check_file_mode(
                     entry,
                     &mode::group_read,
                     file_info,
                     &mode::mode_group_read,
-                );
+                ));
             }
             Field::GroupWrite => {
-                return self.check_file_mode(
+                return Ok(self.check_file_mode(
                     entry,
                     &mode::group_write,
                     file_info,
                     &mode::mode_group_write,
-                );
+                ));
             }
             Field::GroupExec => {
-                return self.check_file_mode(
+                return Ok(self.check_file_mode(
                     entry,
                     &mode::group_exec,
                     file_info,
                     &mode::mode_group_exec,
-                );
+                ));
             }
             Field::GroupAll => {
-                return self.check_file_mode(
+                return Ok(self.check_file_mode(
                     entry,
                     &mode::group_all,
                     file_info,
                     &mode::mode_group_all,
-                );
+                ));
             }
             Field::OtherRead => {
-                return self.check_file_mode(
+                return Ok(self.check_file_mode(
                     entry,
                     &mode::other_read,
                     file_info,
                     &mode::mode_other_read,
-                );
+                ));
             }
             Field::OtherWrite => {
-                return self.check_file_mode(
+                return Ok(self.check_file_mode(
                     entry,
                     &mode::other_write,
                     file_info,
                     &mode::mode_other_write,
-                );
+                ));
             }
             Field::OtherExec => {
-                return self.check_file_mode(
+                return Ok(self.check_file_mode(
                     entry,
                     &mode::other_exec,
                     file_info,
                     &mode::mode_other_exec,
-                );
+                ));
             }
             Field::OtherAll => {
-                return self.check_file_mode(
+                return Ok(self.check_file_mode(
                     entry,
                     &mode::other_all,
                     file_info,
                     &mode::mode_other_all,
-                );
+                ));
             }
             Field::Suid => {
-                return self.check_file_mode(
+                return Ok(self.check_file_mode(
                     entry,
                     &mode::suid_bit_set,
                     file_info,
                     &mode::mode_suid,
-                );
+                ));
             }
             Field::Sgid => {
-                return self.check_file_mode(
+                return Ok(self.check_file_mode(
                     entry,
                     &mode::sgid_bit_set,
                     file_info,
                     &mode::mode_sgid,
-                );
+                ));
             }
             Field::IsHidden => match file_info {
                 Some(file_info) => {
-                    return Variant::from_bool(is_hidden(&file_info.name, &None, true));
+                    return Ok(Variant::from_bool(is_hidden(&file_info.name, &None, true)));
                 }
                 _ => {
                     self.fms
                         .update_file_metadata(entry, self.current_follow_symlinks);
 
-                    return Variant::from_bool(is_hidden(
+                    return Ok(Variant::from_bool(is_hidden(
                         &entry.file_name().to_string_lossy(),
                         &self.fms.file_metadata,
                         false,
-                    ));
+                    )));
                 }
             },
             Field::Uid => {
@@ -1542,7 +1547,7 @@ impl<'a> Searcher<'a> {
 
                 if let Some(ref attrs) = self.fms.file_metadata {
                     if let Some(uid) = mode::get_uid(attrs) {
-                        return Variant::from_int(uid as i64);
+                        return Ok(Variant::from_int(uid as i64));
                     }
                 }
             }
@@ -1552,7 +1557,7 @@ impl<'a> Searcher<'a> {
 
                 if let Some(ref attrs) = self.fms.file_metadata {
                     if let Some(gid) = mode::get_gid(attrs) {
-                        return Variant::from_int(gid as i64);
+                        return Ok(Variant::from_int(gid as i64));
                     }
                 }
             }
@@ -1564,9 +1569,9 @@ impl<'a> Searcher<'a> {
                 if let Some(ref attrs) = self.fms.file_metadata {
                     if let Some(uid) = mode::get_uid(attrs) {
                         if let Some(user) = self.user_cache.get_user_by_uid(uid) {
-                            return Variant::from_string(
+                            return Ok(Variant::from_string(
                                 &user.name().to_string_lossy().to_string(),
-                            );
+                            ));
                         }
                     }
                 }
@@ -1579,9 +1584,9 @@ impl<'a> Searcher<'a> {
                 if let Some(ref attrs) = self.fms.file_metadata {
                     if let Some(gid) = mode::get_gid(attrs) {
                         if let Some(group) = self.user_cache.get_group_by_gid(gid) {
-                            return Variant::from_string(
+                            return Ok(Variant::from_string(
                                 &group.name().to_string_lossy().to_string(),
-                            );
+                            ));
                         }
                     }
                 }
@@ -1593,7 +1598,7 @@ impl<'a> Searcher<'a> {
                 if let Some(ref attrs) = self.fms.file_metadata {
                     if let Ok(sdt) = attrs.created() {
                         let dt: DateTime<Local> = DateTime::from(sdt);
-                        return Variant::from_datetime(dt.naive_local());
+                        return Ok(Variant::from_datetime(dt.naive_local()));
                     }
                 }
             }
@@ -1604,7 +1609,7 @@ impl<'a> Searcher<'a> {
                 if let Some(ref attrs) = self.fms.file_metadata {
                     if let Ok(sdt) = attrs.accessed() {
                         let dt: DateTime<Local> = DateTime::from(sdt);
-                        return Variant::from_datetime(dt.naive_local());
+                        return Ok(Variant::from_datetime(dt.naive_local()));
                     }
                 }
             }
@@ -1612,7 +1617,7 @@ impl<'a> Searcher<'a> {
                 Some(file_info) => {
                     if let Some(file_info_modified) = &file_info.modified {
                         let dt = to_local_datetime(file_info_modified);
-                        return Variant::from_datetime(dt);
+                        return Ok(Variant::from_datetime(dt));
                     }
                 }
                 _ => {
@@ -1622,7 +1627,7 @@ impl<'a> Searcher<'a> {
                     if let Some(ref attrs) = self.fms.file_metadata {
                         if let Ok(sdt) = attrs.modified() {
                             let dt: DateTime<Local> = DateTime::from(sdt);
-                            return Variant::from_datetime(dt.naive_local());
+                            return Ok(Variant::from_datetime(dt.naive_local()));
                         }
                     }
                 }
@@ -1633,14 +1638,14 @@ impl<'a> Searcher<'a> {
                     if let Ok(file) = fs::File::open(entry.path()) {
                         if let Ok(xattrs) = file.list_xattr() {
                             let has_xattrs = xattrs.count() > 0;
-                            return Variant::from_bool(has_xattrs);
+                            return Ok(Variant::from_bool(has_xattrs));
                         }
                     }
                 }
 
                 #[cfg(not(unix))]
                 {
-                    return Variant::from_bool(false);
+                    return Ok(Variant::from_bool(false));
                 }
             }
             Field::Capabilities => {
@@ -1650,19 +1655,19 @@ impl<'a> Searcher<'a> {
                         if let Ok(Some(caps_xattr)) = file.get_xattr("security.capability") {
                             let caps_string =
                                 crate::util::capabilities::parse_capabilities(caps_xattr);
-                            return Variant::from_string(&caps_string);
+                            return Ok(Variant::from_string(&caps_string));
                         }
                     }
                 }
 
-                return Variant::empty(VariantType::String);
+                return Ok(Variant::empty(VariantType::String));
             }
             Field::IsShebang => {
-                return Variant::from_bool(is_shebang(&entry.path()));
+                return Ok(Variant::from_bool(is_shebang(&entry.path())));
             }
             Field::IsEmpty => match file_info {
                 Some(file_info) => {
-                    return Variant::from_bool(file_info.size == 0);
+                    return Ok(Variant::from_bool(file_info.size == 0));
                 }
                 _ => {
                     self.fms
@@ -1671,10 +1676,10 @@ impl<'a> Searcher<'a> {
                     if let Some(ref attrs) = self.fms.file_metadata {
                         return match attrs.is_dir() {
                             true => match is_dir_empty(entry) {
-                                Some(result) => Variant::from_bool(result),
-                                None => Variant::empty(VariantType::Bool),
+                                Some(result) => Ok(Variant::from_bool(result)),
+                                None => Ok(Variant::empty(VariantType::Bool)),
                             },
-                            false => Variant::from_bool(attrs.len() == 0),
+                            false => Ok(Variant::from_bool(attrs.len() == 0)),
                         };
                     }
                 }
@@ -1683,35 +1688,35 @@ impl<'a> Searcher<'a> {
                 self.fms.update_dimensions(entry);
 
                 if let Some(Dimensions { width, .. }) = self.fms.dimensions {
-                    return Variant::from_int(width as i64);
+                    return Ok(Variant::from_int(width as i64));
                 }
             }
             Field::Height => {
                 self.fms.update_dimensions(entry);
 
                 if let Some(Dimensions { height, .. }) = self.fms.dimensions {
-                    return Variant::from_int(height as i64);
+                    return Ok(Variant::from_int(height as i64));
                 }
             }
             Field::Duration => {
                 self.fms.update_duration(entry);
 
                 if let Some(Duration { length, .. }) = self.fms.duration {
-                    return Variant::from_int(length as i64);
+                    return Ok(Variant::from_int(length as i64));
                 }
             }
             Field::Bitrate => {
                 self.fms.update_mp3_metadata(entry);
 
                 if let Some(ref mp3_info) = self.fms.mp3_metadata {
-                    return Variant::from_int(mp3_info.frames[0].bitrate as i64);
+                    return Ok(Variant::from_int(mp3_info.frames[0].bitrate as i64));
                 }
             }
             Field::Freq => {
                 self.fms.update_mp3_metadata(entry);
 
                 if let Some(ref mp3_info) = self.fms.mp3_metadata {
-                    return Variant::from_int(mp3_info.frames[0].sampling_freq as i64);
+                    return Ok(Variant::from_int(mp3_info.frames[0].sampling_freq as i64));
                 }
             }
             Field::Title => {
@@ -1719,7 +1724,7 @@ impl<'a> Searcher<'a> {
 
                 if let Some(ref mp3_info) = self.fms.mp3_metadata {
                     if let Some(ref mp3_tag) = mp3_info.tag {
-                        return Variant::from_string(&mp3_tag.title);
+                        return Ok(Variant::from_string(&mp3_tag.title));
                     }
                 }
             }
@@ -1728,7 +1733,7 @@ impl<'a> Searcher<'a> {
 
                 if let Some(ref mp3_info) = self.fms.mp3_metadata {
                     if let Some(ref mp3_tag) = mp3_info.tag {
-                        return Variant::from_string(&mp3_tag.artist);
+                        return Ok(Variant::from_string(&mp3_tag.artist));
                     }
                 }
             }
@@ -1737,7 +1742,7 @@ impl<'a> Searcher<'a> {
 
                 if let Some(ref mp3_info) = self.fms.mp3_metadata {
                     if let Some(ref mp3_tag) = mp3_info.tag {
-                        return Variant::from_string(&mp3_tag.album);
+                        return Ok(Variant::from_string(&mp3_tag.album));
                     }
                 }
             }
@@ -1746,7 +1751,7 @@ impl<'a> Searcher<'a> {
 
                 if let Some(ref mp3_info) = self.fms.mp3_metadata {
                     if let Some(ref mp3_tag) = mp3_info.tag {
-                        return Variant::from_int(mp3_tag.year as i64);
+                        return Ok(Variant::from_int(mp3_tag.year as i64));
                     }
                 }
             }
@@ -1755,7 +1760,7 @@ impl<'a> Searcher<'a> {
 
                 if let Some(ref mp3_info) = self.fms.mp3_metadata {
                     if let Some(ref mp3_tag) = mp3_info.tag {
-                        return Variant::from_string(&format!("{:?}", mp3_tag.genre));
+                        return Ok(Variant::from_string(&format!("{:?}", mp3_tag.genre)));
                     }
                 }
             }
@@ -1765,7 +1770,7 @@ impl<'a> Searcher<'a> {
                 if let Some(ref exif_info) = self.fms.exif_metadata {
                     if let Some(exif_value) = exif_info.get("DateTime") {
                         if let Ok(exif_datetime) = parse_datetime(exif_value) {
-                            return Variant::from_datetime(exif_datetime.0);
+                            return Ok(Variant::from_datetime(exif_datetime.0));
                         }
                     }
                 }
@@ -1775,7 +1780,7 @@ impl<'a> Searcher<'a> {
 
                 if let Some(ref exif_info) = self.fms.exif_metadata {
                     if let Some(exif_value) = exif_info.get("__Alt") {
-                        return Variant::from_float(exif_value.parse().unwrap_or(0.0));
+                        return Ok(Variant::from_float(exif_value.parse().unwrap_or(0.0)));
                     }
                 }
             }
@@ -1784,7 +1789,7 @@ impl<'a> Searcher<'a> {
 
                 if let Some(ref exif_info) = self.fms.exif_metadata {
                     if let Some(exif_value) = exif_info.get("__Lat") {
-                        return Variant::from_float(exif_value.parse().unwrap_or(0.0));
+                        return Ok(Variant::from_float(exif_value.parse().unwrap_or(0.0)));
                     }
                 }
             }
@@ -1793,7 +1798,7 @@ impl<'a> Searcher<'a> {
 
                 if let Some(ref exif_info) = self.fms.exif_metadata {
                     if let Some(exif_value) = exif_info.get("__Lng") {
-                        return Variant::from_float(exif_value.parse().unwrap_or(0.0));
+                        return Ok(Variant::from_float(exif_value.parse().unwrap_or(0.0)));
                     }
                 }
             }
@@ -1802,7 +1807,7 @@ impl<'a> Searcher<'a> {
 
                 if let Some(ref exif_info) = self.fms.exif_metadata {
                     if let Some(exif_value) = exif_info.get("Make") {
-                        return Variant::from_string(exif_value);
+                        return Ok(Variant::from_string(exif_value));
                     }
                 }
             }
@@ -1811,7 +1816,7 @@ impl<'a> Searcher<'a> {
 
                 if let Some(ref exif_info) = self.fms.exif_metadata {
                     if let Some(exif_value) = exif_info.get("Model") {
-                        return Variant::from_string(exif_value);
+                        return Ok(Variant::from_string(exif_value));
                     }
                 }
             }
@@ -1820,7 +1825,7 @@ impl<'a> Searcher<'a> {
 
                 if let Some(ref exif_info) = self.fms.exif_metadata {
                     if let Some(exif_value) = exif_info.get("Software") {
-                        return Variant::from_string(exif_value);
+                        return Ok(Variant::from_string(exif_value));
                     }
                 }
             }
@@ -1829,7 +1834,7 @@ impl<'a> Searcher<'a> {
 
                 if let Some(ref exif_info) = self.fms.exif_metadata {
                     if let Some(exif_value) = exif_info.get("ExifVersion") {
-                        return Variant::from_string(exif_value);
+                        return Ok(Variant::from_string(exif_value));
                     }
                 }
             }
@@ -1838,7 +1843,7 @@ impl<'a> Searcher<'a> {
 
                 if let Some(ref exif_info) = self.fms.exif_metadata {
                     if let Some(exif_value) = exif_info.get("ExposureTime") {
-                        return Variant::from_string(exif_value);
+                        return Ok(Variant::from_string(exif_value));
                     }
                 }
             }
@@ -1847,7 +1852,7 @@ impl<'a> Searcher<'a> {
 
                 if let Some(ref exif_info) = self.fms.exif_metadata {
                     if let Some(exif_value) = exif_info.get("ApertureValue") {
-                        return Variant::from_string(exif_value);
+                        return Ok(Variant::from_string(exif_value));
                     }
                 }
             }
@@ -1856,7 +1861,7 @@ impl<'a> Searcher<'a> {
 
                 if let Some(ref exif_info) = self.fms.exif_metadata {
                     if let Some(exif_value) = exif_info.get("ShutterSpeedValue") {
-                        return Variant::from_string(exif_value);
+                        return Ok(Variant::from_string(exif_value));
                     }
                 }
             }
@@ -1865,7 +1870,7 @@ impl<'a> Searcher<'a> {
 
                 if let Some(ref exif_info) = self.fms.exif_metadata {
                     if let Some(exif_value) = exif_info.get("FNumber") {
-                        return Variant::from_string(exif_value);
+                        return Ok(Variant::from_string(exif_value));
                     }
                 }
             }
@@ -1874,7 +1879,7 @@ impl<'a> Searcher<'a> {
 
                 if let Some(ref exif_info) = self.fms.exif_metadata {
                     if let Some(exif_value) = exif_info.get("ISOSpeed") {
-                        return Variant::from_string(exif_value);
+                        return Ok(Variant::from_string(exif_value));
                     }
                 }
             }
@@ -1883,7 +1888,7 @@ impl<'a> Searcher<'a> {
 
                 if let Some(ref exif_info) = self.fms.exif_metadata {
                     if let Some(exif_value) = exif_info.get("FocalLength") {
-                        return Variant::from_string(exif_value);
+                        return Ok( Variant::from_string(exif_value));
                     }
                 }
             }
@@ -1892,7 +1897,7 @@ impl<'a> Searcher<'a> {
 
                 if let Some(ref exif_info) = self.fms.exif_metadata {
                     if let Some(exif_value) = exif_info.get("LensMake") {
-                        return Variant::from_string(exif_value);
+                        return Ok(Variant::from_string(exif_value));
                     }
                 }
             }
@@ -1901,7 +1906,7 @@ impl<'a> Searcher<'a> {
 
                 if let Some(ref exif_info) = self.fms.exif_metadata {
                     if let Some(exif_value) = exif_info.get("LensModel") {
-                        return Variant::from_string(exif_value);
+                        return Ok(Variant::from_string(exif_value));
                     }
                 }
             }
@@ -1909,15 +1914,15 @@ impl<'a> Searcher<'a> {
                 self.fms.update_line_count(entry);
 
                 if let Some(line_count) = self.fms.line_count {
-                    return Variant::from_int(line_count as i64);
+                    return Ok(Variant::from_int(line_count as i64));
                 }
             }
             Field::Mime => {
                 if let Some(mime) = tree_magic_mini::from_filepath(&entry.path()) {
-                    return Variant::from_string(&String::from(mime));
+                    return Ok(Variant::from_string(&String::from(mime)));
                 }
 
-                return Variant::empty(VariantType::String);
+                return Ok(Variant::empty(VariantType::String));
             }
             Field::IsBinary => {
                 self.fms
@@ -1925,16 +1930,16 @@ impl<'a> Searcher<'a> {
 
                 if let Some(ref meta) = self.fms.file_metadata {
                     if meta.is_dir() {
-                        return Variant::from_bool(false);
+                        return Ok(Variant::from_bool(false));
                     }
                 }
 
                 if let Some(mime) = tree_magic_mini::from_filepath(&entry.path()) {
                     let is_binary = !is_text_mime(mime);
-                    return Variant::from_bool(is_binary);
+                    return Ok(Variant::from_bool(is_binary));
                 }
 
-                return Variant::from_bool(false);
+                return Ok(Variant::from_bool(false));
             }
             Field::IsText => {
                 self.fms
@@ -1942,16 +1947,16 @@ impl<'a> Searcher<'a> {
 
                 if let Some(ref meta) = self.fms.file_metadata {
                     if meta.is_dir() {
-                        return Variant::from_bool(false);
+                        return Ok(Variant::from_bool(false));
                     }
                 }
 
                 if let Some(mime) = tree_magic_mini::from_filepath(&entry.path()) {
                     let is_text = is_text_mime(mime);
-                    return Variant::from_bool(is_text);
+                    return Ok(Variant::from_bool(is_text));
                 }
 
-                return Variant::from_bool(false);
+                return Ok(Variant::from_bool(false));
             }
             Field::IsArchive => {
                 let is_archive = match file_info {
@@ -1959,7 +1964,7 @@ impl<'a> Searcher<'a> {
                     None => self.is_archive(&entry.file_name().to_string_lossy()),
                 };
 
-                return Variant::from_bool(is_archive);
+                return Ok(Variant::from_bool(is_archive));
             }
             Field::IsAudio => {
                 let is_audio = match file_info {
@@ -1967,7 +1972,7 @@ impl<'a> Searcher<'a> {
                     None => self.is_audio(&entry.file_name().to_string_lossy()),
                 };
 
-                return Variant::from_bool(is_audio);
+                return Ok(Variant::from_bool(is_audio));
             }
             Field::IsBook => {
                 let is_book = match file_info {
@@ -1975,7 +1980,7 @@ impl<'a> Searcher<'a> {
                     None => self.is_book(&entry.file_name().to_string_lossy()),
                 };
 
-                return Variant::from_bool(is_book);
+                return Ok(Variant::from_bool(is_book));
             }
             Field::IsDoc => {
                 let is_doc = match file_info {
@@ -1983,7 +1988,7 @@ impl<'a> Searcher<'a> {
                     None => self.is_doc(&entry.file_name().to_string_lossy()),
                 };
 
-                return Variant::from_bool(is_doc);
+                return Ok(Variant::from_bool(is_doc));
             }
             Field::IsFont => {
                 let is_font = match file_info {
@@ -1991,7 +1996,7 @@ impl<'a> Searcher<'a> {
                     None => self.is_font(&entry.file_name().to_string_lossy()),
                 };
 
-                return Variant::from_bool(is_font);
+                return Ok(Variant::from_bool(is_font));
             }
             Field::IsImage => {
                 let is_image = match file_info {
@@ -1999,7 +2004,7 @@ impl<'a> Searcher<'a> {
                     None => self.is_image(&entry.file_name().to_string_lossy()),
                 };
 
-                return Variant::from_bool(is_image);
+                return Ok(Variant::from_bool(is_image));
             }
             Field::IsSource => {
                 let is_source = match file_info {
@@ -2007,7 +2012,7 @@ impl<'a> Searcher<'a> {
                     None => self.is_source(&entry.file_name().to_string_lossy()),
                 };
 
-                return Variant::from_bool(is_source);
+                return Ok(Variant::from_bool(is_source));
             }
             Field::IsVideo => {
                 let is_video = match file_info {
@@ -2015,23 +2020,23 @@ impl<'a> Searcher<'a> {
                     None => self.is_video(&entry.file_name().to_string_lossy()),
                 };
 
-                return Variant::from_bool(is_video);
+                return Ok(Variant::from_bool(is_video));
             }
             Field::Sha1 => {
-                return Variant::from_string(&crate::util::get_sha1_file_hash(entry));
+                return Ok(Variant::from_string(&crate::util::get_sha1_file_hash(entry)));
             }
             Field::Sha256 => {
-                return Variant::from_string(&crate::util::get_sha256_file_hash(entry));
+                return Ok(Variant::from_string(&crate::util::get_sha256_file_hash(entry)));
             }
             Field::Sha512 => {
-                return Variant::from_string(&crate::util::get_sha512_file_hash(entry));
+                return Ok(Variant::from_string(&crate::util::get_sha512_file_hash(entry)));
             }
             Field::Sha3 => {
-                return Variant::from_string(&crate::util::get_sha3_512_file_hash(entry));
+                return Ok(Variant::from_string(&crate::util::get_sha3_512_file_hash(entry)));
             }
         };
 
-        return Variant::empty(VariantType::String);
+        Ok(Variant::empty(VariantType::String))
     }
 
     fn get_required_field_values(&mut self, expr: &Expr, current_alias: &str, entry: &DirEntry, root_path: &Path, file_info: &Option<FileInfo>) -> HashMap<String, Variant> {
@@ -2040,7 +2045,7 @@ impl<'a> Searcher<'a> {
         let required_fields = expr.get_fields_required_in_subqueries(current_alias, false);
         if !required_fields.is_empty() {
             for (field, alias) in required_fields {
-                let field_value = self.get_field_value(entry, file_info, root_path, &field);
+                let field_value = self.get_field_value(entry, file_info, root_path, &field).unwrap_or(Variant::empty(VariantType::String));
                 field_values.insert(alias, field_value);
             }
         }
@@ -2098,7 +2103,7 @@ impl<'a> Searcher<'a> {
         for field in self.query.get_all_fields() {
             file_map.insert(
                 field.to_string(),
-                self.get_field_value(entry, file_info, root_path, &field).to_string(),
+                self.get_field_value(entry, file_info, root_path, &field).unwrap_or(Variant::empty(VariantType::String)).to_string(),
             );
         }
 

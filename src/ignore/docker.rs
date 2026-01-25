@@ -12,7 +12,7 @@ use regex::Captures;
 use regex::Error;
 use regex::Regex;
 
-use crate::util::error_exit;
+use crate::util::error::error_exit;
 
 #[derive(Clone, Debug)]
 pub struct DockerignoreFilter {

@@ -3,6 +3,7 @@ pub(crate) mod capabilities;
 mod datetime;
 pub mod dimensions;
 pub mod duration;
+pub(crate) mod error;
 mod glob;
 pub(crate) mod greek;
 pub(crate) mod japanese;
@@ -169,19 +170,6 @@ pub fn calc_depth(s: &str) -> u32 {
 #[cfg(not(windows))]
 pub fn calc_depth(s: &str) -> u32 {
     s.matches("/").count() as u32
-}
-
-pub fn path_error_message(p: &Path, e: io::Error) {
-    error_message(&p.to_string_lossy(), &e.to_string());
-}
-
-pub fn error_message(source: &str, description: &str) {
-    eprintln!("{}: {}", source, description);
-}
-
-pub fn error_exit(source: &str, description: &str) -> ! {
-    error_message(source, description);
-    std::process::exit(2);
 }
 
 pub fn get_extension(s: &str) -> String {

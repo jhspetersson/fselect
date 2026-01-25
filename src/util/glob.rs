@@ -2,8 +2,7 @@ use std::ops::Index;
 
 use regex::Captures;
 use regex::Regex;
-
-use crate::util::error_exit;
+use crate::util::error::error_exit;
 
 pub fn is_glob(s: &str) -> bool {
     s.contains("*") || s.contains('?')

@@ -20,7 +20,8 @@ use serde::ser::{Serialize, Serializer};
 use xattr::FileExt;
 
 use crate::fileinfo::FileInfo;
-use crate::util::{capitalize, error_exit, format_date, format_time, format_datetime, parse_datetime};
+use crate::util::{capitalize, format_date, format_time, format_datetime, parse_datetime};
+use crate::util::error::error_exit;
 use crate::util::variant::{Variant, VariantType};
 
 macro_rules! functions {

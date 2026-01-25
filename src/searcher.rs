@@ -43,6 +43,7 @@ use crate::util::dimensions::get_dimensions;
 use crate::util::duration::get_duration;
 use crate::util::*;
 use crate::util::{Variant, VariantType};
+use crate::util::error::{error_exit, error_message, path_error_message};
 
 struct FileMetadataState {
     file_metadata_set: bool,

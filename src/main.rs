@@ -30,7 +30,7 @@ use crate::parser::Parser;
 use crate::query::RootOptions;
 use crate::searcher::Searcher;
 use crate::util::str_to_bool;
-use crate::util::error_message;
+use crate::util::error::error_message;
 
 mod config;
 mod expr;

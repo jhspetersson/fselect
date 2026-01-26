@@ -176,6 +176,27 @@ fn main() -> ExitCode {
                     {
                         break
                     }
+                    Ok(cmd) if cmd.to_ascii_lowercase().trim() == "help" => {
+                        usage_info(config.clone(), default_config.clone(), no_color);
+                    }
+                    Ok(cmd) if cmd.to_ascii_lowercase().trim() == "pwd" => {
+                        match env::current_dir() {
+                            Ok(path) => println!("{}", path.to_string_lossy()),
+                            Err(err) => error_message("pwd", &err.to_string()),
+                        }
+                    }
+                    Ok(cmd) if cmd.to_ascii_lowercase().trim().starts_with("cd") => {
+                        let parts: Vec<&str> = cmd.trim().split_whitespace().collect();
+                        if parts.len() < 2 {
+                            error_message("cd", "no path specified");
+                        } else {
+                            let new_path: String = parts.iter().skip(1).cloned().collect::<Vec<&str>>().join(" ");
+                            match env::set_current_dir(new_path) {
+                                Ok(()) => {}
+                                Err(err) => error_message("cd", &err.to_string()),
+                            }
+                        }
+                    }
                     Ok(query) => {
                         let _ = rl.add_history_entry(query.as_str());
                         exec_search(vec![query], &mut config, &default_config, no_color, true);

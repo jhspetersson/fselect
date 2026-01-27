@@ -8,7 +8,7 @@ extern crate uzers;
 #[cfg(unix)]
 extern crate xattr;
 
-use std::env;
+use std::{env, fs};
 use std::io::{stdout, IsTerminal};
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -167,53 +167,67 @@ fn main() -> ExitCode {
 
     if interactive {
         match DefaultEditor::new() {
-            Ok(mut rl) => loop {
-                let readline = rl.readline("query> ");
-                match readline {
-                    Ok(cmd)
-                        if cmd.to_ascii_lowercase().trim() == "quit"
-                            || cmd.to_ascii_lowercase().trim() == "exit" =>
-                    {
-                        break
-                    }
-                    Ok(cmd) if cmd.to_ascii_lowercase().trim() == "help" => {
-                        usage_info(config.clone(), default_config.clone(), no_color);
-                    }
-                    Ok(cmd) if cmd.to_ascii_lowercase().trim() == "pwd" => {
-                        match env::current_dir() {
-                            Ok(path) => println!("{}", path.to_string_lossy()),
-                            Err(err) => error_message("pwd", &err.to_string()),
+            Ok(mut rl) => {
+                if let Some(project_dir) = crate::util::app_dirs::get_project_dir() {
+                    let _ = fs::create_dir_all(&project_dir);
+                    let history_file = project_dir.join("history.txt");
+                    let _ = rl.load_history(history_file.as_path());
+                }
+
+                loop {
+                    let readline = rl.readline("query> ");
+                    match readline {
+                        Ok(cmd)
+                            if cmd.to_ascii_lowercase().trim() == "quit"
+                                || cmd.to_ascii_lowercase().trim() == "exit" =>
+                        {
+                            break
                         }
-                    }
-                    Ok(cmd) if cmd.to_ascii_lowercase().trim().starts_with("cd") => {
-                        let parts: Vec<&str> = cmd.trim().split_whitespace().collect();
-                        if parts.len() < 2 {
-                            error_message("cd", "no path specified");
-                        } else {
-                            let new_path: String = parts.iter().skip(1).cloned().collect::<Vec<&str>>().join(" ");
-                            match env::set_current_dir(new_path) {
-                                Ok(()) => {}
-                                Err(err) => error_message("cd", &err.to_string()),
+                        Ok(cmd) if cmd.to_ascii_lowercase().trim() == "help" => {
+                            usage_info(config.clone(), default_config.clone(), no_color);
+                        }
+                        Ok(cmd) if cmd.to_ascii_lowercase().trim() == "pwd" => {
+                            match env::current_dir() {
+                                Ok(path) => println!("{}", path.to_string_lossy()),
+                                Err(err) => error_message("pwd", &err.to_string()),
                             }
                         }
+                        Ok(cmd) if cmd.to_ascii_lowercase().trim().starts_with("cd") => {
+                            let parts: Vec<&str> = cmd.trim().split_whitespace().collect();
+                            if parts.len() < 2 {
+                                error_message("cd", "no path specified");
+                            } else {
+                                let new_path: String = parts.iter().skip(1).cloned().collect::<Vec<&str>>().join(" ");
+                                match env::set_current_dir(new_path) {
+                                    Ok(()) => {}
+                                    Err(err) => error_message("cd", &err.to_string()),
+                                }
+                            }
+                        }
+                        Ok(query) => {
+                            let _ = rl.add_history_entry(query.as_str());
+                            exec_search(vec![query], &mut config, &default_config, no_color, true);
+                        }
+                        Err(ReadlineError::Interrupted) => {
+                            println!("CTRL-C");
+                            break;
+                        }
+                        Err(ReadlineError::Eof) => {
+                            println!("CTRL-D");
+                            break;
+                        }
+                        Err(err) => {
+                            let err = format!("{:?}", err);
+                            error_message("input", &err);
+                            break;
+                        }
                     }
-                    Ok(query) => {
-                        let _ = rl.add_history_entry(query.as_str());
-                        exec_search(vec![query], &mut config, &default_config, no_color, true);
-                    }
-                    Err(ReadlineError::Interrupted) => {
-                        println!("CTRL-C");
-                        break;
-                    }
-                    Err(ReadlineError::Eof) => {
-                        println!("CTRL-D");
-                        break;
-                    }
-                    Err(err) => {
-                        let err = format!("{:?}", err);
-                        error_message("input", &err);
-                        break;
-                    }
+                }
+
+                if let Some(project_dir) = crate::util::app_dirs::get_project_dir() {
+                    let _ = fs::create_dir_all(&project_dir);
+                    let history_file = project_dir.join("history.txt");
+                    let _ = rl.save_history(history_file.as_path());
                 }
             },
             _ => {

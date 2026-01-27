@@ -4,10 +4,6 @@ use std::fs;
 use std::io::{Read, Write};
 use std::path::PathBuf;
 
-use directories::ProjectDirs;
-
-const ORGANIZATION: &str = "jhspetersson";
-const APPLICATION: &str = "fselect";
 const CONFIG_FILE: &str = "config.toml";
 
 macro_rules! vec_of_strings {
@@ -52,7 +48,7 @@ impl Config {
         if let Some(cf) = Self::get_current_dir_config() {
             config_file = cf;
         } else {
-            let config_dir = Self::get_project_dir();
+            let config_dir = crate::util::app_dirs::get_project_dir();
 
             if config_dir.is_none() {
                 return Ok(Config::default());
@@ -94,23 +90,12 @@ impl Config {
         None
     }
 
-    #[cfg(not(windows))]
-    fn get_project_dir() -> Option<PathBuf> {
-        ProjectDirs::from("", ORGANIZATION, APPLICATION).map(|pd| pd.config_dir().to_path_buf())
-    }
-
-    #[cfg(windows)]
-    fn get_project_dir() -> Option<PathBuf> {
-        ProjectDirs::from("", ORGANIZATION, APPLICATION)
-            .map(|pd| pd.config_dir().parent().unwrap().to_path_buf())
-    }
-
     pub fn save(&self) {
         if !self.save {
             return;
         }
 
-        let config_dir = Self::get_project_dir();
+        let config_dir = crate::util::app_dirs::get_project_dir();
 
         if config_dir.is_none() {
             return;

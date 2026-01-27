@@ -1,3 +1,4 @@
+pub(crate) mod app_dirs;
 #[cfg(target_os = "linux")]
 pub(crate) mod capabilities;
 mod datetime;

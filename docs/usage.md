@@ -813,6 +813,7 @@ In interactive mode, you can:
 - run multiple searches sequentially without restarting the tool
 - edit and refine queries iteratively
 - use command history (up/down arrows) to recall previous queries
+- get current directory with `pwd` and change it with `cd`
 - exit with `quit`, `exit`, Ctrl+C or Ctrl+D
 
 ### Environment variables

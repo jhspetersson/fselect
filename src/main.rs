@@ -419,6 +419,12 @@ Expressions:
 
 Format:
     {}
+
+Interactive mode:
+    help            Get usage help
+    pwd             Print the current working directory
+    cd PATH         Change the current working directory to PATH
+    exit | quit     Exit fselect
     ", format_root_options(), 
         Cyan.underline().paint("https://docs.rs/regex/1.10.2/regex/#syntax"),
         format_field_usage(),

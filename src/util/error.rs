@@ -8,8 +8,3 @@ pub fn path_error_message(p: &Path, e: io::Error) {
 pub fn error_message(source: &str, description: &str) {
     eprintln!("{}: {}", source, description);
 }
-
-pub fn error_exit(source: &str, description: &str) -> ! {
-    error_message(source, description);
-    std::process::exit(2);
-}

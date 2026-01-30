@@ -21,7 +21,6 @@ use xattr::FileExt;
 
 use crate::fileinfo::FileInfo;
 use crate::util::{capitalize, format_date, format_time, format_datetime, parse_datetime};
-use crate::util::error::error_exit;
 use crate::util::variant::{Variant, VariantType};
 
 macro_rules! functions {
@@ -523,44 +522,43 @@ functions! {
 ///  file_info: Optional file information to read the file contents from.
 ///
 /// Returns:
-///   A variant containing the value computed or the original value if no function is provided.
 pub fn get_value(
     function: &Function,
     function_arg: String,
     function_args: Vec<String>,
     entry: Option<&DirEntry>,
     file_info: &Option<FileInfo>,
-) -> Variant {
+) -> Result<Variant, String> {
     match function {
         // ===== String functions =====
-        Function::Lower => Variant::from_string(&function_arg.to_lowercase()),
-        Function::Upper => Variant::from_string(&function_arg.to_uppercase()),
+        Function::Lower => Ok(Variant::from_string(&function_arg.to_lowercase())),
+        Function::Upper => Ok(Variant::from_string(&function_arg.to_uppercase())),
         Function::InitCap => {
             let result = function_arg
                 .split_whitespace()
                 .map(|s| capitalize(&s.to_lowercase()))
                 .collect::<Vec<_>>()
                 .join(" ");
-            Variant::from_string(&result)
+            Ok(Variant::from_string(&result))
         }
         Function::Length => {
-            Variant::from_int(function_arg.chars().count() as i64)
+            Ok(Variant::from_int(function_arg.chars().count() as i64))
         }
         Function::ToBase64 => {
-            Variant::from_string(&rbase64::encode((function_arg).as_ref()))
+            Ok(Variant::from_string(&rbase64::encode((function_arg).as_ref())))
         }
         Function::FromBase64 => {
-            Variant::from_string(
+            Ok(Variant::from_string(
                 &String::from_utf8_lossy(&rbase64::decode(&function_arg).unwrap_or_default())
                     .to_string(),
-            )
+            ))
         }
 
         // ===== String manipulation functions =====
         Function::Concat => {
-            Variant::from_string(&(String::from(&function_arg) + &function_args.join("")))
+            Ok(Variant::from_string(&(String::from(&function_arg) + &function_args.join(""))))
         }
-        Function::ConcatWs => Variant::from_string(&function_args.join(&function_arg)),
+        Function::ConcatWs => Ok(Variant::from_string(&function_args.join(&function_arg))),
         Function::Locate => {
             let string = String::from(&function_arg);
             let substring = &function_args[0];
@@ -575,7 +573,7 @@ pub fn get_value(
                 .map(|index| index as i64 + pos as i64 + 1)
                 .unwrap_or(0);
 
-            Variant::from_int(result)
+            Ok(Variant::from_int(result))
         },
         Function::Substring => {
             let string = String::from(&function_arg);
@@ -600,7 +598,7 @@ pub fn get_value(
                 false => string.chars().skip(pos as usize).collect(),
             };
 
-            Variant::from_string(&result)
+            Ok(Variant::from_string(&result))
         }
         Function::Replace => {
             let source = function_arg;
@@ -609,34 +607,34 @@ pub fn get_value(
 
             let result = source.replace(from, to);
 
-            Variant::from_string(&result)
+            Ok(Variant::from_string(&result))
         }
         Function::Trim => {
-            Variant::from_string(&function_arg.trim().to_string())
+            Ok(Variant::from_string(&function_arg.trim().to_string()))
         }
         Function::LTrim => {
-            Variant::from_string(&function_arg.trim_start().to_string())
+            Ok(Variant::from_string(&function_arg.trim_start().to_string()))
         }
         Function::RTrim => {
-            Variant::from_string(&function_arg.trim_end().to_string())
+            Ok(Variant::from_string(&function_arg.trim_end().to_string()))
         }
 
         // ===== Numeric functions =====
         Function::Bin => match function_arg.parse::<i64>() {
-            Ok(val) => Variant::from_string(&format!("{:b}", val)),
-            _ => Variant::empty(VariantType::String),
+            Ok(val) => Ok(Variant::from_string(&format!("{:b}", val))),
+            _ => Ok(Variant::empty(VariantType::String)),
         },
         Function::Hex => match function_arg.parse::<i64>() {
-            Ok(val) => Variant::from_string(&format!("{:x}", val)),
-            _ => Variant::empty(VariantType::String),
+            Ok(val) => Ok(Variant::from_string(&format!("{:x}", val))),
+            _ => Ok(Variant::empty(VariantType::String)),
         },
         Function::Oct => match function_arg.parse::<i64>() {
-            Ok(val) => Variant::from_string(&format!("{:o}", val)),
-            _ => Variant::empty(VariantType::String),
+            Ok(val) => Ok(Variant::from_string(&format!("{:o}", val))),
+            _ => Ok(Variant::empty(VariantType::String)),
         },
         Function::Abs => match function_arg.parse::<f64>() {
-            Ok(val) => Variant::from_float(val.abs()),
-            _ => Variant::empty(VariantType::String),
+            Ok(val) => Ok(Variant::from_float(val.abs())),
+            _ => Ok(Variant::empty(VariantType::String)),
         }
         Function::Power => {
             match function_arg.parse::<f64>() {
@@ -646,14 +644,14 @@ pub fn get_value(
                         _ => 0.0,
                     };
 
-                    Variant::from_float(val.powf(power))
+                    Ok(Variant::from_float(val.powf(power)))
                 }
-                _ => Variant::empty(VariantType::String),
+                _ => Ok(Variant::empty(VariantType::String)),
             }
         }
         Function::Sqrt => match function_arg.parse::<f64>() {
-            Ok(val) => Variant::from_float(val.sqrt()),
-            _ => Variant::empty(VariantType::String),
+            Ok(val) => Ok(Variant::from_float(val.sqrt())),
+            _ => Ok(Variant::empty(VariantType::String)),
         },
         Function::Log => {
             match function_arg.parse::<f64>() {
@@ -663,18 +661,18 @@ pub fn get_value(
                         _ => 10.0,
                     };
 
-                    Variant::from_float(val.log(base))
+                    Ok(Variant::from_float(val.log(base)))
                 }
-                _ => Variant::empty(VariantType::String),
+                _ => Ok(Variant::empty(VariantType::String)),
             }
         }
         Function::Ln => match function_arg.parse::<f64>() {
-            Ok(val) => Variant::from_float(val.ln()),
-            _ => Variant::empty(VariantType::String),
+            Ok(val) => Ok(Variant::from_float(val.ln())),
+            _ => Ok(Variant::empty(VariantType::String)),
         }
         Function::Exp => match function_arg.parse::<f64>() {
-            Ok(val) => Variant::from_float(val.exp()),
-            _ => Variant::empty(VariantType::String),
+            Ok(val) => Ok(Variant::from_float(val.exp())),
+            _ => Ok(Variant::empty(VariantType::String)),
         }
         Function::Least => {
             match function_arg.parse::<f64>() {
@@ -686,9 +684,9 @@ pub fn get_value(
                         }
                     }
 
-                    Variant::from_float(least)
+                    Ok(Variant::from_float(least))
                 }
-                _ => Variant::empty(VariantType::String),
+                _ => Ok(Variant::empty(VariantType::String)),
             }
         }
         Function::Greatest => {
@@ -701,53 +699,53 @@ pub fn get_value(
                         }
                     }
 
-                    Variant::from_float(greatest)
+                    Ok(Variant::from_float(greatest))
                 }
-                _ => Variant::empty(VariantType::String),
+                _ => Ok(Variant::empty(VariantType::String)),
             }
         }
         Function::Pi => {
-            Variant::from_float(std::f64::consts::PI)
+            Ok(Variant::from_float(std::f64::consts::PI))
         }
         Function::Floor => match function_arg.parse::<f64>() {
-            Ok(val) => Variant::from_float(val.floor()),
-            _ => Variant::empty(VariantType::String),
+            Ok(val) => Ok(Variant::from_float(val.floor())),
+            _ => Ok(Variant::empty(VariantType::String)),
         },
         Function::Ceil => match function_arg.parse::<f64>() {
-            Ok(val) => Variant::from_float(val.ceil()),
-            _ => Variant::empty(VariantType::String),
+            Ok(val) => Ok(Variant::from_float(val.ceil())),
+            _ => Ok(Variant::empty(VariantType::String)),
         },
         Function::Round => match function_arg.parse::<f64>() {
-            Ok(val) => Variant::from_float(val.round()),
-            _ => Variant::empty(VariantType::String),
+            Ok(val) => Ok(Variant::from_float(val.round())),
+            _ => Ok(Variant::empty(VariantType::String)),
         },
 
         // ===== Japanese string functions =====
         Function::ContainsJapanese => {
-            Variant::from_bool(crate::util::japanese::contains_japanese(&function_arg))
+            Ok(Variant::from_bool(crate::util::japanese::contains_japanese(&function_arg)))
         }
         Function::ContainsHiragana => {
-            Variant::from_bool(crate::util::japanese::contains_hiragana(&function_arg))
+            Ok(Variant::from_bool(crate::util::japanese::contains_hiragana(&function_arg)))
         }
         Function::ContainsKatakana => {
-            Variant::from_bool(crate::util::japanese::contains_katakana(&function_arg))
+            Ok(Variant::from_bool(crate::util::japanese::contains_katakana(&function_arg)))
         }
         Function::ContainsKana => {
-            Variant::from_bool(crate::util::japanese::contains_kana(&function_arg))
+            Ok(Variant::from_bool(crate::util::japanese::contains_kana(&function_arg)))
         }
         Function::ContainsKanji => {
-            Variant::from_bool(crate::util::japanese::contains_kanji(&function_arg))
+            Ok(Variant::from_bool(crate::util::japanese::contains_kanji(&function_arg)))
         }
 
         // ===== Greek string functions =====
         Function::ContainsGreek => {
-            Variant::from_bool(crate::util::greek::contains_greek(&function_arg))
+            Ok(Variant::from_bool(crate::util::greek::contains_greek(&function_arg)))
         }
 
         // ===== Formatting functions =====
         Function::FormatSize => {
             if function_arg.is_empty() {
-                return Variant::empty(VariantType::String);
+                return Ok(Variant::empty(VariantType::String));
             }
 
             if let Ok(size) = function_arg.parse::<u64>() {
@@ -756,73 +754,73 @@ pub fn get_value(
                     _ => "",
                 };
                 let file_size = crate::util::format_filesize(size, modifier).unwrap_or(String::new());
-                return Variant::from_string(&file_size);
+                return Ok(Variant::from_string(&file_size));
             }
 
-            Variant::empty(VariantType::String)
+            Ok(Variant::empty(VariantType::String))
         }
         Function::FormatTime => {
             if function_arg.is_empty() {
-                return Variant::empty(VariantType::String);
+                return Ok(Variant::empty(VariantType::String));
             }
 
             let seconds = function_arg.parse::<u64>().unwrap();
             let formatted = Duration::from_secs(seconds).to_human_time_string();
-            Variant::from_string(&formatted)
+            Ok(Variant::from_string(&formatted))
         }
 
         // ===== Datetime functions =====
         Function::CurrentDate => {
             let now = Local::now().date_naive();
-            Variant::from_string(&format_date(&now))
+            Ok(Variant::from_string(&format_date(&now)))
         }
         Function::CurrentTime => {
             let now = Local::now().time();
-            Variant::from_string(&format_time(&now))
+            Ok(Variant::from_string(&format_time(&now)))
         }
         Function::CurrentTimestamp => {
             let now = Local::now().naive_local();
-            Variant::from_string(&format_datetime(&now))
+            Ok(Variant::from_string(&format_datetime(&now)))
         }
         Function::Year => match parse_datetime(&function_arg) {
-            Ok(date) => Variant::from_int(date.0.year() as i64),
-            _ => Variant::empty(VariantType::Int),
+            Ok(date) => Ok(Variant::from_int(date.0.year() as i64)),
+            _ => Ok(Variant::empty(VariantType::Int)),
         },
         Function::Month => match parse_datetime(&function_arg) {
-            Ok(date) => Variant::from_int(date.0.month() as i64),
-            _ => Variant::empty(VariantType::Int),
+            Ok(date) => Ok(Variant::from_int(date.0.month() as i64)),
+            _ => Ok(Variant::empty(VariantType::Int)),
         },
         Function::Day => match parse_datetime(&function_arg) {
-            Ok(date) => Variant::from_int(date.0.day() as i64),
-            _ => Variant::empty(VariantType::Int),
+            Ok(date) => Ok(Variant::from_int(date.0.day() as i64)),
+            _ => Ok(Variant::empty(VariantType::Int)),
         },
         Function::DayOfWeek => match parse_datetime(&function_arg) {
-            Ok(date) => Variant::from_int(date.0.weekday().number_from_sunday() as i64),
-            _ => Variant::empty(VariantType::Int),
+            Ok(date) => Ok(Variant::from_int(date.0.weekday().number_from_sunday() as i64)),
+            _ => Ok(Variant::empty(VariantType::Int)),
         },
-        
+    
         #[cfg(all(unix, feature = "users"))]
-        Function::CurrentUid => Variant::from_int(uzers::get_current_uid() as i64),
+        Function::CurrentUid => Ok(Variant::from_int(uzers::get_current_uid() as i64)),
         #[cfg(all(unix, feature = "users"))]
         Function::CurrentUser => {
             match uzers::get_current_username().and_then(|u| u.into_string().ok()) {
-                Some(s) => Variant::from_string(&s),
-                None => Variant::empty(VariantType::String),
+                Some(s) => Ok(Variant::from_string(&s)),
+                None => Ok(Variant::empty(VariantType::String)),
             }
         }
         #[cfg(all(unix, feature = "users"))]
-        Function::CurrentGid => Variant::from_int(uzers::get_current_gid() as i64),
+        Function::CurrentGid => Ok(Variant::from_int(uzers::get_current_gid() as i64)),
         #[cfg(all(unix, feature = "users"))]
         Function::CurrentGroup => {
             match uzers::get_current_groupname().and_then(|u| u.into_string().ok()) {
-                Some(s) => Variant::from_string(&s),
-                None => Variant::empty(VariantType::String),
+                Some(s) => Ok(Variant::from_string(&s)),
+                None => Ok(Variant::empty(VariantType::String)),
             }
         }
         // ===== File functions =====
         Function::Contains => {
             if file_info.is_some() {
-                return Variant::empty(VariantType::Bool);
+                return Ok(Variant::empty(VariantType::Bool));
             }
 
             if let Some(entry) = entry {
@@ -830,27 +828,27 @@ pub fn get_value(
                     let mut contents = String::new();
                     if f.read_to_string(&mut contents).is_ok() {
                         if contents.contains(&function_arg) {
-                            return Variant::from_bool(true);
+                            return Ok(Variant::from_bool(true));
                         } else {
-                            return Variant::from_bool(false);
+                            return Ok(Variant::from_bool(false));
                         }
                     }
                 }
             }
 
-            Variant::empty(VariantType::Bool)
+            Ok(Variant::empty(VariantType::Bool))
         }
         #[cfg(unix)]
         Function::HasXattr => {
             if let Some(entry) = entry {
                 if let Ok(file) = File::open(entry.path()) {
                     if let Ok(xattr) = file.get_xattr(&function_arg) {
-                        return Variant::from_bool(xattr.is_some());
+                        return Ok(Variant::from_bool(xattr.is_some()));
                     }
                 }
             }
 
-            Variant::empty(VariantType::Bool)
+            Ok(Variant::empty(VariantType::Bool))
         }
         #[cfg(unix)]
         Function::Xattr => {
@@ -858,25 +856,25 @@ pub fn get_value(
                 if let Ok(file) = File::open(entry.path()) {
                     if let Ok(Some(xattr)) = file.get_xattr(&function_arg) {
                         if let Ok(value) = String::from_utf8(xattr) {
-                            return Variant::from_string(&value);
+                            return Ok(Variant::from_string(&value));
                         }
                     }
                 }
             }
 
-            Variant::empty(VariantType::String)
+            Ok(Variant::empty(VariantType::String))
         }
         #[cfg(target_os = "linux")]
         Function::HasCapabilities => {
             if let Some(entry) = entry {
                 if let Ok(file) = File::open(entry.path()) {
                     if let Ok(caps_xattr) = file.get_xattr("security.capability") {
-                        return Variant::from_bool(caps_xattr.is_some());
+                        return Ok(Variant::from_bool(caps_xattr.is_some()));
                     }
                 }
             }
 
-            Variant::empty(VariantType::Bool)
+            Ok(Variant::empty(VariantType::Bool))
         }
         #[cfg(target_os = "linux")]
         Function::HasCapability => {
@@ -884,56 +882,56 @@ pub fn get_value(
                 if let Ok(file) = File::open(entry.path()) {
                     if let Ok(Some(caps_xattr)) = file.get_xattr("security.capability") {
                         let caps_string = crate::util::capabilities::parse_capabilities(caps_xattr);
-                        return Variant::from_bool(caps_string.contains(&function_arg));
+                        return Ok(Variant::from_bool(caps_string.contains(&function_arg)));
                     }
                 }
             }
 
-            Variant::empty(VariantType::Bool)
+            Ok(Variant::empty(VariantType::Bool))
         }
         // ===== Miscellaneous functions =====
         Function::Coalesce => {
             if !&function_arg.is_empty() {
-                return Variant::from_string(&function_arg);
+                return Ok(Variant::from_string(&function_arg));
             }
 
             for arg in function_args {
                 if !arg.is_empty() {
-                    return Variant::from_string(&arg);
+                    return Ok(Variant::from_string(&arg));
                 }
             }
 
-            Variant::empty(VariantType::String)
+            Ok(Variant::empty(VariantType::String))
         }
         Function::Random => {
             let mut rng = rand::rng();
 
             if function_arg.is_empty() {
-                return Variant::from_int(rng.random_range(0..i64::MAX));
+                return Ok(Variant::from_int(rng.random_range(0..i64::MAX)));
             }
 
             match function_arg.parse::<i64>() {
                 Ok(val) => {
                     if function_args.is_empty() {
-                        Variant::from_int(rng.random_range(0..val))
+                        Ok(Variant::from_int(rng.random_range(0..val)))
                     } else {
                         let limit = function_args.first().unwrap();
                         match limit.parse::<i64>() {
-                            Ok(limit) => Variant::from_int(rng.random_range(val..limit)),
-                            _ => error_exit(
-                                "Could not parse limit argument of RANDOM function",
-                                limit.as_str(),
-                            ),
+                            Ok(limit) => Ok(Variant::from_int(rng.random_range(val..limit))),
+                            _ => Err(format!(
+                                "Could not parse limit argument of RANDOM function: {}",
+                                limit
+                            )),
                         }
                     }
                 }
-                _ => error_exit(
-                    "Could not parse an argument of RANDOM function",
-                    function_arg.as_str(),
-                ),
+                _ => Err(format!(
+                    "Could not parse an argument of RANDOM function: {}",
+                    function_arg
+                )),
             }
         }
-        _ => Variant::empty(VariantType::String),
+        _ => Ok(Variant::empty(VariantType::String)),
     }
 }
 
@@ -1093,7 +1091,7 @@ mod tests {
         let file_info = None;
 
         let result = get_value(&function, function_arg, function_args, entry, &file_info);
-        assert_eq!(result.to_string(), "hello");
+        assert_eq!(result.unwrap().to_string(), "hello");
     }
     
     #[test]
@@ -1105,7 +1103,7 @@ mod tests {
         let file_info = None;
 
         let result = get_value(&function, function_arg, function_args, entry, &file_info);
-        assert_eq!(result.to_string(), "HELLO");
+        assert_eq!(result.unwrap().to_string(), "HELLO");
     }
     
     #[test]
@@ -1117,7 +1115,7 @@ mod tests {
         let file_info = None;
 
         let result = get_value(&function, function_arg, function_args, entry, &file_info);
-        assert_eq!(result.to_string(), "Hello World");
+        assert_eq!(result.unwrap().to_string(), "Hello World");
     }
     
     #[test]
@@ -1129,7 +1127,7 @@ mod tests {
         let file_info = None;
 
         let result = get_value(&function, function_arg, function_args, entry, &file_info);
-        assert_eq!(result.to_int(), 5);
+        assert_eq!(result.unwrap().to_int(), 5);
     }
     
     #[test]
@@ -1141,7 +1139,7 @@ mod tests {
         let file_info = None;
 
         let result = get_value(&function, function_arg, function_args, entry, &file_info);
-        assert_eq!(result.to_string(), "aGVsbG8=");
+        assert_eq!(result.unwrap().to_string(), "aGVsbG8=");
     }
     
     #[test]
@@ -1153,7 +1151,7 @@ mod tests {
         let file_info = None;
 
         let result = get_value(&function, function_arg, function_args, entry, &file_info);
-        assert_eq!(result.to_string(), "hello");
+        assert_eq!(result.unwrap().to_string(), "hello");
     }
     
     #[test]
@@ -1165,7 +1163,7 @@ mod tests {
         let file_info = None;
 
         let result = get_value(&function, function_arg, function_args, entry, &file_info);
-        assert_eq!(result.to_string(), "hello world");
+        assert_eq!(result.unwrap().to_string(), "hello world");
     }
     
     #[test]
@@ -1177,7 +1175,7 @@ mod tests {
         let file_info = None;
 
         let result = get_value(&function, function_arg, function_args, entry, &file_info);
-        assert_eq!(result.to_string(), "hello, world");
+        assert_eq!(result.unwrap().to_string(), "hello, world");
     }
     
     #[test]
@@ -1189,7 +1187,7 @@ mod tests {
         let file_info = None;
 
         let result = get_value(&function, function_arg, function_args, entry, &file_info);
-        assert_eq!(result.to_int(), 7);
+        assert_eq!(result.unwrap().to_int(), 7);
     }
     
     #[test]
@@ -1201,7 +1199,7 @@ mod tests {
         let file_info = None;
 
         let result = get_value(&function, function_arg, function_args, entry, &file_info);
-        assert_eq!(result.to_string(), "world");
+        assert_eq!(result.unwrap().to_string(), "world");
     }
     
     #[test]
@@ -1213,7 +1211,7 @@ mod tests {
         let file_info = None;
 
         let result = get_value(&function, function_arg, function_args, entry, &file_info);
-        assert_eq!(result.to_string(), "hello Rust");
+        assert_eq!(result.unwrap().to_string(), "hello Rust");
     }
     
     #[test]
@@ -1225,7 +1223,7 @@ mod tests {
         let file_info = None;
 
         let result = get_value(&function, function_arg, function_args, entry, &file_info);
-        assert_eq!(result.to_string(), "hello");
+        assert_eq!(result.unwrap().to_string(), "hello");
     }
     
     #[test]
@@ -1237,7 +1235,7 @@ mod tests {
         let file_info = None;
 
         let result = get_value(&function, function_arg, function_args, entry, &file_info);
-        assert_eq!(result.to_string(), "hello   ");
+        assert_eq!(result.unwrap().to_string(), "hello   ");
     }
     
     #[test]
@@ -1249,7 +1247,7 @@ mod tests {
         let file_info = None;
 
         let result = get_value(&function, function_arg, function_args, entry, &file_info);
-        assert_eq!(result.to_string(), "   hello");
+        assert_eq!(result.unwrap().to_string(), "   hello");
     }
     
     #[test]
@@ -1261,7 +1259,7 @@ mod tests {
         let file_info = None;
 
         let result = get_value(&function, function_arg, function_args, entry, &file_info);
-        assert_eq!(result.to_string(), "1010");
+        assert_eq!(result.unwrap().to_string(), "1010");
     }
     
     #[test]
@@ -1273,7 +1271,7 @@ mod tests {
         let file_info = None;
 
         let result = get_value(&function, function_arg, function_args, entry, &file_info);
-        assert_eq!(result.to_string(), "ff");
+        assert_eq!(result.unwrap().to_string(), "ff");
     }
     
     #[test]
@@ -1285,7 +1283,7 @@ mod tests {
         let file_info = None;
 
         let result = get_value(&function, function_arg, function_args, entry, &file_info);
-        assert_eq!(result.to_string(), "10");
+        assert_eq!(result.unwrap().to_string(), "10");
     }
     
     #[test]
@@ -1297,7 +1295,7 @@ mod tests {
         let file_info = None;
 
         let result = get_value(&function, function_arg, function_args, entry, &file_info);
-        assert_eq!(result.to_int(), 10);
+        assert_eq!(result.unwrap().to_int(), 10);
     }
     
     #[test]
@@ -1309,7 +1307,7 @@ mod tests {
         let file_info = None;
 
         let result = get_value(&function, function_arg, function_args, entry, &file_info);
-        assert_eq!(result.to_int(), 8);
+        assert_eq!(result.unwrap().to_int(), 8);
     }
     
     #[test]
@@ -1321,7 +1319,7 @@ mod tests {
         let file_info = None;
 
         let result = get_value(&function, function_arg, function_args, entry, &file_info);
-        assert_eq!(result.to_int(), 4);
+        assert_eq!(result.unwrap().to_int(), 4);
     }
     
     #[test]
@@ -1333,7 +1331,7 @@ mod tests {
         let file_info = None;
 
         let result = get_value(&function, function_arg, function_args, entry, &file_info);
-        assert_eq!(result.to_int(), 2);
+        assert_eq!(result.unwrap().to_int(), 2);
     }
     
     #[test]
@@ -1345,7 +1343,7 @@ mod tests {
         let file_info = None;
 
         let result = get_value(&function, function_arg, function_args, entry, &file_info);
-        assert_eq!(result.to_int(), 1);
+        assert_eq!(result.unwrap().to_int(), 1);
     }
     
     #[test]
@@ -1357,7 +1355,7 @@ mod tests {
         let file_info = None;
 
         let result = get_value(&function, function_arg, function_args, entry, &file_info);
-        assert_eq!(result.to_float(), std::f64::consts::E);
+        assert_eq!(result.unwrap().to_float(), std::f64::consts::E);
     }
 
     #[test]
@@ -1369,7 +1367,7 @@ mod tests {
         let file_info = None;
 
         let result = get_value(&function, function_arg, function_args, entry, &file_info);
-        assert_eq!(result.to_int(), 10);
+        assert_eq!(result.unwrap().to_int(), 10);
     }
     
     #[test]
@@ -1381,7 +1379,7 @@ mod tests {
         let file_info = None;
 
         let result = get_value(&function, function_arg, function_args, entry, &file_info);
-        assert_eq!(result.to_int(), 30);
+        assert_eq!(result.unwrap().to_int(), 30);
     }
     
     #[test]
@@ -1393,7 +1391,7 @@ mod tests {
         let file_info = None;
 
         let result = get_value(&function, function_arg, function_args, entry, &file_info);
-        assert_eq!(result.to_float(), std::f64::consts::PI);
+        assert_eq!(result.unwrap().to_float(), std::f64::consts::PI);
     }
     
     #[test]
@@ -1405,7 +1403,7 @@ mod tests {
         let file_info = None;
 
         let result = get_value(&function, function_arg, function_args, entry, &file_info);
-        assert_eq!(result.to_bool(), true);
+        assert_eq!(result.unwrap().to_bool(), true);
     }
     
     #[test]
@@ -1417,7 +1415,7 @@ mod tests {
         let file_info = None;
 
         let result = get_value(&function, function_arg, function_args, entry, &file_info);
-        assert_eq!(result.to_bool(), true);
+        assert_eq!(result.unwrap().to_bool(), true);
     }
     
     #[test]
@@ -1429,7 +1427,7 @@ mod tests {
         let file_info = None;
 
         let result = get_value(&function, function_arg, function_args, entry, &file_info);
-        assert_eq!(result.to_bool(), true);
+        assert_eq!(result.unwrap().to_bool(), true);
     }
     
     #[test]
@@ -1441,7 +1439,7 @@ mod tests {
         let file_info = None;
 
         let result = get_value(&function, function_arg, function_args, entry, &file_info);
-        assert_eq!(result.to_bool(), true);
+        assert_eq!(result.unwrap().to_bool(), true);
     }
     
     #[test]
@@ -1453,7 +1451,7 @@ mod tests {
         let file_info = None;
 
         let result = get_value(&function, function_arg, function_args, entry, &file_info);
-        assert_eq!(result.to_bool(), true);
+        assert_eq!(result.unwrap().to_bool(), true);
     }
     
     #[test]
@@ -1465,7 +1463,7 @@ mod tests {
         let file_info = None;
 
         let result = get_value(&function, function_arg, function_args, entry, &file_info);
-        assert_eq!(result.to_bool(), true);
+        assert_eq!(result.unwrap().to_bool(), true);
     }
     
     #[test]
@@ -1477,7 +1475,7 @@ mod tests {
         let file_info = None;
 
         let result = get_value(&function, function_arg, function_args, entry, &file_info);
-        assert_eq!(result.to_string(), "1 KiB");
+        assert_eq!(result.unwrap().to_string(), "1 KiB");
     }
     
     #[test]
@@ -1489,7 +1487,7 @@ mod tests {
         let file_info = None;
 
         let result = get_value(&function, function_arg, function_args, entry, &file_info);
-        assert_eq!(result.to_string(), "1h");
+        assert_eq!(result.unwrap().to_string(), "1h");
     }
     
     #[test]
@@ -1501,7 +1499,7 @@ mod tests {
         let file_info = None;
 
         let result = get_value(&function, function_arg, function_args, entry, &file_info);
-        assert_eq!(result.to_string(), format_date(&Local::now().date_naive()));
+        assert_eq!(result.unwrap().to_string(), format_date(&Local::now().date_naive()));
     }
     
     #[test]
@@ -1513,7 +1511,7 @@ mod tests {
         let file_info = None;
 
         let result = get_value(&function, function_arg, function_args, entry, &file_info);
-        let s = result.to_string();
+        let s = result.unwrap().to_string();
         // Expect format YYYY-MM-DD HH:MM:SS → length 19 and separators at fixed positions
         assert_eq!(s.len(), 19, "Unexpected CURRENT_TIMESTAMP length: {}", s);
         let bytes = s.as_bytes();
@@ -1533,7 +1531,7 @@ mod tests {
         let file_info = None;
 
         let result = get_value(&function, function_arg, function_args, entry, &file_info);
-        assert_eq!(result.to_int(), 1);
+        assert_eq!(result.unwrap().to_int(), 1);
     }
     
     #[test]
@@ -1545,7 +1543,7 @@ mod tests {
         let file_info = None;
 
         let result = get_value(&function, function_arg, function_args, entry, &file_info);
-        assert_eq!(result.to_int(), 10);
+        assert_eq!(result.unwrap().to_int(), 10);
     }
     
     #[test]
@@ -1557,7 +1555,7 @@ mod tests {
         let file_info = None;
 
         let result = get_value(&function, function_arg, function_args, entry, &file_info);
-        assert_eq!(result.to_int(), 2023);
+        assert_eq!(result.unwrap().to_int(), 2023);
     }
     
     #[test]
@@ -1569,7 +1567,7 @@ mod tests {
         let file_info = None;
 
         let result = get_value(&function, function_arg, function_args, entry, &file_info);
-        assert_eq!(result.to_int(), 1);
+        assert_eq!(result.unwrap().to_int(), 1);
     }
     
     #[test]
@@ -1582,7 +1580,7 @@ mod tests {
         let file_info = None;
 
         let result = get_value(&function, function_arg, function_args, entry, &file_info);
-        assert_eq!(result.to_int(), uzers::get_current_uid() as i64);
+        assert_eq!(result.unwrap().to_int(), uzers::get_current_uid() as i64);
     }
     
     #[test]
@@ -1595,7 +1593,7 @@ mod tests {
         let file_info = None;
 
         let result = get_value(&function, function_arg, function_args, entry, &file_info);
-        assert_eq!(result.to_string(), uzers::get_current_username().unwrap().to_string_lossy().to_string());
+        assert_eq!(result.unwrap().to_string(), uzers::get_current_username().unwrap().to_string_lossy().to_string());
     }
     
     #[test]
@@ -1608,7 +1606,7 @@ mod tests {
         let file_info = None;
 
         let result = get_value(&function, function_arg, function_args, entry, &file_info);
-        assert_eq!(result.to_int(), uzers::get_current_gid() as i64);
+        assert_eq!(result.unwrap().to_int(), uzers::get_current_gid() as i64);
     }
     
     #[test]
@@ -1621,7 +1619,7 @@ mod tests {
         let file_info = None;
 
         let result = get_value(&function, function_arg, function_args, entry, &file_info);
-        assert_eq!(result.to_string(), uzers::get_current_groupname().unwrap().to_string_lossy().to_string());
+        assert_eq!(result.unwrap().to_string(), uzers::get_current_groupname().unwrap().to_string_lossy().to_string());
     }
     
     #[test]
@@ -1633,6 +1631,6 @@ mod tests {
         let file_info = None;
 
         let result = get_value(&function, function_arg, function_args, entry, &file_info);
-        assert_eq!(result.to_string(), "hello");
+        assert_eq!(result.unwrap().to_string(), "hello");
     }
 }

@@ -13,7 +13,7 @@ pub enum VariantType {
     DateTime,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Variant {
     value_type: VariantType,
     string_value: String,

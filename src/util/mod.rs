@@ -421,8 +421,8 @@ pub fn format_filesize(size: u64, modifier: &str) -> Result<String, String> {
 pub fn str_to_bool(val: &str) -> Option<bool> {
     let str_val = val.to_ascii_lowercase();
     match str_val.as_str() {
-        "true" | "1" | "yes" | "y" => Some(true),
-        "false" | "0" | "no" | "n" => Some(false),
+        "true" | "1" | "yes" | "y" | "on" => Some(true),
+        "false" | "0" | "no" | "n" | "off" => Some(false),
         _ => None,
     }
 }

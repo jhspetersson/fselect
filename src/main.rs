@@ -197,6 +197,7 @@ fn main() -> ExitCode {
                             if parts.len() < 2 {
                                 error_message("cd", "no path specified");
                             } else {
+                                let _ = rl.add_history_entry(&cmd);
                                 let new_path: String = parts.iter().skip(1).cloned().collect::<Vec<&str>>().join(" ");
                                 match env::set_current_dir(new_path) {
                                     Ok(()) => {}
@@ -204,8 +205,16 @@ fn main() -> ExitCode {
                                 }
                             }
                         }
+                        Ok(cmd) if cmd.to_ascii_lowercase().trim().starts_with("debug") => {
+                            let _ = rl.add_history_entry(&cmd);
+                            let parts: Vec<&str> = cmd.trim().split_whitespace().collect();
+                            if parts.len() == 2 {
+                                config.debug = str_to_bool(&parts[1]).unwrap_or(false);
+                            }
+                            println!("DEBUG IS {}", Yellow.paint(if config.debug { "ON" } else { "OFF" }));
+                        }
                         Ok(query) => {
-                            let _ = rl.add_history_entry(query.as_str());
+                            let _ = rl.add_history_entry(&query);
                             exec_search(vec![query], &mut config, &default_config, no_color, true);
                         }
                         Err(ReadlineError::Interrupted) => {

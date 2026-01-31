@@ -274,7 +274,6 @@ impl <'a> Parser<'a> {
         let mut max_depth: u32 = 0;
         let mut archives = false;
         let mut symlinks = false;
-        let mut hardlinks = false;
         let mut gitignore = None;
         let mut hgignore = None;
         let mut dockerignore = None;
@@ -298,9 +297,6 @@ impl <'a> Parser<'a> {
                                 mode = RootParsingMode::Options;
                             } else if s.starts_with("sym") {
                                 symlinks = true;
-                                mode = RootParsingMode::Options;
-                            } else if s.starts_with("hard") {
-                                hardlinks = true;
                                 mode = RootParsingMode::Options;
                             } else if s.starts_with("git") {
                                 #[cfg(feature = "git")]
@@ -401,7 +397,6 @@ impl <'a> Parser<'a> {
                 max_depth,
                 archives,
                 symlinks,
-                hardlinks,
                 gitignore,
                 hgignore,
                 dockerignore,
@@ -419,7 +414,6 @@ impl <'a> Parser<'a> {
             || s == "maxdepth"
             || s.starts_with("arc")
             || s.starts_with("sym")
-            || s.starts_with("hard")
             || s.starts_with("git")
             || s.starts_with("hg")
             || s.starts_with("dock")
@@ -1207,35 +1201,35 @@ mod tests {
             vec![
                 Root::new(
                     String::from("/test"),
-                    RootOptions::from(0, 2, false, false, false, None, None, None, Bfs, false, None)
+                    RootOptions::from(0, 2, false, false,  None, None, None, Bfs, false, None)
                 ),
                 Root::new(
                     String::from("/test2"),
-                    RootOptions::from(0, 0, true, false, false, None, None, None, Bfs, false, None)
+                    RootOptions::from(0, 0, true, false, None, None, None, Bfs, false, None)
                 ),
                 Root::new(
                     String::from("/test3"),
-                    RootOptions::from(0, 3, true, false, false, None, None, None, Bfs, false, None)
+                    RootOptions::from(0, 3, true, false, None, None, None, Bfs, false, None)
                 ),
                 Root::new(
                     String::from("/test4"),
-                    RootOptions::from(0, 0, false, false, false, None, None, None, Bfs, false, None)
+                    RootOptions::from(0, 0, false, false, None, None, None, Bfs, false, None)
                 ),
                 Root::new(
                     String::from("/test5"),
-                    RootOptions::from(0, 0, false, false, false, Some(true), None, None, Bfs, false, None)
+                    RootOptions::from(0, 0, false, false, Some(true), None, None, Bfs, false, None)
                 ),
                 Root::new(
                     String::from("/test6"),
-                    RootOptions::from(3, 0, false, false, false, None, None, None, Bfs, false, None)
+                    RootOptions::from(3, 0, false, false, None, None, None, Bfs, false, None)
                 ),
                 Root::new(
                     String::from("/test7"),
-                    RootOptions::from(0, 0, true, false, false, None, None, None, Dfs, false, None)
+                    RootOptions::from(0, 0, true, false, None, None, None, Dfs, false, None)
                 ),
                 Root::new(
                     String::from("/test8"),
-                    RootOptions::from(0, 0, false, false, false, None, None, None, Dfs, false, None)
+                    RootOptions::from(0, 0, false, false, None, None, None, Dfs, false, None)
                 ),
             ]
         );
@@ -1293,7 +1287,7 @@ mod tests {
             query.roots,
             vec![Root::new(
                 String::from("/test"),
-                RootOptions::from(0, 0, false, false, false, None, None, None, Bfs, false, None)
+                RootOptions::from(0, 0, false, false, None, None, None, Bfs, false, None)
             ),]
         );
 
@@ -1320,7 +1314,7 @@ mod tests {
             query.roots,
             vec![Root::new(
                 String::from("/test"),
-                RootOptions::from(0, 0, false, false, false, None, None, None, Bfs, false, None)
+                RootOptions::from(0, 0, false, false, None, None, None, Bfs, false, None)
             ),]
         );
 
@@ -1437,7 +1431,7 @@ mod tests {
             query.roots,
             vec![Root::new(
                 String::from("/opt/Some Cool Dir/Test This"),
-                RootOptions::from(0, 0, false, false, false, None, None, None, Bfs, false, None)
+                RootOptions::from(0, 0, false, false, None, None, None, Bfs, false, None)
             ),]
         );
     }
@@ -1525,7 +1519,7 @@ mod tests {
             query.roots,
             vec![Root::new(
                 String::from("/test"),
-                RootOptions::from(2, 0, false, false, false, Some(true), None, None, Bfs, false, None)
+                RootOptions::from(2, 0, false, false, Some(true), None, None, Bfs, false, None)
             ),]
         );
 
@@ -1564,7 +1558,7 @@ mod tests {
             query.roots,
             vec![Root::new(
                 String::from("."),
-                RootOptions::from(0, 2, false, false, false, None, None, None, Bfs, false, None)
+                RootOptions::from(0, 2, false, false, None, None, None, Bfs, false, None)
             ),]
         );
     }
@@ -1606,7 +1600,7 @@ mod tests {
             query.roots,
             vec![Root::new(
                 String::from("/test"),
-                RootOptions::from(0, 0, false, false, false, None, None, None, Bfs, false, None)
+                RootOptions::from(0, 0, false, false, None, None, None, Bfs, false, None)
             ),]
         );
 
@@ -1645,7 +1639,7 @@ mod tests {
             query.roots,
             vec![Root::new(
                 String::from("/test"),
-                RootOptions::from(0, 0, false, false, false, None, None, None, Dfs, false, None)
+                RootOptions::from(0, 0, false, false, None, None, None, Dfs, false, None)
             ),]
         );
     }
@@ -1773,7 +1767,7 @@ mod tests {
             query.roots,
             vec![Root::new(
                 String::from("/test"),
-                RootOptions::from(0, 0, false, false, false, None, None, None, Bfs, false, None)
+                RootOptions::from(0, 0, false, false, None, None, None, Bfs, false, None)
             ),]
         );
 
@@ -1797,7 +1791,7 @@ mod tests {
             query.roots,
             vec![Root::new(
                 String::from("/test1"),
-                RootOptions::from(0, 0, false, false, false, None, None, None, Bfs, false, None)
+                RootOptions::from(0, 0, false, false, None, None, None, Bfs, false, None)
             ),]
         );
 
@@ -1854,7 +1848,7 @@ mod tests {
             query.roots,
             vec![Root::new(
                 String::from("/test"),
-                RootOptions::from(0, 0, false, false, false, None, None, None, Bfs, false, Some(String::from("test_alias")))
+                RootOptions::from(0, 0, false, false, None, None, None, Bfs, false, Some(String::from("test_alias")))
             ),]
         );
     }
@@ -1876,7 +1870,7 @@ mod tests {
             query.roots,
             vec![Root::new(
                 String::from("/test"),
-                RootOptions::from(0, 0, false, false, false, None, None, None, Bfs, false, Some(String::from("test_alias")))
+                RootOptions::from(0, 0, false, false, None, None, None, Bfs, false, Some(String::from("test_alias")))
             ),]
         );
     }

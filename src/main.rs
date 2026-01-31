@@ -214,7 +214,11 @@ fn main() -> ExitCode {
                                 let no_errors = !str_to_bool(&parts[1]).unwrap_or(true);
                                 set_no_errors(no_errors);
                             }
-                            println!("Errors are {}", Yellow.paint(if get_no_errors() { "OFF" } else { "ON" }));
+                            println!("Errors are {}", if no_color {
+                                (if get_no_errors() { "OFF" } else { "ON" }).into()
+                            } else {
+                                Yellow.paint(if get_no_errors() { "OFF" } else { "ON" })
+                            });
                         }
                         Ok(cmd) if cmd.to_ascii_lowercase().trim().starts_with("debug") => {
                             let _ = rl.add_history_entry(&cmd);
@@ -222,7 +226,11 @@ fn main() -> ExitCode {
                             if parts.len() == 2 {
                                 config.debug = str_to_bool(&parts[1]).unwrap_or(false);
                             }
-                            println!("DEBUG IS {}", Yellow.paint(if config.debug { "ON" } else { "OFF" }));
+                            if no_color {
+                                println!("DEBUG IS {}", (if config.debug { "ON" } else { "OFF" }));
+                            } else {
+                                println!("DEBUG IS {}", Yellow.paint(if config.debug { "ON" } else { "OFF" }));
+                            }
                         }
                         Ok(query) => {
                             let _ = rl.add_history_entry(&query);
@@ -447,7 +455,7 @@ Interactive mode:
     errors [ON|OFF] Toggle whether errors are shown or not
     exit | quit     Exit fselect
     ", format_root_options(), 
-        Cyan.underline().paint("https://docs.rs/regex/1.10.2/regex/#syntax"),
+        if no_color { "https://docs.rs/regex/1.10.2/regex/#syntax".into() } else { Cyan.underline().paint("https://docs.rs/regex/1.10.2/regex/#syntax") },
         format_field_usage(),
         format_function_usage(),
         format_output_usage()

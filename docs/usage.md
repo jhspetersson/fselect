@@ -802,6 +802,7 @@ source ~/.bashrc
 | `--interactive` or `-i` or `/i`           | Run in [interactive mode](#interactive-mode) |
 | `--config` or `-c` or `/config`           | Specify config file location                 |
 | `--nocolor` or `--no-color` or `/nocolor` | Disable colors                               |
+| `--no-errors`                             | Suppress error reporting                     |
 | `--help` or `-h` or `/?` or `/h`          | Show help and exit                           |
 
 ### Interactive mode
@@ -813,6 +814,7 @@ In interactive mode, you can:
 - edit and refine queries iteratively
 - use command history (up/down arrows) to recall previous queries
 - get current directory with `pwd` and change it with `cd`
+- suppress error reporting with `errors off`
 - exit with `quit`, `exit`, Ctrl+C or Ctrl+D
 
 ### Environment variables

@@ -606,6 +606,8 @@ Or simply use relative offsets as days:
 
 To change this behavior, supply `--us-dates` option to the `fselect` command, or put `us_dates = true` into the configuration file.
 
+The safest way to specify dates is to use ISO 8601 format: `YYYY-MM-DD HH:MM:SS`.
+
 ### Regular expressions
 
 [Rust flavor regular expressions](https://docs.rs/regex/latest/regex/index.html#syntax) are used.

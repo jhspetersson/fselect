@@ -29,6 +29,7 @@ pub enum Lexeme {
     By,
     DescendingOrder,
     Limit,
+    Offset,
     Into,
 }
 
@@ -260,6 +261,7 @@ impl Lexer {
                 "asc" => self.next_lexeme(),
                 "desc" => Some(Lexeme::DescendingOrder),
                 "limit" => Some(Lexeme::Limit),
+                "offset" => Some(Lexeme::Offset),
                 "into" => Some(Lexeme::Into),
                 "eq" | "ne" | "gt" | "lt" | "ge" | "le" | "gte" | "lte" | "regexp" | "rx"
                 | "like" | "between" | "in" | "exists" => Some(Lexeme::Operator(s.to_lowercase())),

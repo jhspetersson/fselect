@@ -58,6 +58,7 @@ impl <'a> Parser<'a> {
         let grouping_fields = self.parse_group_by()?;
         let (ordering_fields, ordering_asc) = self.parse_order_by(&fields)?;
         let mut limit = self.parse_limit()?;
+        let offset = self.parse_offset()?;
         let output_format = self.parse_output_format()?;
 
         if roots.is_empty() {
@@ -85,6 +86,7 @@ impl <'a> Parser<'a> {
             ordering_fields,
             ordering_asc,
             limit,
+            offset,
             output_format,
             raw_query,
         })
@@ -1055,6 +1057,33 @@ impl <'a> Parser<'a> {
                     _ => {
                         self.drop_lexeme();
                         return Err("Error parsing limit, limit value not found");
+                    }
+                }
+            }
+            _ => {
+                self.drop_lexeme();
+            }
+        }
+
+        Ok(0)
+    }
+
+    fn parse_offset(&mut self) -> Result<u32, &str> {
+        let lexeme = self.next_lexeme();
+        match lexeme {
+            Some(Lexeme::Offset) => {
+                let lexeme = self.next_lexeme();
+                return match lexeme {
+                    Some(Lexeme::RawString(s)) | Some(Lexeme::String(s)) => {
+                        if let Ok(offset) = s.parse() {
+                            Ok(offset)
+                        } else {
+                            Err("Error parsing offset")
+                        }
+                    }
+                    _ => {
+                        self.drop_lexeme();
+                        Err("Error parsing offset, offset value not found")
                     }
                 }
             }

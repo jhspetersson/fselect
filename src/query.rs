@@ -25,6 +25,7 @@ pub struct Query {
     pub ordering_asc: Vec<bool>,
     /// Max amount of results to return
     pub limit: u32,
+    pub offset: u32,
     /// Output format
     pub output_format: OutputFormat,
     pub raw_query: String,

@@ -227,7 +227,7 @@ impl<'a> Searcher<'a> {
             output_buffer: if limit == 0 {
                 TopN::limitless()
             } else {
-                TopN::new(limit)
+                TopN::new(limit + query.offset)
             },
             aux_buffer: vec![],
 
@@ -559,7 +559,7 @@ impl<'a> Searcher<'a> {
             }
         } else if self.is_buffered() && !self.silent_mode {
             let mut first = true;
-            for piece in self.output_buffer.values() {
+            for piece in self.output_buffer.values().iter().skip(self.query.offset as usize) {
                 if first {
                     first = false;
                 } else if let Err(e) = self
@@ -744,7 +744,7 @@ impl<'a> Searcher<'a> {
                                             if let Ok(mut archive) = zip::ZipArchive::new(file) {
                                                 for i in 0..archive.len() {
                                                     if self.query.limit > 0
-                                                        && self.query.limit <= self.found
+                                                        && self.query.limit + self.query.offset <= self.found
                                                     {
                                                         break;
                                                     }
@@ -2967,6 +2967,7 @@ mod tests {
             ordering_fields: Vec::new(),
             ordering_asc: Vec::new(),
             limit: 0,
+            offset: 0,
             output_format: OutputFormat::Tabs,
             raw_query: String::new(),
         }));
@@ -2988,6 +2989,7 @@ mod tests {
             ordering_fields: vec![Expr::field(Field::Name)],
             ordering_asc: vec![true],
             limit: 0,
+            offset: 0,
             output_format: OutputFormat::Tabs,
             raw_query: String::new(),
         }));
@@ -3012,6 +3014,7 @@ mod tests {
             ordering_fields: Vec::new(),
             ordering_asc: Vec::new(),
             limit: 0,
+            offset: 0,
             output_format: OutputFormat::Tabs,
             raw_query: String::new(),
         }));

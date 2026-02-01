@@ -29,7 +29,7 @@ use crate::output::OutputFormat;
 use crate::parser::Parser;
 use crate::query::RootOptions;
 use crate::searcher::Searcher;
-use crate::util::str_to_bool;
+use crate::util::{set_us_dates, str_to_bool};
 use crate::util::error::{error_message, get_no_errors, set_no_errors};
 
 mod config;
@@ -146,6 +146,8 @@ fn main() -> ExitCode {
             args.remove(0);
         } else if first_arg.starts_with("--no-error") {
             set_no_errors(true);
+        } else if first_arg.starts_with("--us-date") { 
+            set_us_dates(true);
         } else {
             break;
         }
@@ -163,6 +165,10 @@ fn main() -> ExitCode {
         }
 
         first_arg = args[0].to_ascii_lowercase();
+    }
+    
+    if config.us_dates.unwrap_or(default_config.us_dates.unwrap()) {
+        set_us_dates(true);
     }
 
     let mut exit_value = None::<u8>;

@@ -602,7 +602,9 @@ Or simply use relative offsets as days:
 
 [More about writing dates in plain English](https://github.com/stevedonovan/chrono-english)
 
-**fselect** uses *UK* locale, not American style dates, i.e. `08/02` means *February 8th*.
+**fselect** uses *UK* locale by default, not American style dates, i.e. `08/02` means *February 8th* by default.
+
+To change this behavior, supply `--us-dates` option to the `fselect` command, or put `us_dates = true` into the configuration file.
 
 ### Regular expressions
 

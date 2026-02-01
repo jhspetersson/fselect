@@ -1,4 +1,4 @@
-use std::sync::LazyLock;
+use std::sync::{LazyLock, Mutex};
 
 use chrono::{Datelike, Duration, Local, LocalResult, NaiveDate, NaiveDateTime, NaiveTime, TimeZone, Timelike};
 use chrono_english::{parse_date_string, Dialect};
@@ -7,6 +7,12 @@ use regex::Regex;
 static DATE_REGEX: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new("(\\d{4})(-|:)(\\d{1,2})(-|:)(\\d{1,2}) ?(\\d{1,2})?:?(\\d{1,2})?:?(\\d{1,2})?").unwrap()
 });
+
+static US_DATES: Mutex<bool> = Mutex::new(false);
+
+pub fn set_us_dates(us: bool) {
+    *US_DATES.lock().unwrap() = us;
+}
 
 pub fn parse_datetime(s: &str) -> Result<(NaiveDateTime, NaiveDateTime), String> {
     if s == "today" {
@@ -96,7 +102,11 @@ pub fn parse_datetime(s: &str) -> Result<(NaiveDateTime, NaiveDateTime), String>
         }
         None => {
             if s.len() >= 5 {
-                match parse_date_string(s, Local::now(), Dialect::Uk) {
+                let dialect = match *US_DATES.lock().unwrap() {
+                    true => Dialect::Us,
+                    false => Dialect::Uk,
+                };
+                match parse_date_string(s, Local::now(), dialect) {
                     Ok(date_time) => {
                         let date_time = date_time.naive_local();
                         let finish = if date_time.hour() == 0

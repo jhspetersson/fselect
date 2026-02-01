@@ -30,6 +30,7 @@ pub struct Config {
     pub is_source: Option<Vec<String>>,
     pub is_video: Option<Vec<String>>,
     pub default_file_size_format: Option<String>,
+    pub us_dates: Option<bool>,
     pub check_for_updates: Option<bool>,
     #[serde(skip_serializing, default = "get_false")]
     pub debug: bool,
@@ -157,6 +158,7 @@ impl Config {
                 ".webm", ".wmv"
             ],
             default_file_size_format: Some(String::new()),
+            us_dates: Some(false),
             check_for_updates: Some(false),
             debug: false,
             save: true,

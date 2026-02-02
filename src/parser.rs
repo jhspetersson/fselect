@@ -57,8 +57,17 @@ impl <'a> Parser<'a> {
         self.where_parsed = true;
         let grouping_fields = self.parse_group_by()?;
         let (ordering_fields, ordering_asc) = self.parse_order_by(&fields)?;
-        let mut limit = self.parse_limit()?;
-        let offset = self.parse_offset()?;
+        let (mut limit, limit_offset) = self.parse_limit()?;
+        let mut offset = self.parse_offset()?;
+
+        if limit_offset > 0 {
+            if offset > 0 {
+                return Err("Ambiguous offset specified".to_string())
+            } else {
+                offset = limit_offset;
+            }
+        }
+
         let output_format = self.parse_output_format()?;
 
         if roots.is_empty() {
@@ -1041,22 +1050,44 @@ impl <'a> Parser<'a> {
         Ok((order_by_fields, order_by_directions))
     }
 
-    fn parse_limit(&mut self) -> Result<u32, &str> {
+    fn parse_limit(&mut self) -> Result<(u32, u32), &str> {
         let lexeme = self.next_lexeme();
         match lexeme {
             Some(Lexeme::Limit) => {
                 let lexeme = self.next_lexeme();
-                match lexeme {
+                return match lexeme {
                     Some(Lexeme::RawString(s)) | Some(Lexeme::String(s)) => {
-                        if let Ok(limit) = s.parse() {
-                            return Ok(limit);
+                        // Parse the first number (could be offset or limit)
+                        if let Ok(first_number) = s.parse::<u32>() {
+                            if let Some(Lexeme::Comma) = self.next_lexeme() {
+                                // This is offset,limit format
+                                let second_lexeme = self.next_lexeme();
+                                match second_lexeme {
+                                    Some(Lexeme::RawString(s2)) | Some(Lexeme::String(s2)) => {
+                                        if let Ok(second_number) = s2.parse::<u32>() {
+                                            Ok((second_number, first_number))
+                                        } else {
+                                            self.drop_lexeme();
+                                            Err("Error parsing limit value in offset,limit format")
+                                        }
+                                    }
+                                    _ => {
+                                        self.drop_lexeme();
+                                        Err("Error parsing limit value in offset,limit format")
+                                    }
+                                }
+                            } else {
+                                self.drop_lexeme();
+                                Ok((first_number, 0))
+                            }
                         } else {
-                            return Err("Error parsing limit");
+                            self.drop_lexeme();
+                            Err("Error parsing limit")
                         }
                     }
                     _ => {
                         self.drop_lexeme();
-                        return Err("Error parsing limit, limit value not found");
+                        Err("Error parsing limit, limit value not found")
                     }
                 }
             }
@@ -1065,7 +1096,7 @@ impl <'a> Parser<'a> {
             }
         }
 
-        Ok(0)
+        Ok((0, 0))
     }
 
     fn parse_offset(&mut self) -> Result<u32, &str> {
@@ -1935,6 +1966,18 @@ mod tests {
         let mut p = Parser::new(&mut lexer);
         let result = p.parse(false);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn query_with_limit_and_offset() {
+        let query = "select name from /test limit 3,5";
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
+        let query = p.parse(false).unwrap();
+        assert!(!p.there_are_remaining_lexemes());
+
+        assert_eq!(query.limit, 5);
+        assert_eq!(query.offset, 3);
     }
 }
 

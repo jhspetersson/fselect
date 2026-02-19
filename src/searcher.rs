@@ -3,14 +3,12 @@
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs;
-#[cfg(unix)]
-use std::fs::symlink_metadata;
 use std::fs::{DirEntry, FileType, Metadata};
 use std::io;
 use std::io::{ErrorKind, Write};
 use std::ops::Add;
 #[cfg(unix)]
-use std::os::unix::fs::{DirEntryExt, MetadataExt};
+use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::LazyLock;
@@ -174,8 +172,6 @@ pub struct Searcher<'a> {
     hgignore_filters: Vec<HgignoreFilter>,
     dockerignore_filters: Vec<DockerignoreFilter>,
     visited_dirs: HashSet<PathBuf>,
-    #[cfg(unix)]
-    visited_inodes: HashSet<u64>,
     lscolors: LsColors,
     dir_queue: Box<VecDeque<PathBuf>>,
     current_follow_symlinks: bool,
@@ -237,8 +233,6 @@ impl<'a> Searcher<'a> {
             hgignore_filters: vec![],
             dockerignore_filters: vec![],
             visited_dirs: HashSet::new(),
-            #[cfg(unix)]
-            visited_inodes: HashSet::new(),
             lscolors: LsColors::from_env().unwrap_or_default(),
             dir_queue: Box::from(VecDeque::new()),
             current_follow_symlinks: false,

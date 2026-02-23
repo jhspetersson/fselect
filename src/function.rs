@@ -14,7 +14,7 @@ use std::time::Duration;
 use chrono::Datelike;
 use chrono::Local;
 use human_time::ToHumanTimeString;
-use rand::Rng;
+use rand::RngExt;
 use serde::ser::{Serialize, Serializer};
 #[cfg(unix)]
 use xattr::FileExt;

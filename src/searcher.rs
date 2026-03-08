@@ -1599,6 +1599,42 @@ impl<'a> Searcher<'a> {
                     return Ok(Variant::from_bool(false));
                 }
             }
+            Field::HasAcl => {
+                #[cfg(target_os = "linux")]
+                {
+                    if let Ok(file) = fs::File::open(entry.path()) {
+                        if let Ok(Some(acl_data)) = file.get_xattr("system.posix_acl_access") {
+                            if let Some(entries) = crate::util::acl::parse_acl(&acl_data) {
+                                return Ok(Variant::from_bool(!entries.is_empty()));
+                            }
+                        }
+                    }
+                }
+
+                #[cfg(not(target_os = "linux"))]
+                {
+                    return Ok(Variant::from_bool(false));
+                }
+            }
+            Field::HasDefaultAcl => {
+                #[cfg(target_os = "linux")]
+                {
+                    if entry.path().is_dir() {
+                        if let Ok(file) = fs::File::open(entry.path()) {
+                            if let Ok(Some(acl_data)) = file.get_xattr("system.posix_acl_default") {
+                                if let Some(entries) = crate::util::acl::parse_acl(&acl_data) {
+                                    return Ok(Variant::from_bool(!entries.is_empty()));
+                                }
+                            }
+                        }
+                    }
+                }
+
+                #[cfg(not(target_os = "linux"))]
+                {
+                    return Ok(Variant::from_bool(false));
+                }
+            }
             Field::Capabilities => {
                 #[cfg(target_os = "linux")]
                 {

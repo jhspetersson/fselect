@@ -106,6 +106,8 @@ Subqueries have only limited support.
 | `is_socket`                                  | Returns a boolean signifying whether the file path is a socket file                                        |                                                               |
 | `is_hidden`                                  | Returns a boolean signifying whether the file is a hidden file (e.g., files that start with a dot on *nix) |                                                               |
 | `has_xattrs`                                 | Returns a boolean signifying whether the file has extended attributes                                      |                                                               |
+| `has_acl`                                    | Returns a boolean signifying whether the file has POSIX ACL entries beyond standard Unix permissions       | Available only on Linux                                       |
+| `has_default_acl`                            | Returns a boolean signifying whether the directory has default POSIX ACL entries                           | Available only on Linux                                       |
 | `capabilities` or `caps`                     | Returns a string describing Linux capabilities assigned to a file                                          | Available only on Linux                                       |
 | `device`                                     | Returns the code of device the file is stored on                                                           | Available only on Linux                                       |
 | `inode`                                      | Returns the number of inode                                                                                | Available only on Linux                                       |
@@ -241,10 +243,40 @@ Supported platforms are Linux, macOS, FreeBSD, and NetBSD.
 
 | Function                      | Meaning                                             | Example                                               |
 |-------------------------------|-----------------------------------------------------|-------------------------------------------------------|
-| HAS_XATTR                     | Check if xattr exists                               | `select "name, has_xattr(user.test) from /home/user"` |
-| XATTR                         | Get value of xattr                                  | `select "name, xattr(user.test) from /home/user"`     |
-| HAS_CAPABILITIES or HAS_CAPS  | Check if any Linux capability exists for the file   | `select "name, has_caps() from /home/user"`           |
-| HAS_CAPABILITY or HAS_CAP     | Check if given Linux capability exists for the file | `select "name, has_cap('cap_bpf') from /home/user"`   |
+| HAS_XATTR                     | Check if xattr exists                                   | `select "name, has_xattr(user.test) from /home/user"`           |
+| XATTR                         | Get value of xattr                                      | `select "name, xattr(user.test) from /home/user"`               |
+| ACL                           | Get all POSIX ACL entries in standard form (Linux only)  | `select "name, acl() from /home/user"`                           |
+| HAS_ACL_ENTRY                 | Check if a specific POSIX ACL entry exists (Linux only) | `select "name from /data where has_acl_entry('user:john')"`     |
+| ACL_ENTRY                     | Get permissions of a specific POSIX ACL entry (Linux only) | `select "name, acl_entry('group:staff') from /data"`         |
+| DEFAULT_ACL                   | Get all default POSIX ACL entries in standard form (Linux only) | `select "name, default_acl() from /data"`               |
+| HAS_DEFAULT_ACL_ENTRY         | Check if a specific default POSIX ACL entry exists (Linux only) | `select "name from /data where has_default_acl_entry('user:john')"` |
+| DEFAULT_ACL_ENTRY             | Get permissions of a specific default POSIX ACL entry (Linux only) | `select "name, default_acl_entry('group:staff') from /data"` |
+| HAS_CAPABILITIES or HAS_CAPS  | Check if any Linux capability exists for the file       | `select "name, has_caps() from /home/user"`                      |
+| HAS_CAPABILITY or HAS_CAP     | Check if given Linux capability exists for the file     | `select "name, has_cap('cap_bpf') from /home/user"`             |
+
+#### POSIX ACLs
+
+fselect can read and query POSIX Access Control Lists stored as `system.posix_acl_access`
+extended attributes. This feature is available only on Linux. It is useful for auditing file
+permissions beyond the standard Unix owner/group/other model.
+
+The `has_acl` field returns true when a file has extended ACL entries (named users, named groups,
+or a mask entry) beyond the basic owner/group/other permissions.
+
+The `acl()` function returns all ACL entries in standard `getfacl`-like format, comma-separated:
+`user::rwx,user:john:rw-,group::r-x,group:staff:r--,mask::rwx,other::r--`
+
+Use `has_acl_entry` and `acl_entry` to query specific entries. The entry specifier uses the format
+`type:qualifier` where type is `user` (or `u`), `group` (or `g`), `mask` (or `m`), or `other` (or `o`).
+An empty qualifier refers to the owning user/group. Examples:
+
+    fselect name from /data where has_acl = true
+    fselect "name, acl() from /data where has_acl = true"
+    fselect "name from /data where has_acl_entry('user:john')"
+    fselect "name, acl_entry('group:staff') from /data"
+
+When the `users` feature is enabled, uid/gid values are resolved to usernames/group names.
+Otherwise, numeric IDs are used in the output.
 
 #### String functions
 

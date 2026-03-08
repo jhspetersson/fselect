@@ -409,7 +409,17 @@ fields! {
         @weight = 2
         @description = "Returns a boolean signifying whether the file has extended attributes"
         HasXattrs,
-        
+
+        #[text = ["has_acl"], data_type = "boolean"]
+        @weight = 2
+        @description = "Returns a boolean signifying whether the file has POSIX ACL entries beyond standard permissions"
+        HasAcl,
+
+        #[text = ["has_default_acl"], data_type = "boolean"]
+        @weight = 2
+        @description = "Returns a boolean signifying whether the directory has default POSIX ACL entries"
+        HasDefaultAcl,
+
         #[text = ["capabilities", "caps"]]
         @weight = 2
         @description = "Returns a string describing Linux capabilities assigned to a file"

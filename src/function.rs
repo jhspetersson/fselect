@@ -430,6 +430,48 @@ functions! {
         #[cfg(unix)]
         Xattr,
         
+        #[text = ["acl"]]
+        @weight = 2
+        @group = "Xattr"
+        @description = "Get all POSIX ACL entries in standard form"
+        #[cfg(target_os = "linux")]
+        Acl,
+
+        #[text = ["has_acl_entry"], data_type = "boolean"]
+        @weight = 2
+        @group = "Xattr"
+        @description = "Check if a specific POSIX ACL entry exists"
+        #[cfg(target_os = "linux")]
+        HasAclEntry,
+
+        #[text = ["acl_entry"]]
+        @weight = 2
+        @group = "Xattr"
+        @description = "Get permissions of a specific POSIX ACL entry"
+        #[cfg(target_os = "linux")]
+        AclEntry,
+
+        #[text = ["default_acl"]]
+        @weight = 2
+        @group = "Xattr"
+        @description = "Get all default POSIX ACL entries in standard form"
+        #[cfg(target_os = "linux")]
+        DefaultAcl,
+
+        #[text = ["has_default_acl_entry"], data_type = "boolean"]
+        @weight = 2
+        @group = "Xattr"
+        @description = "Check if a specific default POSIX ACL entry exists"
+        #[cfg(target_os = "linux")]
+        HasDefaultAclEntry,
+
+        #[text = ["default_acl_entry"]]
+        @weight = 2
+        @group = "Xattr"
+        @description = "Get permissions of a specific default POSIX ACL entry"
+        #[cfg(target_os = "linux")]
+        DefaultAclEntry,
+
         #[text = ["has_capabilities", "has_caps"], data_type = "boolean"]
         @weight = 2
         @group = "Xattr"
@@ -857,6 +899,104 @@ pub fn get_value(
                     if let Ok(Some(xattr)) = file.get_xattr(&function_arg) {
                         if let Ok(value) = String::from_utf8(xattr) {
                             return Ok(Variant::from_string(&value));
+                        }
+                    }
+                }
+            }
+
+            Ok(Variant::empty(VariantType::String))
+        }
+        #[cfg(target_os = "linux")]
+        Function::Acl => {
+            if let Some(entry) = entry {
+                if let Ok(file) = File::open(entry.path()) {
+                    if let Ok(Some(acl_data)) = file.get_xattr("system.posix_acl_access") {
+                        if let Some(entries) = crate::util::acl::parse_acl(&acl_data) {
+                            return Ok(Variant::from_string(&crate::util::acl::format_acl(&entries)));
+                        }
+                    }
+                }
+            }
+
+            Ok(Variant::empty(VariantType::String))
+        }
+        #[cfg(target_os = "linux")]
+        Function::HasAclEntry => {
+            if let Some(entry) = entry {
+                if let Ok(file) = File::open(entry.path()) {
+                    if let Ok(Some(acl_data)) = file.get_xattr("system.posix_acl_access") {
+                        if let Some(entries) = crate::util::acl::parse_acl(&acl_data) {
+                            return Ok(Variant::from_bool(
+                                crate::util::acl::find_entry(&entries, &function_arg).is_some(),
+                            ));
+                        }
+                    }
+                }
+            }
+
+            Ok(Variant::empty(VariantType::Bool))
+        }
+        #[cfg(target_os = "linux")]
+        Function::AclEntry => {
+            if let Some(entry) = entry {
+                if let Ok(file) = File::open(entry.path()) {
+                    if let Ok(Some(acl_data)) = file.get_xattr("system.posix_acl_access") {
+                        if let Some(entries) = crate::util::acl::parse_acl(&acl_data) {
+                            if let Some(acl_entry) = crate::util::acl::find_entry(&entries, &function_arg) {
+                                return Ok(Variant::from_string(&crate::util::acl::format_entry(acl_entry)));
+                            }
+                        }
+                    }
+                }
+            }
+
+            Ok(Variant::empty(VariantType::String))
+        }
+        #[cfg(target_os = "linux")]
+        Function::DefaultAcl => {
+            if let Some(entry) = entry {
+                if entry.path().is_dir() {
+                    if let Ok(file) = File::open(entry.path()) {
+                        if let Ok(Some(acl_data)) = file.get_xattr("system.posix_acl_default") {
+                            if let Some(entries) = crate::util::acl::parse_acl(&acl_data) {
+                                return Ok(Variant::from_string(&crate::util::acl::format_acl(&entries)));
+                            }
+                        }
+                    }
+                }
+            }
+
+            Ok(Variant::empty(VariantType::String))
+        }
+        #[cfg(target_os = "linux")]
+        Function::HasDefaultAclEntry => {
+            if let Some(entry) = entry {
+                if entry.path().is_dir() {
+                    if let Ok(file) = File::open(entry.path()) {
+                        if let Ok(Some(acl_data)) = file.get_xattr("system.posix_acl_default") {
+                            if let Some(entries) = crate::util::acl::parse_acl(&acl_data) {
+                                return Ok(Variant::from_bool(
+                                    crate::util::acl::find_entry(&entries, &function_arg).is_some(),
+                                ));
+                            }
+                        }
+                    }
+                }
+            }
+
+            Ok(Variant::empty(VariantType::Bool))
+        }
+        #[cfg(target_os = "linux")]
+        Function::DefaultAclEntry => {
+            if let Some(entry) = entry {
+                if entry.path().is_dir() {
+                    if let Ok(file) = File::open(entry.path()) {
+                        if let Ok(Some(acl_data)) = file.get_xattr("system.posix_acl_default") {
+                            if let Some(entries) = crate::util::acl::parse_acl(&acl_data) {
+                                if let Some(acl_entry) = crate::util::acl::find_entry(&entries, &function_arg) {
+                                    return Ok(Variant::from_string(&crate::util::acl::format_entry(acl_entry)));
+                                }
+                            }
                         }
                     }
                 }

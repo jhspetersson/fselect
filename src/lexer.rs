@@ -56,6 +56,7 @@ struct LexerState {
     after_where: bool,
     after_operator: bool,
     after_logical: bool,
+    after_value_start: bool,
 }
 
 impl LexerState {
@@ -68,6 +69,7 @@ impl LexerState {
             after_where: false,
             after_operator: false,
             after_logical: false,
+            after_value_start: false,
         }
     }
 }
@@ -272,7 +274,7 @@ impl Lexer {
                 Some(Lexeme::CurlyClose)
             }
             LexingMode::RawString => match s.to_lowercase().as_str() {
-                "select" if !self.state.after_operator => {
+                "select" if !self.state.after_operator && !self.state.after_value_start => {
                     Some(Lexeme::Select)
                 }
                 "from" if !self.state.after_operator && !self.state.after_logical => {
@@ -287,14 +289,14 @@ impl Lexer {
                 }
                 "or" if self.state.after_where && !self.state.after_operator && !self.state.after_logical => Some(Lexeme::Or),
                 "and" if self.state.after_where && !self.state.after_operator && !self.state.after_logical => Some(Lexeme::And),
-                "not" if self.state.after_where && !self.state.after_operator => Some(Lexeme::Not),
+                "not" if self.state.after_where && !self.state.after_operator && !self.state.after_value_start => Some(Lexeme::Not),
                 "order" if !self.state.after_operator && !self.state.after_logical => {
                     self.state.after_where = false;
                     Some(Lexeme::Order)
                 }
                 "by" if !self.state.after_operator && !self.state.after_logical => Some(Lexeme::By),
-                "asc" if !self.state.after_operator && !self.state.before_from && !self.state.after_logical => self.next_lexeme(),
-                "desc" if !self.state.after_operator && !self.state.before_from && !self.state.after_logical => Some(Lexeme::DescendingOrder),
+                "asc" if !self.state.after_operator && !self.state.before_from && !self.state.after_logical && !self.state.possible_search_root => self.next_lexeme(),
+                "desc" if !self.state.after_operator && !self.state.before_from && !self.state.after_logical && !self.state.possible_search_root => Some(Lexeme::DescendingOrder),
                 "limit" if !self.state.after_operator && !self.state.after_logical => {
                     self.state.after_where = false;
                     Some(Lexeme::Limit)
@@ -307,7 +309,7 @@ impl Lexer {
                     self.state.after_where = false;
                     Some(Lexeme::Into)
                 }
-                "exists" if self.state.after_where && !self.state.after_operator => Some(Lexeme::Operator(s.to_lowercase())),
+                "exists" if self.state.after_where && !self.state.after_operator && !self.state.after_value_start => Some(Lexeme::Operator(s.to_lowercase())),
                 "eq" | "ne" | "gt" | "lt" | "ge" | "le" | "gte" | "lte" | "regexp" | "rx"
                 | "like" | "between" | "in" if self.state.after_where && !self.state.after_operator && !self.state.after_logical => Some(Lexeme::Operator(s.to_lowercase())),
                 "mul" | "div" | "mod" | "plus" | "minus" if (self.state.before_from || self.state.after_where) && !self.state.after_operator && !self.state.after_logical => Some(Lexeme::ArithmeticOperator(s)),
@@ -321,6 +323,9 @@ impl Lexer {
                 || (matches!(lexeme, Some(Lexeme::Comma)) && !self.state.before_from && !self.state.after_where);
         self.state.after_operator = matches!(lexeme, Some(Lexeme::Operator(_)));
         self.state.after_logical = matches!(lexeme, Some(Lexeme::Where) | Some(Lexeme::And) | Some(Lexeme::Or) | Some(Lexeme::Open) | Some(Lexeme::CurlyOpen))
+                || (matches!(lexeme, Some(Lexeme::Comma)) && self.state.after_where)
+                || (matches!(lexeme, Some(Lexeme::Comma)) && self.state.before_from);
+        self.state.after_value_start = matches!(lexeme, Some(Lexeme::CurlyOpen))
                 || (matches!(lexeme, Some(Lexeme::Comma)) && self.state.after_where);
 
         lexeme
@@ -2114,6 +2119,110 @@ mod tests {
         assert_eq!(
             with_from, without_from,
             "= in ORDER BY should tokenize the same with or without explicit FROM"
+        );
+    }
+
+    #[test]
+    fn asc_as_search_root_consumes_next_token() {
+        let mut lexer = lexer!("name from asc where size > 0");
+
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("name"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::From));
+
+        assert_eq!(
+            lexer.next_lexeme(),
+            Some(Lexeme::RawString(String::from("asc"))),
+            "asc after FROM should be RawString search root, not silently consumed"
+        );
+    }
+
+    #[test]
+    fn desc_as_search_root() {
+        let mut lexer = lexer!("name from desc where size > 0");
+
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("name"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::From));
+
+        assert_eq!(
+            lexer.next_lexeme(),
+            Some(Lexeme::RawString(String::from("desc"))),
+            "desc after FROM should be RawString search root, not DescendingOrder"
+        );
+    }
+
+    #[test]
+    fn not_in_curly_brace_set() {
+        let mut lexer = lexer!("name from . where name in {not}");
+
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("name"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::From));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("."))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Where));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("name"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Operator(String::from("in"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::CurlyOpen));
+
+        assert_eq!(
+            lexer.next_lexeme(),
+            Some(Lexeme::RawString(String::from("not"))),
+            "not inside curly brace set should be RawString, not Not keyword"
+        );
+    }
+
+    #[test]
+    fn exists_after_comma_in_paren_list() {
+        let mut lexer = lexer!("name from . where name in (foo, exists)");
+
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("name"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::From));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("."))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Where));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("name"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Operator(String::from("in"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Open));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("foo"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Comma));
+
+        assert_eq!(
+            lexer.next_lexeme(),
+            Some(Lexeme::RawString(String::from("exists"))),
+            "exists after comma in value list should be RawString, not Operator"
+        );
+    }
+
+    #[test]
+    fn select_in_curly_brace_set() {
+        let mut lexer = lexer!("name from . where name in {select}");
+
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("name"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::From));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("."))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Where));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("name"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Operator(String::from("in"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::CurlyOpen));
+
+        assert_eq!(
+            lexer.next_lexeme(),
+            Some(Lexeme::RawString(String::from("select"))),
+            "select inside curly brace set should be RawString, not Select keyword"
+        );
+    }
+
+    #[test]
+    fn from_after_comma_in_select_function_args() {
+        let mut lexer = lexer!("select upper(foo, from) from .");
+
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Select));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("upper"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Open));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("foo"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Comma));
+
+        assert_eq!(
+            lexer.next_lexeme(),
+            Some(Lexeme::RawString(String::from("from"))),
+            "from after comma in function args should be RawString, not From keyword"
         );
     }
 }

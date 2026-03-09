@@ -259,7 +259,7 @@ Supported platforms are Linux, macOS, FreeBSD, and NetBSD.
 
 #### POSIX ACLs
 
-fselect can read and query POSIX Access Control Lists stored as `system.posix_acl_access`
+**fselect** can read and query POSIX Access Control Lists stored as `system.posix_acl_access`
 extended attributes. This feature is available only on Linux. It is useful for auditing file
 permissions beyond the standard Unix owner/group/other model.
 
@@ -283,7 +283,7 @@ Otherwise, numeric IDs are used in the output.
 
 #### Extended file attributes
 
-fselect can read and query extended file attributes (also known as file flags) that are managed
+**fselect** can read and query extended file attributes (also known as file flags) that are managed
 with `chattr` and displayed with `lsattr`. This feature is available only on Linux and works
 on ext2/ext3/ext4, btrfs, and other filesystems that support the `FS_IOC_GETFLAGS` ioctl.
 
@@ -459,7 +459,7 @@ When you put a directory to search at, you can specify some options.
 
 ### Subqueries for `IN` and `EXISTS`
 
-Subqueries in `fselect` allow you to nest queries within queries, enabling powerful file search operations that compare results across different directory trees. 
+Subqueries in **fselect** allow you to nest queries within queries, enabling powerful file search operations that compare results across different directory trees. 
 Subqueries can be used with the `IN`, `NOT IN`, `EXISTS`, and `NOT EXISTS` operators to create sophisticated filtering logic.
 
 **Important:** When using subqueries that need to reference the parent query's results, you must bind search roots using aliases with the `AS` keyword. 

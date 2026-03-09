@@ -272,15 +272,15 @@ impl Lexer {
                 Some(Lexeme::CurlyClose)
             }
             LexingMode::RawString => match s.to_lowercase().as_str() {
-                "select" if !self.state.after_operator => {
+                "select" if !self.state.after_operator && !self.state.after_logical => {
                     Some(Lexeme::Select)
                 }
-                "from" if !self.state.after_operator => {
+                "from" if !self.state.after_operator && !self.state.after_logical => {
                     self.state.before_from = false;
                     self.state.after_where = false;
                     Some(Lexeme::From)
                 }
-                "where" if !self.state.after_operator => {
+                "where" if !self.state.after_operator && !self.state.after_logical => {
                     self.state.after_where = true;
                     Some(Lexeme::Where)
                 }
@@ -307,8 +307,8 @@ impl Lexer {
                     Some(Lexeme::Into)
                 }
                 "eq" | "ne" | "gt" | "lt" | "ge" | "le" | "gte" | "lte" | "regexp" | "rx"
-                | "like" | "between" | "in" | "exists" if self.state.after_where && !self.state.after_operator => Some(Lexeme::Operator(s.to_lowercase())),
-                "mul" | "div" | "mod" | "plus" | "minus" if (self.state.before_from || self.state.after_where) && !self.state.after_operator => Some(Lexeme::ArithmeticOperator(s)),
+                | "like" | "between" | "in" | "exists" if self.state.after_where && !self.state.after_operator && !self.state.after_logical => Some(Lexeme::Operator(s.to_lowercase())),
+                "mul" | "div" | "mod" | "plus" | "minus" if (self.state.before_from || self.state.after_where) && !self.state.after_operator && !self.state.after_logical => Some(Lexeme::ArithmeticOperator(s)),
                 _ => Some(Lexeme::RawString(s)),
             },
             _ => None,
@@ -1838,6 +1838,120 @@ mod tests {
             lexer.next_lexeme(),
             Some(Lexeme::RawString(String::from("-test"))),
             "- at value start should behave like * and produce RawString, not ArithmeticOperator"
+        );
+    }
+
+    #[test]
+    fn from_in_where_field_position_corrupts_state() {
+        let mut lexer = lexer!("name from . where from and size > 0");
+
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("name"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::From));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("."))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Where));
+
+        assert_eq!(
+            lexer.next_lexeme(),
+            Some(Lexeme::RawString(String::from("from"))),
+            "from in WHERE field position should be RawString, not From keyword"
+        );
+    }
+
+    #[test]
+    fn select_in_where_field_position() {
+        let mut lexer = lexer!("name from . where select > 0");
+
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("name"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::From));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("."))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Where));
+
+        assert_eq!(
+            lexer.next_lexeme(),
+            Some(Lexeme::RawString(String::from("select"))),
+            "select in WHERE field position should be RawString, not Select keyword"
+        );
+    }
+
+    #[test]
+    fn from_after_and_corrupts_state() {
+        let mut lexer = lexer!("name from . where name = foo and from and size > 0");
+
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("name"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::From));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("."))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Where));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("name"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Operator(String::from("="))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("foo"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::And));
+
+        assert_eq!(
+            lexer.next_lexeme(),
+            Some(Lexeme::RawString(String::from("from"))),
+            "from after AND should be RawString in field position"
+        );
+
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::And));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("size"))));
+        assert_eq!(
+            lexer.next_lexeme(),
+            Some(Lexeme::Operator(String::from(">"))),
+            "> should still be recognized as operator after from in field position"
+        );
+    }
+
+    #[test]
+    fn from_after_open_paren_in_where() {
+        let mut lexer = lexer!("name from . where (from > 0)");
+
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("name"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::From));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("."))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Where));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Open));
+
+        assert_eq!(
+            lexer.next_lexeme(),
+            Some(Lexeme::RawString(String::from("from"))),
+            "from after ( in WHERE should be RawString in field position"
+        );
+    }
+
+    #[test]
+    fn word_operator_in_field_position_after_and() {
+        let mut lexer = lexer!("name from . where name = foo and gt > 0");
+
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("name"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::From));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("."))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Where));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("name"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Operator(String::from("="))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("foo"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::And));
+
+        assert_eq!(
+            lexer.next_lexeme(),
+            Some(Lexeme::RawString(String::from("gt"))),
+            "gt after AND should be RawString in field position, not Operator"
+        );
+    }
+
+    #[test]
+    fn arithmetic_word_in_field_position_after_open() {
+        let mut lexer = lexer!("name from . where (mul > 0)");
+
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("name"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::From));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("."))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Where));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Open));
+
+        assert_eq!(
+            lexer.next_lexeme(),
+            Some(Lexeme::RawString(String::from("mul"))),
+            "mul after ( in WHERE should be RawString in field position, not ArithmeticOperator"
         );
     }
 }

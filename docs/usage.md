@@ -106,6 +106,8 @@ Subqueries have only limited support.
 | `is_socket`                                  | Returns a boolean signifying whether the file path is a socket file                                        |                                                               |
 | `is_hidden`                                  | Returns a boolean signifying whether the file is a hidden file (e.g., files that start with a dot on *nix) |                                                               |
 | `has_xattrs`                                 | Returns a boolean signifying whether the file has extended attributes                                      |                                                               |
+| `extattrs`                                   | Returns the extended file attributes as a string of chattr/lsattr flag letters                             | Available only on Linux                                       |
+| `has_extattrs`                               | Returns a boolean signifying whether the file has any extended file attributes set                         | Available only on Linux                                       |
 | `has_acl`                                    | Returns a boolean signifying whether the file has POSIX ACL entries beyond standard Unix permissions       | Available only on Linux                                       |
 | `has_default_acl`                            | Returns a boolean signifying whether the directory has default POSIX ACL entries                           | Available only on Linux                                       |
 | `capabilities` or `caps`                     | Returns a string describing Linux capabilities assigned to a file                                          | Available only on Linux                                       |
@@ -245,6 +247,7 @@ Supported platforms are Linux, macOS, FreeBSD, and NetBSD.
 |-------------------------------|-----------------------------------------------------|-------------------------------------------------------|
 | HAS_XATTR                     | Check if xattr exists                                   | `select "name, has_xattr(user.test) from /home/user"`           |
 | XATTR                         | Get value of xattr                                      | `select "name, xattr(user.test) from /home/user"`               |
+| HAS_EXTATTR                   | Check if a specific extended file attribute flag is set (Linux only) | `select "name from / where has_extattr('i')"`          |
 | ACL                           | Get all POSIX ACL entries in standard form (Linux only)  | `select "name, acl() from /home/user"`                           |
 | HAS_ACL_ENTRY                 | Check if a specific POSIX ACL entry exists (Linux only) | `select "name from /data where has_acl_entry('user:john')"`     |
 | ACL_ENTRY                     | Get permissions of a specific POSIX ACL entry (Linux only) | `select "name, acl_entry('group:staff') from /data"`         |
@@ -277,6 +280,29 @@ An empty qualifier refers to the owning user/group. Examples:
 
 When the `users` feature is enabled, uid/gid values are resolved to usernames/group names.
 Otherwise, numeric IDs are used in the output.
+
+#### Extended file attributes
+
+fselect can read and query extended file attributes (also known as file flags) that are managed
+with `chattr` and displayed with `lsattr`. This feature is available only on Linux and works
+on ext2/ext3/ext4, btrfs, and other filesystems that support the `FS_IOC_GETFLAGS` ioctl.
+
+The `extattrs` field returns a string of flag letters for each set attribute, using the same
+single-letter codes as `lsattr`/`chattr`:
+`s` (secure deletion), `u` (undelete), `c` (compress), `S` (synchronous updates),
+`i` (immutable), `a` (append only), `d` (no dump), `A` (no atime updates),
+`E` (encrypted), `I` (indexed directory), `j` (journal data), `t` (no tail-merging),
+`D` (dirsync), `T` (top of directory hierarchy), `e` (extents), `V` (verity),
+`C` (no copy-on-write), `x` (DAX), `N` (inline data), `P` (project hierarchy),
+`F` (case-insensitive directory).
+
+The `has_extattrs` field returns true when any of these attributes are set.
+Use the `has_extattr()` function to check for a specific flag:
+
+    fselect name from / where has_extattrs = true
+    fselect "name, extattrs from /data where has_extattrs = true"
+    fselect "name from / where has_extattr('i')"
+    fselect "name, extattrs from /data where has_extattr('a')"
 
 #### String functions
 

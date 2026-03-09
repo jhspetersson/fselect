@@ -545,6 +545,7 @@ dependencies = [
  "humansize",
  "imagesize",
  "kamadak-exif",
+ "libc",
  "lscolors",
  "matroska",
  "mp3-metadata",

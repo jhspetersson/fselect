@@ -422,13 +422,20 @@ functions! {
         @description = "Check if the file has a specific extended attribute"
         #[cfg(unix)]
         HasXattr,
-        
+
         #[text = ["xattr"]]
         @weight = 2
         @group = "Xattr"
         @description = "Get the value of an extended attribute"
         #[cfg(unix)]
         Xattr,
+
+        #[text = ["has_extattr"], data_type = "boolean"]
+        @weight = 2
+        @group = "Xattr"
+        @description = "Check if the file has a specific extended file attribute flag"
+        #[cfg(target_os = "linux")]
+        HasExtattr,
         
         #[text = ["acl"]]
         @weight = 2
@@ -905,6 +912,20 @@ pub fn get_value(
             }
 
             Ok(Variant::empty(VariantType::String))
+        }
+        #[cfg(target_os = "linux")]
+        Function::HasExtattr => {
+            if let Some(entry) = entry {
+                if let Ok(file) = File::open(entry.path()) {
+                    if let Some(flags) = crate::util::extattrs::get_ext_attrs(&file) {
+                        return Ok(Variant::from_bool(
+                            crate::util::extattrs::has_ext_attr(flags, &function_arg),
+                        ));
+                    }
+                }
+            }
+
+            Ok(Variant::empty(VariantType::Bool))
         }
         #[cfg(target_os = "linux")]
         Function::Acl => {

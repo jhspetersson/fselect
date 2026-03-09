@@ -410,6 +410,16 @@ fields! {
         @description = "Returns a boolean signifying whether the file has extended attributes"
         HasXattrs,
 
+        #[text = ["extattrs"]]
+        @weight = 2
+        @description = "Returns the extended file attributes as a string of chattr/lsattr flag letters"
+        Extattrs,
+
+        #[text = ["has_extattrs"], data_type = "boolean"]
+        @weight = 2
+        @description = "Returns a boolean signifying whether the file has any extended file attributes set"
+        HasExtattrs,
+
         #[text = ["has_acl"], data_type = "boolean"]
         @weight = 2
         @description = "Returns a boolean signifying whether the file has POSIX ACL entries beyond standard permissions"

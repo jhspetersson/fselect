@@ -1599,6 +1599,35 @@ impl<'a> Searcher<'a> {
                     return Ok(Variant::from_bool(false));
                 }
             }
+            Field::Extattrs => {
+                #[cfg(target_os = "linux")]
+                {
+                    if let Ok(file) = fs::File::open(entry.path()) {
+                        if let Some(flags) = crate::util::extattrs::get_ext_attrs(&file) {
+                            return Ok(Variant::from_string(
+                                &crate::util::extattrs::format_ext_attrs(flags),
+                            ));
+                        }
+                    }
+                }
+
+                return Ok(Variant::empty(VariantType::String));
+            }
+            Field::HasExtattrs => {
+                #[cfg(target_os = "linux")]
+                {
+                    if let Ok(file) = fs::File::open(entry.path()) {
+                        if let Some(flags) = crate::util::extattrs::get_ext_attrs(&file) {
+                            return Ok(Variant::from_bool(flags != 0));
+                        }
+                    }
+                }
+
+                #[cfg(not(target_os = "linux"))]
+                {
+                    return Ok(Variant::from_bool(false));
+                }
+            }
             Field::HasAcl => {
                 #[cfg(target_os = "linux")]
                 {

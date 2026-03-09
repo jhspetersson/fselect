@@ -3,6 +3,8 @@ pub(crate) mod acl;
 pub(crate) mod app_dirs;
 #[cfg(target_os = "linux")]
 pub(crate) mod capabilities;
+#[cfg(target_os = "linux")]
+pub(crate) mod extattrs;
 mod datetime;
 pub mod dimensions;
 pub mod duration;

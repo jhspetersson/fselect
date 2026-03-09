@@ -272,7 +272,7 @@ impl Lexer {
                 Some(Lexeme::CurlyClose)
             }
             LexingMode::RawString => match s.to_lowercase().as_str() {
-                "select" if !self.state.after_operator && !self.state.after_logical => {
+                "select" if !self.state.after_operator => {
                     Some(Lexeme::Select)
                 }
                 "from" if !self.state.after_operator && !self.state.after_logical => {
@@ -306,8 +306,9 @@ impl Lexer {
                     self.state.after_where = false;
                     Some(Lexeme::Into)
                 }
+                "exists" if self.state.after_where && !self.state.after_operator => Some(Lexeme::Operator(s.to_lowercase())),
                 "eq" | "ne" | "gt" | "lt" | "ge" | "le" | "gte" | "lte" | "regexp" | "rx"
-                | "like" | "between" | "in" | "exists" if self.state.after_where && !self.state.after_operator && !self.state.after_logical => Some(Lexeme::Operator(s.to_lowercase())),
+                | "like" | "between" | "in" if self.state.after_where && !self.state.after_operator && !self.state.after_logical => Some(Lexeme::Operator(s.to_lowercase())),
                 "mul" | "div" | "mod" | "plus" | "minus" if (self.state.before_from || self.state.after_where) && !self.state.after_operator && !self.state.after_logical => Some(Lexeme::ArithmeticOperator(s)),
                 _ => Some(Lexeme::RawString(s)),
             },
@@ -318,7 +319,7 @@ impl Lexer {
         self.state.possible_search_root = matches!(lexeme, Some(Lexeme::From))
                 || (matches!(lexeme, Some(Lexeme::Comma)) && !self.state.before_from && !self.state.after_where);
         self.state.after_operator = matches!(lexeme, Some(Lexeme::Operator(_)));
-        self.state.after_logical = matches!(lexeme, Some(Lexeme::Where) | Some(Lexeme::And) | Some(Lexeme::Or) | Some(Lexeme::Not) | Some(Lexeme::Open));
+        self.state.after_logical = matches!(lexeme, Some(Lexeme::Where) | Some(Lexeme::And) | Some(Lexeme::Or) | Some(Lexeme::Open));
 
         lexeme
     }
@@ -1868,8 +1869,8 @@ mod tests {
 
         assert_eq!(
             lexer.next_lexeme(),
-            Some(Lexeme::RawString(String::from("select"))),
-            "select in WHERE field position should be RawString, not Select keyword"
+            Some(Lexeme::Select),
+            "select cannot be blocked in field position without breaking subquery support"
         );
     }
 

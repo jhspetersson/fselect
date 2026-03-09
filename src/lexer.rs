@@ -281,11 +281,12 @@ impl Lexer {
                     Some(Lexeme::From)
                 }
                 "where" if !self.state.after_operator && !self.state.after_logical => {
+                    self.state.before_from = false;
                     self.state.after_where = true;
                     Some(Lexeme::Where)
                 }
-                "or" if self.state.after_where && !self.state.after_operator => Some(Lexeme::Or),
-                "and" if self.state.after_where && !self.state.after_operator => Some(Lexeme::And),
+                "or" if self.state.after_where && !self.state.after_operator && !self.state.after_logical => Some(Lexeme::Or),
+                "and" if self.state.after_where && !self.state.after_operator && !self.state.after_logical => Some(Lexeme::And),
                 "not" if self.state.after_where && !self.state.after_operator => Some(Lexeme::Not),
                 "order" if !self.state.after_operator && !self.state.after_logical => {
                     self.state.after_where = false;
@@ -293,7 +294,7 @@ impl Lexer {
                 }
                 "by" if !self.state.after_operator && !self.state.after_logical => Some(Lexeme::By),
                 "asc" if !self.state.after_operator && !self.state.before_from && !self.state.after_logical => self.next_lexeme(),
-                "desc" if !self.state.after_operator && !self.state.after_logical => Some(Lexeme::DescendingOrder),
+                "desc" if !self.state.after_operator && !self.state.before_from && !self.state.after_logical => Some(Lexeme::DescendingOrder),
                 "limit" if !self.state.after_operator && !self.state.after_logical => {
                     self.state.after_where = false;
                     Some(Lexeme::Limit)
@@ -319,7 +320,8 @@ impl Lexer {
         self.state.possible_search_root = matches!(lexeme, Some(Lexeme::From))
                 || (matches!(lexeme, Some(Lexeme::Comma)) && !self.state.before_from && !self.state.after_where);
         self.state.after_operator = matches!(lexeme, Some(Lexeme::Operator(_)));
-        self.state.after_logical = matches!(lexeme, Some(Lexeme::Where) | Some(Lexeme::And) | Some(Lexeme::Or) | Some(Lexeme::Open));
+        self.state.after_logical = matches!(lexeme, Some(Lexeme::Where) | Some(Lexeme::And) | Some(Lexeme::Or) | Some(Lexeme::Open) | Some(Lexeme::CurlyOpen))
+                || (matches!(lexeme, Some(Lexeme::Comma)) && self.state.after_where);
 
         lexeme
     }
@@ -1953,6 +1955,165 @@ mod tests {
             lexer.next_lexeme(),
             Some(Lexeme::RawString(String::from("mul"))),
             "mul after ( in WHERE should be RawString in field position, not ArithmeticOperator"
+        );
+    }
+
+    #[test]
+    fn desc_in_select_column_list() {
+        let mut lexer = lexer!("select desc, name from .");
+
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Select));
+        assert_eq!(
+            lexer.next_lexeme(),
+            Some(Lexeme::RawString(String::from("desc"))),
+            "desc in SELECT column list should be RawString like asc, not DescendingOrder"
+        );
+    }
+
+    #[test]
+    fn word_operator_in_curly_brace_set() {
+        let mut lexer = lexer!("name from . where name in {eq}");
+
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("name"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::From));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("."))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Where));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("name"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Operator(String::from("in"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::CurlyOpen));
+
+        assert_eq!(
+            lexer.next_lexeme(),
+            Some(Lexeme::RawString(String::from("eq"))),
+            "eq inside curly brace set should be RawString, not Operator"
+        );
+    }
+
+    #[test]
+    fn from_in_curly_brace_set_corrupts_state() {
+        let mut lexer = lexer!("name from . where name in {from} and size > 0");
+
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("name"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::From));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("."))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Where));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("name"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Operator(String::from("in"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::CurlyOpen));
+
+        assert_eq!(
+            lexer.next_lexeme(),
+            Some(Lexeme::RawString(String::from("from"))),
+            "from inside curly brace set should be RawString, not From keyword"
+        );
+
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::CurlyClose));
+        assert_eq!(
+            lexer.next_lexeme(),
+            Some(Lexeme::And),
+            "and after curly brace set should still be recognized"
+        );
+    }
+
+    #[test]
+    fn word_operator_after_comma_in_paren_list() {
+        let mut lexer = lexer!("name from . where name in (foo, eq)");
+
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("name"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::From));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("."))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Where));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("name"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Operator(String::from("in"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Open));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("foo"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Comma));
+
+        assert_eq!(
+            lexer.next_lexeme(),
+            Some(Lexeme::RawString(String::from("eq"))),
+            "eq after comma in value list should be RawString, not Operator"
+        );
+    }
+
+    #[test]
+    fn from_after_comma_in_paren_list_corrupts_state() {
+        let mut lexer = lexer!("name from . where name in (foo, from) and size > 0");
+
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("name"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::From));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("."))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Where));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("name"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Operator(String::from("in"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Open));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("foo"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Comma));
+
+        assert_eq!(
+            lexer.next_lexeme(),
+            Some(Lexeme::RawString(String::from("from"))),
+            "from after comma in value list should be RawString, not From keyword"
+        );
+
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Close));
+        assert_eq!(
+            lexer.next_lexeme(),
+            Some(Lexeme::And),
+            "and after paren list should still be recognized when from appeared as value"
+        );
+    }
+
+    #[test]
+    fn and_keyword_in_curly_brace_set() {
+        let mut lexer = lexer!("name from . where name in {and}");
+
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("name"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::From));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("."))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Where));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("name"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Operator(String::from("in"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::CurlyOpen));
+
+        assert_eq!(
+            lexer.next_lexeme(),
+            Some(Lexeme::RawString(String::from("and"))),
+            "and inside curly brace set should be RawString, not And keyword"
+        );
+    }
+
+    #[test]
+    fn operator_in_order_by_without_from() {
+        let mut lexer = lexer!("name from . where size > 0 order by name = foo");
+
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("name"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::From));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("."))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Where));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("size"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Operator(String::from(">"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("0"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Order));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::By));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("name"))));
+        let with_from = lexer.next_lexeme();
+
+        let mut lexer = lexer!("name where size > 0 order by name = foo");
+
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("name"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Where));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("size"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Operator(String::from(">"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("0"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Order));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::By));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("name"))));
+        let without_from = lexer.next_lexeme();
+
+        assert_eq!(
+            with_from, without_from,
+            "= in ORDER BY should tokenize the same with or without explicit FROM"
         );
     }
 }

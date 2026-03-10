@@ -57,6 +57,7 @@ struct LexerState {
     after_operator: bool,
     after_logical: bool,
     after_value_start: bool,
+    roots_finished: bool,
 }
 
 impl LexerState {
@@ -70,6 +71,7 @@ impl LexerState {
             after_operator: false,
             after_logical: false,
             after_value_start: false,
+            roots_finished: false,
         }
     }
 }
@@ -319,8 +321,10 @@ impl Lexer {
         };
 
         self.state.first_lexeme = false;
+        self.state.roots_finished = self.state.roots_finished
+                || matches!(lexeme, Some(Lexeme::Where) | Some(Lexeme::Order) | Some(Lexeme::Limit) | Some(Lexeme::Offset) | Some(Lexeme::Into));
         self.state.possible_search_root = matches!(lexeme, Some(Lexeme::From))
-                || (matches!(lexeme, Some(Lexeme::Comma)) && !self.state.before_from && !self.state.after_where);
+                || (matches!(lexeme, Some(Lexeme::Comma)) && !self.state.before_from && !self.state.roots_finished);
         self.state.after_operator = matches!(lexeme, Some(Lexeme::Operator(_)));
         self.state.after_logical = matches!(lexeme, Some(Lexeme::Where) | Some(Lexeme::And) | Some(Lexeme::Or) | Some(Lexeme::Open) | Some(Lexeme::CurlyOpen))
                 || (matches!(lexeme, Some(Lexeme::Comma)) && self.state.after_where)
@@ -2356,4 +2360,55 @@ mod tests {
             "order after comma in search root context should be RawString, not Order keyword"
         );
     }
+
+    #[test]
+    fn comma_in_order_by_sets_possible_search_root() {
+        let mut lexer = lexer!("name", "from", ".", "where", "size", ">", "0", "order", "by", "name, path desc");
+
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("name"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::From));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("."))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Where));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("size"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Operator(String::from(">"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("0"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Order));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::By));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("name"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Comma));
+
+        assert_eq!(
+            lexer.next_lexeme(),
+            Some(Lexeme::RawString(String::from("path"))),
+            "path after comma in ORDER BY should be a separate token, not merged with desc"
+        );
+        assert_eq!(
+            lexer.next_lexeme(),
+            Some(Lexeme::DescendingOrder),
+            "desc should be recognized as DescendingOrder after path in ORDER BY"
+        );
+    }
+
+    #[test]
+    fn comma_in_limit_sets_possible_search_root() {
+        let mut lexer = lexer!("name", "from", ".", "where", "size", ">", "0", "limit", "5, 10 offset 3");
+
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("name"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::From));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("."))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Where));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("size"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Operator(String::from(">"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("0"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Limit));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("5"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Comma));
+
+        assert_eq!(
+            lexer.next_lexeme(),
+            Some(Lexeme::RawString(String::from("10"))),
+            "10 after comma in LIMIT should be a separate token, not merged with offset"
+        );
+    }
+
 }

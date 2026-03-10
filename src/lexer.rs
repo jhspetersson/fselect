@@ -57,6 +57,7 @@ struct LexerState {
     after_operator: bool,
     after_logical: bool,
     after_value_start: bool,
+    after_not: bool,
     roots_finished: bool,
 }
 
@@ -71,6 +72,7 @@ impl LexerState {
             after_operator: false,
             after_logical: false,
             after_value_start: false,
+            after_not: false,
             roots_finished: false,
         }
     }
@@ -279,42 +281,42 @@ impl Lexer {
                 "select" if !self.state.after_operator && !self.state.after_value_start && !self.state.possible_search_root => {
                     Some(Lexeme::Select)
                 }
-                "from" if !self.state.after_operator && !self.state.after_logical && !self.state.possible_search_root => {
+                "from" if !self.state.after_operator && !self.state.after_logical && !self.state.after_not && !self.state.possible_search_root => {
                     self.state.before_from = false;
                     self.state.after_where = false;
                     Some(Lexeme::From)
                 }
-                "where" if !self.state.after_operator && !self.state.after_logical => {
+                "where" if !self.state.after_operator && !self.state.after_logical && !self.state.after_not => {
                     self.state.before_from = false;
                     self.state.after_where = true;
                     Some(Lexeme::Where)
                 }
-                "or" if self.state.after_where && !self.state.after_operator && !self.state.after_logical => Some(Lexeme::Or),
-                "and" if self.state.after_where && !self.state.after_operator && !self.state.after_logical => Some(Lexeme::And),
+                "or" if self.state.after_where && !self.state.after_operator && !self.state.after_logical && !self.state.after_not => Some(Lexeme::Or),
+                "and" if self.state.after_where && !self.state.after_operator && !self.state.after_logical && !self.state.after_not => Some(Lexeme::And),
                 "not" if self.state.after_where && !self.state.after_operator && !self.state.after_value_start => Some(Lexeme::Not),
-                "order" if !self.state.after_operator && !self.state.after_logical && !self.state.possible_search_root => {
+                "order" if !self.state.after_operator && !self.state.after_logical && !self.state.after_not && !self.state.possible_search_root => {
                     self.state.after_where = false;
                     Some(Lexeme::Order)
                 }
-                "by" if !self.state.after_operator && !self.state.after_logical && !self.state.possible_search_root => Some(Lexeme::By),
-                "asc" if !self.state.after_operator && !self.state.before_from && !self.state.after_logical && !self.state.possible_search_root => self.next_lexeme(),
-                "desc" if !self.state.after_operator && !self.state.before_from && !self.state.after_logical && !self.state.possible_search_root => Some(Lexeme::DescendingOrder),
-                "limit" if !self.state.after_operator && !self.state.after_logical && !self.state.possible_search_root => {
+                "by" if !self.state.after_operator && !self.state.after_logical && !self.state.after_not && !self.state.possible_search_root => Some(Lexeme::By),
+                "asc" if !self.state.after_operator && !self.state.before_from && !self.state.after_logical && !self.state.after_not && !self.state.possible_search_root => self.next_lexeme(),
+                "desc" if !self.state.after_operator && !self.state.before_from && !self.state.after_logical && !self.state.after_not && !self.state.possible_search_root => Some(Lexeme::DescendingOrder),
+                "limit" if !self.state.after_operator && !self.state.after_logical && !self.state.after_not && !self.state.possible_search_root => {
                     self.state.after_where = false;
                     Some(Lexeme::Limit)
                 }
-                "offset" if !self.state.after_operator && !self.state.after_logical && !self.state.possible_search_root => {
+                "offset" if !self.state.after_operator && !self.state.after_logical && !self.state.after_not && !self.state.possible_search_root => {
                     self.state.after_where = false;
                     Some(Lexeme::Offset)
                 }
-                "into" if !self.state.after_operator && !self.state.after_logical && !self.state.possible_search_root => {
+                "into" if !self.state.after_operator && !self.state.after_logical && !self.state.after_not && !self.state.possible_search_root => {
                     self.state.after_where = false;
                     Some(Lexeme::Into)
                 }
                 "exists" if self.state.after_where && !self.state.after_operator && !self.state.after_value_start => Some(Lexeme::Operator(s.to_lowercase())),
                 "eq" | "ne" | "gt" | "lt" | "ge" | "le" | "gte" | "lte" | "regexp" | "rx"
                 | "like" | "between" | "in" if self.state.after_where && !self.state.after_operator && !self.state.after_logical => Some(Lexeme::Operator(s.to_lowercase())),
-                "mul" | "div" | "mod" | "plus" | "minus" if (self.state.before_from || self.state.after_where) && !self.state.after_operator && !self.state.after_logical => Some(Lexeme::ArithmeticOperator(s)),
+                "mul" | "div" | "mod" | "plus" | "minus" if (self.state.before_from || self.state.after_where) && !self.state.after_operator && !self.state.after_logical && !self.state.after_not => Some(Lexeme::ArithmeticOperator(s)),
                 _ => Some(Lexeme::RawString(s)),
             },
             _ => None,
@@ -330,6 +332,7 @@ impl Lexer {
                 || (matches!(lexeme, Some(Lexeme::Comma)) && self.state.after_where)
                 || (matches!(lexeme, Some(Lexeme::Comma)) && self.state.before_from);
         self.state.after_value_start = matches!(lexeme, Some(Lexeme::Comma)) && self.state.after_where;
+        self.state.after_not = matches!(lexeme, Some(Lexeme::Not));
 
         lexeme
     }
@@ -2385,6 +2388,183 @@ mod tests {
             lexer.next_lexeme(),
             Some(Lexeme::DescendingOrder),
             "desc should be recognized as DescendingOrder after path in ORDER BY"
+        );
+    }
+
+    #[test]
+    fn where_after_not_in_where() {
+        let mut lexer = lexer!("name from . where not where > 0");
+
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("name"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::From));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("."))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Where));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Not));
+
+        assert_eq!(
+            lexer.next_lexeme(),
+            Some(Lexeme::RawString(String::from("where"))),
+            "where after not should be RawString field name, not Where keyword"
+        );
+    }
+
+    #[test]
+    fn and_after_not_in_where() {
+        let mut lexer = lexer!("name from . where size > 0 and not and > 0");
+
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("name"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::From));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("."))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Where));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("size"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Operator(String::from(">"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("0"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::And));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Not));
+
+        assert_eq!(
+            lexer.next_lexeme(),
+            Some(Lexeme::RawString(String::from("and"))),
+            "and after not should be RawString field name, not And keyword"
+        );
+    }
+
+    #[test]
+    fn from_after_not_in_where() {
+        let mut lexer = lexer!("name from . where not from > 0");
+
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("name"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::From));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("."))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Where));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Not));
+
+        assert_eq!(
+            lexer.next_lexeme(),
+            Some(Lexeme::RawString(String::from("from"))),
+            "from after not should be RawString field name, not From keyword"
+        );
+
+        assert_eq!(
+            lexer.next_lexeme(),
+            Some(Lexeme::Operator(String::from(">"))),
+            "> should still be recognized as operator after from-as-field"
+        );
+    }
+
+    #[test]
+    fn order_after_not_in_where() {
+        let mut lexer = lexer!("name from . where not order > 0");
+
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("name"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::From));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("."))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Where));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Not));
+
+        assert_eq!(
+            lexer.next_lexeme(),
+            Some(Lexeme::RawString(String::from("order"))),
+            "order after not should be RawString field name, not Order keyword"
+        );
+    }
+
+    #[test]
+    fn word_operator_after_not_still_works() {
+        let mut lexer = lexer!("name from . where name not like foo");
+
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("name"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::From));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("."))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Where));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("name"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Not));
+        assert_eq!(
+            lexer.next_lexeme(),
+            Some(Lexeme::Operator(String::from("like"))),
+            "like after not should still be recognized as Operator for not-like"
+        );
+    }
+
+    #[test]
+    fn desc_after_not_in_where() {
+        let mut lexer = lexer!("name from . where not desc > 0");
+
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("name"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::From));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("."))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Where));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Not));
+
+        assert_eq!(
+            lexer.next_lexeme(),
+            Some(Lexeme::RawString(String::from("desc"))),
+            "desc after not should be RawString field name, not DescendingOrder"
+        );
+    }
+
+    #[test]
+    fn by_after_not_in_where() {
+        let mut lexer = lexer!("name from . where not by > 0");
+
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("name"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::From));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("."))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Where));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Not));
+
+        assert_eq!(
+            lexer.next_lexeme(),
+            Some(Lexeme::RawString(String::from("by"))),
+            "by after not should be RawString field name, not By keyword"
+        );
+    }
+
+    #[test]
+    fn arithmetic_word_after_not_in_where() {
+        let mut lexer = lexer!("name from . where not mul > 0");
+
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("name"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::From));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("."))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Where));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Not));
+
+        assert_eq!(
+            lexer.next_lexeme(),
+            Some(Lexeme::RawString(String::from("mul"))),
+            "mul after not should be RawString field name, not ArithmeticOperator"
+        );
+    }
+
+    #[test]
+    fn not_not_still_works() {
+        let mut lexer = lexer!("name from . where not not size > 0");
+
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("name"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::From));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("."))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Where));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Not));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Not));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("size"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Operator(String::from(">"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("0"))));
+    }
+
+    #[test]
+    fn exists_after_not_still_works() {
+        let mut lexer = lexer!("name from . where not exists (select name from .)");
+
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("name"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::From));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("."))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Where));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Not));
+        assert_eq!(
+            lexer.next_lexeme(),
+            Some(Lexeme::Operator(String::from("exists"))),
+            "exists should still be recognized after not"
         );
     }
 

@@ -299,8 +299,8 @@ impl Lexer {
                     Some(Lexeme::Order)
                 }
                 "by" if !self.state.after_operator && !self.state.after_logical && !self.state.after_not && !self.state.possible_search_root => Some(Lexeme::By),
-                "asc" if !self.state.after_operator && !self.state.before_from && !self.state.after_logical && !self.state.after_not && !self.state.possible_search_root => self.next_lexeme(),
-                "desc" if !self.state.after_operator && !self.state.before_from && !self.state.after_logical && !self.state.after_not && !self.state.possible_search_root => Some(Lexeme::DescendingOrder),
+                "asc" if !self.state.after_operator && !self.state.before_from && !self.state.after_where && !self.state.after_logical && !self.state.after_not && !self.state.possible_search_root => self.next_lexeme(),
+                "desc" if !self.state.after_operator && !self.state.before_from && !self.state.after_where && !self.state.after_logical && !self.state.after_not && !self.state.possible_search_root => Some(Lexeme::DescendingOrder),
                 "limit" if !self.state.after_operator && !self.state.after_logical && !self.state.after_not && !self.state.possible_search_root => {
                     self.state.after_where = false;
                     Some(Lexeme::Limit)
@@ -1437,6 +1437,81 @@ mod tests {
             lexeme,
             Some(Lexeme::RawString(String::from("asc"))),
             "asc in SELECT column list should be RawString, not silently consumed"
+        );
+    }
+
+    #[test]
+    fn asc_silently_consumes_token_in_where() {
+        let mut lexer = lexer!("name from . where size > 0 asc limit 10");
+
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("name"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::From));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("."))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Where));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("size"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Operator(String::from(">"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("0"))));
+
+        assert_eq!(
+            lexer.next_lexeme(),
+            Some(Lexeme::RawString(String::from("asc"))),
+            "asc after a value in WHERE should be RawString, not silently consumed"
+        );
+
+        assert_eq!(
+            lexer.next_lexeme(),
+            Some(Lexeme::Limit),
+            "limit should not be consumed by asc"
+        );
+    }
+
+    #[test]
+    fn desc_fires_in_where_after_value() {
+        let mut lexer = lexer!("name from . where size > 0 desc limit 10");
+
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("name"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::From));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("."))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Where));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("size"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Operator(String::from(">"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("0"))));
+
+        assert_eq!(
+            lexer.next_lexeme(),
+            Some(Lexeme::RawString(String::from("desc"))),
+            "desc after a value in WHERE should be RawString, not DescendingOrder"
+        );
+
+        assert_eq!(
+            lexer.next_lexeme(),
+            Some(Lexeme::Limit),
+            "limit should follow desc normally"
+        );
+    }
+
+    #[test]
+    fn asc_eats_or_in_where() {
+        let mut lexer = lexer!("name from . where size > 100 asc or name = foo");
+
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("name"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::From));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("."))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Where));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("size"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Operator(String::from(">"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("100"))));
+
+        assert_eq!(
+            lexer.next_lexeme(),
+            Some(Lexeme::RawString(String::from("asc"))),
+            "asc should not fire in WHERE context"
+        );
+
+        assert_eq!(
+            lexer.next_lexeme(),
+            Some(Lexeme::Or),
+            "or should not be consumed by asc"
         );
     }
 

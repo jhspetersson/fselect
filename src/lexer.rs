@@ -119,6 +119,7 @@ impl Lexer {
         let mut s = String::new();
         let mut mode = LexingMode::Undefined;
         let mut quote_closed = false;
+        let search_root_ctx = self.state.possible_search_root;
 
         loop {
             let input_part = self.input.get(self.input_index);
@@ -278,10 +279,10 @@ impl Lexer {
                 Some(Lexeme::CurlyClose)
             }
             LexingMode::RawString => match s.to_lowercase().as_str() {
-                "select" if !self.state.after_operator && !self.state.after_value_start && !self.state.possible_search_root => {
+                "select" if !self.state.after_operator && !self.state.after_value_start && !search_root_ctx => {
                     Some(Lexeme::Select)
                 }
-                "from" if !self.state.after_operator && !self.state.after_logical && !self.state.after_not && !self.state.possible_search_root => {
+                "from" if !self.state.after_operator && !self.state.after_logical && !self.state.after_not && !search_root_ctx => {
                     self.state.before_from = false;
                     self.state.after_where = false;
                     Some(Lexeme::From)
@@ -294,22 +295,22 @@ impl Lexer {
                 "or" if self.state.after_where && !self.state.after_operator && !self.state.after_logical && !self.state.after_not => Some(Lexeme::Or),
                 "and" if self.state.after_where && !self.state.after_operator && !self.state.after_logical && !self.state.after_not => Some(Lexeme::And),
                 "not" if self.state.after_where && !self.state.after_operator && !self.state.after_value_start => Some(Lexeme::Not),
-                "order" if !self.state.after_operator && !self.state.after_logical && !self.state.after_not && !self.state.possible_search_root => {
+                "order" if !self.state.after_operator && !self.state.after_logical && !self.state.after_not && !search_root_ctx => {
                     self.state.after_where = false;
                     Some(Lexeme::Order)
                 }
-                "by" if !self.state.after_operator && !self.state.after_logical && !self.state.after_not && !self.state.possible_search_root => Some(Lexeme::By),
-                "asc" if !self.state.after_operator && !self.state.before_from && !self.state.after_where && !self.state.after_logical && !self.state.after_not && !self.state.possible_search_root => self.next_lexeme(),
-                "desc" if !self.state.after_operator && !self.state.before_from && !self.state.after_where && !self.state.after_logical && !self.state.after_not && !self.state.possible_search_root => Some(Lexeme::DescendingOrder),
-                "limit" if !self.state.after_operator && !self.state.after_logical && !self.state.after_not && !self.state.possible_search_root => {
+                "by" if !self.state.after_operator && !self.state.after_logical && !self.state.after_not && !search_root_ctx => Some(Lexeme::By),
+                "asc" if !self.state.after_operator && !self.state.before_from && !self.state.after_where && !self.state.after_logical && !self.state.after_not && !search_root_ctx => self.next_lexeme(),
+                "desc" if !self.state.after_operator && !self.state.before_from && !self.state.after_where && !self.state.after_logical && !self.state.after_not && !search_root_ctx => Some(Lexeme::DescendingOrder),
+                "limit" if !self.state.after_operator && !self.state.after_logical && !self.state.after_not && !search_root_ctx => {
                     self.state.after_where = false;
                     Some(Lexeme::Limit)
                 }
-                "offset" if !self.state.after_operator && !self.state.after_logical && !self.state.after_not && !self.state.possible_search_root => {
+                "offset" if !self.state.after_operator && !self.state.after_logical && !self.state.after_not && !search_root_ctx => {
                     self.state.after_where = false;
                     Some(Lexeme::Offset)
                 }
-                "into" if !self.state.after_operator && !self.state.after_logical && !self.state.after_not && !self.state.possible_search_root => {
+                "into" if !self.state.after_operator && !self.state.after_logical && !self.state.after_not && !search_root_ctx => {
                     self.state.after_where = false;
                     Some(Lexeme::Into)
                 }
@@ -2640,6 +2641,64 @@ mod tests {
             lexer.next_lexeme(),
             Some(Lexeme::Operator(String::from("exists"))),
             "exists should still be recognized after not"
+        );
+    }
+
+    #[test]
+    fn order_as_search_root_multi_input() {
+        let mut lexer = lexer!("name", "from", "order", "where", "size", ">", "0");
+
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("name"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::From));
+
+        assert_eq!(
+            lexer.next_lexeme(),
+            Some(Lexeme::RawString(String::from("order"))),
+            "order after FROM in multi-input should be RawString search root, not Order keyword"
+        );
+    }
+
+    #[test]
+    fn limit_as_search_root_multi_input() {
+        let mut lexer = lexer!("name", "from", "limit", "where", "size", ">", "0");
+
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("name"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::From));
+
+        assert_eq!(
+            lexer.next_lexeme(),
+            Some(Lexeme::RawString(String::from("limit"))),
+            "limit after FROM in multi-input should be RawString search root, not Limit keyword"
+        );
+    }
+
+    #[test]
+    fn from_as_search_root_multi_input() {
+        let mut lexer = lexer!("name", "from", "from", "where", "size", ">", "0");
+
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("name"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::From));
+
+        assert_eq!(
+            lexer.next_lexeme(),
+            Some(Lexeme::RawString(String::from("from"))),
+            "from after FROM in multi-input should be RawString search root, not From keyword"
+        );
+    }
+
+    #[test]
+    fn order_after_comma_in_search_root_multi_input() {
+        let mut lexer = lexer!("name", "from", "/dir", ",", "order", "where", "size", ">", "0");
+
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("name"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::From));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("/dir"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Comma));
+
+        assert_eq!(
+            lexer.next_lexeme(),
+            Some(Lexeme::RawString(String::from("order"))),
+            "order after comma in search root context (multi-input) should be RawString"
         );
     }
 

@@ -329,8 +329,7 @@ impl Lexer {
         self.state.after_logical = matches!(lexeme, Some(Lexeme::Where) | Some(Lexeme::And) | Some(Lexeme::Or) | Some(Lexeme::Open) | Some(Lexeme::CurlyOpen))
                 || (matches!(lexeme, Some(Lexeme::Comma)) && self.state.after_where)
                 || (matches!(lexeme, Some(Lexeme::Comma)) && self.state.before_from);
-        self.state.after_value_start = matches!(lexeme, Some(Lexeme::CurlyOpen))
-                || (matches!(lexeme, Some(Lexeme::Comma)) && self.state.after_where);
+        self.state.after_value_start = matches!(lexeme, Some(Lexeme::Comma)) && self.state.after_where;
 
         lexeme
     }
@@ -2168,8 +2167,8 @@ mod tests {
 
         assert_eq!(
             lexer.next_lexeme(),
-            Some(Lexeme::RawString(String::from("not"))),
-            "not inside curly brace set should be RawString, not Not keyword"
+            Some(Lexeme::Not),
+            "not after {{ should match as keyword, same as after (, to support expressions"
         );
     }
 
@@ -2208,8 +2207,8 @@ mod tests {
 
         assert_eq!(
             lexer.next_lexeme(),
-            Some(Lexeme::RawString(String::from("select"))),
-            "select inside curly brace set should be RawString, not Select keyword"
+            Some(Lexeme::Select),
+            "select after {{ should match as keyword to support subqueries"
         );
     }
 

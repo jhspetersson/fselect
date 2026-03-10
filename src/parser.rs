@@ -844,12 +844,27 @@ impl <'a> Parser<'a> {
                 }
             }
             Some(Lexeme::CurlyOpen) => {
-                let mut result = Expr::new();
-                let args = self.parse_args()?;
-                result.set_args(args.unwrap());
+                let result = {
+                    if let Some(Lexeme::Select) = self.next_lexeme() {
+                        self.lexer.push_state();
+                        let mut parser = Parser::new(&mut self.lexer);
+                        let query = parser.parse(self.debug)?;
+                        self.lexer.pop_state();
+                        self.push_lexeme(Lexeme::CurlyClose);
+                        Expr::subquery(query)
+                    } else {
+                        self.drop_lexeme();
+                        let mut result = Expr::new();
+                        let args = self.parse_args()?;
+                        result.set_args(args.unwrap());
+                        result
+                    }
+                };
+
                 if let Some(Lexeme::CurlyClose) = self.next_lexeme() {
                     Ok(result)
                 } else {
+                    self.drop_lexeme();
                     Err("Unmatched parenthesis".to_string())
                 }
             }

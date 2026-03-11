@@ -228,7 +228,7 @@ impl <'a> Parser<'a> {
                                 match self.parse_root_options()? {
                                     Some(options) => root_options = options,
                                     None => {
-                                        roots.push(Root::new(path, RootOptions::new()));
+                                        roots.push(Root::new(path, root_options));
                                         break
                                     }
                                 }
@@ -2356,4 +2356,28 @@ mod exists_tests {
 
         assert_eq!(query.fields, query2.fields);
     }
+
+    #[test]
+    fn root_options_preserved_when_followed_by_unknown_string() {
+        let query = "select name from /test depth 2";
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
+        let query = p.parse(false).unwrap();
+
+        assert_eq!(
+            query.roots,
+            vec![Root::new(
+                String::from("/test"),
+                RootOptions::from(0, 2, false, false, None, None, None, Bfs, false, None)
+            )]
+        );
+
+        let query2 = "select name from /test depth 2 /other";
+        let mut lexer2 = Lexer::new(vec![query2.to_string()]);
+        let mut p2 = Parser::new(&mut lexer2);
+        let query2 = p2.parse(false).unwrap();
+
+        assert_eq!(query2.roots[0].options.max_depth, 2);
+    }
+
 }

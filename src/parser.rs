@@ -615,7 +615,7 @@ impl <'a> Parser<'a> {
                     left.clone().unwrap(),
                     match not {
                         false => Op::Gte,
-                        true => Op::Lte,
+                        true => Op::Lt,
                     },
                     left_between.unwrap(),
                 );
@@ -623,7 +623,7 @@ impl <'a> Parser<'a> {
                     left.unwrap(),
                     match not {
                         false => Op::Lte,
-                        true => Op::Gte,
+                        true => Op::Gt,
                     },
                     right_between.unwrap(),
                 );
@@ -1036,7 +1036,8 @@ impl <'a> Parser<'a> {
                         Some(Lexeme::Comma) => {}
                         Some(Lexeme::RawString(ref ordering_field)) => {
                             let actual_field = match ordering_field.parse::<usize>() {
-                                Ok(idx) => fields[idx - 1].clone(),
+                                Ok(idx) if idx >= 1 && idx <= fields.len() => fields[idx - 1].clone(),
+                                Ok(_) => return Err(String::from("Order by field index is out of range")),
                                 _ => {
                                     self.drop_lexeme();
                                     self.parse_expr().unwrap().unwrap()
@@ -2178,5 +2179,104 @@ mod exists_tests {
 
         let total = count_subqueries(&expr);
         assert_eq!(total, 2);
+    }
+
+    #[test]
+    fn not_gt_should_produce_lte() {
+        let query = "select name from /test where not size > 100";
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
+        let query = p.parse(false).unwrap();
+        assert!(!p.there_are_remaining_lexemes());
+
+        let expr = Expr::op(
+            Expr::field(Field::Size),
+            Op::Lte,
+            Expr::value(String::from("100")),
+        );
+        assert_eq!(query.expr, Some(expr));
+    }
+
+    #[test]
+    fn not_lt_should_produce_gte() {
+        let query = "select name from /test where not size < 100";
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
+        let query = p.parse(false).unwrap();
+        assert!(!p.there_are_remaining_lexemes());
+
+        let expr = Expr::op(
+            Expr::field(Field::Size),
+            Op::Gte,
+            Expr::value(String::from("100")),
+        );
+        assert_eq!(query.expr, Some(expr));
+    }
+
+    #[test]
+    fn not_gte_should_produce_lt() {
+        let query = "select name from /test where not size gte 100";
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
+        let query = p.parse(false).unwrap();
+        assert!(!p.there_are_remaining_lexemes());
+
+        let expr = Expr::op(
+            Expr::field(Field::Size),
+            Op::Lt,
+            Expr::value(String::from("100")),
+        );
+        assert_eq!(query.expr, Some(expr));
+    }
+
+    #[test]
+    fn not_lte_should_produce_gt() {
+        let query = "select name from /test where not size lte 100";
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
+        let query = p.parse(false).unwrap();
+        assert!(!p.there_are_remaining_lexemes());
+
+        let expr = Expr::op(
+            Expr::field(Field::Size),
+            Op::Gt,
+            Expr::value(String::from("100")),
+        );
+        assert_eq!(query.expr, Some(expr));
+    }
+
+    #[test]
+    fn order_by_zero_index_should_not_panic() {
+        let query = "select name, size from /test order by 0";
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
+        let result = p.parse(false);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn order_by_out_of_bounds_index_should_not_panic() {
+        let query = "select name from /test order by 5";
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
+        let result = p.parse(false);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn not_between_produces_correct_operators() {
+        let query = "select name from /test where size not between 5 and 10";
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
+        let query = p.parse(false).unwrap();
+        assert!(!p.there_are_remaining_lexemes());
+
+        let query2 = "select name from /test where size < 5 or size > 10";
+        let mut lexer2 = Lexer::new(vec![query2.to_string()]);
+        let mut p2 = Parser::new(&mut lexer2);
+        let query2 = p2.parse(false).unwrap();
+        assert!(!p2.there_are_remaining_lexemes());
+
+        assert_eq!(query.expr, query2.expr);
     }
 }

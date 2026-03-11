@@ -8,6 +8,15 @@ pub enum LogicalOp {
     Or,
 }
 
+impl LogicalOp {
+    pub fn negate(&self) -> LogicalOp {
+        match self {
+            LogicalOp::And => LogicalOp::Or,
+            LogicalOp::Or => LogicalOp::And,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, Eq, Hash, PartialEq, PartialOrd, Serialize)]
 pub enum Op {
     Eq,

@@ -1047,8 +1047,9 @@ impl <'a> Parser<'a> {
                             order_by_directions.push(true);
                         }
                         Some(Lexeme::DescendingOrder) => {
-                            let cnt = order_by_directions.len();
-                            order_by_directions[cnt - 1] = false;
+                            if let Some(last) = order_by_directions.last_mut() {
+                                *last = false;
+                            }
                         }
                         _ => {
                             self.drop_lexeme();
@@ -1221,6 +1222,10 @@ impl <'a> Parser<'a> {
 
         if let &Some(op) = &expr.op {
             result.op = Some(Op::negate(op));
+        }
+
+        if let Some(ref logical_op) = expr.logical_op {
+            result.logical_op = Some(logical_op.negate());
         }
 
         if let Some(right) = &expr.right {
@@ -2278,5 +2283,46 @@ mod exists_tests {
         assert!(!p2.there_are_remaining_lexemes());
 
         assert_eq!(query.expr, query2.expr);
+    }
+
+    #[test]
+    fn not_parenthesized_and_applies_de_morgan() {
+        let query = "select name from /test where not (size > 100 and name = foo)";
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
+        let query = p.parse(false).unwrap();
+        assert!(!p.there_are_remaining_lexemes());
+
+        let expr = query.expr.unwrap();
+        assert_eq!(expr.logical_op, Some(LogicalOp::Or));
+        let left = expr.left.unwrap();
+        assert_eq!(left.op, Some(Op::Lte));
+        let right = expr.right.unwrap();
+        assert_eq!(right.op, Some(Op::Ne));
+    }
+
+    #[test]
+    fn not_parenthesized_or_applies_de_morgan() {
+        let query = "select name from /test where not (size > 100 or name = foo)";
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
+        let query = p.parse(false).unwrap();
+        assert!(!p.there_are_remaining_lexemes());
+
+        let expr = query.expr.unwrap();
+        assert_eq!(expr.logical_op, Some(LogicalOp::And));
+        let left = expr.left.unwrap();
+        assert_eq!(left.op, Some(Op::Ne));
+        let right = expr.right.unwrap();
+        assert_eq!(right.op, Some(Op::Lte));
+    }
+
+    #[test]
+    fn order_by_desc_without_field_should_not_panic() {
+        let query = "select name from /test where size > 0 order by desc";
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
+        let result = p.parse(false);
+        assert!(result.is_err() || result.unwrap().ordering_fields.is_empty());
     }
 }

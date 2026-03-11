@@ -60,6 +60,7 @@ struct LexerState {
     after_not: bool,
     after_arithmetic: bool,
     in_order_by: bool,
+    in_value_set: bool,
     roots_finished: bool,
 }
 
@@ -77,6 +78,7 @@ impl LexerState {
             after_not: false,
             after_arithmetic: false,
             in_order_by: false,
+            in_value_set: false,
             roots_finished: false,
         }
     }
@@ -293,7 +295,7 @@ impl Lexer {
                     self.state.in_order_by = false;
                     Some(Lexeme::From)
                 }
-                "where" if !self.state.after_operator && !self.state.after_logical && !self.state.after_not => {
+                "where" if !self.state.after_operator && !self.state.after_logical && !self.state.after_not && !search_root_ctx => {
                     self.state.before_from = false;
                     self.state.after_where = true;
                     self.state.in_order_by = false;
@@ -325,7 +327,7 @@ impl Lexer {
                     self.state.in_order_by = false;
                     Some(Lexeme::Into)
                 }
-                "exists" if self.state.after_where && !self.state.after_operator && !self.state.after_value_start => Some(Lexeme::Operator(s.to_lowercase())),
+                "exists" if self.state.after_where && !self.state.after_operator && !self.state.after_value_start && !self.state.in_value_set => Some(Lexeme::Operator(s.to_lowercase())),
                 "eq" | "ne" | "gt" | "lt" | "ge" | "le" | "gte" | "lte" | "regexp" | "rx"
                 | "like" | "between" | "in" if self.state.after_where && !self.state.after_operator && !self.state.after_logical => Some(Lexeme::Operator(s.to_lowercase())),
                 "mul" | "div" | "mod" | "plus" | "minus" if (self.state.before_from || self.state.after_where) && !self.state.after_operator && !self.state.after_logical && !self.state.after_not => Some(Lexeme::ArithmeticOperator(s)),
@@ -339,6 +341,8 @@ impl Lexer {
                 || matches!(lexeme, Some(Lexeme::Where) | Some(Lexeme::Order) | Some(Lexeme::Limit) | Some(Lexeme::Offset) | Some(Lexeme::Into));
         self.state.possible_search_root = matches!(lexeme, Some(Lexeme::From))
                 || (matches!(lexeme, Some(Lexeme::Comma)) && !self.state.before_from && !self.state.roots_finished);
+        self.state.in_value_set = matches!(lexeme, Some(Lexeme::CurlyOpen))
+                || (matches!(lexeme, Some(Lexeme::Open)) && self.state.after_operator);
         self.state.after_operator = matches!(lexeme, Some(Lexeme::Operator(_)));
         self.state.after_logical = matches!(lexeme, Some(Lexeme::Where) | Some(Lexeme::And) | Some(Lexeme::Or) | Some(Lexeme::Open) | Some(Lexeme::CurlyOpen))
                 || (matches!(lexeme, Some(Lexeme::Comma)) && self.state.after_where)
@@ -2868,6 +2872,75 @@ mod tests {
         );
         assert_eq!(lexer.next_lexeme(), Some(Lexeme::From));
         assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("."))));
+    }
+
+    #[test]
+    fn where_as_search_root() {
+        let mut lexer = lexer!("name from where where size > 0");
+
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("name"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::From));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("where"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Where));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("size"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Operator(String::from(">"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("0"))));
+    }
+
+    #[test]
+    fn where_as_search_root_multi_input() {
+        let mut lexer = lexer!("name", "from", "where", "where", "size", ">", "0");
+
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("name"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::From));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("where"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Where));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("size"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Operator(String::from(">"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("0"))));
+    }
+
+    #[test]
+    fn where_as_second_search_root_after_comma() {
+        let mut lexer = lexer!("name from /dir, where where size > 0");
+
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("name"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::From));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("/dir"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Comma));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("where"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Where));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("size"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Operator(String::from(">"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("0"))));
+    }
+
+    #[test]
+    fn exists_inside_curly_brace_value_set() {
+        let mut lexer = lexer!("name from . where name in {exists}");
+
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("name"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::From));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("."))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Where));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("name"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Operator(String::from("in"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::CurlyOpen));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("exists"))));
+    }
+
+    #[test]
+    fn exists_inside_paren_value_set() {
+        let mut lexer = lexer!("name from . where name in (exists)");
+
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("name"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::From));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("."))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Where));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("name"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Operator(String::from("in"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Open));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("exists"))));
     }
 
     #[test]

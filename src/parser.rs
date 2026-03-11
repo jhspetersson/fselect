@@ -1952,9 +1952,7 @@ mod tests {
 
     #[test]
     fn broken_root_path() {
-        // Comma immediately after FROM means no valid root path provided
-        // Parser should fall back to default root "."
-        let query = "select name from , where size > 0";
+        let query = "select name from ,";
         let mut lexer = Lexer::new(vec![query.to_string()]);
         let mut p = Parser::new(&mut lexer);
         let query = p.parse(false).unwrap();
@@ -1969,8 +1967,6 @@ mod tests {
             query.roots,
             vec![Root::new(String::from("."), RootOptions::new())]
         );
-
-        assert!(query.expr.is_some());
     }
 
     #[test]

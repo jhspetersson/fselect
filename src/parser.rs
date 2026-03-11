@@ -905,7 +905,7 @@ impl <'a> Parser<'a> {
                 minus = true;
                 lexeme = self.next_lexeme();
             } else if s == "+" {
-                // nop
+                lexeme = self.next_lexeme();
             } else {
                 self.drop_lexeme();
             }
@@ -950,6 +950,7 @@ impl <'a> Parser<'a> {
         if let Some(lexeme) = self.next_lexeme() {
             if lexeme != Lexeme::Open && lexeme != Lexeme::CurlyOpen {
                 if is_boolean_function {
+                    self.drop_lexeme();
                     return Ok(function_expr);
                 }
 
@@ -2324,5 +2325,35 @@ mod exists_tests {
         let mut p = Parser::new(&mut lexer);
         let result = p.parse(false);
         assert!(result.is_err() || result.unwrap().ordering_fields.is_empty());
+    }
+
+    #[test]
+    fn boolean_function_without_parens_does_not_eat_next_token() {
+        let query = "select name from /test where CONTAINS and size > 100";
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
+        let query = p.parse(false).unwrap();
+        assert!(!p.there_are_remaining_lexemes());
+
+        let expr = query.expr.unwrap();
+        assert_eq!(expr.logical_op, Some(LogicalOp::And));
+        assert!(expr.right.is_some());
+    }
+
+    #[test]
+    fn unary_plus_in_field_expression() {
+        let query = "select (+size) from /test limit 1";
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
+        let query = p.parse(false).unwrap();
+        assert!(!p.there_are_remaining_lexemes());
+
+        let query2 = "select size from /test limit 1";
+        let mut lexer2 = Lexer::new(vec![query2.to_string()]);
+        let mut p2 = Parser::new(&mut lexer2);
+        let query2 = p2.parse(false).unwrap();
+        assert!(!p2.there_are_remaining_lexemes());
+
+        assert_eq!(query.fields, query2.fields);
     }
 }

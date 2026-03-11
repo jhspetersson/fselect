@@ -214,9 +214,10 @@ impl Lexer {
                             if maybe_expr {
                                 break;
                             }
-                        } else if (self.input.len() == 1 
+                        } else if c == ','
+                            || ((self.input.len() == 1
                                 || (self.input.len() > 1 && !self.state.possible_search_root))
-                            && (c == ' ' || c == ',' || is_paren_char(c) || self.is_op_char(c)) {
+                                && (c == ' ' || is_paren_char(c) || self.is_op_char(c))) {
                             break;
                         }
                     }
@@ -383,6 +384,9 @@ fn looks_like_expression(s: &str) -> bool {
 }
 
 fn looks_like_date(s: &str) -> bool {
+    if !s.bytes().all(|b| b.is_ascii_digit() || b == b'-') {
+        return false;
+    }
     match DATE_ALIKE_REGEX.captures(s) {
         Some(cap) => {
             let year = cap[1].parse::<i32>();
@@ -2864,6 +2868,37 @@ mod tests {
         );
         assert_eq!(lexer.next_lexeme(), Some(Lexeme::From));
         assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("."))));
+    }
+
+    #[test]
+    fn comma_splits_search_roots_in_multi_input() {
+        let mut lexer = lexer!("name", "from", "/dir1,/dir2", "where", "size", ">", "0");
+
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("name"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::From));
+
+        assert_eq!(
+            lexer.next_lexeme(),
+            Some(Lexeme::RawString(String::from("/dir1"))),
+        );
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Comma));
+        assert_eq!(
+            lexer.next_lexeme(),
+            Some(Lexeme::RawString(String::from("/dir2"))),
+        );
+
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Where));
+    }
+
+    #[test]
+    fn looks_like_date_rejects_trailing_non_date_chars() {
+        assert!(!looks_like_date("2020abc"));
+        assert!(!looks_like_date("2020.size"));
+        assert!(!looks_like_date("2020/01"));
+
+        assert!(looks_like_date("2020"));
+        assert!(looks_like_date("2020-01"));
+        assert!(looks_like_date("2020-01-01"));
     }
 
     #[test]

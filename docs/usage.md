@@ -259,7 +259,7 @@ Supported platforms are Linux, macOS, FreeBSD, and NetBSD.
 
 #### POSIX ACLs
 
-**fselect** can read and query POSIX Access Control Lists stored as `system.posix_acl_access`
+**fselect** can read and query POSIX Access Control Lists stored as `system.posix_acl_access` or `system.posix_acl_default`
 extended attributes. This feature is available only on Linux. It is useful for auditing file
 permissions beyond the standard Unix owner/group/other model.
 

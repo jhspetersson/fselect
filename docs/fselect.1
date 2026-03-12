@@ -3,249 +3,962 @@
 fselect \- find files with SQL-like queries
 .SH SYNOPSIS
 .B fselect
-.B [ARGS]
-COLUMN
-[, COLUMN ...]
-[ from ROOT [, ROOT...] ]
-[where EXPR]
-[group by COLUMNS]
-[order by COLUMNS]
-[limit N]
-[offset N]
-[into FORMAT]
+.RB [ \-\-nocolor ]
+.RB [ \-\-no\-errors ]
+.RB [ \-\-us\-dates ]
+.RB [ \-\-config
+.IR FILE ]
+.PP
+.B fselect
+.I COLUMN
+.RI [ ", " COLUMN " ..."]
+.RB [ from
+.IR ROOT
+.RI [ ", " ROOT " ..."]]
+.RB [ where
+.IR EXPR ]
+.RB [ group
+.B by
+.IR COLUMNS ]
+.RB [ order
+.B by
+.IR COLUMNS ]
+.RB [ limit
+.IR N ]
+.RB [ offset
+.IR N ]
+.RB [ into
+.IR FORMAT ]
+.PP
+.B fselect \-i
 .SH DESCRIPTION
 .B fselect
-is a simple utility with a SQL-like query for finding files.
+is a command-line utility for finding files using an SQL-like query language.
+The
+.B fselect
+command itself acts as the
+.B select
+keyword (i.e.,
+.IR "file select" ).
+An optional
+.B select
+keyword at the beginning of the query is accepted but not required.
 .PP
-You write SQL-like query, that's it.
+Query columns may be file attributes, arbitrary string literals (quoted if they contain spaces),
+function calls, or arithmetic expressions.
 .PP
-fselect command itself is like a first keyword (select, i.e., file select).
-But if you'll put one more select behind occasionally, that's not a problem.
-.PP
-Next you put columns you are interested in.
-It could be file name or path, size, modification date, etc.
-See full list of possible columns.
-You can add columns with arbitrary text (put in quotes if it contains spaces).
-A few functions (aggregating and formatting) are there for your service.
-You can use arithmetic expressions when it makes sense.
-.PP
-Where to search? Specify with
+If
 .B from
-keyword. You can list one or more directories separated with comma.
-If you leave the from, then current directory will be processed.
+is omitted, the current directory is searched.
+Multiple search roots may be listed, separated by commas.
+Each root may have its own set of options (depth, symlinks, archives, etc.).
 .PP
-What to search? Use
-.B where
-with any number of conditions.
+Queries containing
+.BR > ,
+.BR < ,
+parentheses, or shell metacharacters such as
+.BR * " and " ?
+should be enclosed in double quotes to prevent shell interpretation.
 .PP
-Order results like in real SQL with
-.B order by.
-All columns are supported for ordering by, as well as asc/desc parameters and positional numeric shortcuts.
-.PP
-Limiting search results is possible with limit. Formatting options are supported with
-.B into
-keyword.
-.PP
-If you want to use operators containing \> or \<, put the whole query into double quotes.
-This will protect query from the shell and output redirection.
-The same applies to queries with parentheses or *, ? and other special symbols that are shell metacharacters
-.RE
+Commas between column names are optional.
+String literals do not need quotes unless they contain spaces or shell metacharacters.
+Functions with no arguments do not require parentheses.
+Curly braces may be used instead of parentheses.
+.SH OPTIONS
+.TP
+.BR \-\-interactive ", " \-i
+Run in interactive mode.
+.TP
+.BI \-\-config " FILE"
+Specify an alternative configuration file location.
+.TP
+.BR \-\-nocolor ", " \-\-no\-color
+Disable colorized output.
+.TP
+.B \-\-no\-errors
+Suppress error messages.
+.TP
+.BR \-\-us\-dates
+Interpret ambiguous dates in US format (MM/DD) instead of the default UK format (DD/MM).
+.TP
+.BR \-\-help ", " \-h
+Show help and exit.
 .SH COLUMNS AND FIELDS
-.IP \(bu
-name
-.IP \(bu
-filename or fname
-.IP \(bu
-extension or ext
-.IP \(bu
-path
-.IP \(bu
-abspath
-.IP \(bu
-directory or dirname or dir
-.IP \(bu
-absdir
-.IP \(bu
-size
-.IP \(bu
-hsize or fsize
-.IP \(bu
-uid
-.IP \(bu
-gid
-.IP \(bu
-user
-.IP \(bu
-group
-.IP \(bu
-created
-.IP \(bu
-accessed
-.IP \(bu
-modified
-.IP \(bu
-is_dir
-.IP \(bu
-is_file
-.IP \(bu
-is_symlink
-.IP \(bu
-is_pipe or is_fifo
-.IP \(bu
-is_character or is_char
-.IP \(bu
-is_block
-.IP \(bu
-is_socket
-.IP \(bu
-device
-.IP \(bu
-inode
-.IP \(bu
-blocks
-.IP \(bu
-hardlinks
-.IP \(bu
-mode
-.IP \(bu
-user_read
-.IP \(bu
-user_write
-.IP \(bu
-user_exec
-.IP \(bu
-user_all
-.IP \(bu
-group_read
-.IP \(bu
-group_write
-.IP \(bu
-group_exec
-.IP \(bu
-group_all
-.IP \(bu
-other_read
-.IP \(bu
-other_write
-.IP \(bu
-other_exec
-.IP \(bu
-other_all
-.IP \(bu
-suid
-.IP \(bu
-sgid
-.IP \(bu
-is_hidden
-.IP \(bu
-has_xattrs
-.IP \(bu
-capabilities or caps
-.IP \(bu
-is_shebang
-.IP \(bu
-is_empty
-.IP \(bu
-width
-.IP \(bu
-height
-.IP \(bu
-duration
-.IP \(bu
-mp3_bitrate or bitrate
-.IP \(bu
-mp3_freq or freq
-.IP \(bu
-mp3_title or title
-.IP \(bu
-mp3_artist or artist
-.IP \(bu
-mp3_album or album
-.IP \(bu
-mp3_genre or genre
-.IP \(bu
-mp3_year
-.IP \(bu
-exif_datetime
-.IP \(bu
-exif_altitude or exif_alt
-.IP \(bu
-exif_latitude or exif_lat
-.IP \(bu
-exif_longitude or exif_lng or exif_lon
-.IP \(bu
-exif_make
-.IP \(bu
-exif_model
-.IP \(bu
-exif_software
-.IP \(bu
-exif_version
-.IP \(bu
-exif_exposure_time or exif_exptime
-.IP \(bu
-exif_aperture
-.IP \(bu
-exif_shutter_speed
-.IP \(bu
-exif_f_number or exif_f_num
-.IP \(bu
-exif_iso_speed or exif_iso
-.IP \(bu
-exif_focal_length or exif_focal_len
-.IP \(bu
-exif_lens_make
-.IP \(bu
-exif_lens_model
-.IP \(bu
-mime
-.IP \(bu
-is_binary
-.IP \(bu
-is_text
-.IP \(bu
-line_count
-.IP \(bu
-is_archive
-.IP \(bu
-is_audio
-.IP \(bu
-is_book
-.IP \(bu
-is_doc
-.IP \(bu
-is_font
-.IP \(bu
-is_image
-.IP \(bu
-is_source
-.IP \(bu
-is_video
-.IP \(bu
-sha1
-.IP \(bu
-sha2_256 or sha256
-.IP \(bu
-sha2_512 or sha512
-.IP \(bu
-sha3_512 or sha3
+.SS File naming
+.TP
+.B name
+File name with extension.
+.TP
+.BR filename " or " fname
+File name without extension.
+.TP
+.BR extension " or " ext
+File extension only (without the leading dot).
+.TP
+.B path
+Path relative to the search root.
+.TP
+.B abspath
+Absolute path of the file.
+.TP
+.BR directory " or " dirname " or " dir
+Directory portion of the path, relative to the search root.
+.TP
+.B absdir
+Absolute directory portion of the path.
+.SS File naming terminology
+Given a search root of
+.B /home/user/projects
+and a file at
+.BR /home/user/projects/foobar/content/readme.md :
+.PP
+.RS
+.nf
+\fBabspath\fR   /home/user/projects/foobar/content/readme.md
+\fBabsdir\fR    /home/user/projects/foobar/content
+\fBpath\fR      foobar/content/readme.md
+\fBdir\fR       foobar/content
+\fBname\fR      readme.md
+\fBfilename\fR  readme
+\fBext\fR       md
+.fi
 .RE
+.SS Size
+.TP
+.B size
+Size of the file in bytes.
+.TP
+.BR fsize " or " hsize
+Human-readable size with unit suffix.
+.SS Timestamps
+.TP
+.B accessed
+Time the file was last accessed (YYYY-MM-DD HH:MM:SS).
+.TP
+.B created
+File creation time (YYYY-MM-DD HH:MM:SS).
+.TP
+.B modified
+Time the file was last modified (YYYY-MM-DD HH:MM:SS).
+.SS Type tests (boolean)
+.TP
+.B is_dir
+True if path is a directory.
+.TP
+.B is_file
+True if path is a regular file.
+.TP
+.B is_symlink
+True if path is a symbolic link.
+.TP
+.BR is_pipe " or " is_fifo
+True if path is a FIFO or named pipe.
+.TP
+.BR is_char " or " is_character
+True if path is a character special file.
+.TP
+.B is_block
+True if path is a block special file.
+.TP
+.B is_socket
+True if path is a socket.
+.TP
+.B is_hidden
+True if file is hidden (starts with a dot on Unix).
+.TP
+.B is_empty
+True if file is empty or directory contains no entries.
+.TP
+.B is_shebang
+True if file begins with a shebang
+.RB ( #! ).
+.TP
+.B is_binary
+True if MIME type detection identifies the file as binary.
+.TP
+.B is_text
+True if MIME type detection identifies the file as text.
+.SS Permissions
+.TP
+.B mode
+Full permission string, similar to the first column of
+.BR "ls \-la" .
+.TP
+.BR uid " / " gid
+Numeric user ID / group ID of the owner.
+.TP
+.BR user " / " group
+Name of the owner / owner's group.
+Available only on Unix when the
+.B users
+feature is enabled.
+.TP
+.BR user_read ", " user_write ", " user_exec ", " user_all " / " user_rwx
+Per-owner permission bits.
+.TP
+.BR group_read ", " group_write ", " group_exec ", " group_all " / " group_rwx
+Per-group permission bits.
+.TP
+.BR other_read ", " other_write ", " other_exec ", " other_all " / " other_rwx
+Permission bits for other users.
+.TP
+.BR suid " / " sgid
+SUID / SGID bit.
+.SS Linux-specific
+.TP
+.B device
+Device number the file resides on.
+.TP
+.B inode
+Inode number.
+.TP
+.B blocks
+Number of 256-byte blocks allocated.
+.TP
+.B hardlinks
+Number of hard links.
+.TP
+.B has_xattrs
+True if the file has extended attributes (xattrs).
+.TP
+.B extattrs
+Extended file attribute flags as reported by
+.BR lsattr (1)
+(single-letter codes).
+.TP
+.B has_extattrs
+True if any
+.B extattrs
+flag is set.
+.TP
+.B has_acl
+True if the file has POSIX ACL entries beyond standard Unix permissions.
+.TP
+.B has_default_acl
+True if the directory has default POSIX ACL entries.
+.TP
+.BR capabilities " or " caps
+Linux capabilities string assigned to the file.
+.SS Media
+.TP
+.BR width " / " height
+Width and height of an image or MP4 video in pixels.
+.TP
+.B duration
+Duration of an audio file in seconds.
+.TP
+.BR mp3_bitrate " or " bitrate
+Audio bitrate in kbps.
+.TP
+.BR mp3_freq " or " freq
+Audio sampling frequency.
+.TP
+.BR mp3_title " or " title
+Track title from audio metadata.
+.TP
+.BR mp3_artist " or " artist
+Artist name from audio metadata.
+.TP
+.BR mp3_album " or " album
+Album name from audio metadata.
+.TP
+.BR mp3_genre " or " genre
+Genre from audio metadata.
+.TP
+.B mp3_year
+Year from audio metadata.
+.SS EXIF metadata
+.TP
+.B exif_datetime
+Date and time recorded in EXIF data.
+.TP
+.BR exif_altitude " or " exif_alt
+GPS altitude.
+.TP
+.BR exif_latitude " or " exif_lat
+GPS latitude.
+.TP
+.BR exif_longitude " or " exif_lng " or " exif_lon
+GPS longitude.
+.TP
+.BR exif_make " / " exif_model
+Camera manufacturer and model.
+.TP
+.B exif_software
+Software used to create the image.
+.TP
+.B exif_version
+Version of EXIF metadata.
+.TP
+.BR exif_exposure_time " or " exif_exptime
+Exposure time.
+.TP
+.B exif_aperture
+Aperture value.
+.TP
+.B exif_shutter_speed
+Shutter speed.
+.TP
+.BR exif_f_number " or " exif_f_num
+F-number.
+.TP
+.BR exif_iso_speed " or " exif_iso
+ISO speed.
+.TP
+.BR exif_focal_length " or " exif_focal_len
+Focal length.
+.TP
+.BR exif_lens_make " / " exif_lens_model
+Lens manufacturer and model.
+.SS MIME and file type shortcuts
+.TP
+.B mime
+MIME type string.
+.TP
+.B line_count
+Number of lines in a text file.
+.TP
+.B is_archive
+True if extension matches a known archive format
+(.7z, .bz2, .gz, .rar, .tar, .xz, .zip, and others).
+.TP
+.B is_audio
+True if extension matches a known audio format
+(.aac, .flac, .mp3, .ogg, .wav, .wma, and others).
+.TP
+.B is_book
+True if extension matches a known book format
+(.epub, .fb2, .mobi, .pdf, and others).
+.TP
+.B is_doc
+True if extension matches a known document format
+(.doc, .docx, .odt, .pdf, .ppt, .xls, and others).
+.TP
+.B is_font
+True if extension matches a known font format
+(.otf, .ttf, .woff, .woff2, and others).
+.TP
+.B is_image
+True if extension matches a known image format
+(.bmp, .gif, .jpeg, .jpg, .png, .svg, .webp, and others).
+.TP
+.B is_source
+True if extension matches a known source code format
+(.c, .cpp, .go, .java, .js, .py, .rs, .ts, and others).
+.TP
+.B is_video
+True if extension matches a known video format
+(.avi, .mkv, .mov, .mp4, .webm, .wmv, and others).
+.SS File hashes
+.TP
+.B sha1
+SHA-1 digest.
+.TP
+.BR sha2_256 " or " sha256
+SHA-256 digest.
+.TP
+.BR sha2_512 " or " sha512
+SHA-512 digest.
+.TP
+.BR sha3_512 " or " sha3
+SHA3-512 digest.
+.SH FUNCTIONS
+.SS Aggregate functions
+Queries using these functions return a single result row.
+.TP
+.B AVG
+Average value.
+.TP
+.B COUNT
+Number of rows.
+.TP
+.B MAX
+Maximum value.
+.TP
+.B MIN
+Minimum value.
+.TP
+.B SUM
+Sum of all values.
+.TP
+.BR STDDEV_POP " / " STDDEV " / " STD
+Population standard deviation.
+.TP
+.B STDDEV_SAMP
+Sample standard deviation.
+.TP
+.BR VAR_POP " / " VARIANCE
+Population variance.
+.TP
+.B VAR_SAMP
+Sample variance.
+.SS Date functions
+.TP
+.BR CURRENT_DATE " / " CUR_DATE " / " CURDATE
+Current date.
+.TP
+.BR CURRENT_TIME " / " CUR_TIME " / " CURTIME
+Current local time (HH:MM:SS).
+.TP
+.BR CURRENT_TIMESTAMP " / " NOW
+Current local timestamp (YYYY-MM-DD HH:MM:SS).
+.TP
+.B DAY
+Day of the month.
+.TP
+.B MONTH
+Month of the year.
+.TP
+.B YEAR
+Year.
+.TP
+.BR DOW " / " DAYOFWEEK
+Day of the week (1 = Sunday, 2 = Monday, \&...).
+.SS String functions
+.TP
+.BR LENGTH " / " LEN
+Length of the string value.
+.TP
+.BR LOWER " / " LOWERCASE " / " LCASE
+Convert to lowercase.
+.TP
+.BR UPPER " / " UPPERCASE " / " UCASE
+Convert to uppercase.
+.TP
+.B INITCAP
+First letter of each word uppercase, rest lowercase.
+.TP
+.BR TO_BASE64 " / " BASE64
+Encode to Base64.
+.TP
+.B FROM_BASE64
+Decode from Base64.
+.TP
+.B CONCAT
+Concatenate expression values.
+.TP
+.B CONCAT_WS
+Concatenate expression values with a delimiter.
+.TP
+.BR LOCATE " / " POSITION "(str, substr [, pos])"
+Position of
+.I substr
+in
+.IR str .
+.TP
+.BR SUBSTRING " / " SUBSTR "(str, pos [, len])"
+Substring starting at
+.IR pos .
+Negative
+.I pos
+counts from the end.
+.TP
+.BR REPLACE "(str, from, to)"
+Replace all occurrences.
+.TP
+.B TRIM
+Strip whitespace from both ends.
+.TP
+.B LTRIM
+Strip whitespace from the left.
+.TP
+.B RTRIM
+Strip whitespace from the right.
+.SS Numeric functions
+.TP
+.BR BIN " / " HEX " / " OCT
+Convert integer to binary, hexadecimal, or octal.
+.TP
+.B ABS
+Absolute value.
+.TP
+.BR POWER " / " POW
+Raise to a power.
+.TP
+.B SQRT
+Square root.
+.TP
+.B LOG
+Common logarithm.
+.TP
+.B LN
+Natural logarithm.
+.TP
+.B EXP
+Euler's number raised to the given power.
+.TP
+.B LEAST
+Smallest of the given values.
+.TP
+.B GREATEST
+Largest of the given values.
+.TP
+.B PI
+The constant π.
+.TP
+.B FLOOR
+Largest integer not greater than the value.
+.TP
+.BR CEIL " / " CEILING
+Smallest integer not less than the value.
+.TP
+.B ROUND
+Nearest integer.
+.TP
+.BR RANDOM " / " RAND
+Random integer.
+With no argument: 0 to max int.
+With one argument: 0 to
+.IR arg .
+With two arguments: from
+.I arg1
+to
+.IR arg2 .
+.SS Character detection functions
+.TP
+.BR CONTAINS_JAPANESE " / " JAPANESE
+True if the string contains Japanese characters.
+.TP
+.BR CONTAINS_HIRAGANA " / " HIRAGANA
+True if the string contains Hiragana characters.
+.TP
+.BR CONTAINS_KATAKANA " / " KATAKANA
+True if the string contains Katakana characters.
+.TP
+.BR CONTAINS_KANA " / " KANA
+True if the string contains Kana characters (Hiragana or Katakana).
+.TP
+.BR CONTAINS_KANJI " / " KANJI
+True if the string contains Kanji characters.
+.TP
+.BR CONTAINS_GREEK " / " GREEK
+True if the string contains Greek characters.
+.SS Other functions
+.TP
+.B CONTAINS
+True if the file contains the given string.
+.TP
+.B COALESCE
+First non-empty value from the argument list.
+.TP
+.BR FORMAT_TIME " / " PRETTY_TIME
+Human-readable duration (e.g.,
+.IR "2min 26s" ).
+.TP
+.BR FORMAT_SIZE " / " FORMAT_FILESIZE
+Formatted file size.
+The optional second argument is a format specifier such as
+.B "%.2 d"
+(two decimal places, 1000-based units).
+.SS Extended attribute and ACL functions
+.TP
+.BR HAS_XATTR "(name)"
+True if the named xattr exists.
+.TP
+.BR XATTR "(name)"
+Value of the named xattr.
+.TP
+.BR HAS_EXTATTR "(flag)"
+True if the given
+.BR lsattr (1)
+flag is set.
+Available only on Linux.
+.TP
+.BR ACL ()
+All POSIX ACL entries in
+.BR getfacl (1)
+format, comma-separated.
+Available only on Linux.
+.TP
+.BR HAS_ACL_ENTRY "(entry)"
+True if the specified ACL entry exists.
+Entry format:
+.BR type : qualifier
+(e.g.,
+.BR user:john ,
+.BR group:staff ).
+.TP
+.BR ACL_ENTRY "(entry)"
+Permissions for the specified ACL entry.
+.TP
+.BR DEFAULT_ACL ()
+All default POSIX ACL entries.
+.TP
+.BR HAS_DEFAULT_ACL_ENTRY "(entry)"
+True if the specified default ACL entry exists.
+.TP
+.BR DEFAULT_ACL_ENTRY "(entry)"
+Permissions for the specified default ACL entry.
+.TP
+.BR HAS_CAPABILITIES " / " HAS_CAPS ()
+True if the file has any Linux capabilities.
+.TP
+.BR HAS_CAPABILITY " / " HAS_CAP "(cap)"
+True if the file has the given Linux capability.
+.SS User functions
+Available only on Unix when the
+.B users
+feature is enabled.
+.TP
+.BR CURRENT_UID ()
+Current real UID.
+.TP
+.BR CURRENT_USER ()
+Name of the current real UID.
+.TP
+.BR CURRENT_GID ()
+Current primary GID.
+.TP
+.BR CURRENT_GROUP ()
+Name of the current primary GID.
+.SH FILE SIZE UNITS
+Size comparisons and the
+.B fsize
+column understand the following unit suffixes:
+.PP
+.RS
+.nf
+\fBt\fR or \fBtib\fR    tebibyte    1024^4 bytes
+\fBtb\fR          terabyte    1000^4 bytes
+\fBg\fR or \fBgib\fR    gibibyte    1024^3 bytes
+\fBgb\fR          gigabyte    1000^3 bytes
+\fBm\fR or \fBmib\fR    mebibyte    1024^2 bytes
+\fBmb\fR          megabyte    1000^2 bytes
+\fBk\fR or \fBkib\fR    kibibyte    1024 bytes
+\fBkb\fR          kilobyte    1000 bytes
+.fi
+.RE
+.SH SEARCH ROOTS
+Each search root may be followed by one or more options:
+.TP
+.BI mindepth " N"
+Minimum search depth. Depth 1 skips the root directory itself and starts at its children.
+.TP
+.BI maxdepth " N"
+Maximum search depth.
+Depth 1 searches only the root directory.
+Depth 2 also searches immediate subdirectories.
+Synonym:
+.BR depth .
+.TP
+.BR symlinks " / " sym
+Follow symbolic links. Default is not to follow.
+.TP
+.BR archives " / " arc
+Search inside archives (zip only). Default is not to search archives.
+.TP
+.BR gitignore " / " git
+Respect
+.B .gitignore
+files.
+.TP
+.BR hgignore " / " hg
+Respect
+.B .hgignore
+files.
+.TP
+.BR dockerignore " / " dock
+Respect
+.B .dockerignore
+files.
+.TP
+.BR nogitignore " / " nogit
+Disable
+.B .gitignore
+parsing.
+.TP
+.BR nohgignore " / " nohg
+Disable
+.B .hgignore
+parsing.
+.TP
+.BR nodockerignore " / " nodock
+Disable
+.B .dockerignore
+parsing.
+.TP
+.B dfs
+Depth-first traversal.
+.TP
+.B bfs
+Breadth-first traversal (default).
+.TP
+.BR regexp " / " rx
+Treat the root path as a regular expression matching against multiple directories.
+.SH OPERATORS
+.SS Comparison operators
+.TP
+.BR = " / " == " / " eq
+Equal (with glob expansion and regular expression matching for strings).
+.TP
+.BR != " / " <> " / " ne
+Not equal.
+.TP
+.BR === " / " eeq
+Exact equal (no glob or regex expansion).
+.TP
+.BR !== " / " ene
+Exact not-equal.
+.TP
+.BR > " / " gt
+Greater than.
+.TP
+.BR >= " / " gte " / " ge
+Greater than or equal.
+.TP
+.BR < " / " lt
+Less than.
+.TP
+.BR <= " / " lte " / " le
+Less than or equal.
+.TP
+.BR =~ " / " ~= " / " regexp " / " rx
+Match regular expression.
+.TP
+.BR !=~ " / " !~= " / " notrx
+Does not match regular expression.
+.TP
+.B like
+SQL LIKE pattern (
+.B %
+matches any sequence,
+.B _
+matches one character).
+.TP
+.B notlike
+Negation of
+.BR like .
+.TP
+.B between
+Range check:
+.IB column " between " val1 " and " val2
+.TP
+.B in
+Set membership:
+.IB column " in (" val1 ", " val2 ", ...)"
+or
+.IB column " in (subquery)" .
+.TP
+.B exists
+Row existence test:
+.B exists (subquery)
+.SS Arithmetic operators
+.TP
+.BR + " / " plus
+Addition.
+.TP
+.BR - " / " minus
+Subtraction.
+.TP
+.BR * " / " mul
+Multiplication.
+.TP
+.BR / " / " div
+Division.
+.TP
+.BR % " / " mod
+Modulo.
+.SS Logical operators
+.TP
+.B and
+Logical conjunction.
+.TP
+.B or
+Logical disjunction.
+.TP
+.B not
+Logical negation. May appear before an operator or a condition.
+.SH DATE AND TIME SPECIFIERS
+When the
+.B =
+or
+.B !=
+operator is used with an inexact date, it is treated as an interval:
+.PP
+.RS
+.TP
+.B 2017-05-01
+The entire day (00:00:00 to 23:59:59).
+.TP
+.B "2017-05-01 15"
+One hour (15:00:00 to 15:59:59).
+.TP
+.B "2017-05-01 15:10"
+One minute (15:10:00 to 15:10:59).
+.RE
+.PP
+Other comparison operators accept more flexible date expressions:
+.B today ,
+.B yesterday ,
+.B "last fri" ,
+.B "apr 1" ,
+.B 2017-05-01 ,
+and numeric relative offsets (e.g.,
+.B -2
+means two days ago).
+.PP
+Dates default to UK locale (DD/MM). Use
+.B \-\-us\-dates
+or
+.B us_dates = true
+in the config file to switch to US format.
+The safest representation is ISO 8601:
+.BR "YYYY-MM-DD HH:MM:SS" .
+.SH REGULAR EXPRESSIONS
+Rust-flavor regular expressions are used (see
+.BR regex (7)
+or the online documentation at https://docs.rs/regex).
+.SH SUBQUERIES
+Subqueries may be used with the
+.BR in ", " "not in" ", " exists ", and " "not exists"
+operators.
+To reference columns from an outer query in a correlated subquery, bind the search root with an alias using the
+.B as
+keyword:
+.PP
+.RS
+.EX
+fselect "name, path, size from /data as data
+    where exists (select * from /backup as backup
+    where backup.name = data.name)"
+.EE
+.RE
+.SH OUTPUT FORMATS
+Specified with the
+.B into
+keyword at the end of the query.
+.TP
+.B tabs
+Tab-separated columns (default).
+.TP
+.B lines
+Each column on a separate line.
+.TP
+.B list
+Columns separated by a NUL byte, similar to
+.B find \-print0
+(suitable for
+.BR "xargs \-0" ).
+.TP
+.B csv
+Comma-separated values.
+.TP
+.B json
+JSON array of result objects.
+.TP
+.B html
+HTML document containing a table.
+.SH CONFIGURATION FILE
+On Linux:
+.RS
+.B ~/.config/fselect/config.toml
+.RE
+.PP
+On Windows:
+.RS
+.B %APPDATA%\ejhspetersson\efselect\econfig.toml
+.RE
+.PP
+If no config file is found on the standard paths,
+.B fselect
+also looks for a config file next to the executable.
+A custom path may be supplied with
+.BR \-\-config .
+.SH INTERACTIVE MODE
+Start with
+.BR "fselect \-i" .
+In interactive mode:
+.IP \(bu
+Queries are entered directly without quoting for the shell.
+.IP \(bu
+Shell metacharacters need not be escaped.
+.IP \(bu
+Command history is available via the up and down arrow keys.
+.IP \(bu
+.B pwd
+prints the current directory;
+.B cd
+changes it.
+.IP \(bu
+.B "errors off"
+suppresses error reporting.
+.IP \(bu
+Exit with
+.BR quit ,
+.BR exit ,
+Ctrl+C, or Ctrl+D.
 .SH ENVIRONMENT
 .TP
 .B LS_COLORS
-Determines how to colorize search results, see
-.BR dircolors (1) .
+Determines how search results are colorized; see
+.BR dircolors (1).
+.TP
+.B NO_COLOR
+When set (to any value), disables all colorized output.
 .SH EXIT STATUS
-The
-.B fselect
-utility exists with status 0 as long as the provided query parses correctly.
+.TP
+.B 0
+Success.
+.TP
+.B 1
+I/O error during directory traversal or file reading.
+.TP
+.B 2
+Query parse error.
 .SH EXAMPLES
 .TP
-.RI "Find files and directories that match the pattern '" needle "':"
-$ fselect name WHERE name =~ "needle"
+Find temporary and config files, showing size and full path:
+$ fselect size, path from /home/user where name = '*.cfg' or name = '*.tmp'
 .TP
-.RI "Start a search in a given directory (" /var/log "):"
-$ fselect name FROM /var/log
+Search in a directory whose name contains spaces:
+$ fselect "name from '/home/user/dir with spaces' where size > 0"
+.TP
+Find large files (over 2 GiB):
+$ fselect size, abspath from ./tmp where size gt 2g
+.TP
+Find files within a size range:
+$ fselect name, size from ./tmp where size between 5mb and 6mb
+.TP
+Complex boolean condition:
+$ fselect "name from /tmp where (name = *.tmp and size = 0) or (name = *.cfg and size > 1000000)"
+.TP
+Find files modified today, ordered by size:
+$ fselect path, size from /home/user where modified = today order by size desc
+.TP
+Find files by regular expression:
+$ fselect name from /home/user where path =~ '.*Rust.*'
+.TP
+Aggregate: total size of downloads:
+$ fselect "MIN(size), MAX(size), AVG(size), SUM(size), COUNT(*) from /home/user/Downloads"
+.TP
+Group files by extension with count:
+$ fselect "ext, count(*) from /tmp group by ext"
+.TP
+Search with depth limit and symlink following:
+$ fselect path from /home/user depth 5 symlinks where name = '*.jpg'
+.TP
+Search respecting .gitignore:
+$ fselect size, path from /home/user/projects gitignore where name = '*.cpp'
+.TP
+Find images by dimensions:
+$ fselect path from /home/user/photos where width gte 2000 or height gte 2000
+.TP
+Find old rap MP3s:
+$ fselect duration, path from /home/user/music where genre = Rap and bitrate = 320 and mp3_year lt 2000
+.TP
+Find files with dangerous permissions:
+$ fselect mode, path from /home/user where other_write or other_exec
+.TP
+Find files not present in a backup directory:
+$ fselect "name, path from /current where name not in (select name from /backup)"
+.TP
+Output as JSON:
+$ fselect size, path from /home/user limit 5 into json
+.TP
+Pipe NUL-separated paths to grep:
+$ fselect path from /home/user into list | xargs -0 grep foobar
 .SH SEE ALSO
-.BR find (1)
-.BR fd (1)
+.BR find (1),
+.BR fd (1),
+.BR ls (1),
+.BR dircolors (1)

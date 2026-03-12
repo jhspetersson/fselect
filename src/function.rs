@@ -304,6 +304,7 @@ pub fn get_value(
             }
         }
         Function::Sqrt => match function_arg.parse::<f64>() {
+            Ok(val) if val < 0.0 => Err(format!("SQRT of a negative number: {}", val)),
             Ok(val) => Ok(Variant::from_float(val.sqrt())),
             _ => Ok(Variant::empty(VariantType::String)),
         },
@@ -318,12 +319,20 @@ pub fn get_value(
                         _ => 10.0,
                     };
 
+                    if val <= 0.0 {
+                        return Err(format!("LOG of a non-positive number: {}", val));
+                    }
+                    if base <= 0.0 || base == 1.0 {
+                        return Err(format!("LOG with invalid base: {}", base));
+                    }
+
                     Ok(Variant::from_float(val.log(base)))
                 }
                 _ => Ok(Variant::empty(VariantType::String)),
             }
         }
         Function::Ln => match function_arg.parse::<f64>() {
+            Ok(val) if val <= 0.0 => Err(format!("LN of a non-positive number: {}", val)),
             Ok(val) => Ok(Variant::from_float(val.ln())),
             _ => Ok(Variant::empty(VariantType::String)),
         }
@@ -2022,6 +2031,66 @@ mod tests {
             &Function::Substring,
             String::from("hello"),
             vec![String::from("1"), String::from("abc")],
+            None,
+            &None,
+        );
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn sqrt_negative_returns_error() {
+        let result = get_value(
+            &Function::Sqrt,
+            String::from("-1"),
+            vec![],
+            None,
+            &None,
+        );
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn ln_zero_returns_error() {
+        let result = get_value(
+            &Function::Ln,
+            String::from("0"),
+            vec![],
+            None,
+            &None,
+        );
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn ln_negative_returns_error() {
+        let result = get_value(
+            &Function::Ln,
+            String::from("-1"),
+            vec![],
+            None,
+            &None,
+        );
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn log_base_one_returns_error() {
+        let result = get_value(
+            &Function::Log,
+            String::from("100"),
+            vec![String::from("1")],
+            None,
+            &None,
+        );
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn log_negative_value_returns_error() {
+        let result = get_value(
+            &Function::Log,
+            String::from("-1"),
+            vec![String::from("10")],
             None,
             &None,
         );

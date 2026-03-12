@@ -829,9 +829,12 @@ pub fn get_value(
                 return Ok(Variant::empty(VariantType::String));
             }
 
-            let seconds = function_arg.parse::<u64>().unwrap();
-            let formatted = Duration::from_secs(seconds).to_human_time_string();
-            Ok(Variant::from_string(&formatted))
+            if let Ok(seconds) = function_arg.parse::<u64>() {
+                let formatted = Duration::from_secs(seconds).to_human_time_string();
+                return Ok(Variant::from_string(&formatted));
+            }
+
+            Ok(Variant::empty(VariantType::String))
         }
 
         // ===== Datetime functions =====
@@ -1090,11 +1093,21 @@ pub fn get_value(
             match function_arg.parse::<i64>() {
                 Ok(val) => {
                     if function_args.is_empty() {
-                        Ok(Variant::from_int(rng.random_range(0..val)))
+                        if val <= 0 {
+                            Ok(Variant::from_int(0))
+                        } else {
+                            Ok(Variant::from_int(rng.random_range(0..val)))
+                        }
                     } else {
                         let limit = function_args.first().unwrap();
                         match limit.parse::<i64>() {
-                            Ok(limit) => Ok(Variant::from_int(rng.random_range(val..limit))),
+                            Ok(limit) => {
+                                if val >= limit {
+                                    Ok(Variant::from_int(val))
+                                } else {
+                                    Ok(Variant::from_int(rng.random_range(val..limit)))
+                                }
+                            }
                             _ => Err(format!(
                                 "Could not parse limit argument of RANDOM function: {}",
                                 limit
@@ -1919,5 +1932,41 @@ mod tests {
         let result = get_aggregate_value(&Function::VarPop, &buffer, "val".to_string(), &None);
         let var: f64 = result.parse().unwrap();
         assert!((var - 25.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn format_time_panics_on_non_numeric() {
+        let result = get_value(
+            &Function::FormatTime,
+            String::from("abc"),
+            vec![],
+            None,
+            &None,
+        );
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn random_panics_on_zero_upper_bound() {
+        let result = get_value(
+            &Function::Random,
+            String::from("0"),
+            vec![],
+            None,
+            &None,
+        );
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn random_panics_on_inverted_range() {
+        let result = get_value(
+            &Function::Random,
+            String::from("5"),
+            vec![String::from("3")],
+            None,
+            &None,
+        );
+        assert!(result.is_ok());
     }
 }

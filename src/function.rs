@@ -625,7 +625,7 @@ pub fn get_value(
             let string = String::from(&function_arg);
             let substring = &function_args[0];
             let pos: i32 = match &function_args.get(1) {
-                Some(pos) => pos.parse::<i32>().unwrap() - 1,
+                Some(pos) => pos.parse::<i32>().unwrap_or(1) - 1,
                 _ => 0,
             };
             let string: String = string.chars().skip(pos as usize).collect();
@@ -645,7 +645,7 @@ pub fn get_value(
 
             let mut pos: i32 = match &function_args.is_empty() {
                 true => 0,
-                false => *&function_args[0].parse::<i32>().unwrap() - 1,
+                false => function_args[0].parse::<i32>().unwrap_or(1) - 1,
             };
 
             if pos < 0 {
@@ -654,7 +654,7 @@ pub fn get_value(
             }
 
             let len = match &function_args.get(1) {
-                Some(len) => len.parse::<usize>().unwrap(),
+                Some(len) => len.parse::<usize>().unwrap_or(0),
                 _ => 0,
             };
 
@@ -705,7 +705,7 @@ pub fn get_value(
             match function_arg.parse::<f64>() {
                 Ok(val) => {
                     let power = match function_args.first() {
-                        Some(power) => power.parse::<f64>().unwrap(),
+                        Some(power) => power.parse::<f64>().unwrap_or(0.0),
                         _ => 0.0,
                     };
 
@@ -722,7 +722,7 @@ pub fn get_value(
             match function_arg.parse::<f64>() {
                 Ok(val) => {
                     let base = match function_args.first() {
-                        Some(base) => base.parse::<f64>().unwrap(),
+                        Some(base) => base.parse::<f64>().unwrap_or(10.0),
                         _ => 10.0,
                     };
 
@@ -1964,6 +1964,66 @@ mod tests {
             &Function::Random,
             String::from("5"),
             vec![String::from("3")],
+            None,
+            &None,
+        );
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn power_panics_on_non_numeric_exponent() {
+        let result = get_value(
+            &Function::Power,
+            String::from("2"),
+            vec![String::from("abc")],
+            None,
+            &None,
+        );
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn log_panics_on_non_numeric_base() {
+        let result = get_value(
+            &Function::Log,
+            String::from("100"),
+            vec![String::from("abc")],
+            None,
+            &None,
+        );
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn locate_panics_on_non_numeric_position() {
+        let result = get_value(
+            &Function::Locate,
+            String::from("hello"),
+            vec![String::from("l"), String::from("abc")],
+            None,
+            &None,
+        );
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn substring_panics_on_non_numeric_position() {
+        let result = get_value(
+            &Function::Substring,
+            String::from("hello"),
+            vec![String::from("abc")],
+            None,
+            &None,
+        );
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn substring_panics_on_non_numeric_length() {
+        let result = get_value(
+            &Function::Substring,
+            String::from("hello"),
+            vec![String::from("1"), String::from("abc")],
             None,
             &None,
         );

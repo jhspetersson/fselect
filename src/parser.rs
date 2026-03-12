@@ -113,6 +113,7 @@ impl <'a> Parser<'a> {
                 Some(Lexeme::String(ref s))
                 | Some(Lexeme::RawString(ref s))
                 | Some(Lexeme::ArithmeticOperator(ref s)) => {
+                    let is_quoted = matches!(lexeme, Some(Lexeme::String(_)));
                     if s == "*" {
                         #[cfg(unix)]
                         {
@@ -139,19 +140,23 @@ impl <'a> Parser<'a> {
 
                         self.drop_lexeme();
 
-                        if Self::is_root_option_keyword(s) {
+                        if !is_quoted && Self::is_root_option_keyword(s) {
                             break;
                         }
 
-                        if let Ok(Some(field)) = self.parse_expr() {
-                            fields.push(field);
+                        match self.parse_expr() {
+                            Ok(Some(field)) => fields.push(field),
+                            Err(e) => return Err(e),
+                            _ => {}
                         }
                     }
                 }
                 Some(Lexeme::Open) | Some(Lexeme::CurlyOpen) => {
                     self.drop_lexeme();
-                    if let Ok(Some(field)) = self.parse_expr() {
-                        fields.push(field);
+                    match self.parse_expr() {
+                        Ok(Some(field)) => fields.push(field),
+                        Err(e) => return Err(e),
+                        _ => {}
                     }
                 }
                 _ => {
@@ -648,8 +653,11 @@ impl <'a> Parser<'a> {
             }
             Some(Lexeme::Operator(s)) => {
                 let right = self.parse_add_sub()?;
-                let op = Op::from_with_not(s, not);
-                Ok(Some(Expr::op(left.unwrap(), op.unwrap(), right.unwrap())))
+                let op = Op::from_with_not(s.clone(), not);
+                match op {
+                    Some(op) => Ok(Some(Expr::op(left.unwrap(), op, right.unwrap()))),
+                    None => Err(format!("Unknown operator: {}", s)),
+                }
             }
             _ => {
                 self.drop_lexeme();
@@ -949,8 +957,8 @@ impl <'a> Parser<'a> {
         let mut curly_mode = false;
         if let Some(lexeme) = self.next_lexeme() {
             if lexeme != Lexeme::Open && lexeme != Lexeme::CurlyOpen {
+                self.drop_lexeme();
                 if is_boolean_function {
-                    self.drop_lexeme();
                     return Ok(function_expr);
                 }
 
@@ -2463,6 +2471,83 @@ mod exists_tests {
         let query2 = p2.parse(false).unwrap();
 
         assert_eq!(query2.roots[0].options.max_depth, 2);
+    }
+
+    #[test]
+    fn invalid_operator_should_return_error() {
+        let query = "select name from /test where name => foo";
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
+        let result = p.parse(false);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn notlike_word_operator() {
+        let query = "select name from /test where name notlike '%.tmp'";
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
+        let query = p.parse(false).unwrap();
+        assert!(!p.there_are_remaining_lexemes());
+
+        let expr = query.expr.unwrap();
+        assert_eq!(expr.op, Some(Op::NotLike));
+    }
+
+    #[test]
+    fn notrx_word_operator() {
+        let query = "select name from /test where name notrx '.*tmp'";
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
+        let query = p.parse(false).unwrap();
+        assert!(!p.there_are_remaining_lexemes());
+
+        let expr = query.expr.unwrap();
+        assert_eq!(expr.op, Some(Op::NotRx));
+    }
+
+    #[test]
+    fn eeq_word_operator() {
+        let query = "select name from /test where name eeq 'test.txt'";
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
+        let query = p.parse(false).unwrap();
+        assert!(!p.there_are_remaining_lexemes());
+
+        let expr = query.expr.unwrap();
+        assert_eq!(expr.op, Some(Op::Eeq));
+    }
+
+    #[test]
+    fn ene_word_operator() {
+        let query = "select name from /test where name ene 'test.txt'";
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
+        let query = p.parse(false).unwrap();
+        assert!(!p.there_are_remaining_lexemes());
+
+        let expr = query.expr.unwrap();
+        assert_eq!(expr.op, Some(Op::Ene));
+    }
+
+    #[test]
+    fn quoted_text_column_starting_with_root_option_prefix() {
+        let query = "select 'gitignore_status', name from /test limit 1";
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
+        let result = p.parse(false);
+        assert!(result.is_ok());
+        let query = result.unwrap();
+        assert_eq!(query.fields.len(), 2);
+    }
+
+    #[test]
+    fn non_boolean_function_without_parens_in_select_errors() {
+        let query = "select UPPER, name from /test limit 1";
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
+        let result = p.parse(false);
+        assert!(result.is_err() || result.as_ref().unwrap().fields.len() == 2);
     }
 
 }

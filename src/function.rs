@@ -625,7 +625,10 @@ pub fn get_value(
             let string = String::from(&function_arg);
             let substring = &function_args[0];
             let pos: i32 = match &function_args.get(1) {
-                Some(pos) => pos.parse::<i32>().unwrap_or(1) - 1,
+                Some(pos) => match pos.parse::<i32>() {
+                    Ok(p) => p - 1,
+                    Err(_) => return Err(format!("Could not parse position argument of LOCATE function: {}", pos)),
+                },
                 _ => 0,
             };
             let string: String = string.chars().skip(pos as usize).collect();
@@ -645,7 +648,10 @@ pub fn get_value(
 
             let mut pos: i32 = match &function_args.is_empty() {
                 true => 0,
-                false => function_args[0].parse::<i32>().unwrap_or(1) - 1,
+                false => match function_args[0].parse::<i32>() {
+                    Ok(p) => p - 1,
+                    Err(_) => return Err(format!("Could not parse position argument of SUBSTRING function: {}", function_args[0])),
+                },
             };
 
             if pos < 0 {
@@ -654,7 +660,10 @@ pub fn get_value(
             }
 
             let len = match &function_args.get(1) {
-                Some(len) => len.parse::<usize>().unwrap_or(0),
+                Some(len) => match len.parse::<usize>() {
+                    Ok(l) => l,
+                    Err(_) => return Err(format!("Could not parse length argument of SUBSTRING function: {}", len)),
+                },
                 _ => 0,
             };
 
@@ -705,7 +714,10 @@ pub fn get_value(
             match function_arg.parse::<f64>() {
                 Ok(val) => {
                     let power = match function_args.first() {
-                        Some(power) => power.parse::<f64>().unwrap_or(0.0),
+                        Some(power) => match power.parse::<f64>() {
+                            Ok(p) => p,
+                            Err(_) => return Err(format!("Could not parse exponent argument of POWER function: {}", power)),
+                        },
                         _ => 0.0,
                     };
 
@@ -722,7 +734,10 @@ pub fn get_value(
             match function_arg.parse::<f64>() {
                 Ok(val) => {
                     let base = match function_args.first() {
-                        Some(base) => base.parse::<f64>().unwrap_or(10.0),
+                        Some(base) => match base.parse::<f64>() {
+                            Ok(b) => b,
+                            Err(_) => return Err(format!("Could not parse base argument of LOG function: {}", base)),
+                        },
                         _ => 10.0,
                     };
 
@@ -1971,7 +1986,7 @@ mod tests {
     }
 
     #[test]
-    fn power_panics_on_non_numeric_exponent() {
+    fn power_errors_on_non_numeric_exponent() {
         let result = get_value(
             &Function::Power,
             String::from("2"),
@@ -1979,11 +1994,11 @@ mod tests {
             None,
             &None,
         );
-        assert!(result.is_ok());
+        assert!(result.is_err());
     }
 
     #[test]
-    fn log_panics_on_non_numeric_base() {
+    fn log_errors_on_non_numeric_base() {
         let result = get_value(
             &Function::Log,
             String::from("100"),
@@ -1991,11 +2006,11 @@ mod tests {
             None,
             &None,
         );
-        assert!(result.is_ok());
+        assert!(result.is_err());
     }
 
     #[test]
-    fn locate_panics_on_non_numeric_position() {
+    fn locate_errors_on_non_numeric_position() {
         let result = get_value(
             &Function::Locate,
             String::from("hello"),
@@ -2003,11 +2018,11 @@ mod tests {
             None,
             &None,
         );
-        assert!(result.is_ok());
+        assert!(result.is_err());
     }
 
     #[test]
-    fn substring_panics_on_non_numeric_position() {
+    fn substring_errors_on_non_numeric_position() {
         let result = get_value(
             &Function::Substring,
             String::from("hello"),
@@ -2015,11 +2030,11 @@ mod tests {
             None,
             &None,
         );
-        assert!(result.is_ok());
+        assert!(result.is_err());
     }
 
     #[test]
-    fn substring_panics_on_non_numeric_length() {
+    fn substring_errors_on_non_numeric_length() {
         let result = get_value(
             &Function::Substring,
             String::from("hello"),
@@ -2027,6 +2042,6 @@ mod tests {
             None,
             &None,
         );
-        assert!(result.is_ok());
+        assert!(result.is_err());
     }
 }

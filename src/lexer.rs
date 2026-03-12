@@ -25,6 +25,7 @@ pub enum Lexeme {
     And,
     Or,
     Not,
+    Group,
     Order,
     By,
     DescendingOrder,
@@ -59,6 +60,7 @@ struct LexerState {
     after_value_start: bool,
     after_not: bool,
     after_arithmetic: bool,
+    in_group_by: bool,
     in_order_by: bool,
     in_value_set: bool,
     roots_finished: bool,
@@ -77,6 +79,7 @@ impl LexerState {
             after_value_start: false,
             after_not: false,
             after_arithmetic: false,
+            in_group_by: false,
             in_order_by: false,
             in_value_set: false,
             roots_finished: false,
@@ -292,20 +295,29 @@ impl Lexer {
                 "from" if !self.state.after_operator && !self.state.after_logical && !self.state.after_not && !search_root_ctx => {
                     self.state.before_from = false;
                     self.state.after_where = false;
+                    self.state.in_group_by = false;
                     self.state.in_order_by = false;
                     Some(Lexeme::From)
                 }
                 "where" if !self.state.after_operator && !self.state.after_logical && !self.state.after_not && !search_root_ctx => {
                     self.state.before_from = false;
                     self.state.after_where = true;
+                    self.state.in_group_by = false;
                     self.state.in_order_by = false;
                     Some(Lexeme::Where)
                 }
                 "or" if self.state.after_where && !self.state.after_operator && !self.state.after_logical && !self.state.after_not => Some(Lexeme::Or),
                 "and" if self.state.after_where && !self.state.after_operator && !self.state.after_logical && !self.state.after_not => Some(Lexeme::And),
                 "not" if self.state.after_where && !self.state.after_operator && !self.state.after_value_start => Some(Lexeme::Not),
+                "group" if !self.state.after_operator && !self.state.after_logical && !self.state.after_not && !search_root_ctx => {
+                    self.state.after_where = false;
+                    self.state.in_group_by = true;
+                    self.state.in_order_by = false;
+                    Some(Lexeme::Group)
+                }
                 "order" if !self.state.after_operator && !self.state.after_logical && !self.state.after_not && !search_root_ctx => {
                     self.state.after_where = false;
+                    self.state.in_group_by = false;
                     self.state.in_order_by = true;
                     Some(Lexeme::Order)
                 }
@@ -314,16 +326,19 @@ impl Lexer {
                 "desc" if !self.state.after_operator && !self.state.before_from && !self.state.after_where && !self.state.after_logical && !self.state.after_not && !search_root_ctx && self.state.in_order_by => Some(Lexeme::DescendingOrder),
                 "limit" if !self.state.after_operator && !self.state.after_logical && !self.state.after_not && !search_root_ctx => {
                     self.state.after_where = false;
+                    self.state.in_group_by = false;
                     self.state.in_order_by = false;
                     Some(Lexeme::Limit)
                 }
                 "offset" if !self.state.after_operator && !self.state.after_logical && !self.state.after_not && !search_root_ctx => {
                     self.state.after_where = false;
+                    self.state.in_group_by = false;
                     self.state.in_order_by = false;
                     Some(Lexeme::Offset)
                 }
                 "into" if !self.state.after_operator && !self.state.after_logical && !self.state.after_not && !search_root_ctx => {
                     self.state.after_where = false;
+                    self.state.in_group_by = false;
                     self.state.in_order_by = false;
                     Some(Lexeme::Into)
                 }
@@ -331,7 +346,7 @@ impl Lexer {
                 "eq" | "ne" | "gt" | "lt" | "ge" | "le" | "gte" | "lte" | "eeq" | "ene"
                 | "regexp" | "rx" | "like" | "notlike" | "notrx"
                 | "between" | "in" if self.state.after_where && !self.state.after_operator && !self.state.after_logical => Some(Lexeme::Operator(s.to_lowercase())),
-                "mul" | "div" | "mod" | "plus" | "minus" if (self.state.before_from || self.state.after_where) && !self.state.after_operator && !self.state.after_logical && !self.state.after_not => Some(Lexeme::ArithmeticOperator(s)),
+                "mul" | "div" | "mod" | "plus" | "minus" if (self.state.before_from || self.state.after_where || self.state.in_group_by || self.state.in_order_by) && !self.state.after_operator && !self.state.after_logical && !self.state.after_not => Some(Lexeme::ArithmeticOperator(s)),
                 _ => Some(Lexeme::RawString(s)),
             },
             _ => None,
@@ -339,7 +354,7 @@ impl Lexer {
 
         self.state.first_lexeme = false;
         self.state.roots_finished = self.state.roots_finished
-                || matches!(lexeme, Some(Lexeme::Where) | Some(Lexeme::Order) | Some(Lexeme::Limit) | Some(Lexeme::Offset) | Some(Lexeme::Into));
+                || matches!(lexeme, Some(Lexeme::Where) | Some(Lexeme::Group) | Some(Lexeme::Order) | Some(Lexeme::Limit) | Some(Lexeme::Offset) | Some(Lexeme::Into));
         self.state.possible_search_root = matches!(lexeme, Some(Lexeme::From))
                 || (matches!(lexeme, Some(Lexeme::Comma)) && !self.state.before_from && !self.state.roots_finished);
         self.state.in_value_set = matches!(lexeme, Some(Lexeme::CurlyOpen))
@@ -356,10 +371,11 @@ impl Lexer {
     }
 
     fn is_arithmetic_op_char(&self, c: char) -> bool {
+        let in_expr_context = self.state.before_from || self.state.after_where || self.state.in_group_by || self.state.in_order_by;
         match c {
-            '+' | '-' => (self.state.before_from || self.state.after_where) && !self.state.after_operator,
+            '+' | '-' => in_expr_context && !self.state.after_operator,
             '*' | '/' | '%' => {
-                (self.state.before_from || self.state.after_where) && !self.state.after_open && !self.state.after_operator
+                in_expr_context && !self.state.after_open && !self.state.after_operator
             }
             _ => false,
         }
@@ -1263,7 +1279,7 @@ mod tests {
             lexer.next_lexeme(),
             Some(Lexeme::RawString(String::from("/test")))
         );
-        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString("group".to_owned())));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Group));
         assert_eq!(lexer.next_lexeme(), Some(Lexeme::By));
         assert_eq!(
             lexer.next_lexeme(),

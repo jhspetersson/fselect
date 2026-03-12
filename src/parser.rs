@@ -1002,10 +1002,12 @@ impl <'a> Parser<'a> {
                     loop {
                         match self.next_lexeme() {
                             Some(Lexeme::Comma) => {}
-                            Some(Lexeme::RawString(_)) => {
+                            Some(Lexeme::RawString(_)) | Some(Lexeme::String(_)) => {
                                 self.drop_lexeme();
-                                let group_field = self.parse_expr().unwrap().unwrap();
-                                group_by_fields.push(group_field);
+                                match self.parse_expr()? {
+                                    Some(group_field) => group_by_fields.push(group_field),
+                                    None => break,
+                                }
                             }
                             _ => {
                                 self.drop_lexeme();
@@ -1041,11 +1043,24 @@ impl <'a> Parser<'a> {
                                 Ok(_) => return Err(String::from("Order by field index is out of range")),
                                 _ => {
                                     self.drop_lexeme();
-                                    self.parse_expr().unwrap().unwrap()
+                                    match self.parse_expr()? {
+                                        Some(expr) => expr,
+                                        None => break,
+                                    }
                                 }
                             };
                             order_by_fields.push(actual_field);
                             order_by_directions.push(true);
+                        }
+                        Some(Lexeme::String(_)) => {
+                            self.drop_lexeme();
+                            match self.parse_expr()? {
+                                Some(expr) => {
+                                    order_by_fields.push(expr);
+                                    order_by_directions.push(true);
+                                }
+                                None => break,
+                            }
                         }
                         Some(Lexeme::DescendingOrder) => {
                             if let Some(last) = order_by_directions.last_mut() {
@@ -1996,6 +2011,76 @@ mod tests {
 
         assert_eq!(query.limit, 5);
         assert_eq!(query.offset, 3);
+    }
+
+    #[test]
+    fn group_by_quoted_field() {
+        let query = "select count(*), mime from /test group by 'mime'";
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
+        let query = p.parse(false).unwrap();
+        assert!(!p.there_are_remaining_lexemes());
+
+        assert_eq!(query.grouping_fields, vec![Expr::field(Field::Mime)]);
+    }
+
+    #[test]
+    fn order_by_quoted_field() {
+        let query = "select name, size from /test order by 'size'";
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
+        let query = p.parse(false).unwrap();
+        assert!(!p.there_are_remaining_lexemes());
+
+        assert_eq!(query.ordering_fields, vec![Expr::field(Field::Size)]);
+    }
+
+    #[test]
+    fn group_by_quoted_same_as_unquoted() {
+        let query1 = "select count(*), mime from /test group by mime";
+        let mut lexer1 = Lexer::new(vec![query1.to_string()]);
+        let mut p1 = Parser::new(&mut lexer1);
+        let q1 = p1.parse(false).unwrap();
+
+        let query2 = "select count(*), mime from /test group by 'mime'";
+        let mut lexer2 = Lexer::new(vec![query2.to_string()]);
+        let mut p2 = Parser::new(&mut lexer2);
+        let q2 = p2.parse(false).unwrap();
+
+        assert_eq!(q1.grouping_fields, q2.grouping_fields);
+    }
+
+    #[test]
+    fn order_by_quoted_same_as_unquoted() {
+        let query1 = "select name, size from /test order by size";
+        let mut lexer1 = Lexer::new(vec![query1.to_string()]);
+        let mut p1 = Parser::new(&mut lexer1);
+        let q1 = p1.parse(false).unwrap();
+
+        let query2 = "select name, size from /test order by 'size'";
+        let mut lexer2 = Lexer::new(vec![query2.to_string()]);
+        let mut p2 = Parser::new(&mut lexer2);
+        let q2 = p2.parse(false).unwrap();
+
+        assert_eq!(q1.ordering_fields, q2.ordering_fields);
+    }
+
+    #[test]
+    fn order_by_non_boolean_function_without_parens_should_not_panic() {
+        let query = "select name, size from /test order by upper desc";
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
+        let result = p.parse(false);
+        assert!(result.is_err() || !result.unwrap().ordering_fields.is_empty());
+    }
+
+    #[test]
+    fn group_by_non_boolean_function_without_parens_should_not_panic() {
+        let query = "select name, mime from /test group by upper, mime";
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
+        let result = p.parse(false);
+        assert!(result.is_err() || !result.unwrap().grouping_fields.is_empty());
     }
 }
 

@@ -583,11 +583,24 @@ pub fn get_value(
         Function::Lower => Ok(Variant::from_string(&function_arg.to_lowercase())),
         Function::Upper => Ok(Variant::from_string(&function_arg.to_uppercase())),
         Function::InitCap => {
-            let result = function_arg
-                .split_whitespace()
-                .map(|s| capitalize(&s.to_lowercase()))
-                .collect::<Vec<_>>()
-                .join(" ");
+            let mut result = String::with_capacity(function_arg.len());
+            let mut prev_whitespace = true;
+            for c in function_arg.chars() {
+                if c.is_whitespace() {
+                    result.push(c);
+                    prev_whitespace = true;
+                } else if prev_whitespace {
+                    for uc in c.to_uppercase() {
+                        result.push(uc);
+                    }
+                    prev_whitespace = false;
+                } else {
+                    for lc in c.to_lowercase() {
+                        result.push(lc);
+                    }
+                    prev_whitespace = false;
+                }
+            }
             Ok(Variant::from_string(&result))
         }
         Function::Length => {
@@ -615,11 +628,14 @@ pub fn get_value(
                 Some(pos) => pos.parse::<i32>().unwrap() - 1,
                 _ => 0,
             };
-            let string = string.chars().skip(pos as usize).collect::<String>();
+            let string: String = string.chars().skip(pos as usize).collect();
 
             let result = string
                 .find(substring)
-                .map(|index| index as i64 + pos as i64 + 1)
+                .map(|byte_index| {
+                    let char_index = string[..byte_index].chars().count();
+                    char_index as i64 + pos as i64 + 1
+                })
                 .unwrap_or(0);
 
             Ok(Variant::from_int(result))
@@ -1221,16 +1237,16 @@ fn get_mean(raw_output_buffer: &Vec<HashMap<String, String>>, buffer_key: &Strin
     let sum = get_buffer_sum(raw_output_buffer, buffer_key);
     let size = raw_output_buffer.len();
 
-    (sum / size) as f64
+    sum as f64 / size as f64
 }
 
 /// Get the sum of all values in the buffer, based on the buffer key.
-/// If the value can't be parsed as usize, it will be ignored.
-fn get_buffer_sum(raw_output_buffer: &Vec<HashMap<String, String>>, buffer_key: &String) -> usize {
-    let mut sum = 0;
+/// If the value can't be parsed as i64, it will be ignored.
+fn get_buffer_sum(raw_output_buffer: &Vec<HashMap<String, String>>, buffer_key: &String) -> i64 {
+    let mut sum: i64 = 0;
     for value in raw_output_buffer {
         if let Some(value) = value.get(buffer_key) {
-            if let Ok(value) = value.parse::<usize>() {
+            if let Ok(value) = value.parse::<i64>() {
                 sum += value;
             }
         }
@@ -1793,5 +1809,63 @@ mod tests {
 
         let result = get_value(&function, function_arg, function_args, entry, &file_info);
         assert_eq!(result.unwrap().to_string(), "hello");
+    }
+
+    fn make_buffer(key: &str, values: &[&str]) -> Vec<HashMap<String, String>> {
+        values.iter().map(|v| {
+            let mut m = HashMap::new();
+            m.insert(key.to_string(), v.to_string());
+            m
+        }).collect()
+    }
+
+    #[test]
+    fn avg_truncates_to_integer() {
+        let buffer = make_buffer("size", &["3", "4"]);
+        let result = get_aggregate_value(&Function::Avg, &buffer, "size".to_string(), &None);
+        assert_eq!(result, "3.5");
+    }
+
+    #[test]
+    fn sum_ignores_negative_values() {
+        let buffer = make_buffer("val", &["-5", "10"]);
+        let result = get_aggregate_value(&Function::Sum, &buffer, "val".to_string(), &None);
+        assert_eq!(result, "5");
+    }
+
+    #[test]
+    fn locate_wrong_position_for_multibyte() {
+        let result = get_value(
+            &Function::Locate,
+            String::from("aéb"),
+            vec![String::from("b")],
+            None,
+            &None,
+        ).unwrap();
+        assert_eq!(result.to_int(), 3);
+    }
+
+    #[test]
+    fn initcap_collapses_multiple_spaces() {
+        let result = get_value(
+            &Function::InitCap,
+            String::from("hello  world"),
+            vec![],
+            None,
+            &None,
+        ).unwrap();
+        assert_eq!(result.to_string(), "Hello  World");
+    }
+
+    #[test]
+    fn initcap_destroys_tab_separator() {
+        let result = get_value(
+            &Function::InitCap,
+            String::from("hello\tworld"),
+            vec![],
+            None,
+            &None,
+        ).unwrap();
+        assert_eq!(result.to_string(), "Hello\tWorld");
     }
 }

@@ -394,6 +394,9 @@ impl <'a> Parser<'a> {
                     }
                     _ => {
                         self.drop_lexeme();
+                        if mode != RootParsingMode::Unknown && mode != RootParsingMode::Options {
+                            return Err(String::from("Error parsing root options"));
+                        }
                         break;
                     }
                 },
@@ -927,6 +930,7 @@ impl <'a> Parser<'a> {
                 lexeme = self.next_lexeme();
             } else {
                 self.drop_lexeme();
+                return Err("Error parsing expression, expecting string".to_string());
             }
         }
 
@@ -2634,6 +2638,40 @@ mod exists_tests {
         let q2 = p2.parse(false).unwrap();
 
         assert_eq!(q1.expr, q2.expr);
+    }
+
+    #[test]
+    fn depth_without_value_followed_by_keyword_should_error() {
+        let query = "select name from /test depth where size > 100";
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
+        let result = p.parse(false);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn mindepth_without_value_followed_by_keyword_should_error() {
+        let query = "select name from /test mindepth where size > 100";
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
+        let result = p.parse(false);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn word_arithmetic_operator_does_not_double_drop() {
+        let query = "select name from /test where size > mul";
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
+        let result = p.parse(false);
+        assert!(result.is_ok());
+        let query = result.unwrap();
+        assert!(!p.there_are_remaining_lexemes());
+
+        let expr = query.expr.unwrap();
+        assert_eq!(expr.op, Some(Op::Gt));
+        let right = expr.right.unwrap();
+        assert_eq!(right.val, Some(String::from("mul")));
     }
 
     #[test]

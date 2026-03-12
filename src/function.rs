@@ -1132,20 +1132,20 @@ pub fn get_aggregate_value(
         Function::Min => {
             let min = raw_output_buffer
                 .iter()
-                .filter_map(|item| item.get(&buffer_key)) // Get the value from the buffer
-                .filter_map(|value| value.parse::<i64>().ok()) // Parse the value and filter out errors
-                .min()
-                .unwrap_or(0); // If no items were found
+                .filter_map(|item| item.get(&buffer_key))
+                .filter_map(|value| value.parse::<f64>().ok())
+                .reduce(f64::min)
+                .unwrap_or(0.0);
 
             min.to_string()
         }
         Function::Max => {
             let max = raw_output_buffer
                 .iter()
-                .filter_map(|item| item.get(&buffer_key)) // Get the values from the buffer
-                .filter_map(|value| value.parse::<i64>().ok()) // Parse the value and filter out errors
-                .max()
-                .unwrap_or(0); // If no items were found
+                .filter_map(|item| item.get(&buffer_key))
+                .filter_map(|value| value.parse::<f64>().ok())
+                .reduce(f64::max)
+                .unwrap_or(0.0);
 
             max.to_string()
         }
@@ -1163,7 +1163,7 @@ pub fn get_aggregate_value(
                 return String::new();
             }
 
-            let n = raw_output_buffer.len();
+            let n = get_parseable_count(raw_output_buffer, &buffer_key);
             let variance = get_variance(raw_output_buffer, &buffer_key, n);
             let result = variance.sqrt();
 
@@ -1174,8 +1174,8 @@ pub fn get_aggregate_value(
                 return String::new();
             }
 
-            let size = raw_output_buffer.len();
-            let n = if size == 1 { 1 } else { size - 1 };
+            let size = get_parseable_count(raw_output_buffer, &buffer_key);
+            let n = if size <= 1 { 1 } else { size - 1 };
             let variance = get_variance(raw_output_buffer, &buffer_key, n);
             let result = variance.sqrt();
 
@@ -1186,7 +1186,7 @@ pub fn get_aggregate_value(
                 return String::new();
             }
 
-            let n = raw_output_buffer.len();
+            let n = get_parseable_count(raw_output_buffer, &buffer_key);
             let variance = get_variance(raw_output_buffer, &buffer_key, n);
 
             variance.to_string()
@@ -1196,8 +1196,8 @@ pub fn get_aggregate_value(
                 return String::new();
             }
 
-            let size = raw_output_buffer.len();
-            let n = if size == 1 { 1 } else { size - 1 };
+            let size = get_parseable_count(raw_output_buffer, &buffer_key);
+            let n = if size <= 1 { 1 } else { size - 1 };
             let variance = get_variance(raw_output_buffer, &buffer_key, n);
 
             variance.to_string()
@@ -1210,8 +1210,15 @@ pub fn get_aggregate_value(
     }
 }
 
+fn get_parseable_count(raw_output_buffer: &Vec<HashMap<String, String>>, buffer_key: &String) -> usize {
+    raw_output_buffer
+        .iter()
+        .filter(|item| item.get(buffer_key).and_then(|v| v.parse::<f64>().ok()).is_some())
+        .count()
+}
+
 /// Get the variance of all values in the buffer, based on the buffer key.
-/// If the value can't be parsed as usize, it will be ignored.
+/// If the value can't be parsed as f64, it will be ignored.
 fn get_variance(
     raw_output_buffer: &Vec<HashMap<String, String>>,
     buffer_key: &String,
@@ -1219,34 +1226,37 @@ fn get_variance(
 ) -> f64 {
     let avg = get_mean(raw_output_buffer, buffer_key);
 
-    let mut result: f64 = 0.0;
+    let mut sum_sq: f64 = 0.0;
     for value in raw_output_buffer {
         if let Some(value) = value.get(buffer_key) {
             if let Ok(value) = value.parse::<f64>() {
-                result += (avg - value).powi(2) / n as f64;
+                sum_sq += (avg - value).powi(2);
             }
         }
     }
 
-    result
+    if n == 0 { 0.0 } else { sum_sq / n as f64 }
 }
 
 /// Get the mean of all values in the buffer, based on the buffer key.
 /// If the value can't be parsed as usize, it will be ignored.
 fn get_mean(raw_output_buffer: &Vec<HashMap<String, String>>, buffer_key: &String) -> f64 {
     let sum = get_buffer_sum(raw_output_buffer, buffer_key);
-    let size = raw_output_buffer.len();
+    let count = raw_output_buffer
+        .iter()
+        .filter(|item| item.get(buffer_key).and_then(|v| v.parse::<f64>().ok()).is_some())
+        .count();
 
-    sum as f64 / size as f64
+    if count == 0 { 0.0 } else { sum / count as f64 }
 }
 
 /// Get the sum of all values in the buffer, based on the buffer key.
-/// If the value can't be parsed as i64, it will be ignored.
-fn get_buffer_sum(raw_output_buffer: &Vec<HashMap<String, String>>, buffer_key: &String) -> i64 {
-    let mut sum: i64 = 0;
+/// If the value can't be parsed as f64, it will be ignored.
+fn get_buffer_sum(raw_output_buffer: &Vec<HashMap<String, String>>, buffer_key: &String) -> f64 {
+    let mut sum: f64 = 0.0;
     for value in raw_output_buffer {
         if let Some(value) = value.get(buffer_key) {
-            if let Ok(value) = value.parse::<i64>() {
+            if let Ok(value) = value.parse::<f64>() {
                 sum += value;
             }
         }
@@ -1867,5 +1877,47 @@ mod tests {
             &None,
         ).unwrap();
         assert_eq!(result.to_string(), "Hello\tWorld");
+    }
+
+    #[test]
+    fn min_drops_fractional_values() {
+        let buffer = make_buffer("val", &["1.5", "2.5"]);
+        let result = get_aggregate_value(&Function::Min, &buffer, "val".to_string(), &None);
+        assert_eq!(result, "1.5");
+    }
+
+    #[test]
+    fn max_drops_fractional_values() {
+        let buffer = make_buffer("val", &["1.5", "2.5"]);
+        let result = get_aggregate_value(&Function::Max, &buffer, "val".to_string(), &None);
+        assert_eq!(result, "2.5");
+    }
+
+    #[test]
+    fn sum_drops_fractional_values() {
+        let buffer = make_buffer("val", &["1.5", "2.5"]);
+        let result = get_aggregate_value(&Function::Sum, &buffer, "val".to_string(), &None);
+        assert_eq!(result, "4");
+    }
+
+    #[test]
+    fn avg_wrong_with_unparseable_entries() {
+        let mut buffer = make_buffer("val", &["10", "20"]);
+        let mut extra = HashMap::new();
+        extra.insert("other_key".to_string(), "999".to_string());
+        buffer.push(extra);
+        let result = get_aggregate_value(&Function::Avg, &buffer, "val".to_string(), &None);
+        assert_eq!(result, "15");
+    }
+
+    #[test]
+    fn variance_wrong_with_unparseable_entries() {
+        let mut buffer = make_buffer("val", &["10", "20"]);
+        let mut extra = HashMap::new();
+        extra.insert("other_key".to_string(), "999".to_string());
+        buffer.push(extra);
+        let result = get_aggregate_value(&Function::VarPop, &buffer, "val".to_string(), &None);
+        let var: f64 = result.parse().unwrap();
+        assert!((var - 25.0).abs() < 0.001);
     }
 }

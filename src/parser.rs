@@ -758,7 +758,6 @@ impl <'a> Parser<'a> {
     fn parse_mul_div(&mut self) -> Result<Option<Expr>, String> {
         let mut left = self.parse_paren()?;
 
-        let mut op = None;
         loop {
             let lexeme = self.next_lexeme();
             if let Some(Lexeme::ArithmeticOperator(s)) = lexeme {
@@ -768,9 +767,6 @@ impl <'a> Parser<'a> {
                     | Some(ArithmeticOp::Divide)
                     | Some(ArithmeticOp::Modulo) => {
                         let expr = self.parse_paren()?;
-                        if op.is_none() {
-                            op = new_op.clone();
-                        }
 
                         left = match left {
                             Some(left) => {

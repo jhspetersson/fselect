@@ -199,6 +199,9 @@ pub fn get_value(
         }
         Function::ConcatWs => Ok(Variant::from_string(&function_args.join(&function_arg))),
         Function::Locate => {
+            if function_args.is_empty() {
+                return Err("LOCATE requires a search substring argument".to_string());
+            }
             let string = String::from(&function_arg);
             let substring = &function_args[0];
             let pos: i32 = match &function_args.get(1) {
@@ -252,6 +255,9 @@ pub fn get_value(
             Ok(Variant::from_string(&result))
         }
         Function::Replace => {
+            if function_args.len() < 2 {
+                return Err("REPLACE requires two arguments: search string and replacement string".to_string());
+            }
             let source = function_arg;
             let from = &function_args[0];
             let to = &function_args[1];
@@ -298,7 +304,11 @@ pub fn get_value(
                         _ => 0.0,
                     };
 
-                    Ok(Variant::from_float(val.powf(power)))
+                    let result = val.powf(power);
+                    if result.is_nan() || result.is_infinite() {
+                        return Err(format!("POWER({}, {}) produces a non-finite result", val, power));
+                    }
+                    Ok(Variant::from_float(result))
                 }
                 _ => Ok(Variant::empty(VariantType::String)),
             }
@@ -2091,6 +2101,66 @@ mod tests {
             &Function::Log,
             String::from("-1"),
             vec![String::from("10")],
+            None,
+            &None,
+        );
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn power_negative_base_fractional_exp_returns_error() {
+        let result = get_value(
+            &Function::Power,
+            String::from("-2"),
+            vec![String::from("0.5")],
+            None,
+            &None,
+        );
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn power_zero_base_negative_exp_returns_error() {
+        let result = get_value(
+            &Function::Power,
+            String::from("0"),
+            vec![String::from("-1")],
+            None,
+            &None,
+        );
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn locate_no_search_arg_returns_error() {
+        let result = get_value(
+            &Function::Locate,
+            String::from("hello"),
+            vec![],
+            None,
+            &None,
+        );
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn replace_missing_args_returns_error() {
+        let result = get_value(
+            &Function::Replace,
+            String::from("hello"),
+            vec![],
+            None,
+            &None,
+        );
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn replace_missing_to_arg_returns_error() {
+        let result = get_value(
+            &Function::Replace,
+            String::from("hello"),
+            vec![String::from("l")],
             None,
             &None,
         );

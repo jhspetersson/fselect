@@ -432,12 +432,26 @@ pub fn str_to_bool(val: &str) -> Option<bool> {
     }
 }
 
-pub fn capitalize(s: &str) -> String {
-    let mut c = s.chars();
-    match c.next() {
-        Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
-        None => String::new(),
+pub fn capitalize_initials(s: &str) -> String {
+    let mut result = String::with_capacity(s.len());
+    let mut prev_whitespace = true;
+    for c in s.chars() {
+        if c.is_whitespace() {
+            result.push(c);
+            prev_whitespace = true;
+        } else if prev_whitespace {
+            for uc in c.to_uppercase() {
+                result.push(uc);
+            }
+            prev_whitespace = false;
+        } else {
+            for lc in c.to_lowercase() {
+                result.push(lc);
+            }
+            prev_whitespace = false;
+        }
     }
+    result
 }
 
 pub fn parse_unix_filename(s: &str) -> &str {
@@ -875,9 +889,9 @@ mod tests {
 
     #[test]
     fn test_capitalize() {
-        assert_eq!(capitalize(""), String::new());
-        assert_eq!(capitalize("test"), String::from("Test"));
-        assert_eq!(capitalize("some test"), String::from("Some test"));
-        assert_eq!(capitalize("превед медвед"), String::from("Превед медвед"));
+        assert_eq!(capitalize_initials(""), String::new());
+        assert_eq!(capitalize_initials("test"), String::from("Test"));
+        assert_eq!(capitalize_initials("some test"), String::from("Some Test"));
+        assert_eq!(capitalize_initials("превед медвед"), String::from("Превед Медвед"));
     }
 }

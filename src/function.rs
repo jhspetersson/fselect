@@ -20,7 +20,7 @@ use serde::ser::{Serialize, Serializer};
 use xattr::FileExt;
 
 use crate::fileinfo::FileInfo;
-use crate::util::{capitalize, format_date, format_time, format_datetime, parse_datetime};
+use crate::util::{capitalize_initials, format_date, format_time, format_datetime, parse_datetime};
 use crate::util::variant::{Variant, VariantType};
 
 macro_rules! functions {
@@ -154,412 +154,6 @@ macro_rules! functions {
     }
 }
 
-functions! {
-    #[group_order = ["String", "Japanese string", "Numeric", "Datetime", "Aggregate", "Xattr", "Other"]]
-    #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Hash)]
-    pub enum Function {
-        #[text = ["lower", "lowercase", "lcase"]]
-        @group = "String"
-        @description = "Convert the value to lowercase"
-        Lower,
-        
-        #[text = ["upper", "uppercase", "ucase"]]
-        @group = "String"
-        @description = "Convert the value to UPPERCASE"
-        Upper,
-        
-        #[text = ["initcap"]]
-        @group = "String"
-        @description = "Capitalize the first letter of each word (Title Case)"
-        InitCap,
-        
-        #[text = ["length", "len"], data_type = "numeric"]
-        @group = "String"
-        @description = "Get the length of the string"
-        Length,
-        
-        #[text = ["to_base64", "base64"]]
-        @group = "String"
-        @description = "Convert the value to base64"
-        ToBase64,
-        
-        #[text = ["from_base64"]]
-        @group = "String"
-        @description = "Read the value as base64"
-        FromBase64,
-    
-        #[text = ["concat"]]
-        @group = "String"
-        @description = "Concatenate the value with the arguments"
-        Concat,
-        
-        #[text = ["concat_ws"]]
-        @group = "String"
-        @description = "Concatenate the arguments, separated by the value"
-        ConcatWs,
-        
-        #[text = ["locate", "position"], data_type = "numeric"]
-        @group = "String"
-        @description = "Get the position of a substring in the value"
-        Locate,
-        
-        #[text = ["substr", "substring"]]
-        @group = "String"
-        @description = "Get a substring of the value, from a position and length"
-        Substring,
-        
-        #[text = ["replace"]]
-        @group = "String"
-        @description = "Replace a substring in the value with another string"
-        Replace,
-        
-        #[text = ["trim"]]
-        @group = "String"
-        @description = "Trim whitespace from the value"
-        Trim,
-        
-        #[text = ["ltrim"]]
-        @group = "String"
-        @description = "Trim whitespace from the start of the value"
-        LTrim,
-        
-        #[text = ["rtrim"]]
-        @group = "String"
-        @description = "Trim whitespace from the end of the value"
-        RTrim,
-    
-        #[text = ["bin"]]
-        @group = "Numeric"
-        @description = "Get the binary representation of the value"
-        Bin,
-        
-        #[text = ["hex"]]
-        @group = "Numeric"
-        @description = "Get the hexadecimal representation of the value"
-        Hex,
-        
-        #[text = ["oct"]]
-        @group = "Numeric"
-        @description = "Get the octal representation of the value"
-        Oct,
-        
-        #[text = ["abs"], data_type = "numeric"]
-        @group = "Numeric"
-        @description = "Get the absolute value of the number"
-        Abs,
-        
-        #[text = ["power", "pow"], data_type = "numeric"]
-        @group = "Numeric"
-        @description = "Raise the value to the power of another value"
-        Power,
-        
-        #[text = ["sqrt"], data_type = "numeric"]
-        @group = "Numeric"
-        @description = "Get the square root of the value"
-        Sqrt,
-        
-        #[text = ["log"], data_type = "numeric"]
-        @group = "Numeric"
-        @description = "Get the logarithm of the value with a specific base"
-        Log,
-        
-        #[text = ["ln"], data_type = "numeric"]
-        @group = "Numeric"
-        @description = "Get the natural logarithm of the value"
-        Ln,
-        
-        #[text = ["exp"], data_type = "numeric"]
-        @group = "Numeric"
-        @description = "Get e raised to the power of the specified number"
-        Exp,
-        
-        #[text = ["least"], data_type = "numeric"]
-        @group = "Numeric"
-        @description = "Get the smallest value"
-        Least,
-        
-        #[text = ["greatest"], data_type = "numeric"]
-        @group = "Numeric"
-        @description = "Get the largest value"
-        Greatest,
-        
-        #[text = ["pi"], data_type = "numeric"]
-        @weight = 1
-        @group = "Numeric"
-        @description = "Get the value of Pi (π)"
-        Pi,
-        
-        #[text = ["floor"], data_type = "numeric"]
-        @group = "Numeric"
-        @description = "Round down to the nearest integer"
-        Floor,
-        
-        #[text = ["ceil", "ceiling"], data_type = "numeric"]
-        @group = "Numeric"
-        @description = "Round up to the nearest integer"
-        Ceil,
-        
-        #[text = ["round"], data_type = "numeric"]
-        @group = "Numeric"
-        @description = "Round to the nearest integer"
-        Round,
-    
-        #[text = ["contains_japanese", "japanese"], data_type = "boolean"]
-        @group = "Japanese string"
-        @description = "Check if the string contains Japanese characters"
-        ContainsJapanese,
-        
-        #[text = ["contains_hiragana", "hiragana"], data_type = "boolean"]
-        @group = "Japanese string"
-        @description = "Check if the string contains Hiragana characters"
-        ContainsHiragana,
-        
-        #[text = ["contains_katakana", "katakana"], data_type = "boolean"]
-        @group = "Japanese string"
-        @description = "Check if the string contains Katakana characters"
-        ContainsKatakana,
-        
-        #[text = ["contains_kana", "kana"], data_type = "boolean"]
-        @group = "Japanese string"
-        @description = "Check if the string contains Kana characters"
-        ContainsKana,
-        
-        #[text = ["contains_kanji", "kanji"], data_type = "boolean"]
-        @group = "Japanese string"
-        @description = "Check if the string contains Kanji characters"
-        ContainsKanji,
-    
-        #[text = ["contains_greek", "greek"], data_type = "boolean"]
-        @group = "Greek string"
-        @description = "Check if the string contains Greek characters"
-        ContainsGreek,
-
-        #[text = ["format_size", "format_filesize"]]
-        @group = "Other"
-        @description = "Format a file size in human-readable format"
-        FormatSize,
-        
-        #[text = ["format_time", "pretty_time"]]
-        @group = "Other"
-        @description = "Format a time duration in human-readable format"
-        FormatTime,
-    
-        #[text = ["current_date", "cur_date", "curdate"]]
-        @weight = 1
-        @group = "Datetime"
-        @description = "Get the current date"
-        CurrentDate,
-        
-        #[text = ["current_time", "cur_time", "curtime"]]
-        @weight = 1
-        @group = "Datetime"
-        @description = "Get the current time (HH:MM:SS)"
-        CurrentTime,
-        
-        #[text = ["current_timestamp", "now"]]
-        @weight = 1
-        @group = "Datetime"
-        @description = "Get the current timestamp (YYYY-MM-DD HH:MM:SS)"
-        CurrentTimestamp,
-        
-        #[text = ["day"], data_type = "numeric"]
-        @group = "Datetime"
-        @description = "Get the day from a date"
-        Day,
-        
-        #[text = ["month"], data_type = "numeric"]
-        @group = "Datetime"
-        @description = "Get the month from a date"
-        Month,
-        
-        #[text = ["year"], data_type = "numeric"]
-        @group = "Datetime"
-        @description = "Get the year from a date"
-        Year,
-        
-        #[text = ["dayofweek", "dow"], data_type = "numeric"]
-        @group = "Datetime"
-        @description = "Get the day of the week from a date"
-        DayOfWeek,
-    
-        #[text = ["current_uid"], data_type = "numeric"]
-        @weight = 1
-        @group = "Other"
-        @description = "Get the current user ID"
-        #[cfg(all(unix, feature = "users"))]
-        CurrentUid,
-        
-        #[text = ["current_user"]]
-        @weight = 1
-        @group = "Other"
-        @description = "Get the current username"
-        #[cfg(all(unix, feature = "users"))]
-        CurrentUser,
-        
-        #[text = ["current_gid"], data_type = "numeric"]
-        @weight = 1
-        @group = "Other"
-        @description = "Get the current group ID"
-        #[cfg(all(unix, feature = "users"))]
-        CurrentGid,
-        
-        #[text = ["current_group"]]
-        @weight = 1
-        @group = "Other"
-        @description = "Get the current group name"
-        #[cfg(all(unix, feature = "users"))]
-        CurrentGroup,
-    
-        #[text = ["contains"], data_type = "boolean"]
-        @weight = 1024
-        @group = "Other"
-        @description = "Checks if a file contains a substring"
-        Contains,
-    
-        #[text = ["has_xattr"], data_type = "boolean"]
-        @weight = 2
-        @group = "Xattr"
-        @description = "Check if the file has a specific extended attribute"
-        #[cfg(unix)]
-        HasXattr,
-
-        #[text = ["xattr"]]
-        @weight = 2
-        @group = "Xattr"
-        @description = "Get the value of an extended attribute"
-        #[cfg(unix)]
-        Xattr,
-
-        #[text = ["has_extattr"], data_type = "boolean"]
-        @weight = 2
-        @group = "Xattr"
-        @description = "Check if the file has a specific extended file attribute flag"
-        #[cfg(target_os = "linux")]
-        HasExtattr,
-        
-        #[text = ["acl"]]
-        @weight = 2
-        @group = "Xattr"
-        @description = "Get all POSIX ACL entries in standard form"
-        #[cfg(target_os = "linux")]
-        Acl,
-
-        #[text = ["has_acl_entry"], data_type = "boolean"]
-        @weight = 2
-        @group = "Xattr"
-        @description = "Check if a specific POSIX ACL entry exists"
-        #[cfg(target_os = "linux")]
-        HasAclEntry,
-
-        #[text = ["acl_entry"]]
-        @weight = 2
-        @group = "Xattr"
-        @description = "Get permissions of a specific POSIX ACL entry"
-        #[cfg(target_os = "linux")]
-        AclEntry,
-
-        #[text = ["default_acl"]]
-        @weight = 2
-        @group = "Xattr"
-        @description = "Get all default POSIX ACL entries in standard form"
-        #[cfg(target_os = "linux")]
-        DefaultAcl,
-
-        #[text = ["has_default_acl_entry"], data_type = "boolean"]
-        @weight = 2
-        @group = "Xattr"
-        @description = "Check if a specific default POSIX ACL entry exists"
-        #[cfg(target_os = "linux")]
-        HasDefaultAclEntry,
-
-        #[text = ["default_acl_entry"]]
-        @weight = 2
-        @group = "Xattr"
-        @description = "Get permissions of a specific default POSIX ACL entry"
-        #[cfg(target_os = "linux")]
-        DefaultAclEntry,
-
-        #[text = ["has_capabilities", "has_caps"], data_type = "boolean"]
-        @weight = 2
-        @group = "Xattr"
-        @description = "Check if the file has capabilities (security.capability xattr)"
-        #[cfg(target_os = "linux")]
-        HasCapabilities,
-        
-        #[text = ["has_capability", "has_cap"], data_type = "boolean"]
-        @weight = 2
-        @group = "Xattr"
-        @description = "Check if the file has a specific capability (security.capability xattr)"
-        #[cfg(target_os = "linux")]
-        HasCapability,
-    
-        #[text = ["coalesce"]]
-        @group = "Other"
-        @description = "Return the first non-empty value"
-        Coalesce,
-        
-        #[text = ["rand", "random"], data_type = "numeric"]
-        @weight = 1
-        @group = "Numeric"
-        @description = "Gets a random number from 0 to the value, or between two values"
-        Random,
-    
-        #[text = ["min"], data_type = "numeric"]
-        @is_aggregate = true
-        @group = "Aggregate"
-        @description = "Get the minimum value"
-        Min,
-        
-        #[text = ["max"], data_type = "numeric"]
-        @is_aggregate = true
-        @group = "Aggregate"
-        @description = "Get the maximum value"
-        Max,
-        
-        #[text = ["avg"], data_type = "numeric"]
-        @is_aggregate = true
-        @group = "Aggregate"
-        @description = "Get the average value"
-        Avg,
-        
-        #[text = ["sum"], data_type = "numeric"]
-        @is_aggregate = true
-        @group = "Aggregate"
-        @description = "Get the sum of all values"
-        Sum,
-        
-        #[text = ["count"], data_type = "numeric"]
-        @is_aggregate = true
-        @group = "Aggregate"
-        @description = "Get the number of values"
-        Count,
-    
-        #[text = ["stddev_pop", "stddev", "std"], data_type = "numeric"]
-        @is_aggregate = true
-        @group = "Aggregate"
-        @description = "Get the population standard deviation"
-        StdDevPop,
-        
-        #[text = ["stddev_samp"], data_type = "numeric"]
-        @is_aggregate = true
-        @group = "Aggregate"
-        @description = "Get the sample standard deviation"
-        StdDevSamp,
-        
-        #[text = ["var_pop", "variance"], data_type = "numeric"]
-        @is_aggregate = true
-        @group = "Aggregate"
-        @description = "Get the population variance"
-        VarPop,
-        
-        #[text = ["var_samp"], data_type = "numeric"]
-        @is_aggregate = true
-        @group = "Aggregate"
-        @description = "Get the sample variance"
-        VarSamp,
-    }
-}
-
 /// Applies a function to a value and returns the result.
 /// If no function is provided, the original value is returned.
 ///
@@ -583,24 +177,7 @@ pub fn get_value(
         Function::Lower => Ok(Variant::from_string(&function_arg.to_lowercase())),
         Function::Upper => Ok(Variant::from_string(&function_arg.to_uppercase())),
         Function::InitCap => {
-            let mut result = String::with_capacity(function_arg.len());
-            let mut prev_whitespace = true;
-            for c in function_arg.chars() {
-                if c.is_whitespace() {
-                    result.push(c);
-                    prev_whitespace = true;
-                } else if prev_whitespace {
-                    for uc in c.to_uppercase() {
-                        result.push(uc);
-                    }
-                    prev_whitespace = false;
-                } else {
-                    for lc in c.to_lowercase() {
-                        result.push(lc);
-                    }
-                    prev_whitespace = false;
-                }
-            }
+            let result = capitalize_initials(&function_arg);
             Ok(Variant::from_string(&result))
         }
         Function::Length => {
@@ -881,7 +458,7 @@ pub fn get_value(
             Ok(date) => Ok(Variant::from_int(date.0.weekday().number_from_sunday() as i64)),
             _ => Ok(Variant::empty(VariantType::Int)),
         },
-    
+
         #[cfg(all(unix, feature = "users"))]
         Function::CurrentUid => Ok(Variant::from_int(uzers::get_current_uid() as i64)),
         #[cfg(all(unix, feature = "users"))]
@@ -1235,6 +812,412 @@ pub fn get_aggregate_value(
             Some(val) => val.to_owned(),
             _ => String::new(),
         },
+    }
+}
+
+functions! {
+    #[group_order = ["String", "Japanese string", "Numeric", "Datetime", "Aggregate", "Xattr", "Other"]]
+    #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Hash)]
+    pub enum Function {
+        #[text = ["lower", "lowercase", "lcase"]]
+        @group = "String"
+        @description = "Convert the value to lowercase"
+        Lower,
+
+        #[text = ["upper", "uppercase", "ucase"]]
+        @group = "String"
+        @description = "Convert the value to UPPERCASE"
+        Upper,
+
+        #[text = ["initcap"]]
+        @group = "String"
+        @description = "Capitalize the first letter of each word (Title Case)"
+        InitCap,
+
+        #[text = ["length", "len"], data_type = "numeric"]
+        @group = "String"
+        @description = "Get the length of the string"
+        Length,
+
+        #[text = ["to_base64", "base64"]]
+        @group = "String"
+        @description = "Convert the value to base64"
+        ToBase64,
+
+        #[text = ["from_base64"]]
+        @group = "String"
+        @description = "Read the value as base64"
+        FromBase64,
+
+        #[text = ["concat"]]
+        @group = "String"
+        @description = "Concatenate the value with the arguments"
+        Concat,
+
+        #[text = ["concat_ws"]]
+        @group = "String"
+        @description = "Concatenate the arguments, separated by the value"
+        ConcatWs,
+
+        #[text = ["locate", "position"], data_type = "numeric"]
+        @group = "String"
+        @description = "Get the position of a substring in the value"
+        Locate,
+
+        #[text = ["substr", "substring"]]
+        @group = "String"
+        @description = "Get a substring of the value, from a position and length"
+        Substring,
+
+        #[text = ["replace"]]
+        @group = "String"
+        @description = "Replace a substring in the value with another string"
+        Replace,
+
+        #[text = ["trim"]]
+        @group = "String"
+        @description = "Trim whitespace from the value"
+        Trim,
+
+        #[text = ["ltrim"]]
+        @group = "String"
+        @description = "Trim whitespace from the start of the value"
+        LTrim,
+
+        #[text = ["rtrim"]]
+        @group = "String"
+        @description = "Trim whitespace from the end of the value"
+        RTrim,
+
+        #[text = ["bin"]]
+        @group = "Numeric"
+        @description = "Get the binary representation of the value"
+        Bin,
+
+        #[text = ["hex"]]
+        @group = "Numeric"
+        @description = "Get the hexadecimal representation of the value"
+        Hex,
+
+        #[text = ["oct"]]
+        @group = "Numeric"
+        @description = "Get the octal representation of the value"
+        Oct,
+
+        #[text = ["abs"], data_type = "numeric"]
+        @group = "Numeric"
+        @description = "Get the absolute value of the number"
+        Abs,
+
+        #[text = ["power", "pow"], data_type = "numeric"]
+        @group = "Numeric"
+        @description = "Raise the value to the power of another value"
+        Power,
+
+        #[text = ["sqrt"], data_type = "numeric"]
+        @group = "Numeric"
+        @description = "Get the square root of the value"
+        Sqrt,
+
+        #[text = ["log"], data_type = "numeric"]
+        @group = "Numeric"
+        @description = "Get the logarithm of the value with a specific base"
+        Log,
+
+        #[text = ["ln"], data_type = "numeric"]
+        @group = "Numeric"
+        @description = "Get the natural logarithm of the value"
+        Ln,
+
+        #[text = ["exp"], data_type = "numeric"]
+        @group = "Numeric"
+        @description = "Get e raised to the power of the specified number"
+        Exp,
+
+        #[text = ["least"], data_type = "numeric"]
+        @group = "Numeric"
+        @description = "Get the smallest value"
+        Least,
+
+        #[text = ["greatest"], data_type = "numeric"]
+        @group = "Numeric"
+        @description = "Get the largest value"
+        Greatest,
+
+        #[text = ["pi"], data_type = "numeric"]
+        @weight = 1
+        @group = "Numeric"
+        @description = "Get the value of Pi (π)"
+        Pi,
+
+        #[text = ["floor"], data_type = "numeric"]
+        @group = "Numeric"
+        @description = "Round down to the nearest integer"
+        Floor,
+
+        #[text = ["ceil", "ceiling"], data_type = "numeric"]
+        @group = "Numeric"
+        @description = "Round up to the nearest integer"
+        Ceil,
+
+        #[text = ["round"], data_type = "numeric"]
+        @group = "Numeric"
+        @description = "Round to the nearest integer"
+        Round,
+
+        #[text = ["contains_japanese", "japanese"], data_type = "boolean"]
+        @group = "Japanese string"
+        @description = "Check if the string contains Japanese characters"
+        ContainsJapanese,
+
+        #[text = ["contains_hiragana", "hiragana"], data_type = "boolean"]
+        @group = "Japanese string"
+        @description = "Check if the string contains Hiragana characters"
+        ContainsHiragana,
+
+        #[text = ["contains_katakana", "katakana"], data_type = "boolean"]
+        @group = "Japanese string"
+        @description = "Check if the string contains Katakana characters"
+        ContainsKatakana,
+
+        #[text = ["contains_kana", "kana"], data_type = "boolean"]
+        @group = "Japanese string"
+        @description = "Check if the string contains Kana characters"
+        ContainsKana,
+
+        #[text = ["contains_kanji", "kanji"], data_type = "boolean"]
+        @group = "Japanese string"
+        @description = "Check if the string contains Kanji characters"
+        ContainsKanji,
+
+        #[text = ["contains_greek", "greek"], data_type = "boolean"]
+        @group = "Greek string"
+        @description = "Check if the string contains Greek characters"
+        ContainsGreek,
+
+        #[text = ["format_size", "format_filesize"]]
+        @group = "Other"
+        @description = "Format a file size in human-readable format"
+        FormatSize,
+
+        #[text = ["format_time", "pretty_time"]]
+        @group = "Other"
+        @description = "Format a time duration in human-readable format"
+        FormatTime,
+
+        #[text = ["current_date", "cur_date", "curdate"]]
+        @weight = 1
+        @group = "Datetime"
+        @description = "Get the current date"
+        CurrentDate,
+
+        #[text = ["current_time", "cur_time", "curtime"]]
+        @weight = 1
+        @group = "Datetime"
+        @description = "Get the current time (HH:MM:SS)"
+        CurrentTime,
+
+        #[text = ["current_timestamp", "now"]]
+        @weight = 1
+        @group = "Datetime"
+        @description = "Get the current timestamp (YYYY-MM-DD HH:MM:SS)"
+        CurrentTimestamp,
+
+        #[text = ["day"], data_type = "numeric"]
+        @group = "Datetime"
+        @description = "Get the day from a date"
+        Day,
+
+        #[text = ["month"], data_type = "numeric"]
+        @group = "Datetime"
+        @description = "Get the month from a date"
+        Month,
+
+        #[text = ["year"], data_type = "numeric"]
+        @group = "Datetime"
+        @description = "Get the year from a date"
+        Year,
+
+        #[text = ["dayofweek", "dow"], data_type = "numeric"]
+        @group = "Datetime"
+        @description = "Get the day of the week from a date"
+        DayOfWeek,
+
+        #[text = ["current_uid"], data_type = "numeric"]
+        @weight = 1
+        @group = "Other"
+        @description = "Get the current user ID"
+        #[cfg(all(unix, feature = "users"))]
+        CurrentUid,
+
+        #[text = ["current_user"]]
+        @weight = 1
+        @group = "Other"
+        @description = "Get the current username"
+        #[cfg(all(unix, feature = "users"))]
+        CurrentUser,
+
+        #[text = ["current_gid"], data_type = "numeric"]
+        @weight = 1
+        @group = "Other"
+        @description = "Get the current group ID"
+        #[cfg(all(unix, feature = "users"))]
+        CurrentGid,
+
+        #[text = ["current_group"]]
+        @weight = 1
+        @group = "Other"
+        @description = "Get the current group name"
+        #[cfg(all(unix, feature = "users"))]
+        CurrentGroup,
+
+        #[text = ["contains"], data_type = "boolean"]
+        @weight = 1024
+        @group = "Other"
+        @description = "Checks if a file contains a substring"
+        Contains,
+
+        #[text = ["has_xattr"], data_type = "boolean"]
+        @weight = 2
+        @group = "Xattr"
+        @description = "Check if the file has a specific extended attribute"
+        #[cfg(unix)]
+        HasXattr,
+
+        #[text = ["xattr"]]
+        @weight = 2
+        @group = "Xattr"
+        @description = "Get the value of an extended attribute"
+        #[cfg(unix)]
+        Xattr,
+
+        #[text = ["has_extattr"], data_type = "boolean"]
+        @weight = 2
+        @group = "Xattr"
+        @description = "Check if the file has a specific extended file attribute flag"
+        #[cfg(target_os = "linux")]
+        HasExtattr,
+
+        #[text = ["acl"]]
+        @weight = 2
+        @group = "Xattr"
+        @description = "Get all POSIX ACL entries in standard form"
+        #[cfg(target_os = "linux")]
+        Acl,
+
+        #[text = ["has_acl_entry"], data_type = "boolean"]
+        @weight = 2
+        @group = "Xattr"
+        @description = "Check if a specific POSIX ACL entry exists"
+        #[cfg(target_os = "linux")]
+        HasAclEntry,
+
+        #[text = ["acl_entry"]]
+        @weight = 2
+        @group = "Xattr"
+        @description = "Get permissions of a specific POSIX ACL entry"
+        #[cfg(target_os = "linux")]
+        AclEntry,
+
+        #[text = ["default_acl"]]
+        @weight = 2
+        @group = "Xattr"
+        @description = "Get all default POSIX ACL entries in standard form"
+        #[cfg(target_os = "linux")]
+        DefaultAcl,
+
+        #[text = ["has_default_acl_entry"], data_type = "boolean"]
+        @weight = 2
+        @group = "Xattr"
+        @description = "Check if a specific default POSIX ACL entry exists"
+        #[cfg(target_os = "linux")]
+        HasDefaultAclEntry,
+
+        #[text = ["default_acl_entry"]]
+        @weight = 2
+        @group = "Xattr"
+        @description = "Get permissions of a specific default POSIX ACL entry"
+        #[cfg(target_os = "linux")]
+        DefaultAclEntry,
+
+        #[text = ["has_capabilities", "has_caps"], data_type = "boolean"]
+        @weight = 2
+        @group = "Xattr"
+        @description = "Check if the file has capabilities (security.capability xattr)"
+        #[cfg(target_os = "linux")]
+        HasCapabilities,
+
+        #[text = ["has_capability", "has_cap"], data_type = "boolean"]
+        @weight = 2
+        @group = "Xattr"
+        @description = "Check if the file has a specific capability (security.capability xattr)"
+        #[cfg(target_os = "linux")]
+        HasCapability,
+
+        #[text = ["coalesce"]]
+        @group = "Other"
+        @description = "Return the first non-empty value"
+        Coalesce,
+
+        #[text = ["rand", "random"], data_type = "numeric"]
+        @weight = 1
+        @group = "Numeric"
+        @description = "Gets a random number from 0 to the value, or between two values"
+        Random,
+
+        #[text = ["min"], data_type = "numeric"]
+        @is_aggregate = true
+        @group = "Aggregate"
+        @description = "Get the minimum value"
+        Min,
+
+        #[text = ["max"], data_type = "numeric"]
+        @is_aggregate = true
+        @group = "Aggregate"
+        @description = "Get the maximum value"
+        Max,
+
+        #[text = ["avg"], data_type = "numeric"]
+        @is_aggregate = true
+        @group = "Aggregate"
+        @description = "Get the average value"
+        Avg,
+
+        #[text = ["sum"], data_type = "numeric"]
+        @is_aggregate = true
+        @group = "Aggregate"
+        @description = "Get the sum of all values"
+        Sum,
+
+        #[text = ["count"], data_type = "numeric"]
+        @is_aggregate = true
+        @group = "Aggregate"
+        @description = "Get the number of values"
+        Count,
+
+        #[text = ["stddev_pop", "stddev", "std"], data_type = "numeric"]
+        @is_aggregate = true
+        @group = "Aggregate"
+        @description = "Get the population standard deviation"
+        StdDevPop,
+
+        #[text = ["stddev_samp"], data_type = "numeric"]
+        @is_aggregate = true
+        @group = "Aggregate"
+        @description = "Get the sample standard deviation"
+        StdDevSamp,
+
+        #[text = ["var_pop", "variance"], data_type = "numeric"]
+        @is_aggregate = true
+        @group = "Aggregate"
+        @description = "Get the population variance"
+        VarPop,
+
+        #[text = ["var_samp"], data_type = "numeric"]
+        @is_aggregate = true
+        @group = "Aggregate"
+        @description = "Get the sample variance"
+        VarSamp,
     }
 }
 

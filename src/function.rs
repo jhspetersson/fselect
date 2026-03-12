@@ -206,7 +206,7 @@ pub fn get_value(
             let substring = &function_args[0];
             let pos: i32 = match &function_args.get(1) {
                 Some(pos) => match pos.parse::<i32>() {
-                    Ok(p) => p - 1,
+                    Ok(p) => (p - 1).max(0),
                     Err(_) => return Err(format!("Could not parse position argument of LOCATE function: {}", pos)),
                 },
                 _ => 0,
@@ -236,7 +236,7 @@ pub fn get_value(
 
             if pos < 0 {
                 let string_length = string.chars().count() as i32;
-                pos = string_length - pos.abs() + 1;
+                pos = (string_length - pos.abs() + 1).max(0);
             }
 
             let len = match &function_args.get(1) {
@@ -347,7 +347,13 @@ pub fn get_value(
             _ => Ok(Variant::empty(VariantType::String)),
         }
         Function::Exp => match function_arg.parse::<f64>() {
-            Ok(val) => Ok(Variant::from_float(val.exp())),
+            Ok(val) => {
+                let result = val.exp();
+                if result.is_infinite() {
+                    return Err(format!("EXP({}) overflows to infinity", val));
+                }
+                Ok(Variant::from_float(result))
+            }
             _ => Ok(Variant::empty(VariantType::String)),
         }
         Function::Least => {
@@ -2165,5 +2171,41 @@ mod tests {
             &None,
         );
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn exp_overflow_returns_error() {
+        let result = get_value(
+            &Function::Exp,
+            String::from("710"),
+            vec![],
+            None,
+            &None,
+        );
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn substring_very_negative_pos_clamps() {
+        let result = get_value(
+            &Function::Substring,
+            String::from("hello"),
+            vec![String::from("-100"), String::from("3")],
+            None,
+            &None,
+        );
+        assert_eq!(result.unwrap().to_string(), "hel");
+    }
+
+    #[test]
+    fn locate_position_zero_finds_match() {
+        let result = get_value(
+            &Function::Locate,
+            String::from("hello"),
+            vec![String::from("h"), String::from("0")],
+            None,
+            &None,
+        );
+        assert_eq!(result.unwrap().to_string(), "1");
     }
 }

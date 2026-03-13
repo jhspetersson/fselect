@@ -246,9 +246,10 @@ impl Expr {
     }
     
     pub fn add_left(&mut self, left: Expr) {
+        let old_weight = self.left.as_ref().map_or(0, |l| l.weight);
         let left_weight = left.weight;
         self.left = Some(Box::new(left));
-        self.weight += left_weight;
+        self.weight = self.weight - old_weight + left_weight;
     }
     
     pub fn set_args(&mut self, args: Vec<Expr>) {

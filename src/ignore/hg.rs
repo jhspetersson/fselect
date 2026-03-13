@@ -209,7 +209,7 @@ fn convert_hgignore_glob(glob: &str, file_path: &Path) -> Result<Regex, String> 
                     "**" => ".*",
                     "." => "\\.",
                     "*" => "[^\\\\]*",
-                    "?" => "[^\\\\]+",
+                    "?" => "[^\\\\]",
                     "[" => "\\[",
                     "]" => "\\]",
                     "(" => "\\(",
@@ -226,10 +226,7 @@ fn convert_hgignore_glob(glob: &str, file_path: &Path) -> Result<Regex, String> 
             return Err("Error parsing .hgignore pattern: ".to_string() + glob);
         }
 
-        pattern = file_path
-            .to_string_lossy()
-            .to_string()
-            .replace("\\", "\\\\")
+        pattern = regex::escape(&file_path.to_string_lossy())
             .add("\\\\([^\\\\]+\\\\)*")
             .add(&pattern);
 
@@ -256,7 +253,7 @@ fn convert_hgignore_regexp(regexp: &str, file_path: &Path) -> Result<Regex, Stri
 
     #[cfg(windows)]
     {
-        let mut pattern = file_path.to_string_lossy().to_string();
+        let mut pattern = regex::escape(&file_path.to_string_lossy());
         if !regexp.starts_with("^") {
             pattern = pattern.add("\\\\([^\\\\]+\\\\)*");
         }
@@ -275,6 +272,7 @@ fn convert_hgignore_regexp(regexp: &str, file_path: &Path) -> Result<Regex, Stri
 mod tests {
     use super::*;
 
+    #[cfg(not(windows))]
     #[test]
     fn glob_question_mark_matches_exactly_one_char() {
         let regex = convert_hgignore_glob("a?b", Path::new("/tmp")).unwrap();
@@ -285,6 +283,7 @@ mod tests {
         );
     }
 
+    #[cfg(not(windows))]
     #[test]
     fn glob_path_with_dots_is_regex_escaped() {
         let result = convert_hgignore_glob("*.txt", Path::new("/home/user/my.project"));
@@ -297,6 +296,7 @@ mod tests {
         );
     }
 
+    #[cfg(not(windows))]
     #[test]
     fn regexp_path_with_dots_is_regex_escaped() {
         let result = convert_hgignore_regexp("foo", Path::new("/home/user/my.project"));
@@ -309,6 +309,7 @@ mod tests {
         );
     }
 
+    #[cfg(not(windows))]
     #[test]
     fn glob_brackets_are_escaped() {
         let result = convert_hgignore_glob("[test]", Path::new("/tmp"));

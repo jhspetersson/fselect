@@ -167,7 +167,7 @@ impl Variant {
             None => {
                 let float_value = self.string_value.parse::<f64>();
                 match float_value {
-                    Ok(f) => f,
+                    Ok(f) if f.is_finite() => f,
                     _ => match parse_filesize(&self.string_value) {
                         Some(size) => size as f64,
                         _ => 0.0,

@@ -397,6 +397,9 @@ impl<'a> Searcher<'a> {
             }
 
             self.dir_queue.clear();
+            self.visited_dirs.clear();
+            self.hgignore_filters.clear();
+            self.dockerignore_filters.clear();
 
             let _result = self.visit_dir(
                 root_dir,
@@ -3464,6 +3467,64 @@ mod tests {
             errors, 0,
             "symlink to file should not cause directory traversal error, errors={}",
             errors
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_visited_dirs_cleared_between_roots() {
+        use std::os::unix::fs::symlink;
+
+        let tmp = std::env::temp_dir().join("fselect_test_visited_cleared");
+        let _ = fs::remove_dir_all(&tmp);
+        let shared = tmp.join("shared");
+        let root_a = tmp.join("root_a");
+        let root_b = tmp.join("root_b");
+        fs::create_dir_all(&shared).unwrap();
+        fs::create_dir_all(&root_a).unwrap();
+        fs::create_dir_all(&root_b).unwrap();
+        fs::write(shared.join("file.txt"), "hello").unwrap();
+        symlink(&shared, root_a.join("link")).unwrap();
+        symlink(&shared, root_b.join("link")).unwrap();
+
+        let mut searcher = create_test_searcher();
+        searcher.current_follow_symlinks = true;
+
+        let _ = searcher.visit_dir(
+            &root_a,
+            0, 0, 0,
+            false, false,
+            #[cfg(feature = "git")]
+            None,
+            false, false,
+            TraversalMode::Dfs,
+            true,
+            &root_a,
+        );
+
+        let found_after_a = searcher.found;
+
+        searcher.visited_dirs.clear();
+
+        let _ = searcher.visit_dir(
+            &root_b,
+            0, 0, 0,
+            false, false,
+            #[cfg(feature = "git")]
+            None,
+            false, false,
+            TraversalMode::Dfs,
+            true,
+            &root_b,
+        );
+
+        let found_after_b = searcher.found;
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert!(
+            found_after_b > found_after_a,
+            "root_b should find files through its own symlink, found_a={} found_b={}",
+            found_after_a, found_after_b
         );
     }
 

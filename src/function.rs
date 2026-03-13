@@ -226,7 +226,7 @@ pub fn get_value(
         Function::Substring => {
             let string = String::from(&function_arg);
 
-            let mut pos: i32 = match &function_args.is_empty() {
+            let pos: i32 = match &function_args.is_empty() {
                 true => 0,
                 false => match function_args[0].parse::<i32>() {
                     Ok(p) if p < 0 => {
@@ -767,6 +767,7 @@ pub fn get_aggregate_value(
                 .iter()
                 .filter_map(|item| item.get(&buffer_key))
                 .filter_map(|value| value.parse::<f64>().ok())
+                .filter(|v| v.is_finite())
                 .reduce(f64::min)
             {
                 Some(min) => min.to_string(),
@@ -778,6 +779,7 @@ pub fn get_aggregate_value(
                 .iter()
                 .filter_map(|item| item.get(&buffer_key))
                 .filter_map(|value| value.parse::<f64>().ok())
+                .filter(|v| v.is_finite())
                 .reduce(f64::max)
             {
                 Some(max) => max.to_string(),
@@ -1275,7 +1277,7 @@ functions! {
 fn get_parseable_count(raw_output_buffer: &Vec<HashMap<String, String>>, buffer_key: &String) -> usize {
     raw_output_buffer
         .iter()
-        .filter(|item| item.get(buffer_key).and_then(|v| v.parse::<f64>().ok()).is_some())
+        .filter(|item| item.get(buffer_key).and_then(|v| v.parse::<f64>().ok()).filter(|v| v.is_finite()).is_some())
         .count()
 }
 
@@ -1292,7 +1294,9 @@ fn get_variance(
     for value in raw_output_buffer {
         if let Some(value) = value.get(buffer_key) {
             if let Ok(value) = value.parse::<f64>() {
-                sum_sq += (avg - value).powi(2);
+                if value.is_finite() {
+                    sum_sq += (avg - value).powi(2);
+                }
             }
         }
     }
@@ -1304,10 +1308,7 @@ fn get_variance(
 /// If the value can't be parsed as usize, it will be ignored.
 fn get_mean(raw_output_buffer: &Vec<HashMap<String, String>>, buffer_key: &String) -> f64 {
     let sum = get_buffer_sum(raw_output_buffer, buffer_key);
-    let count = raw_output_buffer
-        .iter()
-        .filter(|item| item.get(buffer_key).and_then(|v| v.parse::<f64>().ok()).is_some())
-        .count();
+    let count = get_parseable_count(raw_output_buffer, buffer_key);
 
     if count == 0 { 0.0 } else { sum / count as f64 }
 }
@@ -1319,7 +1320,9 @@ fn get_buffer_sum(raw_output_buffer: &Vec<HashMap<String, String>>, buffer_key: 
     for value in raw_output_buffer {
         if let Some(value) = value.get(buffer_key) {
             if let Ok(value) = value.parse::<f64>() {
-                sum += value;
+                if value.is_finite() {
+                    sum += value;
+                }
             }
         }
     }
@@ -2497,5 +2500,55 @@ mod tests {
         ];
         let result = get_aggregate_value(&Function::Sum, &buffer, String::from("val"), &None);
         assert_eq!(result, String::new());
+    }
+
+    #[test]
+    fn sum_ignores_nan_string_values() {
+        let buffer = make_buffer("val", &["10", "NaN", "20"]);
+        let result = get_aggregate_value(&Function::Sum, &buffer, "val".to_string(), &None);
+        assert_eq!(result, "30");
+    }
+
+    #[test]
+    fn sum_ignores_inf_string_values() {
+        let buffer = make_buffer("val", &["10", "inf", "20"]);
+        let result = get_aggregate_value(&Function::Sum, &buffer, "val".to_string(), &None);
+        assert_eq!(result, "30");
+    }
+
+    #[test]
+    fn avg_ignores_nan_string_values() {
+        let buffer = make_buffer("val", &["10", "NaN", "20"]);
+        let result = get_aggregate_value(&Function::Avg, &buffer, "val".to_string(), &None);
+        assert_eq!(result, "15");
+    }
+
+    #[test]
+    fn var_pop_ignores_nan_string_values() {
+        let buffer = make_buffer("val", &["10", "NaN", "20"]);
+        let result = get_aggregate_value(&Function::VarPop, &buffer, "val".to_string(), &None);
+        let var: f64 = result.parse().unwrap();
+        assert!((var - 25.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn sum_all_nan_is_empty() {
+        let buffer = make_buffer("val", &["NaN", "NaN"]);
+        let result = get_aggregate_value(&Function::Sum, &buffer, "val".to_string(), &None);
+        assert_eq!(result, String::new());
+    }
+
+    #[test]
+    fn min_ignores_nan_string_values() {
+        let buffer = make_buffer("val", &["10", "NaN", "5"]);
+        let result = get_aggregate_value(&Function::Min, &buffer, "val".to_string(), &None);
+        assert_eq!(result, "5");
+    }
+
+    #[test]
+    fn max_ignores_nan_string_values() {
+        let buffer = make_buffer("val", &["10", "NaN", "5"]);
+        let result = get_aggregate_value(&Function::Max, &buffer, "val".to_string(), &None);
+        assert_eq!(result, "10");
     }
 }

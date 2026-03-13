@@ -240,7 +240,7 @@ fn convert_hgignore_glob(glob: &str, file_path: &Path) -> Result<Regex, String> 
 fn convert_hgignore_regexp(regexp: &str, file_path: &Path) -> Result<Regex, String> {
     #[cfg(not(windows))]
     {
-        let mut pattern = file_path.to_string_lossy().to_string();
+        let mut pattern = regex::escape(&file_path.to_string_lossy());
         if !regexp.starts_with("^") {
             pattern = pattern.add("/([^/]+/)*");
         }

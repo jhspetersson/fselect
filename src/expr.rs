@@ -446,10 +446,19 @@ impl Expr {
             return true;
         }
 
-        match expr.left {
-            Some(ref left) => Self::contains_colorized_field(left),
-            None => false,
+        if let Some(ref left) = expr.left {
+            if Self::contains_colorized_field(left) {
+                return true;
+            }
         }
+
+        if let Some(ref right) = expr.right {
+            if Self::contains_colorized_field(right) {
+                return true;
+            }
+        }
+
+        false
     }
 }
 

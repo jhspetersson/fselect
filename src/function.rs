@@ -238,17 +238,17 @@ pub fn get_value(
                 },
             };
 
-            let len = match &function_args.get(1) {
+            let len: Option<usize> = match &function_args.get(1) {
                 Some(len) => match len.parse::<usize>() {
-                    Ok(l) => l,
+                    Ok(l) => Some(l),
                     Err(_) => return Err(format!("Could not parse length argument of SUBSTRING function: {}", len)),
                 },
-                _ => 0,
+                _ => None,
             };
 
-            let result = match len > 0 {
-                true => string.chars().skip(pos as usize).take(len).collect(),
-                false => string.chars().skip(pos as usize).collect(),
+            let result: String = match len {
+                Some(l) => string.chars().skip(pos as usize).take(l).collect(),
+                None => string.chars().skip(pos as usize).collect(),
             };
 
             Ok(Variant::from_string(&result))
@@ -2305,5 +2305,41 @@ mod tests {
         ];
         let result = get_aggregate_value(&Function::Avg, &buffer, String::from("val"), &None);
         assert_eq!(result, String::new());
+    }
+
+    #[test]
+    fn initcap_hyphenated_words() {
+        let result = get_value(
+            &Function::InitCap,
+            String::from("hello-world"),
+            vec![],
+            None,
+            &None,
+        );
+        assert_eq!(result.unwrap().to_string(), "Hello-World");
+    }
+
+    #[test]
+    fn initcap_underscore_words() {
+        let result = get_value(
+            &Function::InitCap,
+            String::from("foo_bar_baz"),
+            vec![],
+            None,
+            &None,
+        );
+        assert_eq!(result.unwrap().to_string(), "Foo_Bar_Baz");
+    }
+
+    #[test]
+    fn substring_explicit_length_zero() {
+        let result = get_value(
+            &Function::Substring,
+            String::from("hello"),
+            vec![String::from("2"), String::from("0")],
+            None,
+            &None,
+        );
+        assert_eq!(result.unwrap().to_string(), "");
     }
 }

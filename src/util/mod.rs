@@ -434,21 +434,21 @@ pub fn str_to_bool(val: &str) -> Option<bool> {
 
 pub fn capitalize_initials(s: &str) -> String {
     let mut result = String::with_capacity(s.len());
-    let mut prev_whitespace = true;
+    let mut prev_boundary = true;
     for c in s.chars() {
-        if c.is_whitespace() {
+        if !c.is_alphanumeric() {
             result.push(c);
-            prev_whitespace = true;
-        } else if prev_whitespace {
+            prev_boundary = true;
+        } else if prev_boundary {
             for uc in c.to_uppercase() {
                 result.push(uc);
             }
-            prev_whitespace = false;
+            prev_boundary = false;
         } else {
             for lc in c.to_lowercase() {
                 result.push(lc);
             }
-            prev_whitespace = false;
+            prev_boundary = false;
         }
     }
     result

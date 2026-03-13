@@ -750,8 +750,8 @@ impl<'a> Searcher<'a> {
                                         if let Ok(file) = fs::File::open(&path) {
                                             if let Ok(mut archive) = zip::ZipArchive::new(file) {
                                                 for i in 0..archive.len() {
-                                                    if self.query.limit > 0
-                                                        && self.query.limit + self.query.offset <= self.found
+                                                    if !self.is_buffered() && self.query.limit > 0
+                                                        && self.query.limit <= self.found
                                                     {
                                                         break;
                                                     }

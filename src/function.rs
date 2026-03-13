@@ -429,7 +429,13 @@ pub fn get_value(
                 };
                 let factor = 10_f64.powi(precision);
                 let result = (val * factor).round() / factor;
-                Ok(Variant::from_float(result))
+                if result.is_finite() {
+                    Ok(Variant::from_float(result))
+                } else if precision >= 0 {
+                    Ok(Variant::from_float(val))
+                } else {
+                    Ok(Variant::from_float(0.0))
+                }
             }
             _ => Ok(Variant::empty(VariantType::String)),
         },
@@ -2499,6 +2505,42 @@ mod tests {
             &None,
         );
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn round_very_large_positive_precision() {
+        let result = get_value(
+            &Function::Round,
+            String::from("3.14"),
+            vec![String::from("309")],
+            None,
+            &None,
+        );
+        assert_eq!(result.unwrap().to_float(), 3.14);
+    }
+
+    #[test]
+    fn round_very_large_negative_precision() {
+        let result = get_value(
+            &Function::Round,
+            String::from("1234"),
+            vec![String::from("-400")],
+            None,
+            &None,
+        );
+        assert_eq!(result.unwrap().to_string(), "0");
+    }
+
+    #[test]
+    fn round_large_value_moderate_precision() {
+        let result = get_value(
+            &Function::Round,
+            String::from("1e300"),
+            vec![String::from("20")],
+            None,
+            &None,
+        );
+        assert_eq!(result.unwrap().to_float(), 1e300);
     }
 
     #[test]

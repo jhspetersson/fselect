@@ -393,15 +393,15 @@ pub fn get_value(
             Ok(Variant::from_float(std::f64::consts::PI))
         }
         Function::Floor => match function_arg.parse::<f64>() {
-            Ok(val) => Ok(Variant::from_float(val.floor() + 0.0)),
+            Ok(val) => Ok(Variant::from_float(val.floor())),
             _ => Ok(Variant::empty(VariantType::String)),
         },
         Function::Ceil => match function_arg.parse::<f64>() {
-            Ok(val) => Ok(Variant::from_float(val.ceil() + 0.0)),
+            Ok(val) => Ok(Variant::from_float(val.ceil())),
             _ => Ok(Variant::empty(VariantType::String)),
         },
         Function::Round => match function_arg.parse::<f64>() {
-            Ok(val) => Ok(Variant::from_float(val.round() + 0.0)),
+            Ok(val) => Ok(Variant::from_float(val.round())),
             _ => Ok(Variant::empty(VariantType::String)),
         },
 
@@ -2393,5 +2393,53 @@ mod tests {
             &None,
         );
         assert_eq!(result.unwrap().to_string(), "0");
+    }
+
+    #[test]
+    fn sqrt_negative_zero_not_negative_zero() {
+        let result = get_value(
+            &Function::Sqrt,
+            String::from("-0.0"),
+            vec![],
+            None,
+            &None,
+        );
+        assert_eq!(result.unwrap().to_string(), "0");
+    }
+
+    #[test]
+    fn abs_nan_string_returns_empty() {
+        let result = get_value(
+            &Function::Abs,
+            String::from("NaN"),
+            vec![],
+            None,
+            &None,
+        );
+        assert_eq!(result.unwrap().to_string(), "");
+    }
+
+    #[test]
+    fn floor_nan_string_returns_empty() {
+        let result = get_value(
+            &Function::Floor,
+            String::from("NaN"),
+            vec![],
+            None,
+            &None,
+        );
+        assert_eq!(result.unwrap().to_string(), "");
+    }
+
+    #[test]
+    fn ceil_inf_string_returns_empty() {
+        let result = get_value(
+            &Function::Ceil,
+            String::from("inf"),
+            vec![],
+            None,
+            &None,
+        );
+        assert_eq!(result.unwrap().to_string(), "");
     }
 }

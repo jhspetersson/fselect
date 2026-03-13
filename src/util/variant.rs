@@ -54,6 +54,10 @@ impl Variant {
     }
 
     pub fn from_float(value: f64) -> Variant {
+        if value.is_nan() || value.is_infinite() {
+            return Variant::empty(VariantType::Float);
+        }
+        let value = value + 0.0;
         Variant {
             value_type: VariantType::Float,
             string_value: format!("{}", value),

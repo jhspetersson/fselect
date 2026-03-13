@@ -716,7 +716,7 @@ pub fn get_value(
                         if val <= 0 {
                             Ok(Variant::from_int(0))
                         } else {
-                            Ok(Variant::from_int(rng.random_range(0..val)))
+                            Ok(Variant::from_int(rng.random_range(0..=val)))
                         }
                     } else {
                         let limit = function_args.first().unwrap();
@@ -725,7 +725,7 @@ pub fn get_value(
                                 if val >= limit {
                                     Ok(Variant::from_int(val))
                                 } else {
-                                    Ok(Variant::from_int(rng.random_range(val..limit)))
+                                    Ok(Variant::from_int(rng.random_range(val..=limit)))
                                 }
                             }
                             _ => Err(format!(
@@ -796,7 +796,13 @@ pub fn get_aggregate_value(
 
             get_mean(raw_output_buffer, &buffer_key).to_string()
         }
-        Function::Sum => get_buffer_sum(raw_output_buffer, &buffer_key).to_string(),
+        Function::Sum => {
+            let n = get_parseable_count(raw_output_buffer, &buffer_key);
+            if n == 0 {
+                return String::new();
+            }
+            get_buffer_sum(raw_output_buffer, &buffer_key).to_string()
+        }
         Function::Count => raw_output_buffer.len().to_string(),
         Function::StdDevPop => {
             if raw_output_buffer.is_empty() {
@@ -2441,5 +2447,55 @@ mod tests {
             &None,
         );
         assert_eq!(result.unwrap().to_string(), "");
+    }
+
+    #[test]
+    fn random_upper_bound_is_inclusive() {
+        let mut saw_max = false;
+        for _ in 0..1000 {
+            let result = get_value(
+                &Function::Random,
+                String::from("1"),
+                vec![],
+                None,
+                &None,
+            );
+            let val = result.unwrap().to_int();
+            assert!(val >= 0 && val <= 1);
+            if val == 1 {
+                saw_max = true;
+            }
+        }
+        assert!(saw_max, "random(1) should be able to produce 1");
+    }
+
+    #[test]
+    fn random_range_upper_bound_is_inclusive() {
+        let mut saw_max = false;
+        for _ in 0..1000 {
+            let result = get_value(
+                &Function::Random,
+                String::from("5"),
+                vec![String::from("6")],
+                None,
+                &None,
+            );
+            let val = result.unwrap().to_int();
+            assert!(val >= 5 && val <= 6);
+            if val == 6 {
+                saw_max = true;
+            }
+        }
+        assert!(saw_max, "random(5, 6) should be able to produce 6");
+    }
+
+    #[test]
+    fn sum_no_parseable_values_is_empty() {
+        let buffer = vec![
+            HashMap::from([(String::from("val"), String::from("abc"))]),
+            HashMap::from([(String::from("val"), String::from("def"))]),
+        ];
+        let result = get_aggregate_value(&Function::Sum, &buffer, String::from("val"), &None);
+        assert_eq!(result, String::new());
     }
 }

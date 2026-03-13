@@ -207,7 +207,7 @@ pub fn get_value(
             let original_length = string.chars().count();
             let pos: i32 = match &function_args.get(1) {
                 Some(pos) => match pos.parse::<i32>() {
-                    Ok(p) => (p - 1).max(0),
+                    Ok(p) => p.saturating_sub(1).max(0),
                     Err(_) => return Err(format!("Could not parse position argument of LOCATE function: {}", pos)),
                 },
                 _ => 0,
@@ -2863,5 +2863,17 @@ mod tests {
             &None,
         );
         assert_eq!(result.unwrap().to_int(), 0);
+    }
+
+    #[test]
+    fn locate_i32_min_position_no_overflow() {
+        let result = get_value(
+            &Function::Locate,
+            String::from("hello"),
+            vec![String::from("l"), String::from("-2147483648")],
+            None,
+            &None,
+        );
+        assert_eq!(result.unwrap().to_int(), 3);
     }
 }

@@ -194,10 +194,7 @@ fn convert_hgignore_glob(glob: &str, file_path: &Path) -> Result<Regex, String> 
             return Err("Error parsing .hgignore pattern: ".to_string() + glob);
         }
 
-        pattern = file_path
-            .to_string_lossy()
-            .to_string()
-            .replace("\\", "\\\\")
+        pattern = regex::escape(&file_path.to_string_lossy())
             .add("/([^/]+/)*")
             .add(&pattern);
 

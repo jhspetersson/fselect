@@ -332,7 +332,13 @@ impl Expr {
         if let Some(ref right) = self.right {
             result.extend(right.get_fields_required_in_subqueries(alias, parent_subquery));
         }
-        
+
+        if let Some(ref args) = self.args {
+            for arg in args {
+                result.extend(arg.get_fields_required_in_subqueries(alias, parent_subquery));
+            }
+        }
+
         if let Some(ref expr_alias) = self.root_alias {
             if expr_alias == alias {
                 if let Some(field) = self.field {
@@ -802,6 +808,19 @@ mod tests {
         expr.set_args(light_args);
         assert_eq!(expr.weight, Function::Concat.get_weight() + light_weight,
             "weight should reflect only the new args, got: {}", expr.weight);
+    }
+
+    #[test]
+    fn get_fields_required_in_subqueries_checks_args() {
+        let mut func_expr = Expr::function(Function::ConcatWs);
+        func_expr.add_left(Expr::value(",".to_string()));
+        func_expr.set_args(vec![
+            Expr::field_with_root_alias(Field::Name, Some("t1".to_string())),
+            Expr::field_with_root_alias(Field::Name, Some("t2".to_string())),
+        ]);
+        let map = func_expr.get_fields_required_in_subqueries("t1", true);
+        assert_eq!(map.len(), 1, "Expected t1.name in args to be found, got: {:?}", map);
+        assert!(map.contains_key(&Field::Name));
     }
 
     #[test]

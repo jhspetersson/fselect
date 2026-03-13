@@ -768,15 +768,18 @@ impl<'a> Searcher<'a> {
 
                                         if file_type.is_symlink() {
                                             if let Ok(resolved) = std::fs::read_link(&path) {
-                                                ok = true;
-                                                if resolved.is_relative() {
+                                                let resolved_path = if resolved.is_relative() {
                                                     if let Some(parent) = path.parent() {
-                                                        path = parent.join(&resolved);
+                                                        parent.join(&resolved)
                                                     } else {
-                                                        path = resolved;
+                                                        resolved
                                                     }
                                                 } else {
-                                                    path = resolved;
+                                                    resolved
+                                                };
+                                                if resolved_path.is_dir() {
+                                                    ok = true;
+                                                    path = resolved_path;
                                                 }
                                             }
                                         } else if file_type.is_dir() {

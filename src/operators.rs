@@ -117,16 +117,22 @@ impl ArithmeticOp {
         }
     }
 
-    pub fn calc(&self, left: &Variant, right: &Variant) -> Variant {
+    pub fn calc(&self, left: &Variant, right: &Variant) -> Result<Variant, String> {
+        let right_val = right.to_float();
+
+        if matches!(self, ArithmeticOp::Divide | ArithmeticOp::Modulo) && right_val == 0.0 {
+            return Err("Division by zero".to_string());
+        }
+
         let result = match &self {
-            ArithmeticOp::Add => left.to_float() + right.to_float(),
-            ArithmeticOp::Subtract => left.to_float() - right.to_float(),
-            ArithmeticOp::Multiply => left.to_float() * right.to_float(),
-            ArithmeticOp::Divide => left.to_float() / right.to_float(),
-            ArithmeticOp::Modulo => left.to_float() % right.to_float(),
+            ArithmeticOp::Add => left.to_float() + right_val,
+            ArithmeticOp::Subtract => left.to_float() - right_val,
+            ArithmeticOp::Multiply => left.to_float() * right_val,
+            ArithmeticOp::Divide => left.to_float() / right_val,
+            ArithmeticOp::Modulo => left.to_float() % right_val,
         };
 
-        Variant::from_float(result)
+        Ok(Variant::from_float(result))
     }
 }
 
@@ -150,30 +156,30 @@ mod tests {
     }
 
     #[test]
-    fn calc_divide_by_zero_not_zero() {
+    fn calc_divide_by_zero_returns_error() {
         let result = ArithmeticOp::Divide.calc(
             &Variant::from_float(1.0),
             &Variant::from_float(0.0),
         );
-        assert_ne!(result.to_float(), 0.0, "1/0 should not silently become 0");
+        assert!(result.is_err());
     }
 
     #[test]
-    fn calc_modulo_by_zero_not_zero() {
+    fn calc_modulo_by_zero_returns_error() {
         let result = ArithmeticOp::Modulo.calc(
             &Variant::from_float(1.0),
             &Variant::from_float(0.0),
         );
-        assert_ne!(result.to_float(), 0.0, "1%0 should not silently become 0");
+        assert!(result.is_err());
     }
 
     #[test]
-    fn calc_zero_divided_by_zero_not_zero() {
+    fn calc_zero_divided_by_zero_returns_error() {
         let result = ArithmeticOp::Divide.calc(
             &Variant::from_float(0.0),
             &Variant::from_float(0.0),
         );
-        assert_ne!(result.to_float(), 0.0, "0/0 should not silently become 0");
+        assert!(result.is_err());
     }
 
     #[test]
@@ -233,12 +239,12 @@ mod tests {
     fn calc_basic_operations() {
         let a = Variant::from_float(10.0);
         let b = Variant::from_float(3.0);
-        assert_eq!(ArithmeticOp::Add.calc(&a, &b).to_float(), 13.0);
-        assert_eq!(ArithmeticOp::Subtract.calc(&a, &b).to_float(), 7.0);
-        assert_eq!(ArithmeticOp::Multiply.calc(&a, &b).to_float(), 30.0);
-        let div = ArithmeticOp::Divide.calc(&a, &b).to_float();
+        assert_eq!(ArithmeticOp::Add.calc(&a, &b).unwrap().to_float(), 13.0);
+        assert_eq!(ArithmeticOp::Subtract.calc(&a, &b).unwrap().to_float(), 7.0);
+        assert_eq!(ArithmeticOp::Multiply.calc(&a, &b).unwrap().to_float(), 30.0);
+        let div = ArithmeticOp::Divide.calc(&a, &b).unwrap().to_float();
         assert!((div - 10.0 / 3.0).abs() < 1e-10);
-        assert_eq!(ArithmeticOp::Modulo.calc(&a, &b).to_float(), 1.0);
+        assert_eq!(ArithmeticOp::Modulo.calc(&a, &b).unwrap().to_float(), 1.0);
     }
 
     #[test]

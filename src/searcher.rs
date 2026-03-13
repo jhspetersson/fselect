@@ -973,7 +973,7 @@ impl<'a> Searcher<'a> {
                 if let Some(ref right) = column_expr.right {
                     let right_result =
                         self.get_column_expr_value(entry, file_info, root_path, file_map, buffer_data, right)?;
-                        result = Ok(op.calc(&left_result, &right_result));
+                        result = op.calc(&left_result, &right_result);
                         file_map.insert(column_expr_str, result.clone()?.to_string());
                 } else {
                     result = Ok(left_result);

@@ -808,14 +808,22 @@ pub fn get_aggregate_value(
                 return String::new();
             }
 
-            get_mean(raw_output_buffer, &buffer_key).to_string()
+            let mean = get_mean(raw_output_buffer, &buffer_key);
+            if !mean.is_finite() {
+                return String::new();
+            }
+            mean.to_string()
         }
         Function::Sum => {
             let n = get_parseable_count(raw_output_buffer, &buffer_key);
             if n == 0 {
                 return String::new();
             }
-            get_buffer_sum(raw_output_buffer, &buffer_key).to_string()
+            let sum = get_buffer_sum(raw_output_buffer, &buffer_key);
+            if !sum.is_finite() {
+                return String::new();
+            }
+            sum.to_string()
         }
         Function::Count => raw_output_buffer.len().to_string(),
         Function::StdDevPop => {
@@ -828,6 +836,9 @@ pub fn get_aggregate_value(
                 return String::new();
             }
             let variance = get_variance(raw_output_buffer, &buffer_key, n);
+            if !variance.is_finite() {
+                return String::new();
+            }
             let result = variance.sqrt();
 
             result.to_string()
@@ -842,6 +853,9 @@ pub fn get_aggregate_value(
                 return String::new();
             }
             let variance = get_variance(raw_output_buffer, &buffer_key, size - 1);
+            if !variance.is_finite() {
+                return String::new();
+            }
             let result = variance.sqrt();
 
             result.to_string()
@@ -856,6 +870,9 @@ pub fn get_aggregate_value(
                 return String::new();
             }
             let variance = get_variance(raw_output_buffer, &buffer_key, n);
+            if !variance.is_finite() {
+                return String::new();
+            }
 
             variance.to_string()
         }
@@ -869,6 +886,9 @@ pub fn get_aggregate_value(
                 return String::new();
             }
             let variance = get_variance(raw_output_buffer, &buffer_key, size - 1);
+            if !variance.is_finite() {
+                return String::new();
+            }
 
             variance.to_string()
         }
@@ -2648,5 +2668,33 @@ mod tests {
         let buffer = make_buffer("val", &["-0", "0"]);
         let result = get_aggregate_value(&Function::Max, &buffer, "val".to_string(), &None);
         assert_eq!(result, "0");
+    }
+
+    #[test]
+    fn sum_overflow_returns_empty() {
+        let buffer = make_buffer("val", &["1e308", "1e308"]);
+        let result = get_aggregate_value(&Function::Sum, &buffer, "val".to_string(), &None);
+        assert_eq!(result, String::new());
+    }
+
+    #[test]
+    fn avg_overflow_returns_empty() {
+        let buffer = make_buffer("val", &["1e308", "1e308"]);
+        let result = get_aggregate_value(&Function::Avg, &buffer, "val".to_string(), &None);
+        assert_eq!(result, String::new());
+    }
+
+    #[test]
+    fn var_pop_overflow_returns_empty() {
+        let buffer = make_buffer("val", &["1e308", "-1e308"]);
+        let result = get_aggregate_value(&Function::VarPop, &buffer, "val".to_string(), &None);
+        assert_eq!(result, String::new());
+    }
+
+    #[test]
+    fn stddev_pop_overflow_returns_empty() {
+        let buffer = make_buffer("val", &["1e308", "-1e308"]);
+        let result = get_aggregate_value(&Function::StdDevPop, &buffer, "val".to_string(), &None);
+        assert_eq!(result, String::new());
     }
 }

@@ -132,6 +132,10 @@ impl ArithmeticOp {
             ArithmeticOp::Modulo => left.to_float() % right_val,
         };
 
+        if !result.is_finite() {
+            return Err(format!("Arithmetic overflow: result is {}", result));
+        }
+
         Ok(Variant::from_float(result))
     }
 }
@@ -245,6 +249,33 @@ mod tests {
         let div = ArithmeticOp::Divide.calc(&a, &b).unwrap().to_float();
         assert!((div - 10.0 / 3.0).abs() < 1e-10);
         assert_eq!(ArithmeticOp::Modulo.calc(&a, &b).unwrap().to_float(), 1.0);
+    }
+
+    #[test]
+    fn calc_add_overflow_returns_error() {
+        let result = ArithmeticOp::Add.calc(
+            &Variant::from_float(f64::MAX),
+            &Variant::from_float(f64::MAX),
+        );
+        assert!(result.is_err(), "f64::MAX + f64::MAX should error, not silently become 0");
+    }
+
+    #[test]
+    fn calc_multiply_overflow_returns_error() {
+        let result = ArithmeticOp::Multiply.calc(
+            &Variant::from_float(f64::MAX),
+            &Variant::from_float(2.0),
+        );
+        assert!(result.is_err(), "f64::MAX * 2 should error, not silently become 0");
+    }
+
+    #[test]
+    fn calc_subtract_overflow_returns_error() {
+        let result = ArithmeticOp::Subtract.calc(
+            &Variant::from_float(f64::MAX),
+            &Variant::from_float(-f64::MAX),
+        );
+        assert!(result.is_err(), "f64::MAX - (-f64::MAX) should error, not silently become 0");
     }
 
     #[test]

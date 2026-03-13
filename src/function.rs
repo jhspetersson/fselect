@@ -261,6 +261,10 @@ pub fn get_value(
             let from = &function_args[0];
             let to = &function_args[1];
 
+            if from.is_empty() {
+                return Ok(Variant::from_string(&source));
+            }
+
             let result = source.replace(from, to);
 
             Ok(Variant::from_string(&result))
@@ -389,15 +393,15 @@ pub fn get_value(
             Ok(Variant::from_float(std::f64::consts::PI))
         }
         Function::Floor => match function_arg.parse::<f64>() {
-            Ok(val) => Ok(Variant::from_float(val.floor())),
+            Ok(val) => Ok(Variant::from_float(val.floor() + 0.0)),
             _ => Ok(Variant::empty(VariantType::String)),
         },
         Function::Ceil => match function_arg.parse::<f64>() {
-            Ok(val) => Ok(Variant::from_float(val.ceil())),
+            Ok(val) => Ok(Variant::from_float(val.ceil() + 0.0)),
             _ => Ok(Variant::empty(VariantType::String)),
         },
         Function::Round => match function_arg.parse::<f64>() {
-            Ok(val) => Ok(Variant::from_float(val.round())),
+            Ok(val) => Ok(Variant::from_float(val.round() + 0.0)),
             _ => Ok(Variant::empty(VariantType::String)),
         },
 
@@ -2341,5 +2345,53 @@ mod tests {
             &None,
         );
         assert_eq!(result.unwrap().to_string(), "");
+    }
+
+    #[test]
+    fn replace_empty_search_returns_original() {
+        let result = get_value(
+            &Function::Replace,
+            String::from("hello"),
+            vec![String::from(""), String::from("x")],
+            None,
+            &None,
+        );
+        assert_eq!(result.unwrap().to_string(), "hello");
+    }
+
+    #[test]
+    fn ceil_negative_fractional_not_negative_zero() {
+        let result = get_value(
+            &Function::Ceil,
+            String::from("-0.1"),
+            vec![],
+            None,
+            &None,
+        );
+        assert_eq!(result.unwrap().to_string(), "0");
+    }
+
+    #[test]
+    fn round_negative_fractional_not_negative_zero() {
+        let result = get_value(
+            &Function::Round,
+            String::from("-0.4"),
+            vec![],
+            None,
+            &None,
+        );
+        assert_eq!(result.unwrap().to_string(), "0");
+    }
+
+    #[test]
+    fn floor_negative_zero_not_negative_zero() {
+        let result = get_value(
+            &Function::Floor,
+            String::from("-0.0"),
+            vec![],
+            None,
+            &None,
+        );
+        assert_eq!(result.unwrap().to_string(), "0");
     }
 }

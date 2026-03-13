@@ -721,14 +721,16 @@ impl<'a> Searcher<'a> {
                             if pass_ignores {
                                 if min_depth == 0 || depth >= min_depth {
                                     let checked = self.check_file(&entry, root_dir, &None);
-                                    if checked.is_err() {
-                                        self.error_count += 1;
-                                        path_error_message(&path, checked.err().unwrap());
-                                        return Ok(());
-                                    }
-                                    let checked = checked?;
-                                    if !checked {
-                                        return Ok(());
+                                    match checked {
+                                        Err(err) => {
+                                            self.error_count += 1;
+                                            path_error_message(&path, err);
+                                            continue;
+                                        }
+                                        Ok(false) => {
+                                            return Ok(());
+                                        }
+                                        Ok(true) => {}
                                     }
 
                                     if search_archives

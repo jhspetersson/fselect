@@ -253,12 +253,13 @@ impl Expr {
     }
     
     pub fn set_args(&mut self, args: Vec<Expr>) {
+        let old_weight: i32 = self.args.as_ref().map_or(0, |a| a.iter().map(|e| e.weight).sum());
         let mut args_weight = 0;
         for arg in &args {
             args_weight += arg.weight;
         }
         self.args = Some(args);
-        self.weight += args_weight;
+        self.weight = self.weight - old_weight + args_weight;
     }
 
     pub fn has_aggregate_function(&self) -> bool {

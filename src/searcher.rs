@@ -751,10 +751,16 @@ impl<'a> Searcher<'a> {
 
                                                     if let Ok(afile) = archive.by_index(i) {
                                                         let file_info = to_file_info(&afile);
-                                                        let checked = self
-                                                            .check_file(&entry, root_dir, &Some(file_info))?;
-                                                        if !checked {
-                                                            return Ok(());
+                                                        match self.check_file(&entry, root_dir, &Some(file_info)) {
+                                                            Err(err) => {
+                                                                self.error_count += 1;
+                                                                path_error_message(&path, err);
+                                                                continue;
+                                                            }
+                                                            Ok(false) => {
+                                                                return Ok(());
+                                                            }
+                                                            Ok(true) => {}
                                                         }
                                                     }
                                                 }

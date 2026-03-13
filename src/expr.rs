@@ -368,10 +368,27 @@ impl Expr {
             return true;
         }
 
-        match expr.left {
-            Some(ref left) => Self::contains_numeric_field(left),
-            None => false,
+        if let Some(ref left) = expr.left {
+            if Self::contains_numeric_field(left) {
+                return true;
+            }
         }
+
+        if let Some(ref right) = expr.right {
+            if Self::contains_numeric_field(right) {
+                return true;
+            }
+        }
+
+        if let Some(ref args) = expr.args {
+            for arg in args {
+                if Self::contains_numeric_field(arg) {
+                    return true;
+                }
+            }
+        }
+
+        false
     }
 
     pub fn contains_datetime(&self) -> bool {
@@ -597,6 +614,104 @@ mod tests {
         assert_eq!(map, HashMap::from([(Field::Name, String::from("Name")), (Field::Size, String::from("Size"))]));
         let map = expr.right.unwrap().subquery.unwrap().expr.unwrap().get_fields_required_in_subqueries("t2", false);
         assert!(map.is_empty(), "Expected no required fields for t2 in correlated subquery");
+    }
+
+    #[test]
+    fn contains_numeric_right_side_of_arithmetic() {
+        let expr = Expr::arithmetic_op(
+            Expr::value("1".to_string()),
+            ArithmeticOp::Add,
+            Expr::field(Field::Size),
+        );
+        assert!(expr.contains_numeric());
+    }
+
+    #[test]
+    fn contains_numeric_right_side_of_op() {
+        let expr = Expr::op(
+            Expr::value("100".to_string()),
+            Op::Gt,
+            Expr::field(Field::Size),
+        );
+        assert!(expr.contains_numeric());
+    }
+
+    #[test]
+    fn contains_datetime_right_side_of_op() {
+        let expr = Expr::op(
+            Expr::value("2024-01-01".to_string()),
+            Op::Lt,
+            Expr::field(Field::Accessed),
+        );
+        assert!(expr.contains_datetime());
+    }
+
+    #[test]
+    fn contains_colorized_right_side_of_op() {
+        let expr = Expr::op(
+            Expr::value("foo".to_string()),
+            Op::Eq,
+            Expr::field(Field::Name),
+        );
+        assert!(expr.contains_colorized());
+    }
+
+    #[test]
+    fn contains_numeric_in_function_args() {
+        let mut expr = Expr::function(Function::Concat);
+        expr.set_args(vec![Expr::field(Field::Size)]);
+        assert!(expr.contains_numeric());
+    }
+
+    #[test]
+    fn contains_datetime_in_function_args() {
+        let mut expr = Expr::function(Function::Concat);
+        expr.set_args(vec![Expr::field(Field::Accessed)]);
+        assert!(expr.contains_datetime());
+    }
+
+    #[test]
+    fn display_arithmetic_op_shows_operator() {
+        let expr = Expr::arithmetic_op(
+            Expr::value("1".to_string()),
+            ArithmeticOp::Add,
+            Expr::value("2".to_string()),
+        );
+        let displayed = format!("{}", expr);
+        assert!(displayed.contains("+") || displayed.contains("plus"),
+            "Expected '+' or 'plus' in display, got: {}", displayed);
+    }
+
+    #[test]
+    fn display_logical_op_shows_operator() {
+        let expr = Expr::logical_op(
+            Expr::op(
+                Expr::field(Field::Name),
+                Op::Eq,
+                Expr::value("foo".to_string()),
+            ),
+            LogicalOp::And,
+            Expr::op(
+                Expr::field(Field::Size),
+                Op::Gt,
+                Expr::value("0".to_string()),
+            ),
+        );
+        let displayed = format!("{}", expr);
+        assert!(displayed.contains("and") || displayed.contains("AND"),
+            "Expected 'and' or 'AND' in display, got: {}", displayed);
+    }
+
+    #[test]
+    fn display_comparison_op_shows_operator() {
+        let expr = Expr::op(
+            Expr::field(Field::Size),
+            Op::Gt,
+            Expr::value("100".to_string()),
+        );
+        let displayed = format!("{}", expr);
+        assert!(displayed.contains(">") || displayed.contains("gt"),
+            "Expected '>' or 'gt' in display, got: {}", displayed);
     }
 
     #[test]

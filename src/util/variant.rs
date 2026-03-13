@@ -148,9 +148,12 @@ impl Variant {
                 let int_value = self.string_value.parse::<i64>();
                 match int_value {
                     Ok(i) => i,
-                    _ => match parse_filesize(&self.string_value) {
-                        Some(size) => size as i64,
-                        _ => 0,
+                    _ => match self.string_value.parse::<f64>() {
+                        Ok(f) if f.is_finite() => f as i64,
+                        _ => match parse_filesize(&self.string_value) {
+                            Some(size) => size as i64,
+                            _ => 0,
+                        },
                     },
                 }
             }
@@ -481,6 +484,18 @@ mod tests {
     fn from_string_infinity_to_float_not_inf() {
         let v = Variant::from_string(&String::from("infinity"));
         assert!(v.to_float().is_finite(), "to_float should not return infinity from string");
+    }
+
+    #[test]
+    fn from_string_float_to_int() {
+        let v = Variant::from_string(&String::from("3.14"));
+        assert_eq!(v.to_int(), 3);
+    }
+
+    #[test]
+    fn from_string_negative_float_to_int() {
+        let v = Variant::from_string(&String::from("-2.7"));
+        assert_eq!(v.to_int(), -2);
     }
 
     #[test]

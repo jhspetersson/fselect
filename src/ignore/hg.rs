@@ -321,4 +321,54 @@ mod tests {
             regex_str
         );
     }
+
+    #[cfg(windows)]
+    #[test]
+    fn glob_question_mark_matches_exactly_one_char_windows() {
+        let regex = convert_hgignore_glob("a?b", Path::new("C:\\tmp")).unwrap();
+        assert!(regex.is_match("C:\\tmp\\axb"), "? should match single char");
+        assert!(
+            !regex.is_match("C:\\tmp\\axxb"),
+            "? should not match two chars but got match"
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn glob_path_with_dots_is_regex_escaped_windows() {
+        let result = convert_hgignore_glob("*.txt", Path::new("C:\\Users\\user\\my.project"));
+        let regex = result.unwrap();
+        let regex_str = regex.as_str();
+        assert!(
+            regex_str.contains("my\\.project"),
+            "dots in path should be escaped but got: {}",
+            regex_str
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn regexp_path_with_dots_is_regex_escaped_windows() {
+        let result = convert_hgignore_regexp("foo", Path::new("C:\\Users\\user\\my.project"));
+        let regex = result.unwrap();
+        let regex_str = regex.as_str();
+        assert!(
+            regex_str.contains("my\\.project"),
+            "dots in path should be escaped but got: {}",
+            regex_str
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn glob_brackets_are_escaped_windows() {
+        let result = convert_hgignore_glob("[test]", Path::new("C:\\tmp"));
+        let regex = result.unwrap();
+        let regex_str = regex.as_str();
+        assert!(
+            regex_str.contains("\\[") && regex_str.contains("\\]"),
+            "brackets should be escaped but got: {}",
+            regex_str
+        );
+    }
 }

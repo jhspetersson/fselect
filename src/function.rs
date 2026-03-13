@@ -419,7 +419,18 @@ pub fn get_value(
             _ => Ok(Variant::empty(VariantType::String)),
         },
         Function::Round => match function_arg.parse::<f64>() {
-            Ok(val) => Ok(Variant::from_float(val.round())),
+            Ok(val) => {
+                let precision: i32 = match function_args.first() {
+                    Some(p) => match p.parse::<i32>() {
+                        Ok(p) => p,
+                        Err(_) => return Err(format!("Could not parse precision argument of ROUND function: {}", p)),
+                    },
+                    _ => 0,
+                };
+                let factor = 10_f64.powi(precision);
+                let result = (val * factor).round() / factor;
+                Ok(Variant::from_float(result))
+            }
             _ => Ok(Variant::empty(VariantType::String)),
         },
 
@@ -1053,7 +1064,7 @@ functions! {
 
         #[text = ["round"], data_type = "numeric"]
         @group = "Numeric"
-        @description = "Round to the nearest integer"
+        @description = "Round to the nearest integer, or to a given number of decimal places"
         Round,
 
         #[text = ["contains_japanese", "japanese"], data_type = "boolean"]
@@ -2428,6 +2439,66 @@ mod tests {
             &None,
         );
         assert_eq!(result.unwrap().to_string(), "0");
+    }
+
+    #[test]
+    fn round_with_precision_two() {
+        let result = get_value(
+            &Function::Round,
+            String::from("3.14159"),
+            vec![String::from("2")],
+            None,
+            &None,
+        );
+        assert_eq!(result.unwrap().to_float(), 3.14);
+    }
+
+    #[test]
+    fn round_with_precision_zero() {
+        let result = get_value(
+            &Function::Round,
+            String::from("3.7"),
+            vec![String::from("0")],
+            None,
+            &None,
+        );
+        assert_eq!(result.unwrap().to_float(), 4.0);
+    }
+
+    #[test]
+    fn round_with_negative_precision() {
+        let result = get_value(
+            &Function::Round,
+            String::from("1234"),
+            vec![String::from("-2")],
+            None,
+            &None,
+        );
+        assert_eq!(result.unwrap().to_float(), 1200.0);
+    }
+
+    #[test]
+    fn round_with_precision_no_arg_defaults_to_integer() {
+        let result = get_value(
+            &Function::Round,
+            String::from("3.14159"),
+            vec![],
+            None,
+            &None,
+        );
+        assert_eq!(result.unwrap().to_float(), 3.0);
+    }
+
+    #[test]
+    fn round_with_invalid_precision_returns_error() {
+        let result = get_value(
+            &Function::Round,
+            String::from("3.14"),
+            vec![String::from("abc")],
+            None,
+            &None,
+        );
+        assert!(result.is_err());
     }
 
     #[test]

@@ -401,7 +401,7 @@ impl<'a> Searcher<'a> {
             self.hgignore_filters.clear();
             self.dockerignore_filters.clear();
 
-            let _result = self.visit_dir(
+            let result = self.visit_dir(
                 root_dir,
                 min_depth,
                 max_depth,
@@ -416,6 +416,12 @@ impl<'a> Searcher<'a> {
                 true,
                 root_dir,
             );
+
+            if let Err(ref err) = result {
+                if err.kind() == ErrorKind::BrokenPipe {
+                    break;
+                }
+            }
         }
 
         let compute_time = std::time::Instant::now();
@@ -727,12 +733,15 @@ impl<'a> Searcher<'a> {
                                     let checked = self.check_file(&entry, root_dir, &None);
                                     match checked {
                                         Err(err) => {
+                                            if err.kind() == ErrorKind::BrokenPipe {
+                                                return Err(err);
+                                            }
                                             self.error_count += 1;
                                             path_error_message(&path, err);
                                             continue;
                                         }
                                         Ok(false) => {
-                                            return Ok(());
+                                            return Err(io::Error::new(ErrorKind::BrokenPipe, "broken pipe"));
                                         }
                                         Ok(true) => {}
                                     }
@@ -753,12 +762,15 @@ impl<'a> Searcher<'a> {
                                                         let file_info = to_file_info(&afile);
                                                         match self.check_file(&entry, root_dir, &Some(file_info)) {
                                                             Err(err) => {
+                                                                if err.kind() == ErrorKind::BrokenPipe {
+                                                                    return Err(err);
+                                                                }
                                                                 self.error_count += 1;
                                                                 path_error_message(&path, err);
                                                                 continue;
                                                             }
                                                             Ok(false) => {
-                                                                return Ok(());
+                                                                return Err(io::Error::new(ErrorKind::BrokenPipe, "broken pipe"));
                                                             }
                                                             Ok(true) => {}
                                                         }
@@ -824,12 +836,12 @@ impl<'a> Searcher<'a> {
                                                     root_dir,
                                                 );
 
-                                                if result.is_err() {
+                                                if let Err(err) = result {
+                                                    if err.kind() == ErrorKind::BrokenPipe {
+                                                        return Err(err);
+                                                    }
                                                     self.error_count += 1;
-                                                    path_error_message(
-                                                        &path,
-                                                        result.err().unwrap(),
-                                                    );
+                                                    path_error_message(&path, err);
                                                 }
                                             } else {
                                                 self.dir_queue.push_back(path);
@@ -885,9 +897,12 @@ impl<'a> Searcher<'a> {
                     root_dir,
                 );
 
-                if result.is_err() {
+                if let Err(err) = result {
+                    if err.kind() == ErrorKind::BrokenPipe {
+                        return Err(err);
+                    }
                     self.error_count += 1;
-                    path_error_message(&path, result.err().unwrap());
+                    path_error_message(&path, err);
                 }
             }
         }

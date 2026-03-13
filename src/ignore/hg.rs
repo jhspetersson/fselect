@@ -165,7 +165,7 @@ fn convert_hgignore_pattern(
 }
 
 static HG_CONVERT_REPLACE_REGEX: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new("(\\*\\*|\\?|\\.|\\*)").unwrap()
+    Regex::new("(\\*\\*|\\?|\\.|\\[|\\]|\\(|\\)|\\^|\\$|\\*)").unwrap()
 });
 
 fn convert_hgignore_glob(glob: &str, file_path: &Path) -> Result<Regex, String> {

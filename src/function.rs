@@ -204,6 +204,7 @@ pub fn get_value(
             }
             let string = String::from(&function_arg);
             let substring = &function_args[0];
+            let original_length = string.chars().count();
             let pos: i32 = match &function_args.get(1) {
                 Some(pos) => match pos.parse::<i32>() {
                     Ok(p) => (p - 1).max(0),
@@ -211,6 +212,11 @@ pub fn get_value(
                 },
                 _ => 0,
             };
+
+            if pos as usize > original_length {
+                return Ok(Variant::from_int(0));
+            }
+
             let string: String = string.chars().skip(pos as usize).collect();
 
             let result = string
@@ -2696,5 +2702,53 @@ mod tests {
         let buffer = make_buffer("val", &["1e308", "-1e308"]);
         let result = get_aggregate_value(&Function::StdDevPop, &buffer, "val".to_string(), &None);
         assert_eq!(result, String::new());
+    }
+
+    #[test]
+    fn locate_empty_substring_beyond_string_length() {
+        let result = get_value(
+            &Function::Locate,
+            String::from("hello"),
+            vec![String::from(""), String::from("100")],
+            None,
+            &None,
+        );
+        assert_eq!(result.unwrap().to_int(), 0);
+    }
+
+    #[test]
+    fn locate_beyond_string_length_returns_zero() {
+        let result = get_value(
+            &Function::Locate,
+            String::from("hello"),
+            vec![String::from("o"), String::from("100")],
+            None,
+            &None,
+        );
+        assert_eq!(result.unwrap().to_int(), 0);
+    }
+
+    #[test]
+    fn locate_empty_substring_at_end_plus_one() {
+        let result = get_value(
+            &Function::Locate,
+            String::from("hello"),
+            vec![String::from(""), String::from("6")],
+            None,
+            &None,
+        );
+        assert_eq!(result.unwrap().to_int(), 6);
+    }
+
+    #[test]
+    fn locate_empty_substring_past_end_plus_one() {
+        let result = get_value(
+            &Function::Locate,
+            String::from("hello"),
+            vec![String::from(""), String::from("7")],
+            None,
+            &None,
+        );
+        assert_eq!(result.unwrap().to_int(), 0);
     }
 }

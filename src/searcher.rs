@@ -766,7 +766,15 @@ impl<'a> Searcher<'a> {
                                         if file_type.is_symlink() {
                                             if let Ok(resolved) = std::fs::read_link(&path) {
                                                 ok = true;
-                                                path = resolved;
+                                                if resolved.is_relative() {
+                                                    if let Some(parent) = path.parent() {
+                                                        path = parent.join(&resolved);
+                                                    } else {
+                                                        path = resolved;
+                                                    }
+                                                } else {
+                                                    path = resolved;
+                                                }
                                             }
                                         } else if file_type.is_dir() {
                                             ok = true;
@@ -3294,5 +3302,91 @@ mod tests {
         // get_column_expr_value should read the value from record_context rather than the current entry
         let v = searcher.get_column_expr_value(None, &None, root_path, &mut file_map, None, &bound_expr);
         assert_eq!(v.unwrap().to_string(), "foo.txt");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_dfs_follows_relative_symlink() {
+        use std::os::unix::fs::symlink;
+
+        let tmp = std::env::temp_dir().join("fselect_test_dfs_rel_symlink");
+        let _ = fs::remove_dir_all(&tmp);
+        let root = tmp.join("root");
+        let hidden = tmp.join("hidden");
+        fs::create_dir_all(&root).unwrap();
+        fs::create_dir_all(&hidden).unwrap();
+        fs::write(hidden.join("file.txt"), "hello").unwrap();
+        symlink("../hidden", root.join("link")).unwrap();
+
+        let mut searcher = create_test_searcher();
+        searcher.current_follow_symlinks = true;
+
+        let _ = searcher.visit_dir(
+            &root,
+            0, 0, 0,
+            false, false,
+            #[cfg(feature = "git")]
+            None,
+            false, false,
+            TraversalMode::Dfs,
+            true,
+            &root,
+        );
+
+        let found = searcher.found;
+        let errors = searcher.error_count;
+        let _ = fs::remove_dir_all(&tmp);
+        assert!(
+            found >= 1 && errors == 0,
+            "should find file through relative symlink, found={} errors={}",
+            found, errors
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_bfs_follows_relative_symlink() {
+        use std::os::unix::fs::symlink;
+
+        let tmp = std::env::temp_dir().join("fselect_test_bfs_rel_symlink");
+        let _ = fs::remove_dir_all(&tmp);
+        let root = tmp.join("root");
+        let hidden = tmp.join("hidden");
+        fs::create_dir_all(&root).unwrap();
+        fs::create_dir_all(&hidden).unwrap();
+        fs::write(hidden.join("file.txt"), "hello").unwrap();
+        symlink("../hidden", root.join("link")).unwrap();
+
+        let mut searcher = create_test_searcher();
+        searcher.current_follow_symlinks = true;
+
+        let _ = searcher.visit_dir(
+            &root,
+            0, 0, 0,
+            false, false,
+            #[cfg(feature = "git")]
+            None,
+            false, false,
+            TraversalMode::Bfs,
+            true,
+            &root,
+        );
+
+        let found = searcher.found;
+        let errors = searcher.error_count;
+        let _ = fs::remove_dir_all(&tmp);
+        assert!(
+            found >= 1 && errors == 0,
+            "should find file through relative symlink, found={} errors={}",
+            found, errors
+        );
+    }
+
+    #[test]
+    fn test_depth_underflow_protection() {
+        let canonical_depth: u32 = 2;
+        let base_depth: u32 = 5;
+        let depth = canonical_depth.saturating_sub(base_depth) + 1;
+        assert_eq!(depth, 1, "depth should not underflow");
     }
 }

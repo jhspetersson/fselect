@@ -145,9 +145,9 @@ impl Variant {
                     return self.float_value.unwrap() as i64;
                 }
 
-                let int_value = self.string_value.parse::<usize>();
+                let int_value = self.string_value.parse::<i64>();
                 match int_value {
-                    Ok(i) => i as i64,
+                    Ok(i) => i,
                     _ => match parse_filesize(&self.string_value) {
                         Some(size) => size as i64,
                         _ => 0,
@@ -445,6 +445,42 @@ mod tests {
     fn display_trait_string() {
         let v = Variant::from_string(&String::from("test"));
         assert_eq!(format!("{}", v), "test");
+    }
+
+    #[test]
+    fn from_string_negative_to_int() {
+        let v = Variant::from_string(&String::from("-42"));
+        assert_eq!(v.to_int(), -42);
+    }
+
+    #[test]
+    fn from_string_negative_to_float() {
+        let v = Variant::from_string(&String::from("-42"));
+        assert_eq!(v.to_float(), -42.0);
+    }
+
+    #[test]
+    fn from_string_nan_to_float_not_nan() {
+        let v = Variant::from_string(&String::from("NaN"));
+        assert!(!v.to_float().is_nan(), "to_float should not return NaN from string");
+    }
+
+    #[test]
+    fn from_string_inf_to_float_not_inf() {
+        let v = Variant::from_string(&String::from("inf"));
+        assert!(v.to_float().is_finite(), "to_float should not return inf from string");
+    }
+
+    #[test]
+    fn from_string_neg_inf_to_float_not_inf() {
+        let v = Variant::from_string(&String::from("-inf"));
+        assert!(v.to_float().is_finite(), "to_float should not return -inf from string");
+    }
+
+    #[test]
+    fn from_string_infinity_to_float_not_inf() {
+        let v = Variant::from_string(&String::from("infinity"));
+        assert!(v.to_float().is_finite(), "to_float should not return infinity from string");
     }
 
     #[test]

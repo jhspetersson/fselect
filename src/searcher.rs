@@ -669,7 +669,7 @@ impl<'a> Searcher<'a> {
             _ => root_depth,
         };
 
-        let depth = canonical_depth - base_depth + 1;
+        let depth = canonical_depth.saturating_sub(base_depth) + 1;
 
         // Read the directory and process each entry
         match fs::read_dir(dir) {

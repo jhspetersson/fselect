@@ -362,14 +362,20 @@ pub fn get_value(
         Function::Least => {
             match function_arg.parse::<f64>() {
                 Ok(val) => {
-                    let mut least = val;
+                    let mut least = if val.is_finite() { val } else { f64::INFINITY };
                     for arg in function_args {
                         if let Ok(val) = arg.parse::<f64>() {
-                            least = least.min(val);
+                            if val.is_finite() {
+                                least = least.min(val);
+                            }
                         }
                     }
 
-                    Ok(Variant::from_float(least))
+                    if least.is_finite() {
+                        Ok(Variant::from_float(least))
+                    } else {
+                        Ok(Variant::empty(VariantType::String))
+                    }
                 }
                 _ => Ok(Variant::empty(VariantType::String)),
             }
@@ -377,14 +383,20 @@ pub fn get_value(
         Function::Greatest => {
             match function_arg.parse::<f64>() {
                 Ok(val) => {
-                    let mut greatest = val;
+                    let mut greatest = if val.is_finite() { val } else { f64::NEG_INFINITY };
                     for arg in function_args {
                         if let Ok(val) = arg.parse::<f64>() {
-                            greatest = greatest.max(val);
+                            if val.is_finite() {
+                                greatest = greatest.max(val);
+                            }
                         }
                     }
 
-                    Ok(Variant::from_float(greatest))
+                    if greatest.is_finite() {
+                        Ok(Variant::from_float(greatest))
+                    } else {
+                        Ok(Variant::empty(VariantType::String))
+                    }
                 }
                 _ => Ok(Variant::empty(VariantType::String)),
             }
@@ -2550,5 +2562,77 @@ mod tests {
         let buffer = make_buffer("val", &["10", "NaN", "5"]);
         let result = get_aggregate_value(&Function::Max, &buffer, "val".to_string(), &None);
         assert_eq!(result, "10");
+    }
+
+    #[test]
+    fn greatest_ignores_inf_in_args() {
+        let result = get_value(
+            &Function::Greatest,
+            String::from("5"),
+            vec![String::from("inf"), String::from("10")],
+            None,
+            &None,
+        );
+        assert_eq!(result.unwrap().to_int(), 10);
+    }
+
+    #[test]
+    fn greatest_ignores_inf_as_function_arg() {
+        let result = get_value(
+            &Function::Greatest,
+            String::from("inf"),
+            vec![String::from("5"), String::from("10")],
+            None,
+            &None,
+        );
+        assert_eq!(result.unwrap().to_int(), 10);
+    }
+
+    #[test]
+    fn least_ignores_neg_inf_in_args() {
+        let result = get_value(
+            &Function::Least,
+            String::from("5"),
+            vec![String::from("-inf"), String::from("3")],
+            None,
+            &None,
+        );
+        assert_eq!(result.unwrap().to_int(), 3);
+    }
+
+    #[test]
+    fn least_ignores_neg_inf_as_function_arg() {
+        let result = get_value(
+            &Function::Least,
+            String::from("-inf"),
+            vec![String::from("5"), String::from("3")],
+            None,
+            &None,
+        );
+        assert_eq!(result.unwrap().to_int(), 3);
+    }
+
+    #[test]
+    fn greatest_all_non_finite_returns_empty() {
+        let result = get_value(
+            &Function::Greatest,
+            String::from("inf"),
+            vec![String::from("NaN")],
+            None,
+            &None,
+        );
+        assert_eq!(result.unwrap().to_string(), "");
+    }
+
+    #[test]
+    fn least_ignores_nan_in_args() {
+        let result = get_value(
+            &Function::Least,
+            String::from("5"),
+            vec![String::from("NaN"), String::from("3")],
+            None,
+            &None,
+        );
+        assert_eq!(result.unwrap().to_int(), 3);
     }
 }

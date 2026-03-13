@@ -405,10 +405,27 @@ impl Expr {
             return true;
         }
 
-        match expr.left {
-            Some(ref left) => Self::contains_datetime_field(left),
-            None => false,
+        if let Some(ref left) = expr.left {
+            if Self::contains_datetime_field(left) {
+                return true;
+            }
         }
+
+        if let Some(ref right) = expr.right {
+            if Self::contains_datetime_field(right) {
+                return true;
+            }
+        }
+
+        if let Some(ref args) = expr.args {
+            for arg in args {
+                if Self::contains_datetime_field(arg) {
+                    return true;
+                }
+            }
+        }
+
+        false
     }
 
     pub fn contains_colorized(&self) -> bool {

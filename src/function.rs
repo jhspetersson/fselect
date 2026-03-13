@@ -782,7 +782,7 @@ pub fn get_aggregate_value(
                 .filter(|v| v.is_finite())
                 .reduce(f64::min)
             {
-                Some(min) => min.to_string(),
+                Some(min) => (min + 0.0).to_string(),
                 None => String::new(),
             }
         }
@@ -794,7 +794,7 @@ pub fn get_aggregate_value(
                 .filter(|v| v.is_finite())
                 .reduce(f64::max)
             {
-                Some(max) => max.to_string(),
+                Some(max) => (max + 0.0).to_string(),
                 None => String::new(),
             }
         }
@@ -2634,5 +2634,19 @@ mod tests {
             &None,
         );
         assert_eq!(result.unwrap().to_int(), 3);
+    }
+
+    #[test]
+    fn min_negative_zero_normalized() {
+        let buffer = make_buffer("val", &["-0", "0"]);
+        let result = get_aggregate_value(&Function::Min, &buffer, "val".to_string(), &None);
+        assert_eq!(result, "0");
+    }
+
+    #[test]
+    fn max_negative_zero_normalized() {
+        let buffer = make_buffer("val", &["-0", "0"]);
+        let result = get_aggregate_value(&Function::Max, &buffer, "val".to_string(), &None);
+        assert_eq!(result, "0");
     }
 }

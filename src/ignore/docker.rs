@@ -171,7 +171,7 @@ fn convert_dockerignore_glob(glob: &str, file_path: &Path) -> Result<Regex, Stri
     #[cfg(not(windows))]
     let path = file_path.to_string_lossy().to_string();
 
-    pattern = path.replace("\\", "\\\\").add("/([^/]+/)*").add(&pattern);
+    pattern = regex::escape(&path).add("/([^/]+/)*").add(&pattern);
 
     Regex::new(&pattern).map_err(|_| "Error creating regex pattern: ".to_string() + pattern.as_str())
 }

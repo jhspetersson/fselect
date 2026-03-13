@@ -759,28 +759,35 @@ pub fn get_aggregate_value(
 ) -> String {
     match function {
         Function::Min => {
-            let min = raw_output_buffer
+            match raw_output_buffer
                 .iter()
                 .filter_map(|item| item.get(&buffer_key))
                 .filter_map(|value| value.parse::<f64>().ok())
                 .reduce(f64::min)
-                .unwrap_or(0.0);
-
-            min.to_string()
+            {
+                Some(min) => min.to_string(),
+                None => String::new(),
+            }
         }
         Function::Max => {
-            let max = raw_output_buffer
+            match raw_output_buffer
                 .iter()
                 .filter_map(|item| item.get(&buffer_key))
                 .filter_map(|value| value.parse::<f64>().ok())
                 .reduce(f64::max)
-                .unwrap_or(0.0);
-
-            max.to_string()
+            {
+                Some(max) => max.to_string(),
+                None => String::new(),
+            }
         }
         Function::Avg => {
             if raw_output_buffer.is_empty() {
-                return String::from("0");
+                return String::new();
+            }
+
+            let n = get_parseable_count(raw_output_buffer, &buffer_key);
+            if n == 0 {
+                return String::new();
             }
 
             get_mean(raw_output_buffer, &buffer_key).to_string()
@@ -2267,6 +2274,36 @@ mod tests {
             HashMap::from([(String::from("val"), String::from("def"))]),
         ];
         let result = get_aggregate_value(&Function::VarPop, &buffer, String::from("val"), &None);
+        assert_eq!(result, String::new());
+    }
+
+    #[test]
+    fn min_no_parseable_values_is_empty() {
+        let buffer = vec![
+            HashMap::from([(String::from("val"), String::from("abc"))]),
+            HashMap::from([(String::from("val"), String::from("def"))]),
+        ];
+        let result = get_aggregate_value(&Function::Min, &buffer, String::from("val"), &None);
+        assert_eq!(result, String::new());
+    }
+
+    #[test]
+    fn max_no_parseable_values_is_empty() {
+        let buffer = vec![
+            HashMap::from([(String::from("val"), String::from("abc"))]),
+            HashMap::from([(String::from("val"), String::from("def"))]),
+        ];
+        let result = get_aggregate_value(&Function::Max, &buffer, String::from("val"), &None);
+        assert_eq!(result, String::new());
+    }
+
+    #[test]
+    fn avg_no_parseable_values_is_empty() {
+        let buffer = vec![
+            HashMap::from([(String::from("val"), String::from("abc"))]),
+            HashMap::from([(String::from("val"), String::from("def"))]),
+        ];
+        let result = get_aggregate_value(&Function::Avg, &buffer, String::from("val"), &None);
         assert_eq!(result, String::new());
     }
 }

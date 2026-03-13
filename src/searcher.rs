@@ -639,15 +639,6 @@ impl<'a> Searcher<'a> {
         process_queue: bool,
         root_dir: &Path,
     ) -> io::Result<()> {
-        // Prevents infinite loops when following symlinks
-        if self.current_follow_symlinks {
-            if self.visited_dirs.contains(&dir.to_path_buf()) {
-                return Ok(());
-            } else {
-                self.visited_dirs.insert(dir.to_path_buf());
-            }
-        }
-
         // Canonicalize the path to resolve symlinks and relative paths
         let canonical_path = crate::util::canonical_path(&dir.to_path_buf());
         if canonical_path.is_err() {
@@ -662,6 +653,16 @@ impl<'a> Searcher<'a> {
         }
 
         let canonical_path = canonical_path.unwrap();
+
+        // Prevents infinite loops when following symlinks
+        if self.current_follow_symlinks {
+            let canonical_pathbuf = PathBuf::from(&canonical_path);
+            if self.visited_dirs.contains(&canonical_pathbuf) {
+                return Ok(());
+            } else {
+                self.visited_dirs.insert(canonical_pathbuf);
+            }
+        }
         let canonical_depth = crate::util::calc_depth(&canonical_path);
 
         let base_depth = match root_depth {
@@ -3391,4 +3392,76 @@ mod tests {
         let depth = canonical_depth.saturating_sub(base_depth) + 1;
         assert_eq!(depth, 1, "depth should not underflow");
     }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_visited_dirs_uses_canonical_path() {
+        use std::os::unix::fs::symlink;
+
+        let tmp = std::env::temp_dir().join("fselect_test_visited_canonical");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(tmp.join("a")).unwrap();
+        fs::create_dir_all(tmp.join("b")).unwrap();
+        fs::write(tmp.join("a").join("file.txt"), "hello").unwrap();
+        symlink("../a", tmp.join("b").join("link_to_a")).unwrap();
+
+        let mut searcher = create_test_searcher();
+        searcher.current_follow_symlinks = true;
+
+        let _ = searcher.visit_dir(
+            &tmp,
+            0, 0, 0,
+            false, false,
+            #[cfg(feature = "git")]
+            None,
+            false, false,
+            TraversalMode::Dfs,
+            true,
+            &tmp,
+        );
+
+        let found = searcher.found;
+        let _ = fs::remove_dir_all(&tmp);
+        assert_eq!(
+            found, 4,
+            "a/ should not be re-traversed via symlink, found={}",
+            found
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_symlink_to_file_no_dir_traversal_error() {
+        use std::os::unix::fs::symlink;
+
+        let tmp = std::env::temp_dir().join("fselect_test_symlink_to_file");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        fs::write(tmp.join("real_file.txt"), "hello").unwrap();
+        symlink("real_file.txt", tmp.join("link_to_file")).unwrap();
+
+        let mut searcher = create_test_searcher();
+        searcher.current_follow_symlinks = true;
+
+        let _ = searcher.visit_dir(
+            &tmp,
+            0, 0, 0,
+            false, false,
+            #[cfg(feature = "git")]
+            None,
+            false, false,
+            TraversalMode::Dfs,
+            true,
+            &tmp,
+        );
+
+        let errors = searcher.error_count;
+        let _ = fs::remove_dir_all(&tmp);
+        assert_eq!(
+            errors, 0,
+            "symlink to file should not cause directory traversal error, errors={}",
+            errors
+        );
+    }
+
 }

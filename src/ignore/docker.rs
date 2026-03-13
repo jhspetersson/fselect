@@ -73,12 +73,8 @@ pub fn matches_dockerignore_filter(
     for dockerignore_filter in dockerignore_filters {
         let is_match = dockerignore_filter.regex.is_match(&file_name);
 
-        if is_match && dockerignore_filter.negate {
-            return false;
-        }
-
         if is_match {
-            matched = true;
+            matched = !dockerignore_filter.negate;
         }
     }
 

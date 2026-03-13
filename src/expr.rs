@@ -501,6 +501,18 @@ impl Display for Expr {
             fmt.write_str(&left.to_string())?;
         }
 
+        if let Some(ref op) = self.arithmetic_op {
+            fmt.write_str(&format!(" {:?} ", op))?;
+        }
+
+        if let Some(ref op) = self.logical_op {
+            fmt.write_str(&format!(" {:?} ", op))?;
+        }
+
+        if let Some(ref op) = self.op {
+            fmt.write_str(&format!(" {:?} ", op))?;
+        }
+
         if let Some(ref field) = self.field {
             if let Some(ref root_alias) = self.root_alias {
                 fmt.write_str(&root_alias.to_string())?;
@@ -704,8 +716,8 @@ mod tests {
             Expr::value("2".to_string()),
         );
         let displayed = format!("{}", expr);
-        assert!(displayed.contains("+") || displayed.contains("plus"),
-            "Expected '+' or 'plus' in display, got: {}", displayed);
+        assert!(displayed.contains("Add"),
+            "Expected 'Add' in display, got: {}", displayed);
     }
 
     #[test]
@@ -724,8 +736,8 @@ mod tests {
             ),
         );
         let displayed = format!("{}", expr);
-        assert!(displayed.contains("and") || displayed.contains("AND"),
-            "Expected 'and' or 'AND' in display, got: {}", displayed);
+        assert!(displayed.contains("And"),
+            "Expected 'And' in display, got: {}", displayed);
     }
 
     #[test]
@@ -736,8 +748,8 @@ mod tests {
             Expr::value("100".to_string()),
         );
         let displayed = format!("{}", expr);
-        assert!(displayed.contains(">") || displayed.contains("gt"),
-            "Expected '>' or 'gt' in display, got: {}", displayed);
+        assert!(displayed.contains("Gt"),
+            "Expected 'Gt' in display, got: {}", displayed);
     }
 
     #[test]

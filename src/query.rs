@@ -249,7 +249,7 @@ macro_rules! output_format {
                     $(
                         $(#[$variant_attrs])*
                         $enum_name::$variant => {
-                            stringify!($supports_colorization) == "true"
+                            false $(|| stringify!($colorized) == "true")?
                         }
                     )*
                 }
@@ -286,5 +286,34 @@ output_format! {
         @text = "html"
         @description = "HTML format"
         Html,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_supports_colorization_tabs() {
+        assert!(
+            OutputFormat::Tabs.supports_colorization(),
+            "Tabs should support colorization"
+        );
+    }
+
+    #[test]
+    fn test_supports_colorization_lines() {
+        assert!(
+            OutputFormat::Lines.supports_colorization(),
+            "Lines should support colorization"
+        );
+    }
+
+    #[test]
+    fn test_no_colorization_csv() {
+        assert!(
+            !OutputFormat::Csv.supports_colorization(),
+            "Csv should not support colorization"
+        );
     }
 }

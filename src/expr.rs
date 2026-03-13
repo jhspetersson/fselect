@@ -495,6 +495,14 @@ impl Display for Expr {
                 if let Some(ref left) = self.left {
                     fmt.write_str(&left.to_string())?;
                 }
+                if let Some(ref args) = self.args {
+                    for (i, arg) in args.iter().enumerate() {
+                        if self.left.is_some() || i > 0 {
+                            fmt.write_str(", ")?;
+                        }
+                        fmt.write_str(&arg.to_string())?;
+                    }
+                }
                 fmt.write_char(')')?;
             }
         } else if let Some(ref left) = self.left {
@@ -750,6 +758,48 @@ mod tests {
         let displayed = format!("{}", expr);
         assert!(displayed.contains("Gt"),
             "Expected 'Gt' in display, got: {}", displayed);
+    }
+
+    #[test]
+    fn display_function_shows_args() {
+        let mut expr = Expr::function(Function::Round);
+        expr.add_left(Expr::value("3.14".to_string()));
+        expr.set_args(vec![Expr::value("2".to_string())]);
+        let displayed = format!("{}", expr);
+        assert!(displayed.contains("2"),
+            "Expected args in display, got: {}", displayed);
+    }
+
+    #[test]
+    fn add_left_replaces_old_weight() {
+        let heavy = Expr::field(Field::Accessed);
+        let heavy_weight = heavy.weight;
+        let light = Expr::value("x".to_string());
+        let light_weight = light.weight;
+
+        let mut expr = Expr::function_left(Function::Lower, Some(Box::new(heavy)));
+        let base_weight = expr.weight;
+        assert_eq!(base_weight, Function::Lower.get_weight() + heavy_weight);
+
+        expr.add_left(light);
+        assert_eq!(expr.weight, Function::Lower.get_weight() + light_weight,
+            "weight should reflect only the new left, got: {}", expr.weight);
+    }
+
+    #[test]
+    fn set_args_replaces_old_weight() {
+        let mut expr = Expr::function(Function::Concat);
+        let heavy_args = vec![Expr::field(Field::Accessed)];
+        let heavy_weight: i32 = heavy_args.iter().map(|a| a.weight).sum();
+        expr.set_args(heavy_args);
+        let weight_after_first = expr.weight;
+        assert_eq!(weight_after_first, Function::Concat.get_weight() + heavy_weight);
+
+        let light_args = vec![Expr::value("x".to_string())];
+        let light_weight: i32 = light_args.iter().map(|a| a.weight).sum();
+        expr.set_args(light_args);
+        assert_eq!(expr.weight, Function::Concat.get_weight() + light_weight,
+            "weight should reflect only the new args, got: {}", expr.weight);
     }
 
     #[test]

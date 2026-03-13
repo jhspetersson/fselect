@@ -229,15 +229,14 @@ pub fn get_value(
             let mut pos: i32 = match &function_args.is_empty() {
                 true => 0,
                 false => match function_args[0].parse::<i32>() {
-                    Ok(p) => p - 1,
+                    Ok(p) if p < 0 => {
+                        let string_length = string.chars().count() as i32;
+                        (string_length + p).max(0)
+                    }
+                    Ok(p) => (p - 1).max(0),
                     Err(_) => return Err(format!("Could not parse position argument of SUBSTRING function: {}", function_args[0])),
                 },
             };
-
-            if pos < 0 {
-                let string_length = string.chars().count() as i32;
-                pos = (string_length - pos.abs() + 1).max(0);
-            }
 
             let len = match &function_args.get(1) {
                 Some(len) => match len.parse::<usize>() {
@@ -794,6 +793,9 @@ pub fn get_aggregate_value(
             }
 
             let n = get_parseable_count(raw_output_buffer, &buffer_key);
+            if n == 0 {
+                return String::new();
+            }
             let variance = get_variance(raw_output_buffer, &buffer_key, n);
             let result = variance.sqrt();
 
@@ -805,8 +807,10 @@ pub fn get_aggregate_value(
             }
 
             let size = get_parseable_count(raw_output_buffer, &buffer_key);
-            let n = if size <= 1 { 1 } else { size - 1 };
-            let variance = get_variance(raw_output_buffer, &buffer_key, n);
+            if size <= 1 {
+                return String::new();
+            }
+            let variance = get_variance(raw_output_buffer, &buffer_key, size - 1);
             let result = variance.sqrt();
 
             result.to_string()
@@ -817,6 +821,9 @@ pub fn get_aggregate_value(
             }
 
             let n = get_parseable_count(raw_output_buffer, &buffer_key);
+            if n == 0 {
+                return String::new();
+            }
             let variance = get_variance(raw_output_buffer, &buffer_key, n);
 
             variance.to_string()
@@ -827,8 +834,10 @@ pub fn get_aggregate_value(
             }
 
             let size = get_parseable_count(raw_output_buffer, &buffer_key);
-            let n = if size <= 1 { 1 } else { size - 1 };
-            let variance = get_variance(raw_output_buffer, &buffer_key, n);
+            if size <= 1 {
+                return String::new();
+            }
+            let variance = get_variance(raw_output_buffer, &buffer_key, size - 1);
 
             variance.to_string()
         }
@@ -2207,5 +2216,57 @@ mod tests {
             &None,
         );
         assert_eq!(result.unwrap().to_string(), "1");
+    }
+
+    #[test]
+    fn substring_position_zero_with_length() {
+        let result = get_value(
+            &Function::Substring,
+            String::from("hello"),
+            vec![String::from("0"), String::from("3")],
+            None,
+            &None,
+        );
+        assert_eq!(result.unwrap().to_string(), "hel");
+    }
+
+    #[test]
+    fn substring_position_zero_without_length() {
+        let result = get_value(
+            &Function::Substring,
+            String::from("hello"),
+            vec![String::from("0")],
+            None,
+            &None,
+        );
+        assert_eq!(result.unwrap().to_string(), "hello");
+    }
+
+    #[test]
+    fn var_samp_single_value_is_empty() {
+        let buffer = vec![
+            HashMap::from([(String::from("val"), String::from("5"))]),
+        ];
+        let result = get_aggregate_value(&Function::VarSamp, &buffer, String::from("val"), &None);
+        assert_eq!(result, String::new());
+    }
+
+    #[test]
+    fn stddev_samp_single_value_is_empty() {
+        let buffer = vec![
+            HashMap::from([(String::from("val"), String::from("5"))]),
+        ];
+        let result = get_aggregate_value(&Function::StdDevSamp, &buffer, String::from("val"), &None);
+        assert_eq!(result, String::new());
+    }
+
+    #[test]
+    fn var_pop_no_parseable_values_is_empty() {
+        let buffer = vec![
+            HashMap::from([(String::from("val"), String::from("abc"))]),
+            HashMap::from([(String::from("val"), String::from("def"))]),
+        ];
+        let result = get_aggregate_value(&Function::VarPop, &buffer, String::from("val"), &None);
+        assert_eq!(result, String::new());
     }
 }

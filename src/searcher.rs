@@ -729,12 +729,15 @@ impl<'a> Searcher<'a> {
                                 if min_depth == 0 || depth >= min_depth {
                                     let checked = self.check_file(&entry, root_dir, &None);
                                     match checked {
-                                        Err(err) => {
+                                        Err(mut err) => {
                                             if err.is_fatal() {
                                                 return Err(err);
                                             }
                                             self.error_count += 1;
-                                            error_message(&path.to_string_lossy(), &err.description);
+                                            if err.source.is_empty() {
+                                                err.source = path.to_string_lossy().to_string();
+                                            }
+                                            err.print();
                                             continue;
                                         }
                                         Ok(()) => {}
@@ -755,12 +758,15 @@ impl<'a> Searcher<'a> {
                                                     if let Ok(afile) = archive.by_index(i) {
                                                         let file_info = to_file_info(&afile);
                                                         match self.check_file(&entry, root_dir, &Some(file_info)) {
-                                                            Err(err) => {
+                                                            Err(mut err) => {
                                                                 if err.is_fatal() {
                                                                     return Err(err);
                                                                 }
                                                                 self.error_count += 1;
-                                                                error_message(&path.to_string_lossy(), &err.description);
+                                                                if err.source.is_empty() {
+                                                                    err.source = path.to_string_lossy().to_string();
+                                                                }
+                                                                err.print();
                                                                 continue;
                                                             }
                                                             Ok(()) => {}
@@ -827,12 +833,15 @@ impl<'a> Searcher<'a> {
                                                     root_dir,
                                                 );
 
-                                                if let Err(err) = result {
+                                                if let Err(mut err) = result {
                                                     if err.is_fatal() {
                                                         return Err(err);
                                                     }
                                                     self.error_count += 1;
-                                                    error_message(&path.to_string_lossy(), &err.description);
+                                                    if err.source.is_empty() {
+                                                        err.source = path.to_string_lossy().to_string();
+                                                    }
+                                                    err.print();
                                                 }
                                             } else {
                                                 self.dir_queue.push_back(path);
@@ -888,12 +897,15 @@ impl<'a> Searcher<'a> {
                     root_dir,
                 );
 
-                if let Err(err) = result {
+                if let Err(mut err) = result {
                     if err.is_fatal() {
                         return Err(err);
                     }
                     self.error_count += 1;
-                    error_message(&path.to_string_lossy(), &err.description);
+                    if err.source.is_empty() {
+                        err.source = path.to_string_lossy().to_string();
+                    }
+                    err.print();
                 }
             }
         }
@@ -934,7 +946,7 @@ impl<'a> Searcher<'a> {
                             return Ok(Variant::empty(VariantType::String));
                         }
                     } else {
-                        return Err(SearchError::fatal(format!("Invalid root alias: {}", column_expr_context_name)));
+                        return Err(SearchError::fatal(format!("Invalid root alias: {}", column_expr_context_name)).with_source("query"));
                     }
                 } else {
                     should_update_context = true;
@@ -2193,7 +2205,7 @@ impl<'a> Searcher<'a> {
             }
         } else if let Err(e) = write!(std::io::stdout(), "{}", String::from(buf)) {
             if e.kind() == ErrorKind::BrokenPipe {
-                return Err(SearchError::fatal("broken pipe"));
+                return Err(SearchError::fatal("broken pipe").with_source("output"));
             }
         }
 
@@ -2378,7 +2390,7 @@ impl<'a> Searcher<'a> {
                                             Ok(regex.is_match(&field_value.to_string()))
                                         }
                                         _ => {
-                                            Err(SearchError::normal("Incorrect regex expression: ".to_string() + val.as_str()))
+                                            Err(SearchError::normal("Incorrect regex expression: ".to_string() + val.as_str()).with_source("expression"))
                                         }
                                     }
                                 }
@@ -2398,7 +2410,7 @@ impl<'a> Searcher<'a> {
                                             Ok(!regex.is_match(&field_value.to_string()))
                                         }
                                         _ => {
-                                            Err(SearchError::normal("Incorrect regex expression: ".to_string() + val.as_str()))
+                                            Err(SearchError::normal("Incorrect regex expression: ".to_string() + val.as_str()).with_source("expression"))
                                         }
                                     }
                                 }
@@ -2420,7 +2432,7 @@ impl<'a> Searcher<'a> {
                                                     Ok(regex.is_match(&field_value.to_string()))
                                                 }
                                                 _ => {
-                                                    Err(SearchError::normal("Incorrect LIKE expression: ".to_string() + val.as_str()))
+                                                    Err(SearchError::normal("Incorrect LIKE expression: ".to_string() + val.as_str()).with_source("expression"))
                                                 }
                                             }
                                         },
@@ -2447,7 +2459,7 @@ impl<'a> Searcher<'a> {
                                                     Ok(!regex.is_match(&field_value.to_string()))
                                                 }
                                                 _ => {
-                                                    Err(SearchError::normal("Incorrect NOT LIKE expression: ".to_string() + val.as_str()))
+                                                    Err(SearchError::normal("Incorrect NOT LIKE expression: ".to_string() + val.as_str()).with_source("expression"))
                                                 }
                                             }
                                         },

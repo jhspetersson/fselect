@@ -30,7 +30,7 @@ use crate::parser::Parser;
 use crate::query::RootOptions;
 use crate::searcher::Searcher;
 use crate::util::{set_us_dates, str_to_bool};
-use crate::util::error::{error_message, get_no_errors, set_no_errors};
+use crate::util::error::{error_message, get_no_errors, set_no_errors, set_use_colors};
 
 mod config;
 mod expr;
@@ -167,6 +167,8 @@ fn main() -> ExitCode {
         first_arg = args[0].to_ascii_lowercase();
     }
     
+    set_use_colors(!no_color);
+
     if config.us_dates.unwrap_or(default_config.us_dates.unwrap()) {
         set_us_dates(true);
     }
@@ -321,8 +323,11 @@ fn exec_search(query: Vec<String>, config: &mut Config, default_config: &Config,
             let use_colors = !no_color && is_terminal && query.output_format.supports_colorization();
 
             let mut searcher = Searcher::new(&query, config, default_config, use_colors);
-            if let Err(err) = searcher.list_search_results() {
-                error_message("result", &err.description);
+            if let Err(mut err) = searcher.list_search_results() {
+                if err.source.is_empty() {
+                    err.source = "result".to_string();
+                }
+                err.print();
             }
 
             let error_count = searcher.error_count;

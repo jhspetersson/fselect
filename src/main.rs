@@ -322,7 +322,7 @@ fn exec_search(query: Vec<String>, config: &mut Config, default_config: &Config,
 
             let mut searcher = Searcher::new(&query, config, default_config, use_colors);
             if let Err(err) = searcher.list_search_results() {
-                error_message("result", err.to_string().as_str());
+                error_message("result", &err.description);
             }
 
             let error_count = searcher.error_count;

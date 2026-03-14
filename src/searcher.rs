@@ -4,7 +4,6 @@ use std::cell::RefCell;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs;
 use std::fs::{DirEntry, FileType, Metadata};
-use std::io;
 use std::io::{ErrorKind, Write};
 use std::ops::Add;
 #[cfg(unix)]
@@ -41,7 +40,7 @@ use crate::util::dimensions::get_dimensions;
 use crate::util::duration::get_duration;
 use crate::util::*;
 use crate::util::{Variant, VariantType};
-use crate::util::error::{error_message, path_error_message};
+use crate::util::error::{error_message, path_error_message, SearchError};
 
 struct FileMetadataState {
     file_metadata_set: bool,
@@ -258,7 +257,7 @@ impl<'a> Searcher<'a> {
     }
 
     /// Searches directories based on configured query and outputs results to stdout.
-    pub fn list_search_results(&mut self) -> io::Result<()> {
+    pub fn list_search_results(&mut self) -> Result<(), SearchError> {
         let current_dir = std::env::current_dir()?;
 
         if !self.silent_mode {
@@ -417,9 +416,9 @@ impl<'a> Searcher<'a> {
                 root_dir,
             );
 
-            if let Err(ref err) = result {
-                if err.kind() == ErrorKind::BrokenPipe {
-                    break;
+            if let Err(err) = result {
+                if err.is_fatal() {
+                    return Err(err);
                 }
             }
         }
@@ -647,7 +646,7 @@ impl<'a> Searcher<'a> {
         traversal_mode: TraversalMode,
         process_queue: bool,
         root_dir: &Path,
-    ) -> io::Result<()> {
+    ) -> Result<(), SearchError> {
         // Canonicalize the path to resolve symlinks and relative paths
         let canonical_path = crate::util::canonical_path(&dir.to_path_buf());
         if canonical_path.is_err() {
@@ -731,17 +730,14 @@ impl<'a> Searcher<'a> {
                                     let checked = self.check_file(&entry, root_dir, &None);
                                     match checked {
                                         Err(err) => {
-                                            if err.kind() == ErrorKind::BrokenPipe {
+                                            if err.is_fatal() {
                                                 return Err(err);
                                             }
                                             self.error_count += 1;
-                                            path_error_message(&path, err);
+                                            error_message(&path.to_string_lossy(), &err.description);
                                             continue;
                                         }
-                                        Ok(false) => {
-                                            return Err(io::Error::new(ErrorKind::BrokenPipe, "broken pipe"));
-                                        }
-                                        Ok(true) => {}
+                                        Ok(()) => {}
                                     }
 
                                     if search_archives
@@ -760,17 +756,14 @@ impl<'a> Searcher<'a> {
                                                         let file_info = to_file_info(&afile);
                                                         match self.check_file(&entry, root_dir, &Some(file_info)) {
                                                             Err(err) => {
-                                                                if err.kind() == ErrorKind::BrokenPipe {
+                                                                if err.is_fatal() {
                                                                     return Err(err);
                                                                 }
                                                                 self.error_count += 1;
-                                                                path_error_message(&path, err);
+                                                                error_message(&path.to_string_lossy(), &err.description);
                                                                 continue;
                                                             }
-                                                            Ok(false) => {
-                                                                return Err(io::Error::new(ErrorKind::BrokenPipe, "broken pipe"));
-                                                            }
-                                                            Ok(true) => {}
+                                                            Ok(()) => {}
                                                         }
                                                     }
                                                 }
@@ -835,11 +828,11 @@ impl<'a> Searcher<'a> {
                                                 );
 
                                                 if let Err(err) = result {
-                                                    if err.kind() == ErrorKind::BrokenPipe {
+                                                    if err.is_fatal() {
                                                         return Err(err);
                                                     }
                                                     self.error_count += 1;
-                                                    path_error_message(&path, err);
+                                                    error_message(&path.to_string_lossy(), &err.description);
                                                 }
                                             } else {
                                                 self.dir_queue.push_back(path);
@@ -896,11 +889,11 @@ impl<'a> Searcher<'a> {
                 );
 
                 if let Err(err) = result {
-                    if err.kind() == ErrorKind::BrokenPipe {
+                    if err.is_fatal() {
                         return Err(err);
                     }
                     self.error_count += 1;
-                    path_error_message(&path, err);
+                    error_message(&path.to_string_lossy(), &err.description);
                 }
             }
         }
@@ -923,7 +916,7 @@ impl<'a> Searcher<'a> {
         file_map: &mut HashMap<String, String>,
         buffer_data: Option<&Vec<HashMap<String, String>>>,
         column_expr: &Expr,
-    ) -> Result<Variant, String> {
+    ) -> Result<Variant, SearchError> {
         let column_expr_str = column_expr.to_string();
 
         let mut should_update_context = false;
@@ -941,8 +934,7 @@ impl<'a> Searcher<'a> {
                             return Ok(Variant::empty(VariantType::String));
                         }
                     } else {
-                        //this is a syntax error actually
-                        return Err(format!("Invalid root alias: {}", column_expr_context_name));
+                        return Err(SearchError::fatal(format!("Invalid root alias: {}", column_expr_context_name)));
                     }
                 } else {
                     should_update_context = true;
@@ -1021,7 +1013,7 @@ impl<'a> Searcher<'a> {
             result = Ok(Variant::empty(VariantType::Int));
         }
 
-        result
+        result.map_err(|e| e.into())
     }
 
     fn get_function_value(
@@ -1032,7 +1024,7 @@ impl<'a> Searcher<'a> {
         file_map: &mut HashMap<String, String>,
         buffer_data: Option<&Vec<HashMap<String, String>>>,
         column_expr: &Expr,
-    ) -> Result<Variant, String> {
+    ) -> Result<Variant, SearchError> {
         let dummy = Expr::value(String::from(""));
         let boxed_dummy = &Box::from(dummy);
 
@@ -1107,7 +1099,7 @@ impl<'a> Searcher<'a> {
         file_info: &Option<FileInfo>,
         root_path: &Path,
         field: &Field,
-    ) -> Result<Variant, String> {
+    ) -> Result<Variant, SearchError> {
         if file_info.is_some() && !field.is_available_for_archived_files() {
             return Ok(Variant::empty(VariantType::String));
         }
@@ -1194,7 +1186,7 @@ impl<'a> Searcher<'a> {
                             Ok(Variant::from_string(&path))
                         },
                         Err(e) => {
-                            Err(format!("could not get absolute path: {}", e))
+                            Err(format!("could not get absolute path: {}", e).into())
                         }
                     }
                 }
@@ -2105,7 +2097,7 @@ impl<'a> Searcher<'a> {
         field_values
     }
     
-    fn check_file(&mut self, entry: &DirEntry, root_path: &Path, file_info: &Option<FileInfo>) -> io::Result<bool> {
+    fn check_file(&mut self, entry: &DirEntry, root_path: &Path, file_info: &Option<FileInfo>) -> Result<(), SearchError> {
         self.fms.clear();
 
         let mut file_map = HashMap::new();
@@ -2133,16 +2125,9 @@ impl<'a> Searcher<'a> {
         }
 
         if let Some(ref expr) = self.query.expr {
-            let result = self.conforms(entry, file_info, root_path, expr);
-            if result.is_err() {
-                return Err(io::Error::new(
-                    io::ErrorKind::Other,
-                    result.err().unwrap(),
-                ));
-            }
-            let result = result.unwrap();
+            let result = self.conforms(entry, file_info, root_path, expr)?;
             if !result {
-                return Ok(true);
+                return Ok(());
             }
         }
 
@@ -2167,8 +2152,7 @@ impl<'a> Searcher<'a> {
 
         for field in self.query.fields.iter() {
             let record =
-                self.get_column_expr_value(Some(entry), file_info, root_path, &mut file_map, None, field)
-                    .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+                self.get_column_expr_value(Some(entry), file_info, root_path, &mut file_map, None, field)?;
 
             let value = match self.use_colors && field.contains_colorized() {
                 true => self.colorize(&record.to_string()),
@@ -2179,8 +2163,7 @@ impl<'a> Searcher<'a> {
 
         for field in self.query.grouping_fields.iter() {
             if file_map.get(&field.to_string()).is_none() {
-                self.get_column_expr_value(Some(entry), file_info, root_path, &mut file_map, None, field)
-                    .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+                self.get_column_expr_value(Some(entry), file_info, root_path, &mut file_map, None, field)?;
             }
         }
 
@@ -2188,8 +2171,7 @@ impl<'a> Searcher<'a> {
             criteria[idx] = match file_map.get(&field.to_string()) {
                 Some(record) => record.clone(),
                 None => self
-                    .get_column_expr_value(Some(entry), file_info, root_path, &mut file_map, None, field)
-                    .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?
+                    .get_column_expr_value(Some(entry), file_info, root_path, &mut file_map, None, field)?
                     .to_string(),
             }
         }
@@ -2211,11 +2193,11 @@ impl<'a> Searcher<'a> {
             }
         } else if let Err(e) = write!(std::io::stdout(), "{}", String::from(buf)) {
             if e.kind() == ErrorKind::BrokenPipe {
-                return Ok(false);
+                return Err(SearchError::fatal("broken pipe"));
             }
         }
 
-        Ok(true)
+        Ok(())
     }
 
     fn colorize(&mut self, value: &str) -> String {
@@ -2260,7 +2242,7 @@ impl<'a> Searcher<'a> {
         Variant::from_bool(false)
     }
 
-    fn conforms(&mut self, entry: &DirEntry, file_info: &Option<FileInfo>, root_path: &Path, expr: &Expr) -> Result<bool, String> {
+    fn conforms(&mut self, entry: &DirEntry, file_info: &Option<FileInfo>, root_path: &Path, expr: &Expr) -> Result<bool, SearchError> {
         let mut result = false;
 
         if let Some(ref logical_op) = expr.logical_op {
@@ -2344,7 +2326,7 @@ impl<'a> Searcher<'a> {
                                                 }
                                             },
                                             Err(e) => {
-                                                Err(e)
+                                                Err(e.into())
                                             }
                                         }
                                     }
@@ -2374,7 +2356,7 @@ impl<'a> Searcher<'a> {
                                                 }
                                             },
                                             Err(e) => {
-                                                Err(e)
+                                                Err(e.into())
                                             }
                                         }
                                     }
@@ -2396,7 +2378,7 @@ impl<'a> Searcher<'a> {
                                             Ok(regex.is_match(&field_value.to_string()))
                                         }
                                         _ => {
-                                            Err("Incorrect regex expression: ".to_string() + val.as_str())
+                                            Err(SearchError::normal("Incorrect regex expression: ".to_string() + val.as_str()))
                                         }
                                     }
                                 }
@@ -2416,7 +2398,7 @@ impl<'a> Searcher<'a> {
                                             Ok(!regex.is_match(&field_value.to_string()))
                                         }
                                         _ => {
-                                            Err("Incorrect regex expression: ".to_string() + val.as_str())
+                                            Err(SearchError::normal("Incorrect regex expression: ".to_string() + val.as_str()))
                                         }
                                     }
                                 }
@@ -2438,12 +2420,12 @@ impl<'a> Searcher<'a> {
                                                     Ok(regex.is_match(&field_value.to_string()))
                                                 }
                                                 _ => {
-                                                    Err("Incorrect LIKE expression: ".to_string() + val.as_str())
+                                                    Err(SearchError::normal("Incorrect LIKE expression: ".to_string() + val.as_str()))
                                                 }
                                             }
                                         },
                                         Err(e) => {
-                                            Err(e)
+                                            Err(e.into())
                                         }
                                     }
                                 }
@@ -2465,12 +2447,12 @@ impl<'a> Searcher<'a> {
                                                     Ok(!regex.is_match(&field_value.to_string()))
                                                 }
                                                 _ => {
-                                                    Err("Incorrect NOT LIKE expression: ".to_string() + val.as_str())
+                                                    Err(SearchError::normal("Incorrect NOT LIKE expression: ".to_string() + val.as_str()))
                                                 }
                                             }
                                         },
                                         Err(e) => {
-                                            Err(e)
+                                            Err(e.into())
                                         }
                                     }
                                 }

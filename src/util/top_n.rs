@@ -64,6 +64,7 @@ impl<K: Ord, V> TopN<K, V> {
     }
 
     pub fn clear(&mut self) {
+        self.count = 0;
         self.echelons.clear();
     }
 }
@@ -129,6 +130,27 @@ mod tests {
         assert_eq!(top_n.values(), vec![1, 3, 3, 2, 4]);
         top_n.insert("asdf", -1);
         assert_eq!(top_n.values(), vec![1, 3, 3, 2, -1]);
+    }
+
+    #[test]
+    fn test_clear_then_insert() {
+        let mut top_n = TopN::new(2);
+        top_n.insert("a", 1);
+        top_n.insert("b", 2);
+        top_n.clear();
+        top_n.insert("c", 3);
+        assert_eq!(top_n.values(), vec![3]);
+    }
+
+    #[test]
+    fn test_clear_then_refill() {
+        let mut top_n = TopN::new(2);
+        top_n.insert("a", 1);
+        top_n.insert("b", 2);
+        top_n.clear();
+        top_n.insert("x", 10);
+        top_n.insert("y", 20);
+        assert_eq!(top_n.values(), vec![10, 20]);
     }
 
     #[test]

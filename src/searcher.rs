@@ -2162,6 +2162,10 @@ impl<'a> Searcher<'a> {
 
         let mut items: Vec<(String, String)> = Vec::new();
 
+        if self.use_colors && self.query.fields.iter().any(|f| f.contains_colorized()) {
+            self.fms.update_file_metadata(entry, self.current_follow_symlinks);
+        }
+
         for field in self.query.fields.iter() {
             let record =
                 self.get_column_expr_value(Some(entry), file_info, root_path, &mut file_map, None, field)?;

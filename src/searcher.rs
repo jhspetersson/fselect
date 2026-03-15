@@ -1043,7 +1043,7 @@ impl<'a> Searcher<'a> {
         }
     }
 
-    fn partition_output_buffer(&self) -> HashMap<Vec<String>, Vec<HashMap<String, String>>> {
+    fn partition_output_buffer(&mut self) -> HashMap<Vec<String>, Vec<HashMap<String, String>>> {
         let group_fields: Vec<String> = self
             .query
             .grouping_fields
@@ -1052,17 +1052,13 @@ impl<'a> Searcher<'a> {
             .collect();
         let mut result: HashMap<Vec<String>, Vec<HashMap<String, String>>> = HashMap::new();
 
-        self.raw_output_buffer.iter().for_each(|item| {
+        for item in self.raw_output_buffer.drain(..) {
             let key: Vec<String> = group_fields
                 .iter()
                 .map(|f| item.get(f).unwrap_or(&String::new()).clone())
                 .collect();
-            if result.contains_key(&key) {
-                result.get_mut(&key).unwrap().push(item.clone());
-            } else {
-                result.insert(key, vec![item.clone()]);
-            }
-        });
+            result.entry(key).or_default().push(item);
+        }
 
         result
     }

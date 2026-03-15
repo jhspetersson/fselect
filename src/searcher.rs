@@ -162,6 +162,8 @@ pub struct Searcher<'a> {
     found: u32,
     raw_output_buffer: Vec<HashMap<String, String>>,
     output_buffer: TopN<Criteria<String>, String>,
+    ordering_fields_rc: Rc<Vec<Expr>>,
+    ordering_asc_rc: Rc<Vec<bool>>,
 
     record_context: Rc<RefCell<HashMap<String, HashMap<String, String>>>>,
     current_alias: Option<String>,
@@ -221,6 +223,8 @@ impl<'a> Searcher<'a> {
             } else {
                 TopN::new(limit + query.offset)
             },
+            ordering_fields_rc: Rc::new(query.ordering_fields.clone()),
+            ordering_asc_rc: Rc::new(query.ordering_asc.clone()),
             record_context,
             current_alias: None,
 
@@ -431,8 +435,8 @@ impl<'a> Searcher<'a> {
                     .collect();
                 let buffer_partitions = self.partition_output_buffer();
 
-                let ordering_fields_rc = Rc::new(self.query.ordering_fields.clone());
-                let ordering_asc_rc = Rc::new(self.query.ordering_asc.clone());
+                let ordering_fields_rc = self.ordering_fields_rc.clone();
+                let ordering_asc_rc = self.ordering_asc_rc.clone();
                 let field_names: Vec<String> = self.query.fields.iter()
                     .map(|f| f.to_string().to_lowercase())
                     .collect();
@@ -2160,9 +2164,9 @@ impl<'a> Searcher<'a> {
         if self.is_buffered() {
             self.output_buffer.insert(
                 Criteria::new(
-                    Rc::new(self.query.ordering_fields.clone()),
+                    self.ordering_fields_rc.clone(),
                     criteria,
-                    Rc::new(self.query.ordering_asc.clone()),
+                    self.ordering_asc_rc.clone(),
                 ),
                 String::from(buf).to_string(),
             );

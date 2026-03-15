@@ -5,7 +5,6 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs;
 use std::fs::{DirEntry, FileType, Metadata};
 use std::io::{ErrorKind, Write};
-use std::ops::Add;
 #[cfg(unix)]
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
@@ -599,20 +598,17 @@ impl<'a> Searcher<'a> {
         process_queue: bool,
         root_dir: &Path,
     ) -> Result<(), SearchError> {
-        // Canonicalize the path to resolve symlinks and relative paths
-        let canonical_path = crate::util::canonical_path(&dir.to_path_buf());
-        if canonical_path.is_err() {
-            self.error_count += 1;
-            error_message(
-                &dir.to_string_lossy(),
-                String::from("could not canonicalize path: ")
-                    .add(canonical_path.err().unwrap().as_str())
-                    .as_str(),
-            );
-            return Ok(());
-        }
-
-        let canonical_path = canonical_path.unwrap();
+        let canonical_path = match crate::util::canonical_path(&dir.to_path_buf()) {
+            Ok(path) => path,
+            Err(e) => {
+                self.error_count += 1;
+                error_message(
+                    &dir.to_string_lossy(),
+                    &format!("could not canonicalize path: {}", e),
+                );
+                return Ok(());
+            }
+        };
 
         // Prevents infinite loops when following symlinks
         if self.current_follow_symlinks {

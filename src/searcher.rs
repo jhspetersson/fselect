@@ -2406,13 +2406,13 @@ impl<'a> Searcher<'a> {
                         Op::Lt => int_value < val,
                         Op::Lte => int_value <= val,
                         Op::In => {
-                            let field_value = field_value.to_int();
+                            let field_value = field_value.to_float();
                             let args = self.get_in_args(expr);
                             let mut result = false;
                             for item in args.iter().map(|arg| self.get_column_expr_value(
                                 Some(entry), file_info, root_path, &mut HashMap::new(), None, arg,
                             )) {
-                                if item?.to_int() == field_value {
+                                if item?.to_float() == field_value {
                                     result = true;
                                     break;
                                 }
@@ -2420,13 +2420,13 @@ impl<'a> Searcher<'a> {
                             result
                         },
                         Op::NotIn => {
-                            let field_value = field_value.to_int();
+                            let field_value = field_value.to_float();
                             let args = self.get_in_args(expr);
                             let mut result = true;
                             for item in args.iter().map(|arg| self.get_column_expr_value(
                                 Some(entry), file_info, root_path, &mut HashMap::new(), None, arg,
                             )) {
-                                if item?.to_int() == field_value {
+                                if item?.to_float() == field_value {
                                     result = false;
                                     break;
                                 }

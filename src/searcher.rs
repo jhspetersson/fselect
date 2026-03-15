@@ -2282,39 +2282,30 @@ impl<'a> Searcher<'a> {
         let mut temp_map = HashMap::new();
 
         if let Some(ref logical_op) = expr.logical_op {
-            let mut left_result = Ok(false);
-            let mut right_result = Ok(false);
-
-            if let Some(ref left) = expr.left {
-                let left_res = self.conforms(entry, file_info, root_path, left);
-                left_result = left_res;
-            }
-
-            let left_result = left_result?;
+            let left_result = match expr.left {
+                Some(ref left) => self.conforms(entry, file_info, root_path, left)?,
+                None => false,
+            };
 
             match logical_op {
                 LogicalOp::And => {
                     if !left_result {
                         result = false;
                     } else {
-                        if let Some(ref right) = expr.right {
-                            let right_res = self.conforms(entry, file_info, root_path, right);
-                            right_result = right_res;
-                        }
-
-                        result = left_result && right_result?;
+                        result = match expr.right {
+                            Some(ref right) => self.conforms(entry, file_info, root_path, right)?,
+                            None => false,
+                        };
                     }
                 }
                 LogicalOp::Or => {
                     if left_result {
                         result = true;
                     } else {
-                        if let Some(ref right) = expr.right {
-                            let right_res = self.conforms(entry, file_info, root_path, right);
-                            right_result = right_res;
-                        }
-
-                        result = left_result || right_result?;
+                        result = match expr.right {
+                            Some(ref right) => self.conforms(entry, file_info, root_path, right)?,
+                            None => false,
+                        };
                     }
                 }
             }

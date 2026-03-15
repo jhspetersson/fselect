@@ -780,142 +780,80 @@ pub fn get_value(
     }
 }
 
-/// Retrieves an aggregated value from a data buffer based on the specified function and key.
-///
-/// Args:
-///   function: The specification which aggregate function to apply.
-///   raw_output_buffer: A vector of hashmaps, where each hashmap contains string key-value pairs.
-///   buffer_key: The key to look up in each hashmap of the buffer.
-///   default_value: An optional default value to return if the function is not specified.
-///
-/// Returns:
-///   A string representation of the aggregate value computed or the default value if no function is provided.
 pub fn get_aggregate_value(
     function: &Function,
-    raw_output_buffer: &Vec<HashMap<String, String>>,
+    accumulator: &GroupAccumulator,
     buffer_key: String,
     default_value: &Option<String>,
 ) -> String {
+    let field_acc = accumulator.fields.get(&buffer_key);
     match function {
         Function::Min => {
-            match raw_output_buffer
-                .iter()
-                .filter_map(|item| item.get(&buffer_key))
-                .filter_map(|value| value.parse::<f64>().ok())
-                .filter(|v| v.is_finite())
-                .reduce(f64::min)
-            {
-                Some(min) => (min + 0.0).to_string(),
-                None => String::new(),
+            match field_acc {
+                Some(acc) if acc.count > 0 => (acc.min + 0.0).to_string(),
+                _ => String::new(),
             }
         }
         Function::Max => {
-            match raw_output_buffer
-                .iter()
-                .filter_map(|item| item.get(&buffer_key))
-                .filter_map(|value| value.parse::<f64>().ok())
-                .filter(|v| v.is_finite())
-                .reduce(f64::max)
-            {
-                Some(max) => (max + 0.0).to_string(),
-                None => String::new(),
+            match field_acc {
+                Some(acc) if acc.count > 0 => (acc.max + 0.0).to_string(),
+                _ => String::new(),
             }
         }
         Function::Avg => {
-            if raw_output_buffer.is_empty() {
-                return String::new();
+            match field_acc {
+                Some(acc) if acc.count > 0 => {
+                    let mean = acc.sum / acc.count as f64;
+                    if mean.is_finite() { mean.to_string() } else { String::new() }
+                }
+                _ => String::new(),
             }
-
-            let n = get_parseable_count(raw_output_buffer, &buffer_key);
-            if n == 0 {
-                return String::new();
-            }
-
-            let mean = get_mean(raw_output_buffer, &buffer_key);
-            if !mean.is_finite() {
-                return String::new();
-            }
-            mean.to_string()
         }
         Function::Sum => {
-            let n = get_parseable_count(raw_output_buffer, &buffer_key);
-            if n == 0 {
-                return String::new();
+            match field_acc {
+                Some(acc) if acc.count > 0 => {
+                    if acc.sum.is_finite() { acc.sum.to_string() } else { String::new() }
+                }
+                _ => String::new(),
             }
-            let sum = get_buffer_sum(raw_output_buffer, &buffer_key);
-            if !sum.is_finite() {
-                return String::new();
-            }
-            sum.to_string()
         }
-        Function::Count => raw_output_buffer.len().to_string(),
+        Function::Count => accumulator.total_count.to_string(),
         Function::StdDevPop => {
-            if raw_output_buffer.is_empty() {
-                return String::new();
+            match field_acc {
+                Some(acc) if acc.count > 0 => {
+                    let variance = acc.m2 / acc.count as f64;
+                    if variance.is_finite() { variance.sqrt().to_string() } else { String::new() }
+                }
+                _ => String::new(),
             }
-
-            let n = get_parseable_count(raw_output_buffer, &buffer_key);
-            if n == 0 {
-                return String::new();
-            }
-            let variance = get_variance(raw_output_buffer, &buffer_key, n);
-            if !variance.is_finite() {
-                return String::new();
-            }
-            let result = variance.sqrt();
-
-            result.to_string()
         }
         Function::StdDevSamp => {
-            if raw_output_buffer.is_empty() {
-                return String::new();
+            match field_acc {
+                Some(acc) if acc.count > 1 => {
+                    let variance = acc.m2 / (acc.count - 1) as f64;
+                    if variance.is_finite() { variance.sqrt().to_string() } else { String::new() }
+                }
+                _ => String::new(),
             }
-
-            let size = get_parseable_count(raw_output_buffer, &buffer_key);
-            if size <= 1 {
-                return String::new();
-            }
-            let variance = get_variance(raw_output_buffer, &buffer_key, size - 1);
-            if !variance.is_finite() {
-                return String::new();
-            }
-            let result = variance.sqrt();
-
-            result.to_string()
         }
         Function::VarPop => {
-            if raw_output_buffer.is_empty() {
-                return String::new();
+            match field_acc {
+                Some(acc) if acc.count > 0 => {
+                    let variance = acc.m2 / acc.count as f64;
+                    if variance.is_finite() { variance.to_string() } else { String::new() }
+                }
+                _ => String::new(),
             }
-
-            let n = get_parseable_count(raw_output_buffer, &buffer_key);
-            if n == 0 {
-                return String::new();
-            }
-            let variance = get_variance(raw_output_buffer, &buffer_key, n);
-            if !variance.is_finite() {
-                return String::new();
-            }
-
-            variance.to_string()
         }
         Function::VarSamp => {
-            if raw_output_buffer.is_empty() {
-                return String::new();
+            match field_acc {
+                Some(acc) if acc.count > 1 => {
+                    let variance = acc.m2 / (acc.count - 1) as f64;
+                    if variance.is_finite() { variance.to_string() } else { String::new() }
+                }
+                _ => String::new(),
             }
-
-            let size = get_parseable_count(raw_output_buffer, &buffer_key);
-            if size <= 1 {
-                return String::new();
-            }
-            let variance = get_variance(raw_output_buffer, &buffer_key, size - 1);
-            if !variance.is_finite() {
-                return String::new();
-            }
-
-            variance.to_string()
         }
-
         _ => match &default_value {
             Some(val) => val.to_owned(),
             _ => String::new(),
@@ -1329,60 +1267,52 @@ functions! {
     }
 }
 
-fn get_parseable_count(raw_output_buffer: &Vec<HashMap<String, String>>, buffer_key: &String) -> usize {
-    raw_output_buffer
-        .iter()
-        .filter(|item| item.get(buffer_key).and_then(|v| v.parse::<f64>().ok()).filter(|v| v.is_finite()).is_some())
-        .count()
+#[derive(Debug, Default)]
+pub struct FieldAccumulator {
+    pub count: usize,
+    pub min: f64,
+    pub max: f64,
+    pub sum: f64,
+    pub m2: f64,
 }
 
-/// Get the variance of all values in the buffer, based on the buffer key.
-/// If the value can't be parsed as f64, it will be ignored.
-fn get_variance(
-    raw_output_buffer: &Vec<HashMap<String, String>>,
-    buffer_key: &String,
-    n: usize,
-) -> f64 {
-    let avg = get_mean(raw_output_buffer, buffer_key);
-
-    let mut sum_sq: f64 = 0.0;
-    for value in raw_output_buffer {
-        if let Some(value) = value.get(buffer_key) {
-            if let Ok(value) = value.parse::<f64>() {
-                if value.is_finite() {
-                    sum_sq += (avg - value).powi(2);
+impl FieldAccumulator {
+    pub fn push(&mut self, value: &str) {
+        if let Ok(v) = value.parse::<f64>() {
+            if v.is_finite() {
+                if self.count == 0 {
+                    self.min = v;
+                    self.max = v;
+                    self.count = 1;
+                    self.sum = v;
+                } else {
+                    if v < self.min { self.min = v; }
+                    if v > self.max { self.max = v; }
+                    let old_mean = self.sum / self.count as f64;
+                    self.count += 1;
+                    self.sum += v;
+                    let new_mean = self.sum / self.count as f64;
+                    self.m2 += (v - old_mean) * (v - new_mean);
                 }
             }
         }
     }
-
-    if n == 0 { 0.0 } else { sum_sq / n as f64 }
 }
 
-/// Get the mean of all values in the buffer, based on the buffer key.
-/// If the value can't be parsed as usize, it will be ignored.
-fn get_mean(raw_output_buffer: &Vec<HashMap<String, String>>, buffer_key: &String) -> f64 {
-    let sum = get_buffer_sum(raw_output_buffer, buffer_key);
-    let count = get_parseable_count(raw_output_buffer, buffer_key);
-
-    if count == 0 { 0.0 } else { sum / count as f64 }
+#[derive(Debug, Default)]
+pub struct GroupAccumulator {
+    pub total_count: usize,
+    pub fields: HashMap<String, FieldAccumulator>,
 }
 
-/// Get the sum of all values in the buffer, based on the buffer key.
-/// If the value can't be parsed as f64, it will be ignored.
-fn get_buffer_sum(raw_output_buffer: &Vec<HashMap<String, String>>, buffer_key: &String) -> f64 {
-    let mut sum: f64 = 0.0;
-    for value in raw_output_buffer {
-        if let Some(value) = value.get(buffer_key) {
-            if let Ok(value) = value.parse::<f64>() {
-                if value.is_finite() {
-                    sum += value;
-                }
-            }
-        }
+impl GroupAccumulator {
+    pub fn increment_count(&mut self) {
+        self.total_count += 1;
     }
 
-    sum
+    pub fn push(&mut self, field: &str, value: &str) {
+        self.fields.entry(field.to_string()).or_default().push(value);
+    }
 }
 
 #[cfg(test)]
@@ -1941,25 +1871,26 @@ mod tests {
         assert_eq!(result.unwrap().to_string(), "hello");
     }
 
-    fn make_buffer(key: &str, values: &[&str]) -> Vec<HashMap<String, String>> {
-        values.iter().map(|v| {
-            let mut m = HashMap::new();
-            m.insert(key.to_string(), v.to_string());
-            m
-        }).collect()
+    fn make_accumulator(key: &str, values: &[&str]) -> GroupAccumulator {
+        let mut acc = GroupAccumulator::default();
+        for v in values {
+            acc.increment_count();
+            acc.push(key, v);
+        }
+        acc
     }
 
     #[test]
     fn avg_truncates_to_integer() {
-        let buffer = make_buffer("size", &["3", "4"]);
-        let result = get_aggregate_value(&Function::Avg, &buffer, "size".to_string(), &None);
+        let acc = make_accumulator("size", &["3", "4"]);
+        let result = get_aggregate_value(&Function::Avg, &acc, "size".to_string(), &None);
         assert_eq!(result, "3.5");
     }
 
     #[test]
     fn sum_ignores_negative_values() {
-        let buffer = make_buffer("val", &["-5", "10"]);
-        let result = get_aggregate_value(&Function::Sum, &buffer, "val".to_string(), &None);
+        let acc = make_accumulator("val", &["-5", "10"]);
+        let result = get_aggregate_value(&Function::Sum, &acc, "val".to_string(), &None);
         assert_eq!(result, "5");
     }
 
@@ -2001,42 +1932,40 @@ mod tests {
 
     #[test]
     fn min_drops_fractional_values() {
-        let buffer = make_buffer("val", &["1.5", "2.5"]);
-        let result = get_aggregate_value(&Function::Min, &buffer, "val".to_string(), &None);
+        let acc = make_accumulator("val", &["1.5", "2.5"]);
+        let result = get_aggregate_value(&Function::Min, &acc, "val".to_string(), &None);
         assert_eq!(result, "1.5");
     }
 
     #[test]
     fn max_drops_fractional_values() {
-        let buffer = make_buffer("val", &["1.5", "2.5"]);
-        let result = get_aggregate_value(&Function::Max, &buffer, "val".to_string(), &None);
+        let acc = make_accumulator("val", &["1.5", "2.5"]);
+        let result = get_aggregate_value(&Function::Max, &acc, "val".to_string(), &None);
         assert_eq!(result, "2.5");
     }
 
     #[test]
     fn sum_drops_fractional_values() {
-        let buffer = make_buffer("val", &["1.5", "2.5"]);
-        let result = get_aggregate_value(&Function::Sum, &buffer, "val".to_string(), &None);
+        let acc = make_accumulator("val", &["1.5", "2.5"]);
+        let result = get_aggregate_value(&Function::Sum, &acc, "val".to_string(), &None);
         assert_eq!(result, "4");
     }
 
     #[test]
     fn avg_wrong_with_unparseable_entries() {
-        let mut buffer = make_buffer("val", &["10", "20"]);
-        let mut extra = HashMap::new();
-        extra.insert("other_key".to_string(), "999".to_string());
-        buffer.push(extra);
-        let result = get_aggregate_value(&Function::Avg, &buffer, "val".to_string(), &None);
+        let mut acc = make_accumulator("val", &["10", "20"]);
+        acc.increment_count();
+        acc.push("other_key", "999");
+        let result = get_aggregate_value(&Function::Avg, &acc, "val".to_string(), &None);
         assert_eq!(result, "15");
     }
 
     #[test]
     fn variance_wrong_with_unparseable_entries() {
-        let mut buffer = make_buffer("val", &["10", "20"]);
-        let mut extra = HashMap::new();
-        extra.insert("other_key".to_string(), "999".to_string());
-        buffer.push(extra);
-        let result = get_aggregate_value(&Function::VarPop, &buffer, "val".to_string(), &None);
+        let mut acc = make_accumulator("val", &["10", "20"]);
+        acc.increment_count();
+        acc.push("other_key", "999");
+        let result = get_aggregate_value(&Function::VarPop, &acc, "val".to_string(), &None);
         let var: f64 = result.parse().unwrap();
         assert!((var - 25.0).abs() < 0.001);
     }
@@ -2319,59 +2248,43 @@ mod tests {
 
     #[test]
     fn var_samp_single_value_is_empty() {
-        let buffer = vec![
-            HashMap::from([(String::from("val"), String::from("5"))]),
-        ];
-        let result = get_aggregate_value(&Function::VarSamp, &buffer, String::from("val"), &None);
+        let acc = make_accumulator("val", &["5"]);
+        let result = get_aggregate_value(&Function::VarSamp, &acc, String::from("val"), &None);
         assert_eq!(result, String::new());
     }
 
     #[test]
     fn stddev_samp_single_value_is_empty() {
-        let buffer = vec![
-            HashMap::from([(String::from("val"), String::from("5"))]),
-        ];
-        let result = get_aggregate_value(&Function::StdDevSamp, &buffer, String::from("val"), &None);
+        let acc = make_accumulator("val", &["5"]);
+        let result = get_aggregate_value(&Function::StdDevSamp, &acc, String::from("val"), &None);
         assert_eq!(result, String::new());
     }
 
     #[test]
     fn var_pop_no_parseable_values_is_empty() {
-        let buffer = vec![
-            HashMap::from([(String::from("val"), String::from("abc"))]),
-            HashMap::from([(String::from("val"), String::from("def"))]),
-        ];
-        let result = get_aggregate_value(&Function::VarPop, &buffer, String::from("val"), &None);
+        let acc = make_accumulator("val", &["abc", "def"]);
+        let result = get_aggregate_value(&Function::VarPop, &acc, String::from("val"), &None);
         assert_eq!(result, String::new());
     }
 
     #[test]
     fn min_no_parseable_values_is_empty() {
-        let buffer = vec![
-            HashMap::from([(String::from("val"), String::from("abc"))]),
-            HashMap::from([(String::from("val"), String::from("def"))]),
-        ];
-        let result = get_aggregate_value(&Function::Min, &buffer, String::from("val"), &None);
+        let acc = make_accumulator("val", &["abc", "def"]);
+        let result = get_aggregate_value(&Function::Min, &acc, String::from("val"), &None);
         assert_eq!(result, String::new());
     }
 
     #[test]
     fn max_no_parseable_values_is_empty() {
-        let buffer = vec![
-            HashMap::from([(String::from("val"), String::from("abc"))]),
-            HashMap::from([(String::from("val"), String::from("def"))]),
-        ];
-        let result = get_aggregate_value(&Function::Max, &buffer, String::from("val"), &None);
+        let acc = make_accumulator("val", &["abc", "def"]);
+        let result = get_aggregate_value(&Function::Max, &acc, String::from("val"), &None);
         assert_eq!(result, String::new());
     }
 
     #[test]
     fn avg_no_parseable_values_is_empty() {
-        let buffer = vec![
-            HashMap::from([(String::from("val"), String::from("abc"))]),
-            HashMap::from([(String::from("val"), String::from("def"))]),
-        ];
-        let result = get_aggregate_value(&Function::Avg, &buffer, String::from("val"), &None);
+        let acc = make_accumulator("val", &["abc", "def"]);
+        let result = get_aggregate_value(&Function::Avg, &acc, String::from("val"), &None);
         assert_eq!(result, String::new());
     }
 
@@ -2645,61 +2558,58 @@ mod tests {
 
     #[test]
     fn sum_no_parseable_values_is_empty() {
-        let buffer = vec![
-            HashMap::from([(String::from("val"), String::from("abc"))]),
-            HashMap::from([(String::from("val"), String::from("def"))]),
-        ];
-        let result = get_aggregate_value(&Function::Sum, &buffer, String::from("val"), &None);
+        let acc = make_accumulator("val", &["abc", "def"]);
+        let result = get_aggregate_value(&Function::Sum, &acc, String::from("val"), &None);
         assert_eq!(result, String::new());
     }
 
     #[test]
     fn sum_ignores_nan_string_values() {
-        let buffer = make_buffer("val", &["10", "NaN", "20"]);
-        let result = get_aggregate_value(&Function::Sum, &buffer, "val".to_string(), &None);
+        let acc = make_accumulator("val", &["10", "NaN", "20"]);
+        let result = get_aggregate_value(&Function::Sum, &acc, "val".to_string(), &None);
         assert_eq!(result, "30");
     }
 
     #[test]
     fn sum_ignores_inf_string_values() {
-        let buffer = make_buffer("val", &["10", "inf", "20"]);
-        let result = get_aggregate_value(&Function::Sum, &buffer, "val".to_string(), &None);
+        let acc = make_accumulator("val", &["10", "inf", "20"]);
+        let result = get_aggregate_value(&Function::Sum, &acc, "val".to_string(), &None);
         assert_eq!(result, "30");
     }
 
     #[test]
     fn avg_ignores_nan_string_values() {
-        let buffer = make_buffer("val", &["10", "NaN", "20"]);
-        let result = get_aggregate_value(&Function::Avg, &buffer, "val".to_string(), &None);
+        let acc = make_accumulator("val", &["10", "NaN", "20"]);
+        let result = get_aggregate_value(&Function::Avg, &acc, "val".to_string(), &None);
         assert_eq!(result, "15");
     }
 
     #[test]
     fn var_pop_ignores_nan_string_values() {
-        let buffer = make_buffer("val", &["10", "NaN", "20"]);
-        let result = get_aggregate_value(&Function::VarPop, &buffer, "val".to_string(), &None);
+        let acc = make_accumulator("val", &["10", "NaN", "20"]);
+        let result = get_aggregate_value(&Function::VarPop, &acc, "val".to_string(), &None);
         let var: f64 = result.parse().unwrap();
         assert!((var - 25.0).abs() < 0.001);
     }
 
     #[test]
     fn sum_all_nan_is_empty() {
-        let buffer = make_buffer("val", &["NaN", "NaN"]);
-        let result = get_aggregate_value(&Function::Sum, &buffer, "val".to_string(), &None);
+        let acc = make_accumulator("val", &["NaN", "NaN"]);
+        let result = get_aggregate_value(&Function::Sum, &acc, "val".to_string(), &None);
         assert_eq!(result, String::new());
     }
 
     #[test]
     fn min_ignores_nan_string_values() {
-        let buffer = make_buffer("val", &["10", "NaN", "5"]);
-        let result = get_aggregate_value(&Function::Min, &buffer, "val".to_string(), &None);
+        let acc = make_accumulator("val", &["10", "NaN", "5"]);
+        let result = get_aggregate_value(&Function::Min, &acc, "val".to_string(), &None);
         assert_eq!(result, "5");
     }
 
     #[test]
     fn max_ignores_nan_string_values() {
-        let buffer = make_buffer("val", &["10", "NaN", "5"]);
-        let result = get_aggregate_value(&Function::Max, &buffer, "val".to_string(), &None);
+        let acc = make_accumulator("val", &["10", "NaN", "5"]);
+        let result = get_aggregate_value(&Function::Max, &acc, "val".to_string(), &None);
         assert_eq!(result, "10");
     }
 
@@ -2777,43 +2687,43 @@ mod tests {
 
     #[test]
     fn min_negative_zero_normalized() {
-        let buffer = make_buffer("val", &["-0", "0"]);
-        let result = get_aggregate_value(&Function::Min, &buffer, "val".to_string(), &None);
+        let acc = make_accumulator("val", &["-0", "0"]);
+        let result = get_aggregate_value(&Function::Min, &acc, "val".to_string(), &None);
         assert_eq!(result, "0");
     }
 
     #[test]
     fn max_negative_zero_normalized() {
-        let buffer = make_buffer("val", &["-0", "0"]);
-        let result = get_aggregate_value(&Function::Max, &buffer, "val".to_string(), &None);
+        let acc = make_accumulator("val", &["-0", "0"]);
+        let result = get_aggregate_value(&Function::Max, &acc, "val".to_string(), &None);
         assert_eq!(result, "0");
     }
 
     #[test]
     fn sum_overflow_returns_empty() {
-        let buffer = make_buffer("val", &["1e308", "1e308"]);
-        let result = get_aggregate_value(&Function::Sum, &buffer, "val".to_string(), &None);
+        let acc = make_accumulator("val", &["1e308", "1e308"]);
+        let result = get_aggregate_value(&Function::Sum, &acc, "val".to_string(), &None);
         assert_eq!(result, String::new());
     }
 
     #[test]
     fn avg_overflow_returns_empty() {
-        let buffer = make_buffer("val", &["1e308", "1e308"]);
-        let result = get_aggregate_value(&Function::Avg, &buffer, "val".to_string(), &None);
+        let acc = make_accumulator("val", &["1e308", "1e308"]);
+        let result = get_aggregate_value(&Function::Avg, &acc, "val".to_string(), &None);
         assert_eq!(result, String::new());
     }
 
     #[test]
     fn var_pop_overflow_returns_empty() {
-        let buffer = make_buffer("val", &["1e308", "-1e308"]);
-        let result = get_aggregate_value(&Function::VarPop, &buffer, "val".to_string(), &None);
+        let acc = make_accumulator("val", &["1e308", "-1e308"]);
+        let result = get_aggregate_value(&Function::VarPop, &acc, "val".to_string(), &None);
         assert_eq!(result, String::new());
     }
 
     #[test]
     fn stddev_pop_overflow_returns_empty() {
-        let buffer = make_buffer("val", &["1e308", "-1e308"]);
-        let result = get_aggregate_value(&Function::StdDevPop, &buffer, "val".to_string(), &None);
+        let acc = make_accumulator("val", &["1e308", "-1e308"]);
+        let result = get_aggregate_value(&Function::StdDevPop, &acc, "val".to_string(), &None);
         assert_eq!(result, String::new());
     }
 

@@ -160,7 +160,7 @@ pub struct Searcher<'a> {
     user_cache: UsersCache,
     regex_cache: HashMap<String, Regex>,
     found: u32,
-    raw_output_buffer: Vec<HashMap<String, String>>,
+    accumulators: HashMap<Vec<String>, function::GroupAccumulator>,
     output_buffer: TopN<Criteria<String>, String>,
     ordering_fields_rc: Rc<Vec<Expr>>,
     ordering_asc_rc: Rc<Vec<bool>>,
@@ -217,7 +217,7 @@ impl<'a> Searcher<'a> {
             user_cache: UsersCache::new(),
             regex_cache: HashMap::new(),
             found: 0,
-            raw_output_buffer: vec![],
+            accumulators: HashMap::new(),
             output_buffer: if limit == 0 {
                 TopN::limitless()
             } else {
@@ -433,7 +433,7 @@ impl<'a> Searcher<'a> {
                     .iter()
                     .map(|f| f.to_string())
                     .collect();
-                let buffer_partitions = self.partition_output_buffer();
+                let accumulators = std::mem::take(&mut self.accumulators);
 
                 let ordering_fields_rc = self.ordering_fields_rc.clone();
                 let ordering_asc_rc = self.ordering_asc_rc.clone();
@@ -454,15 +454,15 @@ impl<'a> Searcher<'a> {
                         TopN::limitless()
                     };
 
-                for (group_key, group_data) in &buffer_partitions {
+                for (group_key, group_acc) in &accumulators {
                     let mut items: Vec<(String, String)> = Vec::new();
                     let mut file_map = HashMap::new();
                     for (i, k) in group_keys.iter().enumerate() {
-                        file_map.insert(k.clone(), group_key.get(i).unwrap().clone());
+                        file_map.insert(k.clone(), group_key.get(i).cloned().unwrap_or_default());
                     }
                     for column_expr in &self.query.fields {
                         if let Ok(value) = self.get_column_expr_value(
-                            None, &None, &Path::new(""), &mut file_map, Some(group_data), column_expr,
+                            None, &None, &Path::new(""), &mut file_map, Some(group_acc), column_expr,
                         ) {
                             let field_name = column_expr.to_string().to_lowercase();
                             items.push((field_name, format!("{}", value)));
@@ -495,13 +495,16 @@ impl<'a> Searcher<'a> {
                 let mut buf = WritableBuffer::new();
                 let mut items: Vec<(String, String)> = Vec::new();
 
+                let accumulators = std::mem::take(&mut self.accumulators);
+                let empty_acc = function::GroupAccumulator::default();
+                let ungrouped_acc = accumulators.get(&vec![]).unwrap_or(&empty_acc);
                 for column_expr in &self.query.fields {
                     if let Ok(value) = self.get_column_expr_value(
                         None,
                         &None,
                         &Path::new(""),
                         &mut HashMap::new(),
-                        None,
+                        Some(ungrouped_acc),
                         column_expr
                     ) {
                         let field_name = column_expr.to_string().to_lowercase();
@@ -888,7 +891,7 @@ impl<'a> Searcher<'a> {
         file_info: &Option<FileInfo>,
         root_path: &Path,
         file_map: &mut HashMap<String, String>,
-        buffer_data: Option<&Vec<HashMap<String, String>>>,
+        accumulator: Option<&function::GroupAccumulator>,
         column_expr: &Expr,
     ) -> Result<Variant, SearchError> {
         let column_expr_str = column_expr.to_string();
@@ -939,7 +942,7 @@ impl<'a> Searcher<'a> {
 
         if let Some(ref _function) = column_expr.function {
             let result =
-                self.get_function_value(entry, file_info, root_path, file_map, buffer_data, column_expr)?;
+                self.get_function_value(entry, file_info, root_path, file_map, accumulator, column_expr)?;
             file_map.insert(column_expr_str, result.to_string());
             return Ok(result);
         }
@@ -969,12 +972,12 @@ impl<'a> Searcher<'a> {
 
         if let Some(ref left) = column_expr.left {
             let left_result =
-                self.get_column_expr_value(entry, file_info, root_path, file_map, buffer_data, left)?;
+                self.get_column_expr_value(entry, file_info, root_path, file_map, accumulator, left)?;
 
             if let Some(ref op) = column_expr.arithmetic_op {
                 if let Some(ref right) = column_expr.right {
                     let right_result =
-                        self.get_column_expr_value(entry, file_info, root_path, file_map, buffer_data, right)?;
+                        self.get_column_expr_value(entry, file_info, root_path, file_map, accumulator, right)?;
                         result = op.calc(&left_result, &right_result);
                         file_map.insert(column_expr_str, result.clone()?.to_string());
                 } else {
@@ -996,7 +999,7 @@ impl<'a> Searcher<'a> {
         file_info: &Option<FileInfo>,
         root_path: &Path,
         file_map: &mut HashMap<String, String>,
-        buffer_data: Option<&Vec<HashMap<String, String>>>,
+        accumulator: Option<&function::GroupAccumulator>,
         column_expr: &Expr,
     ) -> Result<Variant, SearchError> {
         let dummy = Expr::value(String::from(""));
@@ -1010,23 +1013,24 @@ impl<'a> Searcher<'a> {
         let function = &column_expr.function.as_ref().unwrap();
 
         if function.is_aggregate_function() {
-            let _ = self.get_column_expr_value(entry, file_info, root_path, file_map, buffer_data, left_expr)?;
+            let _ = self.get_column_expr_value(entry, file_info, root_path, file_map, accumulator, left_expr)?;
             let buffer_key = left_expr.to_string();
+            let empty_acc = function::GroupAccumulator::default();
             let aggr_result = function::get_aggregate_value(
                 &column_expr.function.as_ref().unwrap(),
-                buffer_data.unwrap_or(&self.raw_output_buffer),
+                accumulator.unwrap_or(&empty_acc),
                 buffer_key,
                 &column_expr.val,
             );
             Ok(Variant::from_string(&aggr_result))
         } else {
             let function_arg =
-                self.get_column_expr_value(entry, file_info, root_path, file_map, buffer_data, left_expr);
+                self.get_column_expr_value(entry, file_info, root_path, file_map, accumulator, left_expr);
             let mut function_args = vec![];
             if let Some(args) = &column_expr.args {
                 for arg in args {
                     let arg_value =
-                        self.get_column_expr_value(entry, file_info, root_path, file_map, buffer_data, arg)?;
+                        self.get_column_expr_value(entry, file_info, root_path, file_map, accumulator, arg)?;
                     function_args.push(arg_value.to_string());
                 }
             }
@@ -1043,25 +1047,6 @@ impl<'a> Searcher<'a> {
         }
     }
 
-    fn partition_output_buffer(&mut self) -> HashMap<Vec<String>, Vec<HashMap<String, String>>> {
-        let group_fields: Vec<String> = self
-            .query
-            .grouping_fields
-            .iter()
-            .map(|ref expr| expr.to_string())
-            .collect();
-        let mut result: HashMap<Vec<String>, Vec<HashMap<String, String>>> = HashMap::new();
-
-        for item in self.raw_output_buffer.drain(..) {
-            let key: Vec<String> = group_fields
-                .iter()
-                .map(|f| item.get(f).unwrap_or(&String::new()).clone())
-                .collect();
-            result.entry(key).or_default().push(item);
-        }
-
-        result
-    }
 
     fn get_field_value(
         &mut self,
@@ -2124,7 +2109,14 @@ impl<'a> Searcher<'a> {
                     self.get_column_expr_value(Some(entry), file_info, root_path, &mut file_map, None, field)?;
                 }
             }
-            self.raw_output_buffer.push(file_map);
+            let group_key: Vec<String> = self.query.grouping_fields.iter()
+                .map(|f| file_map.get(&f.to_string()).cloned().unwrap_or_default())
+                .collect();
+            let accumulator = self.accumulators.entry(group_key).or_default();
+            accumulator.increment_count();
+            for (key, value) in &file_map {
+                accumulator.push(key, value);
+            }
             return Ok(());
         }
 

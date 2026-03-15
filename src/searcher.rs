@@ -2344,6 +2344,7 @@ impl<'a> Searcher<'a> {
                 }
             };
             self.conforms_map = temp_map;
+            let mut arg_map = HashMap::new();
 
             result = match field_value.get_type() {
                 VariantType::String => {
@@ -2381,10 +2382,11 @@ impl<'a> Searcher<'a> {
                         Op::In => {
                             let args = self.get_in_args(expr);
                             let mut result = false;
-                            for item in args.iter().map(|arg| self.get_column_expr_value(
-                                Some(entry), file_info, root_path, &mut HashMap::new(), None, arg,
-                            )) {
-                                if item?.to_string().eq(&field_str) {
+                            for arg in &args {
+                                arg_map.clear();
+                                if self.get_column_expr_value(
+                                    Some(entry), file_info, root_path, &mut arg_map, None, arg,
+                                )?.to_string().eq(&field_str) {
                                     result = true;
                                     break;
                                 }
@@ -2394,10 +2396,11 @@ impl<'a> Searcher<'a> {
                         Op::NotIn => {
                             let args = self.get_in_args(expr);
                             let mut result = true;
-                            for item in args.iter().map(|arg| self.get_column_expr_value(
-                                Some(entry), file_info, root_path, &mut HashMap::new(), None, arg,
-                            )) {
-                                if item?.to_string().eq(&field_str) {
+                            for arg in &args {
+                                arg_map.clear();
+                                if self.get_column_expr_value(
+                                    Some(entry), file_info, root_path, &mut arg_map, None, arg,
+                                )?.to_string().eq(&field_str) {
                                     result = false;
                                     break;
                                 }
@@ -2423,10 +2426,11 @@ impl<'a> Searcher<'a> {
                             let field_value = field_value.to_float();
                             let args = self.get_in_args(expr);
                             let mut result = false;
-                            for item in args.iter().map(|arg| self.get_column_expr_value(
-                                Some(entry), file_info, root_path, &mut HashMap::new(), None, arg,
-                            )) {
-                                if item?.to_float() == field_value {
+                            for arg in &args {
+                                arg_map.clear();
+                                if self.get_column_expr_value(
+                                    Some(entry), file_info, root_path, &mut arg_map, None, arg,
+                                )?.to_float() == field_value {
                                     result = true;
                                     break;
                                 }
@@ -2437,10 +2441,11 @@ impl<'a> Searcher<'a> {
                             let field_value = field_value.to_float();
                             let args = self.get_in_args(expr);
                             let mut result = true;
-                            for item in args.iter().map(|arg| self.get_column_expr_value(
-                                Some(entry), file_info, root_path, &mut HashMap::new(), None, arg,
-                            )) {
-                                if item?.to_float() == field_value {
+                            for arg in &args {
+                                arg_map.clear();
+                                if self.get_column_expr_value(
+                                    Some(entry), file_info, root_path, &mut arg_map, None, arg,
+                                )?.to_float() == field_value {
                                     result = false;
                                     break;
                                 }
@@ -2466,10 +2471,11 @@ impl<'a> Searcher<'a> {
                             let field_value = field_value.to_float();
                             let args = self.get_in_args(expr);
                             let mut result = false;
-                            for item in args.iter().map(|arg| self.get_column_expr_value(
-                                Some(entry), file_info, root_path, &mut HashMap::new(), None, arg,
-                            )) {
-                                if item?.to_float() == field_value {
+                            for arg in &args {
+                                arg_map.clear();
+                                if self.get_column_expr_value(
+                                    Some(entry), file_info, root_path, &mut arg_map, None, arg,
+                                )?.to_float() == field_value {
                                     result = true;
                                     break;
                                 }
@@ -2480,10 +2486,11 @@ impl<'a> Searcher<'a> {
                             let field_value = field_value.to_float();
                             let args = self.get_in_args(expr);
                             let mut result = true;
-                            for item in args.iter().map(|arg| self.get_column_expr_value(
-                                Some(entry), file_info, root_path, &mut HashMap::new(), None, arg,
-                            )) {
-                                if item?.to_float() == field_value {
+                            for arg in &args {
+                                arg_map.clear();
+                                if self.get_column_expr_value(
+                                    Some(entry), file_info, root_path, &mut arg_map, None, arg,
+                                )?.to_float() == field_value {
                                     result = false;
                                     break;
                                 }
@@ -2508,10 +2515,11 @@ impl<'a> Searcher<'a> {
                             let field_value = field_value.to_bool();
                             let args = self.get_in_args(expr);
                             let mut result = false;
-                            for item in args.iter().map(|arg| self.get_column_expr_value(
-                                Some(entry), file_info, root_path, &mut HashMap::new(), None, arg,
-                            )) {
-                                if item?.to_bool() == field_value {
+                            for arg in &args {
+                                arg_map.clear();
+                                if self.get_column_expr_value(
+                                    Some(entry), file_info, root_path, &mut arg_map, None, arg,
+                                )?.to_bool() == field_value {
                                     result = true;
                                     break;
                                 }
@@ -2522,10 +2530,11 @@ impl<'a> Searcher<'a> {
                             let field_value = field_value.to_bool();
                             let args = self.get_in_args(expr);
                             let mut result = true;
-                            for item in args.iter().map(|arg| self.get_column_expr_value(
-                                Some(entry), file_info, root_path, &mut HashMap::new(), None, arg,
-                            )) {
-                                if item?.to_bool() == field_value {
+                            for arg in &args {
+                                arg_map.clear();
+                                if self.get_column_expr_value(
+                                    Some(entry), file_info, root_path, &mut arg_map, None, arg,
+                                )?.to_bool() == field_value {
                                     result = false;
                                     break;
                                 }
@@ -2555,10 +2564,11 @@ impl<'a> Searcher<'a> {
                             let field_value = field_value.to_datetime()?.0.and_utc().timestamp();
                             let args = self.get_in_args(expr);
                             let mut result = false;
-                            for item in args.iter().map(|arg| self.get_column_expr_value(
-                                Some(entry), file_info, root_path, &mut HashMap::new(), None, arg,
-                            )) {
-                                if item?.to_datetime()?.0.and_utc().timestamp() == field_value {
+                            for arg in &args {
+                                arg_map.clear();
+                                if self.get_column_expr_value(
+                                    Some(entry), file_info, root_path, &mut arg_map, None, arg,
+                                )?.to_datetime()?.0.and_utc().timestamp() == field_value {
                                     result = true;
                                     break;
                                 }
@@ -2569,10 +2579,11 @@ impl<'a> Searcher<'a> {
                             let field_value = field_value.to_datetime()?.0.and_utc().timestamp();
                             let args = self.get_in_args(expr);
                             let mut result = true;
-                            for item in args.iter().map(|arg| self.get_column_expr_value(
-                                Some(entry), file_info, root_path, &mut HashMap::new(), None, arg,
-                            )) {
-                                if item?.to_datetime()?.0.and_utc().timestamp() == field_value {
+                            for arg in &args {
+                                arg_map.clear();
+                                if self.get_column_expr_value(
+                                    Some(entry), file_info, root_path, &mut arg_map, None, arg,
+                                )?.to_datetime()?.0.and_utc().timestamp() == field_value {
                                     result = false;
                                     break;
                                 }

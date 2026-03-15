@@ -1,4 +1,4 @@
-#[allow(dead_code)]
+#[cfg(target_os = "linux")]
 pub(crate) mod acl;
 pub(crate) mod app_dirs;
 #[cfg(target_os = "linux")]

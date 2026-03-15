@@ -161,7 +161,6 @@ pub struct Searcher<'a> {
     regex_cache: HashMap<String, Regex>,
     found: u32,
     raw_output_buffer: Vec<HashMap<String, String>>,
-    partitioned_output_buffer: HashMap<Vec<String>, Vec<HashMap<String, String>>>,
     output_buffer: TopN<Criteria<String>, String>,
 
     record_context: Rc<RefCell<HashMap<String, HashMap<String, String>>>>,
@@ -217,7 +216,6 @@ impl<'a> Searcher<'a> {
             regex_cache: HashMap::new(),
             found: 0,
             raw_output_buffer: vec![],
-            partitioned_output_buffer: HashMap::new(),
             output_buffer: if limit == 0 {
                 TopN::limitless()
             } else {
@@ -425,17 +423,13 @@ impl<'a> Searcher<'a> {
         // ======== Compute results =========
         if self.has_aggregate_column() {
             if !self.query.grouping_fields.is_empty() {
-                if self.partitioned_output_buffer.is_empty() {
-                    self.partitioned_output_buffer = self.partition_output_buffer();
-                }
-
                 let group_keys: Vec<String> = self
                     .query
                     .grouping_fields
                     .iter()
                     .map(|f| f.to_string())
                     .collect();
-                let buffer_partitions = std::mem::take(&mut self.partitioned_output_buffer);
+                let buffer_partitions = self.partition_output_buffer();
 
                 let ordering_fields_rc = Rc::new(self.query.ordering_fields.clone());
                 let ordering_asc_rc = Rc::new(self.query.ordering_asc.clone());

@@ -76,6 +76,11 @@ impl FileMetadataState {
         self.file_metadata.as_ref().and_then(|o| o.as_ref())
     }
 
+    fn get_file_metadata_as_option(&self) -> &Option<Metadata> {
+        static NONE: Option<Metadata> = None;
+        self.file_metadata.as_ref().unwrap_or(&NONE)
+    }
+
     fn update_line_count(&mut self, entry: &DirEntry) {
         if self.line_count.is_none() {
             self.line_count = Some(get_line_count(entry));
@@ -1455,10 +1460,9 @@ impl<'a> Searcher<'a> {
                     self.fms
                         .update_file_metadata(entry, self.current_follow_symlinks);
 
-                    let meta_flat = self.fms.file_metadata.as_ref().unwrap_or(&None);
                     return Ok(Variant::from_bool(is_hidden(
                         &entry.file_name().to_string_lossy(),
-                        meta_flat,
+                        self.fms.get_file_metadata_as_option(),
                         false,
                     )));
                 }

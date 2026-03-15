@@ -49,18 +49,15 @@ impl<K: Ord, V> TopN<K, V> {
         None
     }
 
-    // see: https://github.com/rust-lang/rfcs/blob/master/text/1522-conservative-impl-trait.md
-    //    pub fn values(&self) -> impl Iterator<Item=&V> {
-    //        self.echelons.values().flat_map(|v| v)
-    //    }
+    pub fn iter_values(&self) -> impl Iterator<Item = &V> {
+        self.echelons.values().flat_map(|v| v)
+    }
+
     pub fn values(&self) -> Vec<V>
     where
         V: Clone,
     {
-        self.echelons
-            .values()
-            .flat_map(|v| v.iter().cloned())
-            .collect()
+        self.iter_values().cloned().collect()
     }
 }
 

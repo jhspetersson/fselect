@@ -463,11 +463,10 @@ impl<'a> Searcher<'a> {
                     );
                 }
 
-                let values = grouped_results.values();
                 let mut first = true;
-                for items in values.iter().skip(self.query.offset as usize) {
+                for items in grouped_results.iter_values().skip(self.query.offset as usize) {
                     let mut buf = WritableBuffer::new();
-                    let _ = self.results_writer.write_row(&mut buf, items.to_owned());
+                    let _ = self.results_writer.write_row(&mut buf, items.clone());
                     let rendered = String::from(buf);
                     self.output_buffer.insert(
                         Criteria::new(Rc::new(vec![]), vec![], Rc::new(vec![])),
@@ -519,7 +518,7 @@ impl<'a> Searcher<'a> {
             }
         } else if self.is_buffered() && !self.silent_mode {
             let mut first = true;
-            for piece in self.output_buffer.values().iter().skip(self.query.offset as usize) {
+            for piece in self.output_buffer.iter_values().skip(self.query.offset as usize) {
                 if first {
                     first = false;
                 } else if let Err(e) = self
@@ -576,7 +575,7 @@ impl<'a> Searcher<'a> {
             return vec![];
         }
 
-        let result_values = sub_searcher.output_buffer.values().iter()
+        let result_values = sub_searcher.output_buffer.iter_values()
             .map(|s| s.trim_end().to_string())
             .collect::<Vec<String>>();
 

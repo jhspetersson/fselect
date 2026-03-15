@@ -1054,10 +1054,7 @@ impl<'a> Searcher<'a> {
                     )))
                 }
                 _ => {
-                    Ok(Variant::from_string(&format!(
-                        "{}",
-                        entry.file_name().to_string_lossy()
-                    )))
+                    Ok(Variant::from_string(&entry.file_name().to_string_lossy().to_string()))
                 }
             },
             Field::Filename => return match file_info {
@@ -1101,13 +1098,10 @@ impl<'a> Searcher<'a> {
                 _ => {
                     match entry.path().strip_prefix(root_path) {
                         Ok(stripped_path) => {
-                            Ok(Variant::from_string(&format!(
-                                "{}",
-                                stripped_path.to_string_lossy()
-                            )))
+                            Ok(Variant::from_string(&stripped_path.to_string_lossy().to_string()))
                         }
                         Err(_) => {
-                            Ok(Variant::from_string(&format!("{}", entry.path().to_string_lossy())))
+                            Ok(Variant::from_string(&entry.path().to_string_lossy().to_string()))
                         }
                     }
                 }

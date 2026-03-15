@@ -477,18 +477,22 @@ impl<'a> Searcher<'a> {
                     );
                 }
 
-                if !self.silent_mode {
-                    let values = grouped_results.values();
-                    let mut first = true;
-                    for items in values.iter().skip(self.query.offset as usize) {
-                        if first {
-                            first = false;
-                        } else {
+                let values = grouped_results.values();
+                let mut first = true;
+                for items in values.iter().skip(self.query.offset as usize) {
+                    let mut buf = WritableBuffer::new();
+                    let _ = self.results_writer.write_row(&mut buf, items.to_owned());
+                    let rendered = String::from(buf);
+                    self.output_buffer.insert(
+                        Criteria::new(Rc::new(vec![]), vec![], Rc::new(vec![])),
+                        rendered.clone(),
+                    );
+                    if !self.silent_mode {
+                        if !first {
                             let _ = self.results_writer.write_row_separator(&mut std::io::stdout());
                         }
-                        let mut buf = WritableBuffer::new();
-                        let _ = self.results_writer.write_row(&mut buf, items.to_owned());
-                        let _ = write!(std::io::stdout(), "{}", String::from(buf));
+                        first = false;
+                        let _ = write!(std::io::stdout(), "{}", rendered);
                     }
                 }
             } else {

@@ -465,7 +465,7 @@ impl<'a> Searcher<'a> {
                             None, &None, &Path::new(""), &mut file_map, Some(group_acc), column_expr,
                         ) {
                             let field_name = column_expr.to_string().to_lowercase();
-                            items.push((field_name, format!("{}", value)));
+                            items.push((field_name, value.to_string()));
                         }
                     }
                     let criteria_values: Vec<String> = sorting_indices.iter()
@@ -512,7 +512,7 @@ impl<'a> Searcher<'a> {
                         column_expr
                     ) {
                         let field_name = column_expr.to_string().to_lowercase();
-                        items.push((field_name, format!("{}", value)));
+                        items.push((field_name, value.to_string()));
                     }
                 }
 

@@ -163,7 +163,6 @@ pub struct Searcher<'a> {
     raw_output_buffer: Vec<HashMap<String, String>>,
     partitioned_output_buffer: HashMap<Vec<String>, Vec<HashMap<String, String>>>,
     output_buffer: TopN<Criteria<String>, String>,
-    aux_buffer: Vec<String>,
 
     record_context: Rc<RefCell<HashMap<String, HashMap<String, String>>>>,
     current_alias: Option<String>,
@@ -224,8 +223,6 @@ impl<'a> Searcher<'a> {
             } else {
                 TopN::new(limit + query.offset)
             },
-            aux_buffer: vec![],
-
             record_context,
             current_alias: None,
 
@@ -493,7 +490,6 @@ impl<'a> Searcher<'a> {
             } else {
                 let mut buf = WritableBuffer::new();
                 let mut items: Vec<(String, String)> = Vec::new();
-                let mut item_list = vec![];
 
                 for column_expr in &self.query.fields {
                     if let Ok(value) = self.get_column_expr_value(
@@ -504,20 +500,20 @@ impl<'a> Searcher<'a> {
                         None,
                         column_expr
                     ) {
-                        let record = format!("{}", value);
                         let field_name = column_expr.to_string().to_lowercase();
-                        items.push((field_name, record.clone()));
-                        item_list.push(record.clone());
+                        items.push((field_name, format!("{}", value)));
                     }
                 }
 
-                self.output_buffer.clear();
-                self.aux_buffer.extend(item_list);
+                self.results_writer.write_row(&mut buf, items)?;
+                let rendered = String::from(buf);
+                self.output_buffer.insert(
+                    Criteria::new(Rc::new(vec![]), vec![], Rc::new(vec![])),
+                    rendered.clone(),
+                );
 
                 if !self.silent_mode {
-                    self.results_writer.write_row(&mut buf, items)?;
-
-                    if let Err(e) = write!(std::io::stdout(), "{}", String::from(buf)) {
+                    if let Err(e) = write!(std::io::stdout(), "{}", rendered) {
                         if e.kind() == ErrorKind::BrokenPipe {
                             return Ok(());
                         }
@@ -580,12 +576,9 @@ impl<'a> Searcher<'a> {
         sub_searcher.silent_mode = !self.config.debug;
         sub_searcher.list_search_results().unwrap();
 
-        let mut result_values = sub_searcher.output_buffer.values().iter()
+        let result_values = sub_searcher.output_buffer.values().iter()
             .map(|s| s.trim_end().to_string())
             .collect::<Vec<String>>();
-        if result_values.is_empty() {
-            result_values = sub_searcher.aux_buffer;
-        }
 
         if ok_to_cache {
             self.subquery_cache.insert(query_str, result_values.clone());

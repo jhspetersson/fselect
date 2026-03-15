@@ -475,19 +475,27 @@ impl<'a> Searcher<'a> {
                 let mut first = true;
                 for items in grouped_results.iter_values().skip(self.query.offset as usize) {
                     let mut buf = WritableBuffer::new();
-                    let _ = self.results_writer.write_row(&mut buf, items.clone());
+                    self.results_writer.write_row(&mut buf, items.clone())?;
                     let rendered = String::from(buf);
-                    self.output_buffer.insert(
-                        Criteria::new(Rc::new(vec![]), vec![], Rc::new(vec![])),
-                        rendered.clone(),
-                    );
                     if !self.silent_mode {
                         if !first {
-                            let _ = self.results_writer.write_row_separator(&mut std::io::stdout());
+                            if let Err(e) = self.results_writer.write_row_separator(&mut std::io::stdout()) {
+                                if e.kind() == ErrorKind::BrokenPipe {
+                                    return Ok(());
+                                }
+                            }
                         }
                         first = false;
-                        let _ = write!(std::io::stdout(), "{}", rendered);
+                        if let Err(e) = write!(std::io::stdout(), "{}", &rendered) {
+                            if e.kind() == ErrorKind::BrokenPipe {
+                                return Ok(());
+                            }
+                        }
                     }
+                    self.output_buffer.insert(
+                        Criteria::new(Rc::new(vec![]), vec![], Rc::new(vec![])),
+                        rendered,
+                    );
                 }
             } else {
                 let mut buf = WritableBuffer::new();

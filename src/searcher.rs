@@ -930,7 +930,9 @@ impl<'a> Searcher<'a> {
 
         if let Some(ref subquery) = column_expr.subquery {
             let mut subquery = subquery.clone();
-            subquery.limit = 1;
+            if subquery.grouping_fields.is_empty() {
+                subquery.limit = 1;
+            }
             let list = self.get_list_from_subquery(*subquery);
             if !list.is_empty() {
                 let result = list.first().unwrap().to_string();
@@ -2215,7 +2217,9 @@ impl<'a> Searcher<'a> {
             Some(args) => !args.is_empty(),
             None => {
                 if let Some(mut subquery) = right.subquery {
-                    subquery.limit = 1;
+                    if subquery.grouping_fields.is_empty() {
+                        subquery.limit = 1;
+                    }
                     !self.get_list_from_subquery(*subquery).is_empty()
                 } else {
                     false

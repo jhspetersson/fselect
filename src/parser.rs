@@ -2117,12 +2117,6 @@ mod tests {
         let result = p.parse(false);
         assert!(result.is_err() || !result.unwrap().grouping_fields.is_empty());
     }
-}
-
-
-#[cfg(test)]
-mod exists_tests {
-    use super::*;
 
     #[test]
     fn query_with_exists_operator() {

@@ -2219,6 +2219,37 @@ impl<'a> Searcher<'a> {
         Variant::from_bool(false)
     }
 
+    fn get_in_args(&mut self, expr: &Expr) -> Vec<Expr> {
+        let right = expr.right.as_ref().unwrap().clone();
+        match right.args {
+            Some(args) => args,
+            None => {
+                if let Some(subquery) = right.subquery {
+                    self.get_list_from_subquery(*subquery).iter().map(|s| {
+                        Expr::value(s.clone().to_string())
+                    }).collect()
+                } else {
+                    vec![]
+                }
+            }
+        }
+    }
+
+    fn check_exists(&mut self, expr: &Expr) -> bool {
+        let right = expr.right.as_ref().unwrap().clone();
+        match right.args {
+            Some(args) => !args.is_empty(),
+            None => {
+                if let Some(mut subquery) = right.subquery {
+                    subquery.limit = 1;
+                    !self.get_list_from_subquery(*subquery).is_empty()
+                } else {
+                    false
+                }
+            }
+        }
+    }
+
     fn conforms(&mut self, entry: &DirEntry, file_info: &Option<FileInfo>, root_path: &Path, expr: &Expr) -> Result<bool, SearchError> {
         let mut result = false;
         let mut temp_map = HashMap::new();
@@ -2441,28 +2472,10 @@ impl<'a> Searcher<'a> {
                         Op::Ene => val.ne(&field_value.to_string()),
                         Op::In => {
                             let field_value = field_value.to_string();
+                            let args = self.get_in_args(expr);
                             let mut result = false;
-                            let right = expr.right.as_ref().unwrap().clone();
-                            let args = match right.args {
-                                Some(args) => args,
-                                None => {
-                                    if let Some(subquery) = right.subquery {
-                                        self.get_list_from_subquery(*subquery).iter().map(|s| {
-                                            Expr::value(s.clone().to_string())
-                                        }).collect()
-                                    } else {
-                                        vec![]
-                                    }
-                                }
-                            };
-
                             for item in args.iter().map(|arg| self.get_column_expr_value(
-                                Some(entry),
-                                file_info,
-                                root_path,
-                                &mut HashMap::new(),
-                                None,
-                                arg,
+                                Some(entry), file_info, root_path, &mut HashMap::new(), None, arg,
                             )) {
                                 if item?.to_string().eq(&field_value) {
                                     result = true;
@@ -2473,28 +2486,10 @@ impl<'a> Searcher<'a> {
                         }
                         Op::NotIn => {
                             let field_value = field_value.to_string();
+                            let args = self.get_in_args(expr);
                             let mut result = true;
-                            let right = expr.right.as_ref().unwrap().clone();
-                            let args = match right.args {
-                                Some(args) => args,
-                                None => {
-                                    if let Some(subquery) = right.subquery {
-                                        self.get_list_from_subquery(*subquery).iter().map(|s| {
-                                            Expr::value(s.clone().to_string())
-                                        }).collect()
-                                    } else {
-                                        vec![]
-                                    }
-                                }
-                            };
-
                             for item in args.iter().map(|arg| self.get_column_expr_value(
-                                Some(entry),
-                                file_info,
-                                root_path,
-                                &mut HashMap::new(),
-                                None,
-                                arg,
+                                Some(entry), file_info, root_path, &mut HashMap::new(), None, arg,
                             )) {
                                 if item?.to_string().eq(&field_value) {
                                     result = false;
@@ -2503,34 +2498,8 @@ impl<'a> Searcher<'a> {
                             }
                             result
                         }
-                        Op::Exists => {
-                            let right = expr.right.as_ref().unwrap().clone();
-                            match right.args {
-                                Some(args) => !args.is_empty(),
-                                None => {
-                                    if let Some(mut subquery) = right.subquery {
-                                        subquery.limit = 1;
-                                        !self.get_list_from_subquery(*subquery).is_empty()
-                                    } else {
-                                        false
-                                    }
-                                }
-                            }
-                        }
-                        Op::NotExists => {
-                            let right = expr.right.as_ref().unwrap().clone();
-                            match right.args {
-                                Some(args) => args.is_empty(),
-                                None => {
-                                    if let Some(mut subquery) = right.subquery {
-                                        subquery.limit = 1;
-                                        self.get_list_from_subquery(*subquery).is_empty()
-                                    } else {
-                                        true
-                                    }
-                                }
-                            }
-                        }
+                        Op::Exists => self.check_exists(expr),
+                        Op::NotExists => !self.check_exists(expr),
                         _ => false,
                     }
                 }
@@ -2546,28 +2515,10 @@ impl<'a> Searcher<'a> {
                         Op::Lte => int_value <= val,
                         Op::In => {
                             let field_value = field_value.to_int();
+                            let args = self.get_in_args(expr);
                             let mut result = false;
-                            let right = expr.right.as_ref().unwrap().clone();
-                            let args = match right.args {
-                                Some(args) => args,
-                                None => {
-                                    if let Some(subquery) = right.subquery {
-                                        self.get_list_from_subquery(*subquery).iter().map(|s| {
-                                            Expr::value(s.clone().to_string())
-                                        }).collect()
-                                    } else {
-                                        vec![]
-                                    }
-                                }
-                            };
-
                             for item in args.iter().map(|arg| self.get_column_expr_value(
-                                Some(entry),
-                                file_info,
-                                root_path,
-                                &mut HashMap::new(),
-                                None,
-                                arg,
+                                Some(entry), file_info, root_path, &mut HashMap::new(), None, arg,
                             )) {
                                 if item?.to_int() == field_value {
                                     result = true;
@@ -2578,28 +2529,10 @@ impl<'a> Searcher<'a> {
                         },
                         Op::NotIn => {
                             let field_value = field_value.to_int();
+                            let args = self.get_in_args(expr);
                             let mut result = true;
-                            let right = expr.right.as_ref().unwrap().clone();
-                            let args = match right.args {
-                                Some(args) => args,
-                                None => {
-                                    if let Some(subquery) = right.subquery {
-                                        self.get_list_from_subquery(*subquery).iter().map(|s| {
-                                            Expr::value(s.clone().to_string())
-                                        }).collect()
-                                    } else {
-                                        vec![]
-                                    }
-                                }
-                            };
-
                             for item in args.iter().map(|arg| self.get_column_expr_value(
-                                Some(entry),
-                                file_info,
-                                root_path,
-                                &mut HashMap::new(),
-                                None,
-                                arg,
+                                Some(entry), file_info, root_path, &mut HashMap::new(), None, arg,
                             )) {
                                 if item?.to_int() == field_value {
                                     result = false;
@@ -2608,32 +2541,8 @@ impl<'a> Searcher<'a> {
                             }
                             result
                         }
-                        Op::Exists => {
-                            let right = expr.right.as_ref().unwrap().clone();
-                            match right.args {
-                                Some(args) => !args.is_empty(),
-                                None => {
-                                    if let Some(subquery) = right.subquery {
-                                        !self.get_list_from_subquery(*subquery).is_empty()
-                                    } else {
-                                        false
-                                    }
-                                }
-                            }
-                        }
-                        Op::NotExists => {
-                            let right = expr.right.as_ref().unwrap().clone();
-                            match right.args {
-                                Some(args) => args.is_empty(),
-                                None => {
-                                    if let Some(subquery) = right.subquery {
-                                        self.get_list_from_subquery(*subquery).is_empty()
-                                    } else {
-                                        true
-                                    }
-                                }
-                            }
-                        }
+                        Op::Exists => self.check_exists(expr),
+                        Op::NotExists => !self.check_exists(expr),
                         _ => false,
                     }
                 }
@@ -2649,28 +2558,10 @@ impl<'a> Searcher<'a> {
                         Op::Lte => float_value <= val,
                         Op::In => {
                             let field_value = field_value.to_float();
+                            let args = self.get_in_args(expr);
                             let mut result = false;
-                            let right = expr.right.as_ref().unwrap().clone();
-                            let args = match right.args {
-                                Some(args) => args,
-                                None => {
-                                    if let Some(subquery) = right.subquery {
-                                        self.get_list_from_subquery(*subquery).iter().map(|s| {
-                                            Expr::value(s.clone().to_string())
-                                        }).collect()
-                                    } else {
-                                        vec![]
-                                    }
-                                }
-                            };
-
                             for item in args.iter().map(|arg| self.get_column_expr_value(
-                                Some(entry),
-                                file_info,
-                                root_path,
-                                &mut HashMap::new(),
-                                None,
-                                arg,
+                                Some(entry), file_info, root_path, &mut HashMap::new(), None, arg,
                             )) {
                                 if item?.to_float() == field_value {
                                     result = true;
@@ -2681,28 +2572,10 @@ impl<'a> Searcher<'a> {
                         },
                         Op::NotIn => {
                             let field_value = field_value.to_float();
+                            let args = self.get_in_args(expr);
                             let mut result = true;
-                            let right = expr.right.as_ref().unwrap().clone();
-                            let args = match right.args {
-                                Some(args) => args,
-                                None => {
-                                    if let Some(subquery) = right.subquery {
-                                        self.get_list_from_subquery(*subquery).iter().map(|s| {
-                                            Expr::value(s.clone().to_string())
-                                        }).collect()
-                                    } else {
-                                        vec![]
-                                    }
-                                }
-                            };
-
                             for item in args.iter().map(|arg| self.get_column_expr_value(
-                                Some(entry),
-                                file_info,
-                                root_path,
-                                &mut HashMap::new(),
-                                None,
-                                arg,
+                                Some(entry), file_info, root_path, &mut HashMap::new(), None, arg,
                             )) {
                                 if item?.to_float() == field_value {
                                     result = false;
@@ -2711,32 +2584,8 @@ impl<'a> Searcher<'a> {
                             }
                             result
                         }
-                        Op::Exists => {
-                            let right = expr.right.as_ref().unwrap().clone();
-                            match right.args {
-                                Some(args) => !args.is_empty(),
-                                None => {
-                                    if let Some(subquery) = right.subquery {
-                                        !self.get_list_from_subquery(*subquery).is_empty()
-                                    } else {
-                                        false
-                                    }
-                                }
-                            }
-                        }
-                        Op::NotExists => {
-                            let right = expr.right.as_ref().unwrap().clone();
-                            match right.args {
-                                Some(args) => args.is_empty(),
-                                None => {
-                                    if let Some(subquery) = right.subquery {
-                                        self.get_list_from_subquery(*subquery).is_empty()
-                                    } else {
-                                        true
-                                    }
-                                }
-                            }
-                        }
+                        Op::Exists => self.check_exists(expr),
+                        Op::NotExists => !self.check_exists(expr),
                         _ => false,
                     }
                 }
@@ -2751,28 +2600,10 @@ impl<'a> Searcher<'a> {
                         Op::Lte => field_value.to_bool() <= val,
                         Op::In => {
                             let field_value = field_value.to_bool();
+                            let args = self.get_in_args(expr);
                             let mut result = false;
-                            let right = expr.right.as_ref().unwrap().clone();
-                            let args = match right.args {
-                                Some(args) => args,
-                                None => {
-                                    if let Some(subquery) = right.subquery {
-                                        self.get_list_from_subquery(*subquery).iter().map(|s| {
-                                            Expr::value(s.clone().to_string())
-                                        }).collect()
-                                    } else {
-                                        vec![]
-                                    }
-                                }
-                            };
-
                             for item in args.iter().map(|arg| self.get_column_expr_value(
-                                Some(entry),
-                                file_info,
-                                root_path,
-                                &mut HashMap::new(),
-                                None,
-                                arg,
+                                Some(entry), file_info, root_path, &mut HashMap::new(), None, arg,
                             )) {
                                 if item?.to_bool() == field_value {
                                     result = true;
@@ -2783,28 +2614,10 @@ impl<'a> Searcher<'a> {
                         },
                         Op::NotIn => {
                             let field_value = field_value.to_bool();
+                            let args = self.get_in_args(expr);
                             let mut result = true;
-                            let right = expr.right.as_ref().unwrap().clone();
-                            let args = match right.args {
-                                Some(args) => args,
-                                None => {
-                                    if let Some(subquery) = right.subquery {
-                                        self.get_list_from_subquery(*subquery).iter().map(|s| {
-                                            Expr::value(s.clone().to_string())
-                                        }).collect()
-                                    } else {
-                                        vec![]
-                                    }
-                                }
-                            };
-
                             for item in args.iter().map(|arg| self.get_column_expr_value(
-                                Some(entry),
-                                file_info,
-                                root_path,
-                                &mut HashMap::new(),
-                                None,
-                                arg,
+                                Some(entry), file_info, root_path, &mut HashMap::new(), None, arg,
                             )) {
                                 if item?.to_bool() == field_value {
                                     result = false;
@@ -2813,32 +2626,8 @@ impl<'a> Searcher<'a> {
                             }
                             result
                         }
-                        Op::Exists => {
-                            let right = expr.right.as_ref().unwrap().clone();
-                            match right.args {
-                                Some(args) => !args.is_empty(),
-                                None => {
-                                    if let Some(subquery) = right.subquery {
-                                        !self.get_list_from_subquery(*subquery).is_empty()
-                                    } else {
-                                        false
-                                    }
-                                }
-                            }
-                        }
-                        Op::NotExists => {
-                            let right = expr.right.as_ref().unwrap().clone();
-                            match right.args {
-                                Some(args) => args.is_empty(),
-                                None => {
-                                    if let Some(subquery) = right.subquery {
-                                        self.get_list_from_subquery(*subquery).is_empty()
-                                    } else {
-                                        true
-                                    }
-                                }
-                            }
-                        }
+                        Op::Exists => self.check_exists(expr),
+                        Op::NotExists => !self.check_exists(expr),
                         _ => false,
                     }
                 }
@@ -2858,28 +2647,10 @@ impl<'a> Searcher<'a> {
                         Op::Lte => dt <= finish,
                         Op::In => {
                             let field_value = field_value.to_datetime()?.0.and_utc().timestamp();
+                            let args = self.get_in_args(expr);
                             let mut result = false;
-                            let right = expr.right.as_ref().unwrap().clone();
-                            let args = match right.args {
-                                Some(args) => args,
-                                None => {
-                                    if let Some(subquery) = right.subquery {
-                                        self.get_list_from_subquery(*subquery).iter().map(|s| {
-                                            Expr::value(s.clone().to_string())
-                                        }).collect()
-                                    } else {
-                                        vec![]
-                                    }
-                                }
-                            };
-
                             for item in args.iter().map(|arg| self.get_column_expr_value(
-                                Some(entry),
-                                file_info,
-                                root_path,
-                                &mut HashMap::new(),
-                                None,
-                                arg,
+                                Some(entry), file_info, root_path, &mut HashMap::new(), None, arg,
                             )) {
                                 if item?.to_datetime()?.0.and_utc().timestamp() == field_value {
                                     result = true;
@@ -2890,28 +2661,10 @@ impl<'a> Searcher<'a> {
                         },
                         Op::NotIn => {
                             let field_value = field_value.to_datetime()?.0.and_utc().timestamp();
+                            let args = self.get_in_args(expr);
                             let mut result = true;
-                            let right = expr.right.as_ref().unwrap().clone();
-                            let args = match right.args {
-                                Some(args) => args,
-                                None => {
-                                    if let Some(subquery) = right.subquery {
-                                        self.get_list_from_subquery(*subquery).iter().map(|s| {
-                                            Expr::value(s.clone().to_string())
-                                        }).collect()
-                                    } else {
-                                        vec![]
-                                    }
-                                }
-                            };
-
                             for item in args.iter().map(|arg| self.get_column_expr_value(
-                                Some(entry),
-                                file_info,
-                                root_path,
-                                &mut HashMap::new(),
-                                None,
-                                arg,
+                                Some(entry), file_info, root_path, &mut HashMap::new(), None, arg,
                             )) {
                                 if item?.to_datetime()?.0.and_utc().timestamp() == field_value {
                                     result = false;
@@ -2920,32 +2673,8 @@ impl<'a> Searcher<'a> {
                             }
                             result
                         }
-                        Op::Exists => {
-                            let right = expr.right.as_ref().unwrap().clone();
-                            match right.args {
-                                Some(args) => !args.is_empty(),
-                                None => {
-                                    if let Some(subquery) = right.subquery {
-                                        !self.get_list_from_subquery(*subquery).is_empty()
-                                    } else {
-                                        false
-                                    }
-                                }
-                            }
-                        }
-                        Op::NotExists => {
-                            let right = expr.right.as_ref().unwrap().clone();
-                            match right.args {
-                                Some(args) => args.is_empty(),
-                                None => {
-                                    if let Some(subquery) = right.subquery {
-                                        self.get_list_from_subquery(*subquery).is_empty()
-                                    } else {
-                                        true
-                                    }
-                                }
-                            }
-                        }
+                        Op::Exists => self.check_exists(expr),
+                        Op::NotExists => !self.check_exists(expr),
                         _ => false,
                     }
                 }

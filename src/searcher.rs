@@ -479,7 +479,13 @@ impl<'a> Searcher<'a> {
 
                 if !self.silent_mode {
                     let values = grouped_results.values();
+                    let mut first = true;
                     for items in values.iter().skip(self.query.offset as usize) {
+                        if first {
+                            first = false;
+                        } else {
+                            let _ = self.results_writer.write_row_separator(&mut std::io::stdout());
+                        }
                         let mut buf = WritableBuffer::new();
                         let _ = self.results_writer.write_row(&mut buf, items.to_owned());
                         let _ = write!(std::io::stdout(), "{}", String::from(buf));

@@ -2204,12 +2204,12 @@ impl<'a> Searcher<'a> {
     }
 
     fn get_in_args(&mut self, expr: &Expr) -> Vec<Expr> {
-        let right = expr.right.as_ref().unwrap().clone();
-        match right.args {
-            Some(args) => args,
+        let right = expr.right.as_ref().unwrap();
+        match &right.args {
+            Some(args) => args.clone(),
             None => {
-                if let Some(subquery) = right.subquery {
-                    self.get_list_from_subquery(*subquery).iter().map(|s| {
+                if let Some(subquery) = &right.subquery {
+                    self.get_list_from_subquery(*subquery.clone()).iter().map(|s| {
                         Expr::value(s.to_string())
                     }).collect()
                 } else {
@@ -2220,15 +2220,16 @@ impl<'a> Searcher<'a> {
     }
 
     fn check_exists(&mut self, expr: &Expr) -> bool {
-        let right = expr.right.as_ref().unwrap().clone();
-        match right.args {
+        let right = expr.right.as_ref().unwrap();
+        match &right.args {
             Some(args) => !args.is_empty(),
             None => {
-                if let Some(mut subquery) = right.subquery {
+                if let Some(subquery) = &right.subquery {
+                    let mut subquery = *subquery.clone();
                     if subquery.grouping_fields.is_empty() {
                         subquery.limit = 1;
                     }
-                    !self.get_list_from_subquery(*subquery).is_empty()
+                    !self.get_list_from_subquery(subquery).is_empty()
                 } else {
                     false
                 }

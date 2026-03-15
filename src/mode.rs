@@ -289,7 +289,13 @@ pub fn mode_sgid(mode: u32) -> bool {
     mode & S_ISGID == S_ISGID
 }
 
-#[cfg(unix)]
+pub fn sticky_bit_set(meta: &Metadata) -> bool {
+    match get_mode_from_boxed_unix_int(meta) {
+        Some(mode) => mode_sticky(mode),
+        None => false,
+    }
+}
+
 pub fn mode_sticky(mode: u32) -> bool {
     mode & S_ISVTX == S_ISVTX
 }
@@ -362,7 +368,6 @@ const S_IXOTH: u32 = 0o1;
 
 const S_ISUID: u32 = 0o4000;
 const S_ISGID: u32 = 0o2000;
-#[cfg(unix)]
 const S_ISVTX: u32 = 0o1000;
 
 const S_IFMT: u32 = 0o170000;

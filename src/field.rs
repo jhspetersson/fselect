@@ -398,7 +398,13 @@ fields! {
         @weight = 1
         @description = "Returns a boolean signifying whether the file permissions have a SGID bit set"
         Sgid,
-        
+
+        #[text = ["is_sticky"], data_type = "boolean"]
+        @for_archived = true
+        @weight = 1
+        @description = "Returns a boolean signifying whether the file permissions have a sticky bit set"
+        IsSticky,
+
         #[text = ["is_hidden"], data_type = "boolean"]
         @for_archived = true
         @weight = 1

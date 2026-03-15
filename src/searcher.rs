@@ -1517,6 +1517,14 @@ impl<'a> Searcher<'a> {
                     &mode::mode_sgid,
                 ));
             }
+            Field::IsSticky => {
+                return Ok(self.check_file_mode(
+                    entry,
+                    &mode::sticky_bit_set,
+                    file_info,
+                    &mode::mode_sticky,
+                ));
+            }
             Field::IsHidden => match file_info {
                 Some(file_info) => {
                     return Ok(Variant::from_bool(is_hidden(&file_info.name, &None, true)));

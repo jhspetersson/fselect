@@ -271,6 +271,7 @@ Or by owner's or group's name:
 Find special files:
 
     fselect name from /usr/bin where suid
+    fselect path from /tmp where is_sticky
     fselect path from /tmp where is_pipe
     fselect path from /tmp where is_socket
     

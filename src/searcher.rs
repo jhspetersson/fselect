@@ -2166,7 +2166,7 @@ impl<'a> Searcher<'a> {
                     criteria,
                     self.ordering_asc_rc.clone(),
                 ),
-                String::from(buf).to_string(),
+                String::from(buf),
             );
         } else if let Err(e) = write!(std::io::stdout(), "{}", String::from(buf)) {
             if e.kind() == ErrorKind::BrokenPipe {

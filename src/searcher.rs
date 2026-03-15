@@ -386,6 +386,11 @@ impl<'a> Searcher<'a> {
                 .unwrap_or(self.config.dockerignore.unwrap_or(false));
             let traversal_mode = root.options.traversal;
 
+            self.dir_queue.clear();
+            self.visited_dirs.clear();
+            self.hgignore_filters.clear();
+            self.dockerignore_filters.clear();
+
             // Apply filters
             if apply_hgignore {
                 search_upstream_hgignore(&mut self.hgignore_filters, root_dir);
@@ -394,11 +399,6 @@ impl<'a> Searcher<'a> {
             if apply_dockerignore {
                 search_upstream_dockerignore(&mut self.dockerignore_filters, root_dir);
             }
-
-            self.dir_queue.clear();
-            self.visited_dirs.clear();
-            self.hgignore_filters.clear();
-            self.dockerignore_filters.clear();
 
             let result = self.visit_dir(
                 root_dir,
@@ -3539,9 +3539,8 @@ mod tests {
     }
 
     #[test]
-    fn test_hgignore_filters_not_cleared_before_visit() {
-        // Simulate the root processing loop behavior:
-        // filters should survive between loading and visit_dir
+    fn test_hgignore_filters_survive_clear_before_load() {
+        // Verify the correct order: clear first, then load filters
         let tmp = std::env::temp_dir().join("fselect_test_hgignore_order");
         let _ = fs::remove_dir_all(&tmp);
         fs::create_dir_all(&tmp).unwrap();
@@ -3568,26 +3567,18 @@ mod tests {
 
         let mut searcher = Searcher::new(query, config, default_config, false);
 
-        // Load hgignore filters (simulating what list_search_results does)
-        search_upstream_hgignore(&mut searcher.hgignore_filters, Path::new(&tmp));
-
-        let filters_before_clear = searcher.hgignore_filters.len();
-
-        // Now simulate the bug: the code clears filters AFTER loading
+        // Correct order (matching the fixed code): clear first, then load
         searcher.dir_queue.clear();
         searcher.visited_dirs.clear();
         searcher.hgignore_filters.clear();
         searcher.dockerignore_filters.clear();
 
-        let filters_after_clear = searcher.hgignore_filters.len();
+        search_upstream_hgignore(&mut searcher.hgignore_filters, Path::new(&tmp));
 
+        let filters_count = searcher.hgignore_filters.len();
         let _ = fs::remove_dir_all(&tmp);
 
-        // Filters should have been loaded
-        assert!(filters_before_clear > 0, "hgignore filters should have been loaded");
-        // BUG: filters are cleared before visit_dir gets to use them
-        // This test documents the bug: filters_after_clear is 0 but should be > 0
-        assert!(filters_after_clear > 0, "hgignore filters should NOT be cleared before visit_dir");
+        assert!(filters_count > 0, "hgignore filters should be available after clear-then-load");
     }
 
     #[cfg(unix)]

@@ -2068,7 +2068,7 @@ impl<'a> Searcher<'a> {
         self.fms.clear();
 
         let mut file_map = HashMap::new();
-        
+
         if let Some(ref current_alias) = self.current_alias.clone() {
             {
                 let mut context = self.record_context.borrow_mut();
@@ -2100,14 +2100,13 @@ impl<'a> Searcher<'a> {
 
         self.found += 1;
 
-        for field in self.query.get_all_fields() {
-            file_map.insert(
-                field.to_string(),
-                self.get_field_value(entry, file_info, root_path, &field).unwrap_or(Variant::empty(VariantType::String)).to_string(),
-            );
-        }
-
         if self.has_aggregate_column() {
+            for field in self.query.get_all_fields() {
+                file_map.insert(
+                    field.to_string(),
+                    self.get_field_value(entry, file_info, root_path, &field).unwrap_or(Variant::empty(VariantType::String)).to_string(),
+                );
+            }
             for field in self.query.grouping_fields.iter() {
                 if file_map.get(&field.to_string()).is_none() {
                     self.get_column_expr_value(Some(entry), file_info, root_path, &mut file_map, None, field)?;

@@ -1287,7 +1287,7 @@ impl<'a> Searcher<'a> {
             },
             Field::IsFile => match file_info {
                 Some(file_info) => {
-                    return Ok(Variant::from_bool(!file_info.name.ends_with('/')));
+                    return Ok(Variant::from_bool(!file_info.name.ends_with('/') && !file_info.name.ends_with('\\')));
                 }
                 _ => {
                     self.fms
@@ -3004,8 +3004,9 @@ mod tests {
     use super::*;
     use crate::expr::Expr;
     use crate::field::Field;
+    use crate::fileinfo::FileInfo;
     use crate::function::Function;
-    use crate::query::{OutputFormat, Query};
+    use crate::query::{OutputFormat, Query, Root, RootOptions};
 
     // Tests for FileMetadataState
     #[test]
@@ -3485,6 +3486,108 @@ mod tests {
             "symlink to file should not cause directory traversal error, errors={}",
             errors
         );
+    }
+
+    #[test]
+    fn test_is_file_false_for_backslash_terminated_archive_entry() {
+        let tmp = std::env::temp_dir().join("fselect_test_isfile_backslash");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        fs::write(tmp.join("dummy.txt"), "").unwrap();
+
+        let entry = fs::read_dir(&tmp).unwrap().next().unwrap().unwrap();
+
+        let file_info = Some(FileInfo {
+            name: String::from("somedir\\"),
+            size: 0,
+            mode: None,
+            modified: None,
+        });
+
+        let mut searcher = create_test_searcher();
+        let result = searcher.get_field_value(&entry, &file_info, &tmp, &Field::IsFile).unwrap();
+        let _ = fs::remove_dir_all(&tmp);
+
+        // A directory entry (name ends with \) should NOT be reported as a file
+        assert_eq!(result.to_string(), "false");
+    }
+
+    #[test]
+    fn test_is_dir_and_is_file_consistent_for_backslash_archive_entry() {
+        let tmp = std::env::temp_dir().join("fselect_test_consistency_backslash");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        fs::write(tmp.join("dummy.txt"), "").unwrap();
+
+        let entry = fs::read_dir(&tmp).unwrap().next().unwrap().unwrap();
+
+        let file_info = Some(FileInfo {
+            name: String::from("somedir\\"),
+            size: 0,
+            mode: None,
+            modified: None,
+        });
+
+        let mut searcher = create_test_searcher();
+        let is_dir = searcher.get_field_value(&entry, &file_info, &tmp, &Field::IsDir).unwrap();
+        let is_file = searcher.get_field_value(&entry, &file_info, &tmp, &Field::IsFile).unwrap();
+        let _ = fs::remove_dir_all(&tmp);
+
+        // is_dir and is_file should be mutually exclusive for directories
+        assert_eq!(is_dir.to_string(), "true");
+        assert_eq!(is_file.to_string(), "false");
+    }
+
+    #[test]
+    fn test_hgignore_filters_not_cleared_before_visit() {
+        // Simulate the root processing loop behavior:
+        // filters should survive between loading and visit_dir
+        let tmp = std::env::temp_dir().join("fselect_test_hgignore_order");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        fs::create_dir_all(tmp.join(".hg")).unwrap();
+        fs::write(tmp.join("ignored.log"), "data").unwrap();
+        fs::write(tmp.join("kept.txt"), "data").unwrap();
+        fs::write(tmp.join(".hgignore"), "syntax: glob\n*.log\n").unwrap();
+
+        let query = Box::leak(Box::new(Query {
+            fields: Vec::new(),
+            roots: vec![Root::new(tmp.to_string_lossy().to_string(), RootOptions::new())],
+            expr: None,
+            grouping_fields: Vec::new(),
+            ordering_fields: Vec::new(),
+            ordering_asc: Vec::new(),
+            limit: 0,
+            offset: 0,
+            output_format: OutputFormat::Tabs,
+            raw_query: String::new(),
+        }));
+
+        let config = Box::leak(Box::new(Config::default()));
+        let default_config = Box::leak(Box::new(Config::default()));
+
+        let mut searcher = Searcher::new(query, config, default_config, false);
+
+        // Load hgignore filters (simulating what list_search_results does)
+        search_upstream_hgignore(&mut searcher.hgignore_filters, Path::new(&tmp));
+
+        let filters_before_clear = searcher.hgignore_filters.len();
+
+        // Now simulate the bug: the code clears filters AFTER loading
+        searcher.dir_queue.clear();
+        searcher.visited_dirs.clear();
+        searcher.hgignore_filters.clear();
+        searcher.dockerignore_filters.clear();
+
+        let filters_after_clear = searcher.hgignore_filters.len();
+
+        let _ = fs::remove_dir_all(&tmp);
+
+        // Filters should have been loaded
+        assert!(filters_before_clear > 0, "hgignore filters should have been loaded");
+        // BUG: filters are cleared before visit_dir gets to use them
+        // This test documents the bug: filters_after_clear is 0 but should be > 0
+        assert!(filters_after_clear > 0, "hgignore filters should NOT be cleared before visit_dir");
     }
 
     #[cfg(unix)]

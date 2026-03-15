@@ -3589,6 +3589,76 @@ mod tests {
         assert!(filters_count > 0, "hgignore filters should be available after clear-then-load");
     }
 
+    #[test]
+    fn test_is_symlink_false_when_following_symlinks() {
+        let tmp = std::env::temp_dir().join("fselect_test_symlink_follow_islink");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        fs::write(tmp.join("real_file.txt"), "hello world").unwrap();
+
+        #[cfg(unix)]
+        std::os::unix::fs::symlink("real_file.txt", tmp.join("link")).unwrap();
+        #[cfg(windows)]
+        std::os::windows::fs::symlink_file(tmp.join("real_file.txt"), tmp.join("link")).unwrap();
+
+        let entry = fs::read_dir(&tmp)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .find(|e| e.file_name() == "link")
+            .unwrap();
+
+        let mut searcher = create_test_searcher();
+        searcher.current_follow_symlinks = true;
+
+        let result = searcher
+            .get_field_value(&entry, &None, &tmp, &Field::IsSymlink)
+            .unwrap();
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(
+            result.to_string(),
+            "false",
+            "is_symlink should be false when following symlinks"
+        );
+    }
+
+    #[test]
+    fn test_size_follows_symlink_when_requested() {
+        let tmp = std::env::temp_dir().join("fselect_test_symlink_follow_size");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        let content = "hello world, this is a reasonably long test string for size comparison";
+        fs::write(tmp.join("real_file.txt"), content).unwrap();
+
+        #[cfg(unix)]
+        std::os::unix::fs::symlink("real_file.txt", tmp.join("link")).unwrap();
+        #[cfg(windows)]
+        std::os::windows::fs::symlink_file(tmp.join("real_file.txt"), tmp.join("link")).unwrap();
+
+        let entry = fs::read_dir(&tmp)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .find(|e| e.file_name() == "link")
+            .unwrap();
+
+        let mut searcher = create_test_searcher();
+        searcher.current_follow_symlinks = true;
+
+        let result = searcher
+            .get_field_value(&entry, &None, &tmp, &Field::Size)
+            .unwrap();
+        let _ = fs::remove_dir_all(&tmp);
+
+        let size = result.to_int();
+        let expected_size = content.len() as i64;
+
+        assert_eq!(
+            size, expected_size,
+            "size should be target file's size ({}) when following symlinks, got {}",
+            expected_size, size
+        );
+    }
+
     #[cfg(unix)]
     #[test]
     fn test_visited_dirs_cleared_between_roots() {

@@ -155,6 +155,7 @@ pub struct Searcher<'a> {
     current_follow_symlinks: bool,
 
     fms: FileMetadataState,
+    conforms_map: HashMap<String, String>,
     subquery_cache: HashMap<String, Vec<String>>,
     silent_mode: bool,
 
@@ -215,6 +216,7 @@ impl<'a> Searcher<'a> {
             current_follow_symlinks: false,
 
             fms: FileMetadataState::new(),
+            conforms_map: HashMap::new(),
             subquery_cache: HashMap::new(),
             silent_mode: false,
 
@@ -2279,7 +2281,6 @@ impl<'a> Searcher<'a> {
 
     fn conforms(&mut self, entry: &DirEntry, file_info: &Option<FileInfo>, root_path: &Path, expr: &Expr) -> Result<bool, SearchError> {
         let mut result = false;
-        let mut temp_map = HashMap::new();
 
         if let Some(ref logical_op) = expr.logical_op {
             let left_result = match expr.left {
@@ -2310,6 +2311,7 @@ impl<'a> Searcher<'a> {
                 }
             }
         } else if let Some(ref op) = expr.op {
+            let mut temp_map = std::mem::take(&mut self.conforms_map);
             let field_value = self.get_column_expr_value(
                 Some(entry),
                 file_info,
@@ -2327,6 +2329,8 @@ impl<'a> Searcher<'a> {
                 None,
                 expr.right.as_ref().unwrap(),
             )?;
+            temp_map.clear();
+            self.conforms_map = temp_map;
 
             result = match field_value.get_type() {
                 VariantType::String => {

@@ -2314,15 +2314,21 @@ impl<'a> Searcher<'a> {
                 expr.left.as_ref().unwrap(),
             )?;
             temp_map.clear();
-            let value = self.get_column_expr_value(
-                Some(entry),
-                file_info,
-                root_path,
-                &mut temp_map,
-                None,
-                expr.right.as_ref().unwrap(),
-            )?;
-            temp_map.clear();
+            let value = match op {
+                Op::In | Op::NotIn | Op::Exists | Op::NotExists => Variant::empty(VariantType::String),
+                _ => {
+                    let v = self.get_column_expr_value(
+                        Some(entry),
+                        file_info,
+                        root_path,
+                        &mut temp_map,
+                        None,
+                        expr.right.as_ref().unwrap(),
+                    )?;
+                    temp_map.clear();
+                    v
+                }
+            };
             self.conforms_map = temp_map;
 
             result = match field_value.get_type() {

@@ -2440,7 +2440,7 @@ impl<'a> Searcher<'a> {
                         Op::In => {
                             let field_value = field_value.to_string();
                             let mut result = false;
-                            let right = expr.clone().right.unwrap();
+                            let right = expr.right.as_ref().unwrap().clone();
                             let args = match right.args {
                                 Some(args) => args,
                                 None => {
@@ -2472,7 +2472,7 @@ impl<'a> Searcher<'a> {
                         Op::NotIn => {
                             let field_value = field_value.to_string();
                             let mut result = true;
-                            let right = expr.clone().right.unwrap();
+                            let right = expr.right.as_ref().unwrap().clone();
                             let args = match right.args {
                                 Some(args) => args,
                                 None => {
@@ -2502,7 +2502,7 @@ impl<'a> Searcher<'a> {
                             result
                         }
                         Op::Exists => {
-                            let right = expr.clone().right.unwrap();
+                            let right = expr.right.as_ref().unwrap().clone();
                             match right.args {
                                 Some(args) => !args.is_empty(),
                                 None => {
@@ -2516,7 +2516,7 @@ impl<'a> Searcher<'a> {
                             }
                         }
                         Op::NotExists => {
-                            let right = expr.clone().right.unwrap();
+                            let right = expr.right.as_ref().unwrap().clone();
                             match right.args {
                                 Some(args) => args.is_empty(),
                                 None => {
@@ -2545,7 +2545,7 @@ impl<'a> Searcher<'a> {
                         Op::In => {
                             let field_value = field_value.to_int();
                             let mut result = false;
-                            let right = expr.clone().right.unwrap();
+                            let right = expr.right.as_ref().unwrap().clone();
                             let args = match right.args {
                                 Some(args) => args,
                                 None => {
@@ -2577,7 +2577,7 @@ impl<'a> Searcher<'a> {
                         Op::NotIn => {
                             let field_value = field_value.to_int();
                             let mut result = true;
-                            let right = expr.clone().right.unwrap();
+                            let right = expr.right.as_ref().unwrap().clone();
                             let args = match right.args {
                                 Some(args) => args,
                                 None => {
@@ -2607,7 +2607,7 @@ impl<'a> Searcher<'a> {
                             result
                         }
                         Op::Exists => {
-                            let right = expr.clone().right.unwrap();
+                            let right = expr.right.as_ref().unwrap().clone();
                             match right.args {
                                 Some(args) => !args.is_empty(),
                                 None => {
@@ -2620,7 +2620,7 @@ impl<'a> Searcher<'a> {
                             }
                         }
                         Op::NotExists => {
-                            let right = expr.clone().right.unwrap();
+                            let right = expr.right.as_ref().unwrap().clone();
                             match right.args {
                                 Some(args) => args.is_empty(),
                                 None => {
@@ -2648,7 +2648,7 @@ impl<'a> Searcher<'a> {
                         Op::In => {
                             let field_value = field_value.to_float();
                             let mut result = false;
-                            let right = expr.clone().right.unwrap();
+                            let right = expr.right.as_ref().unwrap().clone();
                             let args = match right.args {
                                 Some(args) => args,
                                 None => {
@@ -2680,7 +2680,7 @@ impl<'a> Searcher<'a> {
                         Op::NotIn => {
                             let field_value = field_value.to_float();
                             let mut result = true;
-                            let right = expr.clone().right.unwrap();
+                            let right = expr.right.as_ref().unwrap().clone();
                             let args = match right.args {
                                 Some(args) => args,
                                 None => {
@@ -2710,7 +2710,7 @@ impl<'a> Searcher<'a> {
                             result
                         }
                         Op::Exists => {
-                            let right = expr.clone().right.unwrap();
+                            let right = expr.right.as_ref().unwrap().clone();
                             match right.args {
                                 Some(args) => !args.is_empty(),
                                 None => {
@@ -2723,7 +2723,7 @@ impl<'a> Searcher<'a> {
                             }
                         }
                         Op::NotExists => {
-                            let right = expr.clone().right.unwrap();
+                            let right = expr.right.as_ref().unwrap().clone();
                             match right.args {
                                 Some(args) => args.is_empty(),
                                 None => {
@@ -2750,7 +2750,7 @@ impl<'a> Searcher<'a> {
                         Op::In => {
                             let field_value = field_value.to_bool();
                             let mut result = false;
-                            let right = expr.clone().right.unwrap();
+                            let right = expr.right.as_ref().unwrap().clone();
                             let args = match right.args {
                                 Some(args) => args,
                                 None => {
@@ -2782,7 +2782,7 @@ impl<'a> Searcher<'a> {
                         Op::NotIn => {
                             let field_value = field_value.to_bool();
                             let mut result = true;
-                            let right = expr.clone().right.unwrap();
+                            let right = expr.right.as_ref().unwrap().clone();
                             let args = match right.args {
                                 Some(args) => args,
                                 None => {
@@ -2812,7 +2812,7 @@ impl<'a> Searcher<'a> {
                             result
                         }
                         Op::Exists => {
-                            let right = expr.clone().right.unwrap();
+                            let right = expr.right.as_ref().unwrap().clone();
                             match right.args {
                                 Some(args) => !args.is_empty(),
                                 None => {
@@ -2825,7 +2825,7 @@ impl<'a> Searcher<'a> {
                             }
                         }
                         Op::NotExists => {
-                            let right = expr.clone().right.unwrap();
+                            let right = expr.right.as_ref().unwrap().clone();
                             match right.args {
                                 Some(args) => args.is_empty(),
                                 None => {
@@ -2857,7 +2857,7 @@ impl<'a> Searcher<'a> {
                         Op::In => {
                             let field_value = field_value.to_datetime()?.0.and_utc().timestamp();
                             let mut result = false;
-                            let right = expr.clone().right.unwrap();
+                            let right = expr.right.as_ref().unwrap().clone();
                             let args = match right.args {
                                 Some(args) => args,
                                 None => {
@@ -2889,7 +2889,7 @@ impl<'a> Searcher<'a> {
                         Op::NotIn => {
                             let field_value = field_value.to_datetime()?.0.and_utc().timestamp();
                             let mut result = true;
-                            let right = expr.clone().right.unwrap();
+                            let right = expr.right.as_ref().unwrap().clone();
                             let args = match right.args {
                                 Some(args) => args,
                                 None => {
@@ -2919,7 +2919,7 @@ impl<'a> Searcher<'a> {
                             result
                         }
                         Op::Exists => {
-                            let right = expr.clone().right.unwrap();
+                            let right = expr.right.as_ref().unwrap().clone();
                             match right.args {
                                 Some(args) => !args.is_empty(),
                                 None => {
@@ -2932,7 +2932,7 @@ impl<'a> Searcher<'a> {
                             }
                         }
                         Op::NotExists => {
-                            let right = expr.clone().right.unwrap();
+                            let right = expr.right.as_ref().unwrap().clone();
                             match right.args {
                                 Some(args) => args.is_empty(),
                                 None => {

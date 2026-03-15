@@ -2363,49 +2363,43 @@ impl<'a> Searcher<'a> {
             result = match field_value.get_type() {
                 VariantType::String => {
                     let val = value.to_string();
+                    let field_str = field_value.to_string();
                     match op {
                         Op::Eq => {
-                            let field_str = field_value.to_string();
                             if is_glob(&val) {
                                 return self.match_glob(val, &field_str);
                             }
                             val.eq(&field_str)
                         }
                         Op::Ne => {
-                            let field_str = field_value.to_string();
                             if is_glob(&val) {
                                 return self.match_glob(val, &field_str).map(|m| !m);
                             }
                             val.ne(&field_str)
                         }
                         Op::Rx => {
-                            let field_str = field_value.to_string();
                             fn identity(s: &str) -> Result<String, String> { Ok(s.to_string()) }
                             return self.match_pattern(val, &field_str, identity, "Incorrect regex expression: ");
                         }
                         Op::NotRx => {
-                            let field_str = field_value.to_string();
                             fn identity(s: &str) -> Result<String, String> { Ok(s.to_string()) }
                             return self.match_pattern(val, &field_str, identity, "Incorrect regex expression: ").map(|m| !m);
                         }
                         Op::Like => {
-                            let field_str = field_value.to_string();
                             return self.match_pattern(val, &field_str, convert_like_to_pattern, "Incorrect LIKE expression: ");
                         }
                         Op::NotLike => {
-                            let field_str = field_value.to_string();
                             return self.match_pattern(val, &field_str, convert_like_to_pattern, "Incorrect LIKE expression: ").map(|m| !m);
                         }
-                        Op::Eeq => val.eq(&field_value.to_string()),
-                        Op::Ene => val.ne(&field_value.to_string()),
+                        Op::Eeq => val.eq(&field_str),
+                        Op::Ene => val.ne(&field_str),
                         Op::In => {
-                            let field_value = field_value.to_string();
                             let args = self.get_in_args(expr);
                             let mut result = false;
                             for item in args.iter().map(|arg| self.get_column_expr_value(
                                 Some(entry), file_info, root_path, &mut HashMap::new(), None, arg,
                             )) {
-                                if item?.to_string().eq(&field_value) {
+                                if item?.to_string().eq(&field_str) {
                                     result = true;
                                     break;
                                 }
@@ -2413,13 +2407,12 @@ impl<'a> Searcher<'a> {
                             result
                         }
                         Op::NotIn => {
-                            let field_value = field_value.to_string();
                             let args = self.get_in_args(expr);
                             let mut result = true;
                             for item in args.iter().map(|arg| self.get_column_expr_value(
                                 Some(entry), file_info, root_path, &mut HashMap::new(), None, arg,
                             )) {
-                                if item?.to_string().eq(&field_value) {
+                                if item?.to_string().eq(&field_str) {
                                     result = false;
                                     break;
                                 }

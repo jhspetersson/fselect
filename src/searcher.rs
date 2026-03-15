@@ -2221,6 +2221,7 @@ impl<'a> Searcher<'a> {
 
     fn conforms(&mut self, entry: &DirEntry, file_info: &Option<FileInfo>, root_path: &Path, expr: &Expr) -> Result<bool, SearchError> {
         let mut result = false;
+        let mut temp_map = HashMap::new();
 
         if let Some(ref logical_op) = expr.logical_op {
             let mut left_result = Ok(false);
@@ -2264,15 +2265,16 @@ impl<'a> Searcher<'a> {
                 Some(entry),
                 file_info,
                 root_path,
-                &mut HashMap::new(),
+                &mut temp_map,
                 None,
                 expr.left.as_ref().unwrap(),
             )?;
+            temp_map.clear();
             let value = self.get_column_expr_value(
                 Some(entry),
                 file_info,
                 root_path,
-                &mut HashMap::new(),
+                &mut temp_map,
                 None,
                 expr.right.as_ref().unwrap(),
             )?;

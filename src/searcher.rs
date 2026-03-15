@@ -1018,14 +1018,14 @@ impl<'a> Searcher<'a> {
             _ => boxed_dummy,
         };
 
-        let function = &column_expr.function.as_ref().unwrap();
+        let function = column_expr.function.as_ref().unwrap();
 
         if function.is_aggregate_function() {
             let _ = self.get_column_expr_value(entry, file_info, root_path, file_map, accumulator, left_expr)?;
             let buffer_key = left_expr.to_string();
             let empty_acc = function::GroupAccumulator::default();
             let aggr_result = function::get_aggregate_value(
-                &column_expr.function.as_ref().unwrap(),
+                function,
                 accumulator.unwrap_or(&empty_acc),
                 buffer_key,
                 &column_expr.val,
@@ -1043,7 +1043,7 @@ impl<'a> Searcher<'a> {
                 }
             }
             let result = function::get_value(
-                &column_expr.function.as_ref().unwrap(),
+                function,
                 function_arg?.to_string(),
                 function_args,
                 entry,

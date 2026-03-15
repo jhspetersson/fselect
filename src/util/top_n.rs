@@ -53,6 +53,7 @@ impl<K: Ord, V> TopN<K, V> {
         self.echelons.values().flat_map(|v| v)
     }
 
+    #[cfg(test)]
     pub fn values(&self) -> Vec<V>
     where
         V: Clone,

@@ -2080,7 +2080,7 @@ impl<'a> Searcher<'a> {
             // prepopulate field cache with values used in subqueries
             let has_where = self.query.expr.is_some();
             if has_where {
-                let where_expr = self.query.clone().expr.unwrap().clone();
+                let where_expr = self.query.expr.as_ref().unwrap().clone();
                 let field_values = self.get_required_field_values(&where_expr, current_alias, entry, root_path, &file_info);
 
                 let mut context = self.record_context.borrow_mut();

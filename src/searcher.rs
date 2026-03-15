@@ -151,6 +151,7 @@ pub struct Searcher<'a> {
 
     record_context: Rc<RefCell<HashMap<String, HashMap<String, String>>>>,
     current_alias: Option<String>,
+    subquery_required_fields: Option<HashMap<Field, String>>,
 
     hgignore_filters: Vec<HgignoreFilter>,
     dockerignore_filters: Vec<DockerignoreFilter>,
@@ -212,6 +213,7 @@ impl<'a> Searcher<'a> {
             ordering_asc_rc: Rc::new(query.ordering_asc.clone()),
             record_context,
             current_alias: None,
+            subquery_required_fields: None,
 
             hgignore_filters: vec![],
             dockerignore_filters: vec![],
@@ -352,6 +354,13 @@ impl<'a> Searcher<'a> {
         for root in roots {
             self.current_follow_symlinks = root.options.symlinks;
             self.current_alias = root.options.alias.clone();
+            self.subquery_required_fields = match (&self.current_alias, &self.query.expr) {
+                (Some(alias), Some(expr)) => {
+                    let fields = expr.get_fields_required_in_subqueries(alias, false);
+                    if fields.is_empty() { None } else { Some(fields) }
+                }
+                _ => None,
+            };
 
             let root_dir = Path::new(&root.path);
             let min_depth = root.options.min_depth;
@@ -2029,20 +2038,6 @@ impl<'a> Searcher<'a> {
         Ok(Variant::empty(VariantType::String))
     }
 
-    fn get_required_field_values(&mut self, expr: &Expr, current_alias: &str, entry: &DirEntry, root_path: &Path, file_info: &Option<FileInfo>) -> HashMap<String, Variant> {
-        let mut field_values = HashMap::new();
-
-        let required_fields = expr.get_fields_required_in_subqueries(current_alias, false);
-        if !required_fields.is_empty() {
-            for (field, alias) in required_fields {
-                let field_value = self.get_field_value(entry, file_info, root_path, &field).unwrap_or(Variant::empty(VariantType::String));
-                field_values.insert(alias, field_value);
-            }
-        }
-        
-        field_values
-    }
-    
     fn check_file(&mut self, entry: &DirEntry, root_path: &Path, file_info: &Option<FileInfo>) -> Result<(), SearchError> {
         self.fms.clear();
 
@@ -2055,12 +2050,13 @@ impl<'a> Searcher<'a> {
                     ctx.clear();
                 }
             }
-            
-            // prepopulate field cache with values used in subqueries
-            let has_where = self.query.expr.is_some();
-            if has_where {
-                let where_expr = self.query.expr.as_ref().unwrap().clone();
-                let field_values = self.get_required_field_values(&where_expr, current_alias, entry, root_path, &file_info);
+
+            if let Some(ref required_fields) = self.subquery_required_fields.clone() {
+                let mut field_values = HashMap::new();
+                for (field, alias) in required_fields {
+                    let field_value = self.get_field_value(entry, file_info, root_path, field).unwrap_or(Variant::empty(VariantType::String));
+                    field_values.insert(alias.clone(), field_value);
+                }
 
                 let mut context = self.record_context.borrow_mut();
                 let context_entry = context.entry(current_alias.to_string()).or_insert(HashMap::new());

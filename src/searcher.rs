@@ -439,91 +439,56 @@ impl<'a> Searcher<'a> {
                     .map(|f| f.to_string())
                     .collect();
                 let buffer_partitions = std::mem::take(&mut self.partitioned_output_buffer);
-                let buffer_partitions = buffer_partitions.iter().collect::<Vec<_>>();                 
 
-                let mut results = vec![];
+                let ordering_fields_rc = Rc::new(self.query.ordering_fields.clone());
+                let ordering_asc_rc = Rc::new(self.query.ordering_asc.clone());
+                let field_names: Vec<String> = self.query.fields.iter()
+                    .map(|f| f.to_string().to_lowercase())
+                    .collect();
+                let sorting_indices: Vec<usize> = self.query.ordering_fields.iter()
+                    .map(|f| {
+                        let name = f.to_string().to_lowercase();
+                        field_names.iter().position(|g| g == &name).unwrap_or(0)
+                    })
+                    .collect();
 
-                buffer_partitions.iter().for_each(|f| {
+                let mut grouped_results: TopN<Criteria<String>, Vec<(String, String)>> =
+                    if self.query.limit > 0 {
+                        TopN::new(self.query.limit + self.query.offset)
+                    } else {
+                        TopN::limitless()
+                    };
+
+                for (group_key, group_data) in &buffer_partitions {
                     let mut items: Vec<(String, String)> = Vec::new();
-
                     let mut file_map = HashMap::new();
                     for (i, k) in group_keys.iter().enumerate() {
-                        file_map.insert(k.clone(), f.0.get(i).unwrap().clone());
+                        file_map.insert(k.clone(), group_key.get(i).unwrap().clone());
                     }
-
                     for column_expr in &self.query.fields {
                         if let Ok(value) = self.get_column_expr_value(
-                            None,
-                            &None,
-                            &Path::new(""),
-                            &mut file_map,
-                            Some(f.1),
-                            column_expr
+                            None, &None, &Path::new(""), &mut file_map, Some(group_data), column_expr,
                         ) {
-                            let record = format!("{}", value);
                             let field_name = column_expr.to_string().to_lowercase();
-                        items.push((field_name, record));
+                            items.push((field_name, format!("{}", value)));
                         }
                     }
-
-                    results.push(items);
-                });
-
-                if !self.query.ordering_fields.is_empty() {
-                    let ordering_fields = self
-                        .query
-                        .ordering_fields
-                        .iter()
-                        .map(|f| f.to_string().to_lowercase())
-                        .collect::<Vec<String>>();
-                    let directions = self.query.ordering_asc.clone();
-                    let sorting_indices = ordering_fields
-                        .iter()
-                        .map(|f| {
-                            self.query
-                                .fields
-                                .iter()
-                                .map(|f| f.to_string().to_lowercase())
-                                .position(|g| &g == f)
-                                .unwrap_or(0)
-                        })
-                        .collect::<Vec<usize>>();
-
-                    results.sort_by(|a, b| {
-                        sorting_indices
-                            .iter()
-                            .enumerate()
-                            .map(|(idx, i)| {
-                                if let Some(a) = a.get(*i) {
-                                    if let Ok(a) = a.1.parse::<i64>() {
-                                        if let Some(b) = b.get(*i) {
-                                            if let Ok(b) = b.1.parse::<i64>() {
-                                                return if directions[idx] { 
-                                                    a.cmp(&b) 
-                                                } else { 
-                                                    b.cmp(&a) 
-                                                };
-                                            }
-                                        }
-                                    }
-                                }
-                                if directions[idx] { 
-                                    a.get(*i).unwrap().1.cmp(&b.get(*i).unwrap().1) 
-                                } else { 
-                                    b.get(*i).unwrap().1.cmp(&a.get(*i).unwrap().1) 
-                                } 
-                            })
-                            .find(|r| *r != std::cmp::Ordering::Equal)
-                            .unwrap_or(std::cmp::Ordering::Equal)
-                    });
+                    let criteria_values: Vec<String> = sorting_indices.iter()
+                        .map(|i| items.get(*i).map(|item| item.1.clone()).unwrap_or_default())
+                        .collect();
+                    grouped_results.insert(
+                        Criteria::new(ordering_fields_rc.clone(), criteria_values, ordering_asc_rc.clone()),
+                        items,
+                    );
                 }
 
                 if !self.silent_mode {
-                    results.iter().for_each(|items| {
+                    let values = grouped_results.values();
+                    for items in values.iter().skip(self.query.offset as usize) {
                         let mut buf = WritableBuffer::new();
                         let _ = self.results_writer.write_row(&mut buf, items.to_owned());
                         let _ = write!(std::io::stdout(), "{}", String::from(buf));
-                    });
+                    }
                 }
             } else {
                 let mut buf = WritableBuffer::new();

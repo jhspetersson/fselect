@@ -43,110 +43,90 @@ use crate::util::{Variant, VariantType};
 use crate::util::error::{error_message, path_error_message, SearchError};
 
 struct FileMetadataState {
-    file_metadata_set: bool,
-    file_metadata: Option<Metadata>,
-
-    line_count_set: bool,
-    line_count: Option<usize>,
-
-    dimensions_set: bool,
-    dimensions: Option<Dimensions>,
-
-    duration_set: bool,
-    duration: Option<Duration>,
-
-    mp3_metadata_set: bool,
-    mp3_metadata: Option<MP3Metadata>,
-
-    exif_metadata_set: bool,
-    exif_metadata: Option<HashMap<String, String>>,
+    file_metadata: Option<Option<Metadata>>,
+    line_count: Option<Option<usize>>,
+    dimensions: Option<Option<Dimensions>>,
+    duration: Option<Option<Duration>>,
+    mp3_metadata: Option<Option<MP3Metadata>>,
+    exif_metadata: Option<Option<HashMap<String, String>>>,
 }
 
 impl FileMetadataState {
     fn new() -> FileMetadataState {
         FileMetadataState {
-            file_metadata_set: false,
             file_metadata: None,
-
-            line_count_set: false,
             line_count: None,
-
-            dimensions_set: false,
             dimensions: None,
-
-            duration_set: false,
             duration: None,
-
-            mp3_metadata_set: false,
             mp3_metadata: None,
-
-            exif_metadata_set: false,
             exif_metadata: None,
         }
     }
 
     fn clear(&mut self) {
-        self.file_metadata_set = false;
-        self.file_metadata = None;
-
-        self.line_count_set = false;
-        self.line_count = None;
-
-        self.dimensions_set = false;
-        self.dimensions = None;
-
-        self.duration_set = false;
-        self.duration = None;
-
-        self.mp3_metadata_set = false;
-        self.mp3_metadata = None;
-
-        self.exif_metadata_set = false;
-        self.exif_metadata = None;
+        *self = Self::new();
     }
 
     fn update_file_metadata(&mut self, entry: &DirEntry, follow_symlinks: bool) {
-        if !self.file_metadata_set {
-            self.file_metadata_set = true;
-            self.file_metadata = get_metadata(entry, follow_symlinks);
+        if self.file_metadata.is_none() {
+            self.file_metadata = Some(get_metadata(entry, follow_symlinks));
         }
+    }
+
+    fn get_file_metadata(&self) -> Option<&Metadata> {
+        self.file_metadata.as_ref().and_then(|o| o.as_ref())
     }
 
     fn update_line_count(&mut self, entry: &DirEntry) {
-        if !self.line_count_set {
-            self.line_count_set = true;
-            self.line_count = get_line_count(entry);
+        if self.line_count.is_none() {
+            self.line_count = Some(get_line_count(entry));
         }
+    }
+
+    fn get_line_count(&self) -> Option<usize> {
+        self.line_count.and_then(|o| o)
     }
 
     fn update_mp3_metadata(&mut self, entry: &DirEntry) {
-        if !self.mp3_metadata_set {
-            self.mp3_metadata_set = true;
-            self.mp3_metadata = get_mp3_metadata(entry);
+        if self.mp3_metadata.is_none() {
+            self.mp3_metadata = Some(get_mp3_metadata(entry));
         }
+    }
+
+    fn get_mp3_metadata(&self) -> Option<&MP3Metadata> {
+        self.mp3_metadata.as_ref().and_then(|o| o.as_ref())
     }
 
     fn update_exif_metadata(&mut self, entry: &DirEntry) {
-        if !self.exif_metadata_set {
-            self.exif_metadata_set = true;
-            self.exif_metadata = get_exif_metadata(entry);
+        if self.exif_metadata.is_none() {
+            self.exif_metadata = Some(get_exif_metadata(entry));
         }
+    }
+
+    fn get_exif_metadata(&self) -> Option<&HashMap<String, String>> {
+        self.exif_metadata.as_ref().and_then(|o| o.as_ref())
     }
 
     fn update_dimensions(&mut self, entry: &DirEntry) {
-        if !self.dimensions_set {
-            self.dimensions_set = true;
-            self.dimensions = get_dimensions(entry.path());
+        if self.dimensions.is_none() {
+            self.dimensions = Some(get_dimensions(entry.path()));
         }
     }
 
-    fn update_duration(&mut self, entry: &DirEntry) {
-        if !self.duration_set {
-            self.update_mp3_metadata(entry);
+    fn get_dimensions(&self) -> Option<&Dimensions> {
+        self.dimensions.as_ref().and_then(|o| o.as_ref())
+    }
 
-            self.duration_set = true;
-            self.duration = get_duration(entry.path(), &self.mp3_metadata);
+    fn update_duration(&mut self, entry: &DirEntry) {
+        if self.duration.is_none() {
+            self.update_mp3_metadata(entry);
+            let mp3_flat = self.mp3_metadata.as_ref().unwrap_or(&None);
+            self.duration = Some(get_duration(entry.path(), mp3_flat));
         }
+    }
+
+    fn get_duration(&self) -> Option<&Duration> {
+        self.duration.as_ref().and_then(|o| o.as_ref())
     }
 }
 
@@ -1190,7 +1170,7 @@ impl<'a> Searcher<'a> {
                     self.fms
                         .update_file_metadata(entry, self.current_follow_symlinks);
 
-                    if let Some(ref attrs) = self.fms.file_metadata {
+                    if let Some(attrs) = self.fms.get_file_metadata() {
                         return Ok(Variant::from_int(attrs.len() as i64));
                     }
                 }
@@ -1209,7 +1189,7 @@ impl<'a> Searcher<'a> {
                     self.fms
                         .update_file_metadata(entry, self.current_follow_symlinks);
 
-                    if let Some(ref attrs) = self.fms.file_metadata {
+                    if let Some(attrs) = self.fms.get_file_metadata() {
                         return Ok(Variant::from_string(&format_filesize(
                             attrs.len(),
                             self.config
@@ -1230,7 +1210,7 @@ impl<'a> Searcher<'a> {
                     self.fms
                         .update_file_metadata(entry, self.current_follow_symlinks);
 
-                    if let Some(ref attrs) = self.fms.file_metadata {
+                    if let Some(attrs) = self.fms.get_file_metadata() {
                         return Ok(Variant::from_bool(attrs.is_dir()));
                     }
                 }
@@ -1243,7 +1223,7 @@ impl<'a> Searcher<'a> {
                     self.fms
                         .update_file_metadata(entry, self.current_follow_symlinks);
 
-                    if let Some(ref attrs) = self.fms.file_metadata {
+                    if let Some(attrs) = self.fms.get_file_metadata() {
                         return Ok(Variant::from_bool(attrs.is_file()));
                     }
                 }
@@ -1256,7 +1236,7 @@ impl<'a> Searcher<'a> {
                     self.fms
                         .update_file_metadata(entry, self.current_follow_symlinks);
 
-                    if let Some(ref attrs) = self.fms.file_metadata {
+                    if let Some(attrs) = self.fms.get_file_metadata() {
                         return Ok(Variant::from_bool(attrs.file_type().is_symlink()));
                     }
                 }
@@ -1294,7 +1274,7 @@ impl<'a> Searcher<'a> {
                     self.fms
                         .update_file_metadata(entry, self.current_follow_symlinks);
 
-                    if let Some(ref attrs) = self.fms.file_metadata {
+                    if let Some(attrs) = self.fms.get_file_metadata() {
                         return Ok(Variant::from_int(attrs.dev() as i64));
                     }
                 }
@@ -1307,7 +1287,7 @@ impl<'a> Searcher<'a> {
                     self.fms
                         .update_file_metadata(entry, self.current_follow_symlinks);
 
-                    if let Some(ref attrs) = self.fms.file_metadata {
+                    if let Some(attrs) = self.fms.get_file_metadata() {
                         return Ok(Variant::from_int(attrs.ino() as i64));
                     }
                 }
@@ -1320,7 +1300,7 @@ impl<'a> Searcher<'a> {
                     self.fms
                         .update_file_metadata(entry, self.current_follow_symlinks);
 
-                    if let Some(ref attrs) = self.fms.file_metadata {
+                    if let Some(attrs) = self.fms.get_file_metadata() {
                         return Ok(Variant::from_int(attrs.blocks() as i64));
                     }
                 }
@@ -1333,7 +1313,7 @@ impl<'a> Searcher<'a> {
                     self.fms
                         .update_file_metadata(entry, self.current_follow_symlinks);
 
-                    if let Some(ref attrs) = self.fms.file_metadata {
+                    if let Some(attrs) = self.fms.get_file_metadata() {
                         return Ok(Variant::from_int(attrs.nlink() as i64));
                     }
                 }
@@ -1350,7 +1330,7 @@ impl<'a> Searcher<'a> {
                     self.fms
                         .update_file_metadata(entry, self.current_follow_symlinks);
 
-                    if let Some(ref attrs) = self.fms.file_metadata {
+                    if let Some(attrs) = self.fms.get_file_metadata() {
                         return Ok(Variant::from_string(&mode::get_mode(attrs)));
                     }
                 }
@@ -1483,9 +1463,10 @@ impl<'a> Searcher<'a> {
                     self.fms
                         .update_file_metadata(entry, self.current_follow_symlinks);
 
+                    let meta_flat = self.fms.file_metadata.as_ref().unwrap_or(&None);
                     return Ok(Variant::from_bool(is_hidden(
                         &entry.file_name().to_string_lossy(),
-                        &self.fms.file_metadata,
+                        meta_flat,
                         false,
                     )));
                 }
@@ -1494,7 +1475,7 @@ impl<'a> Searcher<'a> {
                 self.fms
                     .update_file_metadata(entry, self.current_follow_symlinks);
 
-                if let Some(ref attrs) = self.fms.file_metadata {
+                if let Some(attrs) = self.fms.get_file_metadata() {
                     if let Some(uid) = mode::get_uid(attrs) {
                         return Ok(Variant::from_int(uid as i64));
                     }
@@ -1504,7 +1485,7 @@ impl<'a> Searcher<'a> {
                 self.fms
                     .update_file_metadata(entry, self.current_follow_symlinks);
 
-                if let Some(ref attrs) = self.fms.file_metadata {
+                if let Some(attrs) = self.fms.get_file_metadata() {
                     if let Some(gid) = mode::get_gid(attrs) {
                         return Ok(Variant::from_int(gid as i64));
                     }
@@ -1515,7 +1496,7 @@ impl<'a> Searcher<'a> {
                 self.fms
                     .update_file_metadata(entry, self.current_follow_symlinks);
 
-                if let Some(ref attrs) = self.fms.file_metadata {
+                if let Some(attrs) = self.fms.get_file_metadata() {
                     if let Some(uid) = mode::get_uid(attrs) {
                         if let Some(user) = self.user_cache.get_user_by_uid(uid) {
                             return Ok(Variant::from_string(
@@ -1530,7 +1511,7 @@ impl<'a> Searcher<'a> {
                 self.fms
                     .update_file_metadata(entry, self.current_follow_symlinks);
 
-                if let Some(ref attrs) = self.fms.file_metadata {
+                if let Some(attrs) = self.fms.get_file_metadata() {
                     if let Some(gid) = mode::get_gid(attrs) {
                         if let Some(group) = self.user_cache.get_group_by_gid(gid) {
                             return Ok(Variant::from_string(
@@ -1544,7 +1525,7 @@ impl<'a> Searcher<'a> {
                 self.fms
                     .update_file_metadata(entry, self.current_follow_symlinks);
 
-                if let Some(ref attrs) = self.fms.file_metadata {
+                if let Some(attrs) = self.fms.get_file_metadata() {
                     if let Ok(sdt) = attrs.created() {
                         let dt: DateTime<Local> = DateTime::from(sdt);
                         return Ok(Variant::from_datetime(dt.naive_local()));
@@ -1555,7 +1536,7 @@ impl<'a> Searcher<'a> {
                 self.fms
                     .update_file_metadata(entry, self.current_follow_symlinks);
 
-                if let Some(ref attrs) = self.fms.file_metadata {
+                if let Some(attrs) = self.fms.get_file_metadata() {
                     if let Ok(sdt) = attrs.accessed() {
                         let dt: DateTime<Local> = DateTime::from(sdt);
                         return Ok(Variant::from_datetime(dt.naive_local()));
@@ -1573,7 +1554,7 @@ impl<'a> Searcher<'a> {
                     self.fms
                         .update_file_metadata(entry, self.current_follow_symlinks);
 
-                    if let Some(ref attrs) = self.fms.file_metadata {
+                    if let Some(attrs) = self.fms.get_file_metadata() {
                         if let Ok(sdt) = attrs.modified() {
                             let dt: DateTime<Local> = DateTime::from(sdt);
                             return Ok(Variant::from_datetime(dt.naive_local()));
@@ -1687,7 +1668,7 @@ impl<'a> Searcher<'a> {
                     self.fms
                         .update_file_metadata(entry, self.current_follow_symlinks);
 
-                    if let Some(ref attrs) = self.fms.file_metadata {
+                    if let Some(attrs) = self.fms.get_file_metadata() {
                         return match attrs.is_dir() {
                             true => match is_dir_empty(entry) {
                                 Some(result) => Ok(Variant::from_bool(result)),
@@ -1701,42 +1682,42 @@ impl<'a> Searcher<'a> {
             Field::Width => {
                 self.fms.update_dimensions(entry);
 
-                if let Some(Dimensions { width, .. }) = self.fms.dimensions {
+                if let Some(&Dimensions { width, .. }) = self.fms.get_dimensions() {
                     return Ok(Variant::from_int(width as i64));
                 }
             }
             Field::Height => {
                 self.fms.update_dimensions(entry);
 
-                if let Some(Dimensions { height, .. }) = self.fms.dimensions {
+                if let Some(&Dimensions { height, .. }) = self.fms.get_dimensions() {
                     return Ok(Variant::from_int(height as i64));
                 }
             }
             Field::Duration => {
                 self.fms.update_duration(entry);
 
-                if let Some(Duration { length, .. }) = self.fms.duration {
+                if let Some(&Duration { length, .. }) = self.fms.get_duration() {
                     return Ok(Variant::from_int(length as i64));
                 }
             }
             Field::Bitrate => {
                 self.fms.update_mp3_metadata(entry);
 
-                if let Some(ref mp3_info) = self.fms.mp3_metadata {
+                if let Some(mp3_info) = self.fms.get_mp3_metadata() {
                     return Ok(Variant::from_int(mp3_info.frames[0].bitrate as i64));
                 }
             }
             Field::Freq => {
                 self.fms.update_mp3_metadata(entry);
 
-                if let Some(ref mp3_info) = self.fms.mp3_metadata {
+                if let Some(mp3_info) = self.fms.get_mp3_metadata() {
                     return Ok(Variant::from_int(mp3_info.frames[0].sampling_freq as i64));
                 }
             }
             Field::Title => {
                 self.fms.update_mp3_metadata(entry);
 
-                if let Some(ref mp3_info) = self.fms.mp3_metadata {
+                if let Some(mp3_info) = self.fms.get_mp3_metadata() {
                     if let Some(ref mp3_tag) = mp3_info.tag {
                         return Ok(Variant::from_string(&mp3_tag.title));
                     }
@@ -1745,7 +1726,7 @@ impl<'a> Searcher<'a> {
             Field::Artist => {
                 self.fms.update_mp3_metadata(entry);
 
-                if let Some(ref mp3_info) = self.fms.mp3_metadata {
+                if let Some(mp3_info) = self.fms.get_mp3_metadata() {
                     if let Some(ref mp3_tag) = mp3_info.tag {
                         return Ok(Variant::from_string(&mp3_tag.artist));
                     }
@@ -1754,7 +1735,7 @@ impl<'a> Searcher<'a> {
             Field::Album => {
                 self.fms.update_mp3_metadata(entry);
 
-                if let Some(ref mp3_info) = self.fms.mp3_metadata {
+                if let Some(mp3_info) = self.fms.get_mp3_metadata() {
                     if let Some(ref mp3_tag) = mp3_info.tag {
                         return Ok(Variant::from_string(&mp3_tag.album));
                     }
@@ -1763,7 +1744,7 @@ impl<'a> Searcher<'a> {
             Field::Year => {
                 self.fms.update_mp3_metadata(entry);
 
-                if let Some(ref mp3_info) = self.fms.mp3_metadata {
+                if let Some(mp3_info) = self.fms.get_mp3_metadata() {
                     if let Some(ref mp3_tag) = mp3_info.tag {
                         return Ok(Variant::from_int(mp3_tag.year as i64));
                     }
@@ -1772,7 +1753,7 @@ impl<'a> Searcher<'a> {
             Field::Genre => {
                 self.fms.update_mp3_metadata(entry);
 
-                if let Some(ref mp3_info) = self.fms.mp3_metadata {
+                if let Some(mp3_info) = self.fms.get_mp3_metadata() {
                     if let Some(ref mp3_tag) = mp3_info.tag {
                         return Ok(Variant::from_string(&format!("{:?}", mp3_tag.genre)));
                     }
@@ -1781,7 +1762,7 @@ impl<'a> Searcher<'a> {
             Field::ExifDateTime => {
                 self.fms.update_exif_metadata(entry);
 
-                if let Some(ref exif_info) = self.fms.exif_metadata {
+                if let Some(exif_info) = self.fms.get_exif_metadata() {
                     if let Some(exif_value) = exif_info.get("DateTime") {
                         if let Ok(exif_datetime) = parse_datetime(exif_value) {
                             return Ok(Variant::from_datetime(exif_datetime.0));
@@ -1792,7 +1773,7 @@ impl<'a> Searcher<'a> {
             Field::ExifGpsAltitude => {
                 self.fms.update_exif_metadata(entry);
 
-                if let Some(ref exif_info) = self.fms.exif_metadata {
+                if let Some(exif_info) = self.fms.get_exif_metadata() {
                     if let Some(exif_value) = exif_info.get("__Alt") {
                         return Ok(Variant::from_float(exif_value.parse().unwrap_or(0.0)));
                     }
@@ -1801,7 +1782,7 @@ impl<'a> Searcher<'a> {
             Field::ExifGpsLatitude => {
                 self.fms.update_exif_metadata(entry);
 
-                if let Some(ref exif_info) = self.fms.exif_metadata {
+                if let Some(exif_info) = self.fms.get_exif_metadata() {
                     if let Some(exif_value) = exif_info.get("__Lat") {
                         return Ok(Variant::from_float(exif_value.parse().unwrap_or(0.0)));
                     }
@@ -1810,7 +1791,7 @@ impl<'a> Searcher<'a> {
             Field::ExifGpsLongitude => {
                 self.fms.update_exif_metadata(entry);
 
-                if let Some(ref exif_info) = self.fms.exif_metadata {
+                if let Some(exif_info) = self.fms.get_exif_metadata() {
                     if let Some(exif_value) = exif_info.get("__Lng") {
                         return Ok(Variant::from_float(exif_value.parse().unwrap_or(0.0)));
                     }
@@ -1819,7 +1800,7 @@ impl<'a> Searcher<'a> {
             Field::ExifMake => {
                 self.fms.update_exif_metadata(entry);
 
-                if let Some(ref exif_info) = self.fms.exif_metadata {
+                if let Some(exif_info) = self.fms.get_exif_metadata() {
                     if let Some(exif_value) = exif_info.get("Make") {
                         return Ok(Variant::from_string(exif_value));
                     }
@@ -1828,7 +1809,7 @@ impl<'a> Searcher<'a> {
             Field::ExifModel => {
                 self.fms.update_exif_metadata(entry);
 
-                if let Some(ref exif_info) = self.fms.exif_metadata {
+                if let Some(exif_info) = self.fms.get_exif_metadata() {
                     if let Some(exif_value) = exif_info.get("Model") {
                         return Ok(Variant::from_string(exif_value));
                     }
@@ -1837,7 +1818,7 @@ impl<'a> Searcher<'a> {
             Field::ExifSoftware => {
                 self.fms.update_exif_metadata(entry);
 
-                if let Some(ref exif_info) = self.fms.exif_metadata {
+                if let Some(exif_info) = self.fms.get_exif_metadata() {
                     if let Some(exif_value) = exif_info.get("Software") {
                         return Ok(Variant::from_string(exif_value));
                     }
@@ -1846,7 +1827,7 @@ impl<'a> Searcher<'a> {
             Field::ExifVersion => {
                 self.fms.update_exif_metadata(entry);
 
-                if let Some(ref exif_info) = self.fms.exif_metadata {
+                if let Some(exif_info) = self.fms.get_exif_metadata() {
                     if let Some(exif_value) = exif_info.get("ExifVersion") {
                         return Ok(Variant::from_string(exif_value));
                     }
@@ -1855,7 +1836,7 @@ impl<'a> Searcher<'a> {
             Field::ExifExposureTime => {
                 self.fms.update_exif_metadata(entry);
 
-                if let Some(ref exif_info) = self.fms.exif_metadata {
+                if let Some(exif_info) = self.fms.get_exif_metadata() {
                     if let Some(exif_value) = exif_info.get("ExposureTime") {
                         return Ok(Variant::from_string(exif_value));
                     }
@@ -1864,7 +1845,7 @@ impl<'a> Searcher<'a> {
             Field::ExifAperture => {
                 self.fms.update_exif_metadata(entry);
 
-                if let Some(ref exif_info) = self.fms.exif_metadata {
+                if let Some(exif_info) = self.fms.get_exif_metadata() {
                     if let Some(exif_value) = exif_info.get("ApertureValue") {
                         return Ok(Variant::from_string(exif_value));
                     }
@@ -1873,7 +1854,7 @@ impl<'a> Searcher<'a> {
             Field::ExifShutterSpeed => {
                 self.fms.update_exif_metadata(entry);
 
-                if let Some(ref exif_info) = self.fms.exif_metadata {
+                if let Some(exif_info) = self.fms.get_exif_metadata() {
                     if let Some(exif_value) = exif_info.get("ShutterSpeedValue") {
                         return Ok(Variant::from_string(exif_value));
                     }
@@ -1882,7 +1863,7 @@ impl<'a> Searcher<'a> {
             Field::ExifFNumber => {
                 self.fms.update_exif_metadata(entry);
 
-                if let Some(ref exif_info) = self.fms.exif_metadata {
+                if let Some(exif_info) = self.fms.get_exif_metadata() {
                     if let Some(exif_value) = exif_info.get("FNumber") {
                         return Ok(Variant::from_string(exif_value));
                     }
@@ -1891,7 +1872,7 @@ impl<'a> Searcher<'a> {
             Field::ExifIsoSpeed => {
                 self.fms.update_exif_metadata(entry);
 
-                if let Some(ref exif_info) = self.fms.exif_metadata {
+                if let Some(exif_info) = self.fms.get_exif_metadata() {
                     if let Some(exif_value) = exif_info.get("ISOSpeed") {
                         return Ok(Variant::from_string(exif_value));
                     }
@@ -1900,7 +1881,7 @@ impl<'a> Searcher<'a> {
             Field::ExifFocalLength => {
                 self.fms.update_exif_metadata(entry);
 
-                if let Some(ref exif_info) = self.fms.exif_metadata {
+                if let Some(exif_info) = self.fms.get_exif_metadata() {
                     if let Some(exif_value) = exif_info.get("FocalLength") {
                         return Ok( Variant::from_string(exif_value));
                     }
@@ -1909,7 +1890,7 @@ impl<'a> Searcher<'a> {
             Field::ExifLensMake => {
                 self.fms.update_exif_metadata(entry);
 
-                if let Some(ref exif_info) = self.fms.exif_metadata {
+                if let Some(exif_info) = self.fms.get_exif_metadata() {
                     if let Some(exif_value) = exif_info.get("LensMake") {
                         return Ok(Variant::from_string(exif_value));
                     }
@@ -1918,7 +1899,7 @@ impl<'a> Searcher<'a> {
             Field::ExifLensModel => {
                 self.fms.update_exif_metadata(entry);
 
-                if let Some(ref exif_info) = self.fms.exif_metadata {
+                if let Some(exif_info) = self.fms.get_exif_metadata() {
                     if let Some(exif_value) = exif_info.get("LensModel") {
                         return Ok(Variant::from_string(exif_value));
                     }
@@ -1927,7 +1908,7 @@ impl<'a> Searcher<'a> {
             Field::LineCount => {
                 self.fms.update_line_count(entry);
 
-                if let Some(line_count) = self.fms.line_count {
+                if let Some(line_count) = self.fms.get_line_count() {
                     return Ok(Variant::from_int(line_count as i64));
                 }
             }
@@ -1942,7 +1923,7 @@ impl<'a> Searcher<'a> {
                 self.fms
                     .update_file_metadata(entry, self.current_follow_symlinks);
 
-                if let Some(ref meta) = self.fms.file_metadata {
+                if let Some(meta) = self.fms.get_file_metadata() {
                     if meta.is_dir() {
                         return Ok(Variant::from_bool(false));
                     }
@@ -1959,7 +1940,7 @@ impl<'a> Searcher<'a> {
                 self.fms
                     .update_file_metadata(entry, self.current_follow_symlinks);
 
-                if let Some(ref meta) = self.fms.file_metadata {
+                if let Some(meta) = self.fms.get_file_metadata() {
                     if meta.is_dir() {
                         return Ok(Variant::from_bool(false));
                     }
@@ -2182,7 +2163,7 @@ impl<'a> Searcher<'a> {
     fn colorize(&mut self, value: &str) -> String {
         let style;
 
-        if let Some(ref metadata) = self.fms.file_metadata {
+        if let Some(metadata) = self.fms.get_file_metadata() {
             style = self
                 .lscolors
                 .style_for_path_with_metadata(Path::new(&value), Some(metadata));
@@ -2212,7 +2193,7 @@ impl<'a> Searcher<'a> {
                 self.fms
                     .update_file_metadata(entry, self.current_follow_symlinks);
 
-                if let Some(ref attrs) = self.fms.file_metadata {
+                if let Some(attrs) = self.fms.get_file_metadata() {
                     return Variant::from_bool(mode_func_boxed(attrs));
                 }
             }
@@ -2710,22 +2691,11 @@ mod tests {
     fn test_file_metadata_state_new() {
         let state = FileMetadataState::new();
 
-        assert!(!state.file_metadata_set);
         assert!(state.file_metadata.is_none());
-
-        assert!(!state.line_count_set);
         assert!(state.line_count.is_none());
-
-        assert!(!state.dimensions_set);
         assert!(state.dimensions.is_none());
-
-        assert!(!state.duration_set);
         assert!(state.duration.is_none());
-
-        assert!(!state.mp3_metadata_set);
         assert!(state.mp3_metadata.is_none());
-
-        assert!(!state.exif_metadata_set);
         assert!(state.exif_metadata.is_none());
     }
 
@@ -2733,19 +2703,21 @@ mod tests {
     fn test_file_metadata_state_clear() {
         let mut state = FileMetadataState::new();
 
-        // Set some values
-        state.file_metadata_set = true;
-        state.line_count_set = true;
-        state.dimensions_set = true;
-        state.duration_set = true;
-        state.mp3_metadata_set = true;
-        state.exif_metadata_set = true;
+        state.file_metadata = Some(None);
+        state.line_count = Some(None);
+        state.dimensions = Some(None);
+        state.duration = Some(None);
+        state.mp3_metadata = Some(None);
+        state.exif_metadata = Some(None);
 
-        // Clear the state
         state.clear();
 
-        // Verify all values are reset
-        test_file_metadata_state_new();
+        assert!(state.file_metadata.is_none());
+        assert!(state.line_count.is_none());
+        assert!(state.dimensions.is_none());
+        assert!(state.duration.is_none());
+        assert!(state.mp3_metadata.is_none());
+        assert!(state.exif_metadata.is_none());
     }
 
     fn create_test_searcher() -> Searcher<'static> {

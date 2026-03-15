@@ -2118,16 +2118,24 @@ impl<'a> Searcher<'a> {
 
         self.found += 1;
 
-        let mut buf = WritableBuffer::new();
-        let mut criteria = vec!["".to_string(); self.query.ordering_fields.len()];
-
-        //TODO: do we really need this?
         for field in self.query.get_all_fields() {
             file_map.insert(
                 field.to_string(),
                 self.get_field_value(entry, file_info, root_path, &field).unwrap_or(Variant::empty(VariantType::String)).to_string(),
             );
         }
+
+        if self.has_aggregate_column() {
+            for field in self.query.grouping_fields.iter() {
+                if file_map.get(&field.to_string()).is_none() {
+                    self.get_column_expr_value(Some(entry), file_info, root_path, &mut file_map, None, field)?;
+                }
+            }
+            self.raw_output_buffer.push(file_map);
+            return Ok(());
+        }
+
+        let mut buf = WritableBuffer::new();
 
         if !self.is_buffered() && self.found > 1 {
             self.results_writer.write_row_separator(&mut buf)?;
@@ -2150,12 +2158,7 @@ impl<'a> Searcher<'a> {
             items.push((field.to_string(), value));
         }
 
-        for field in self.query.grouping_fields.iter() {
-            if file_map.get(&field.to_string()).is_none() {
-                self.get_column_expr_value(Some(entry), file_info, root_path, &mut file_map, None, field)?;
-            }
-        }
-
+        let mut criteria = vec!["".to_string(); self.query.ordering_fields.len()];
         for (idx, field) in self.query.ordering_fields.iter().enumerate() {
             criteria[idx] = match file_map.get(&field.to_string()) {
                 Some(record) => record.clone(),
@@ -2176,10 +2179,6 @@ impl<'a> Searcher<'a> {
                 ),
                 String::from(buf).to_string(),
             );
-
-            if self.has_aggregate_column() {
-                self.raw_output_buffer.push(file_map);
-            }
         } else if let Err(e) = write!(std::io::stdout(), "{}", String::from(buf)) {
             if e.kind() == ErrorKind::BrokenPipe {
                 return Err(SearchError::fatal("broken pipe").with_source("output"));

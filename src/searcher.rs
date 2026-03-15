@@ -884,7 +884,7 @@ impl<'a> Searcher<'a> {
         Ok(())
     }
 
-    fn ok_to_visit_dir(&mut self, file_type: FileType) -> bool {
+    fn ok_to_visit_dir(&self, file_type: FileType) -> bool {
         match self.current_follow_symlinks {
             true => true,
             false => !file_type.is_symlink(),

@@ -2061,12 +2061,13 @@ impl<'a> Searcher<'a> {
                 }
             }
 
-            if let Some(ref required_fields) = self.subquery_required_fields.clone() {
+            if let Some(required_fields) = std::mem::take(&mut self.subquery_required_fields) {
                 let mut field_values = HashMap::new();
-                for (field, alias) in required_fields {
+                for (field, alias) in &required_fields {
                     let field_value = self.get_field_value(entry, file_info, root_path, field).unwrap_or(Variant::empty(VariantType::String));
                     field_values.insert(alias.clone(), field_value);
                 }
+                self.subquery_required_fields = Some(required_fields);
 
                 let mut context = self.record_context.borrow_mut();
                 let context_entry = context.entry(current_alias.to_string()).or_insert(HashMap::new());

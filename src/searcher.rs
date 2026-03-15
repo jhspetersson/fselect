@@ -2228,7 +2228,7 @@ impl<'a> Searcher<'a> {
             None => {
                 if let Some(subquery) = right.subquery {
                     self.get_list_from_subquery(*subquery).iter().map(|s| {
-                        Expr::value(s.clone().to_string())
+                        Expr::value(s.to_string())
                     }).collect()
                 } else {
                     vec![]

@@ -585,7 +585,10 @@ impl<'a> Searcher<'a> {
             self.use_colors
         );
         sub_searcher.silent_mode = !self.config.debug;
-        sub_searcher.list_search_results().unwrap();
+        if let Err(err) = sub_searcher.list_search_results() {
+            err.print();
+            return vec![];
+        }
 
         let result_values = sub_searcher.output_buffer.values().iter()
             .map(|s| s.trim_end().to_string())

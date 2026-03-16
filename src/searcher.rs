@@ -2495,94 +2495,52 @@ impl<'a> Searcher<'a> {
         Ok(result)
     }
 
-    fn is_zip_archive(&self, file_name: &str) -> bool {
+    fn check_extension(
+        &self,
+        file_name: &str,
+        config_ext: &Option<Vec<String>>,
+        default_ext: &Option<Vec<String>>,
+    ) -> bool {
         has_extension(
             file_name,
-            self.config
-                .is_zip_archive
-                .as_ref()
-                .unwrap_or(self.default_config.is_zip_archive.as_ref().unwrap()),
+            config_ext.as_ref().unwrap_or(default_ext.as_ref().unwrap()),
         )
+    }
+
+    fn is_zip_archive(&self, file_name: &str) -> bool {
+        self.check_extension(file_name, &self.config.is_zip_archive, &self.default_config.is_zip_archive)
     }
 
     fn is_archive(&self, file_name: &str) -> bool {
-        has_extension(
-            file_name,
-            self.config
-                .is_archive
-                .as_ref()
-                .unwrap_or(self.default_config.is_archive.as_ref().unwrap()),
-        )
+        self.check_extension(file_name, &self.config.is_archive, &self.default_config.is_archive)
     }
 
     fn is_audio(&self, file_name: &str) -> bool {
-        has_extension(
-            file_name,
-            self.config
-                .is_audio
-                .as_ref()
-                .unwrap_or(self.default_config.is_audio.as_ref().unwrap()),
-        )
+        self.check_extension(file_name, &self.config.is_audio, &self.default_config.is_audio)
     }
 
     fn is_book(&self, file_name: &str) -> bool {
-        has_extension(
-            file_name,
-            self.config
-                .is_book
-                .as_ref()
-                .unwrap_or(self.default_config.is_book.as_ref().unwrap()),
-        )
+        self.check_extension(file_name, &self.config.is_book, &self.default_config.is_book)
     }
 
     fn is_doc(&self, file_name: &str) -> bool {
-        has_extension(
-            file_name,
-            self.config
-                .is_doc
-                .as_ref()
-                .unwrap_or(self.default_config.is_doc.as_ref().unwrap()),
-        )
+        self.check_extension(file_name, &self.config.is_doc, &self.default_config.is_doc)
     }
 
     fn is_font(&self, file_name: &str) -> bool {
-        has_extension(
-            file_name,
-            self.config
-                .is_font
-                .as_ref()
-                .unwrap_or(self.default_config.is_font.as_ref().unwrap()),
-        )
+        self.check_extension(file_name, &self.config.is_font, &self.default_config.is_font)
     }
 
     fn is_image(&self, file_name: &str) -> bool {
-        has_extension(
-            file_name,
-            self.config
-                .is_image
-                .as_ref()
-                .unwrap_or(self.default_config.is_image.as_ref().unwrap()),
-        )
+        self.check_extension(file_name, &self.config.is_image, &self.default_config.is_image)
     }
 
     fn is_source(&self, file_name: &str) -> bool {
-        has_extension(
-            file_name,
-            self.config
-                .is_source
-                .as_ref()
-                .unwrap_or(self.default_config.is_source.as_ref().unwrap()),
-        )
+        self.check_extension(file_name, &self.config.is_source, &self.default_config.is_source)
     }
 
     fn is_video(&self, file_name: &str) -> bool {
-        has_extension(
-            file_name,
-            self.config
-                .is_video
-                .as_ref()
-                .unwrap_or(self.default_config.is_video.as_ref().unwrap()),
-        )
+        self.check_extension(file_name, &self.config.is_video, &self.default_config.is_video)
     }
 }
 

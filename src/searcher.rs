@@ -2247,6 +2247,40 @@ impl<'a> Searcher<'a> {
         }
     }
 
+    fn check_in_list(
+        &mut self,
+        expr: &Expr,
+        entry: &DirEntry,
+        file_info: &Option<FileInfo>,
+        root_path: &Path,
+        arg_map: &mut HashMap<String, String>,
+        field_value: &Variant,
+        negate: bool,
+    ) -> Result<bool, SearchError> {
+        let args = self.get_in_args(expr);
+        let mut found = false;
+        for arg in &args {
+            arg_map.clear();
+            let arg_val = self.get_column_expr_value(
+                Some(entry), file_info, root_path, arg_map, None, arg,
+            )?;
+            let matches = match field_value.get_type() {
+                VariantType::String => arg_val.to_string() == field_value.to_string(),
+                VariantType::Int | VariantType::Float => arg_val.to_float() == field_value.to_float(),
+                VariantType::Bool => arg_val.to_bool() == field_value.to_bool(),
+                VariantType::DateTime => {
+                    arg_val.to_datetime()?.0.and_utc().timestamp()
+                        == field_value.to_datetime()?.0.and_utc().timestamp()
+                }
+            };
+            if matches {
+                found = true;
+                break;
+            }
+        }
+        Ok(if negate { !found } else { found })
+    }
+
     fn match_pattern(
         &mut self,
         val: String,
@@ -2388,34 +2422,8 @@ impl<'a> Searcher<'a> {
                         }
                         Op::Eeq => val.eq(&field_str),
                         Op::Ene => val.ne(&field_str),
-                        Op::In => {
-                            let args = self.get_in_args(expr);
-                            let mut result = false;
-                            for arg in &args {
-                                arg_map.clear();
-                                if self.get_column_expr_value(
-                                    Some(entry), file_info, root_path, &mut arg_map, None, arg,
-                                )?.to_string().eq(&field_str) {
-                                    result = true;
-                                    break;
-                                }
-                            }
-                            result
-                        }
-                        Op::NotIn => {
-                            let args = self.get_in_args(expr);
-                            let mut result = true;
-                            for arg in &args {
-                                arg_map.clear();
-                                if self.get_column_expr_value(
-                                    Some(entry), file_info, root_path, &mut arg_map, None, arg,
-                                )?.to_string().eq(&field_str) {
-                                    result = false;
-                                    break;
-                                }
-                            }
-                            result
-                        }
+                        Op::In => self.check_in_list(expr, entry, file_info, root_path, &mut arg_map, &field_value, false)?,
+                        Op::NotIn => self.check_in_list(expr, entry, file_info, root_path, &mut arg_map, &field_value, true)?,
                         Op::Exists => self.check_exists(expr),
                         Op::NotExists => !self.check_exists(expr),
                         _ => false,
@@ -2431,36 +2439,8 @@ impl<'a> Searcher<'a> {
                         Op::Gte => int_value >= val,
                         Op::Lt => int_value < val,
                         Op::Lte => int_value <= val,
-                        Op::In => {
-                            let field_value = field_value.to_float();
-                            let args = self.get_in_args(expr);
-                            let mut result = false;
-                            for arg in &args {
-                                arg_map.clear();
-                                if self.get_column_expr_value(
-                                    Some(entry), file_info, root_path, &mut arg_map, None, arg,
-                                )?.to_float() == field_value {
-                                    result = true;
-                                    break;
-                                }
-                            }
-                            result
-                        },
-                        Op::NotIn => {
-                            let field_value = field_value.to_float();
-                            let args = self.get_in_args(expr);
-                            let mut result = true;
-                            for arg in &args {
-                                arg_map.clear();
-                                if self.get_column_expr_value(
-                                    Some(entry), file_info, root_path, &mut arg_map, None, arg,
-                                )?.to_float() == field_value {
-                                    result = false;
-                                    break;
-                                }
-                            }
-                            result
-                        }
+                        Op::In => self.check_in_list(expr, entry, file_info, root_path, &mut arg_map, &field_value, false)?,
+                        Op::NotIn => self.check_in_list(expr, entry, file_info, root_path, &mut arg_map, &field_value, true)?,
                         Op::Exists => self.check_exists(expr),
                         Op::NotExists => !self.check_exists(expr),
                         _ => false,
@@ -2476,36 +2456,8 @@ impl<'a> Searcher<'a> {
                         Op::Gte => float_value >= val,
                         Op::Lt => float_value < val,
                         Op::Lte => float_value <= val,
-                        Op::In => {
-                            let field_value = field_value.to_float();
-                            let args = self.get_in_args(expr);
-                            let mut result = false;
-                            for arg in &args {
-                                arg_map.clear();
-                                if self.get_column_expr_value(
-                                    Some(entry), file_info, root_path, &mut arg_map, None, arg,
-                                )?.to_float() == field_value {
-                                    result = true;
-                                    break;
-                                }
-                            }
-                            result
-                        },
-                        Op::NotIn => {
-                            let field_value = field_value.to_float();
-                            let args = self.get_in_args(expr);
-                            let mut result = true;
-                            for arg in &args {
-                                arg_map.clear();
-                                if self.get_column_expr_value(
-                                    Some(entry), file_info, root_path, &mut arg_map, None, arg,
-                                )?.to_float() == field_value {
-                                    result = false;
-                                    break;
-                                }
-                            }
-                            result
-                        }
+                        Op::In => self.check_in_list(expr, entry, file_info, root_path, &mut arg_map, &field_value, false)?,
+                        Op::NotIn => self.check_in_list(expr, entry, file_info, root_path, &mut arg_map, &field_value, true)?,
                         Op::Exists => self.check_exists(expr),
                         Op::NotExists => !self.check_exists(expr),
                         _ => false,
@@ -2520,36 +2472,8 @@ impl<'a> Searcher<'a> {
                         Op::Gte => field_value.to_bool() >= val,
                         Op::Lt => field_value.to_bool() < val,
                         Op::Lte => field_value.to_bool() <= val,
-                        Op::In => {
-                            let field_value = field_value.to_bool();
-                            let args = self.get_in_args(expr);
-                            let mut result = false;
-                            for arg in &args {
-                                arg_map.clear();
-                                if self.get_column_expr_value(
-                                    Some(entry), file_info, root_path, &mut arg_map, None, arg,
-                                )?.to_bool() == field_value {
-                                    result = true;
-                                    break;
-                                }
-                            }
-                            result
-                        },
-                        Op::NotIn => {
-                            let field_value = field_value.to_bool();
-                            let args = self.get_in_args(expr);
-                            let mut result = true;
-                            for arg in &args {
-                                arg_map.clear();
-                                if self.get_column_expr_value(
-                                    Some(entry), file_info, root_path, &mut arg_map, None, arg,
-                                )?.to_bool() == field_value {
-                                    result = false;
-                                    break;
-                                }
-                            }
-                            result
-                        }
+                        Op::In => self.check_in_list(expr, entry, file_info, root_path, &mut arg_map, &field_value, false)?,
+                        Op::NotIn => self.check_in_list(expr, entry, file_info, root_path, &mut arg_map, &field_value, true)?,
                         Op::Exists => self.check_exists(expr),
                         Op::NotExists => !self.check_exists(expr),
                         _ => false,
@@ -2569,36 +2493,8 @@ impl<'a> Searcher<'a> {
                         Op::Gte => dt >= start,
                         Op::Lt => dt < start,
                         Op::Lte => dt <= finish,
-                        Op::In => {
-                            let field_value = field_value.to_datetime()?.0.and_utc().timestamp();
-                            let args = self.get_in_args(expr);
-                            let mut result = false;
-                            for arg in &args {
-                                arg_map.clear();
-                                if self.get_column_expr_value(
-                                    Some(entry), file_info, root_path, &mut arg_map, None, arg,
-                                )?.to_datetime()?.0.and_utc().timestamp() == field_value {
-                                    result = true;
-                                    break;
-                                }
-                            }
-                            result
-                        },
-                        Op::NotIn => {
-                            let field_value = field_value.to_datetime()?.0.and_utc().timestamp();
-                            let args = self.get_in_args(expr);
-                            let mut result = true;
-                            for arg in &args {
-                                arg_map.clear();
-                                if self.get_column_expr_value(
-                                    Some(entry), file_info, root_path, &mut arg_map, None, arg,
-                                )?.to_datetime()?.0.and_utc().timestamp() == field_value {
-                                    result = false;
-                                    break;
-                                }
-                            }
-                            result
-                        }
+                        Op::In => self.check_in_list(expr, entry, file_info, root_path, &mut arg_map, &field_value, false)?,
+                        Op::NotIn => self.check_in_list(expr, entry, file_info, root_path, &mut arg_map, &field_value, true)?,
                         Op::Exists => self.check_exists(expr),
                         Op::NotExists => !self.check_exists(expr),
                         _ => false,

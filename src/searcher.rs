@@ -960,7 +960,7 @@ impl<'a> Searcher<'a> {
                 file_map.insert(column_expr_str, result.to_string());
                 let mut context = self.record_context.borrow_mut();
                 let context_key = self.current_alias.clone().unwrap_or_else(|| String::from(""));
-                let context_entry = context.entry(context_key.to_string()).or_insert(HashMap::new());
+                let context_entry = context.entry(context_key).or_insert(HashMap::new());
                 let entry_key = if let Some(alias) = column_expr.alias.clone() { alias } else { field.to_string() };
                 context_entry.insert(entry_key, result.to_string());
                 return Ok(result);

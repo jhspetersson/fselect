@@ -1065,11 +1065,11 @@ impl<'a> Searcher<'a> {
         match field {
             Field::Name => return match file_info {
                 Some(file_info) => {
-                    Ok(Variant::from_string(&format!(
-                        "[{}] {}",
-                        entry.file_name().to_string_lossy(),
-                        file_info.name
-                    )))
+                    let name = Path::new(&file_info.name)
+                        .file_name()
+                        .map(|f| f.to_string_lossy().to_string())
+                        .unwrap_or_else(|| file_info.name.clone());
+                    Ok(Variant::from_string(&name))
                 }
                 _ => {
                     Ok(Variant::from_string(&entry.file_name().to_string_lossy().to_string()))
@@ -1077,11 +1077,7 @@ impl<'a> Searcher<'a> {
             },
             Field::Filename => return match file_info {
                 Some(file_info) => {
-                    Ok(Variant::from_string(&format!(
-                        "[{}] {}",
-                        entry.file_name().to_string_lossy(),
-                        get_stem(&file_info.name)
-                    )))
+                    Ok(Variant::from_string(&get_stem(&file_info.name)))
                 }
                 _ => {
                     Ok(Variant::from_string(
@@ -1092,11 +1088,7 @@ impl<'a> Searcher<'a> {
             },
             Field::Extension => return match file_info {
                 Some(file_info) => {
-                    Ok(Variant::from_string(&format!(
-                        "[{}] {}",
-                        entry.file_name().to_string_lossy(),
-                        get_extension(&file_info.name)
-                    )))
+                    Ok(Variant::from_string(&get_extension(&file_info.name)))
                 }
                 _ => {
                     Ok(Variant::from_string(
@@ -1107,11 +1099,7 @@ impl<'a> Searcher<'a> {
             },
             Field::Path => return match file_info {
                 Some(file_info) => {
-                    Ok(Variant::from_string(&format!(
-                        "[{}] {}",
-                        entry.path().to_string_lossy(),
-                        file_info.name
-                    )))
+                    Ok(Variant::from_string(&file_info.name))
                 }
                 _ => {
                     match entry.path().strip_prefix(root_path) {
@@ -1126,11 +1114,7 @@ impl<'a> Searcher<'a> {
             },
             Field::AbsPath => return match file_info {
                 Some(file_info) => {
-                    Ok(Variant::from_string(&format!(
-                        "[{}] {}",
-                        entry.path().to_string_lossy(),
-                        file_info.name
-                    )))
+                    Ok(Variant::from_string(&file_info.name))
                 }
                 _ => {
                     match canonical_path(&entry.path()) {
@@ -1998,6 +1982,11 @@ impl<'a> Searcher<'a> {
                 false => record.to_string(),
             };
             items.push((field.to_string(), value));
+        }
+
+        if file_info.is_some() {
+            let archive_path = entry.path().to_string_lossy().to_string();
+            items.insert(0, (String::from("archive"), format!("[{}]", archive_path)));
         }
 
         let mut criteria = vec!["".to_string(); self.query.ordering_fields.len()];

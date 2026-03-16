@@ -2064,15 +2064,11 @@ impl<'a> Searcher<'a> {
     }
 
     fn colorize(&mut self, value: &str) -> String {
-        let style;
-
-        if let Some(metadata) = self.fms.get_file_metadata() {
-            style = self
-                .lscolors
-                .style_for_path_with_metadata(Path::new(&value), Some(metadata));
-        } else {
-            style = self.lscolors.style_for_path(Path::new(&value));
-        }
+        let path = Path::new(value);
+        let style = match self.fms.get_file_metadata() {
+            Some(metadata) => self.lscolors.style_for_path_with_metadata(path, Some(metadata)),
+            None => self.lscolors.style_for_path(path),
+        };
 
         let ansi_style = style.map(Style::to_nu_ansi_term_style).unwrap_or_default();
 

@@ -670,11 +670,10 @@ impl<'a> Searcher<'a> {
                         Ok(entry) => {
                             let mut path = entry.path();
                             let pass_ignores = if apply_gitignore || apply_hgignore || apply_dockerignore {
-                                let mut canonical_path = path.clone();
-
-                                if let Ok(canonicalized) = crate::util::canonical_path(&path) {
-                                    canonical_path = PathBuf::from(canonicalized);
-                                }
+                                let canonical_path = match crate::util::canonical_path(&path) {
+                                    Ok(canonicalized) => PathBuf::from(canonicalized),
+                                    Err(_) => path.clone(),
+                                };
 
                                 // Check the path against the filters
                                 #[cfg(feature = "git")]

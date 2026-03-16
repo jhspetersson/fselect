@@ -2276,13 +2276,10 @@ impl<'a> Searcher<'a> {
                             }
                             val.ne(&field_str)
                         }
-                        Op::Rx => {
+                        Op::Rx | Op::NotRx => {
                             fn identity(s: &str) -> Result<String, String> { Ok(s.to_string()) }
-                            return self.match_pattern(val, &field_str, identity, "Incorrect regex expression: ");
-                        }
-                        Op::NotRx => {
-                            fn identity(s: &str) -> Result<String, String> { Ok(s.to_string()) }
-                            return self.match_pattern(val, &field_str, identity, "Incorrect regex expression: ").map(|m| !m);
+                            let matched = self.match_pattern(val, &field_str, identity, "Incorrect regex expression: ");
+                            return if *op == Op::NotRx { matched.map(|m| !m) } else { matched };
                         }
                         Op::Like => {
                             return self.match_pattern(val, &field_str, convert_like_to_pattern, "Incorrect LIKE expression: ");

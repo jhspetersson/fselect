@@ -2338,28 +2338,17 @@ impl<'a> Searcher<'a> {
                 None => false,
             };
 
-            match logical_op {
-                LogicalOp::And => {
-                    if !left_result {
-                        result = false;
-                    } else {
-                        result = match expr.right {
-                            Some(ref right) => self.conforms(entry, file_info, root_path, right)?,
-                            None => false,
-                        };
-                    }
+            let right_result = |s: &mut Self| -> Result<bool, SearchError> {
+                match expr.right {
+                    Some(ref right) => s.conforms(entry, file_info, root_path, right),
+                    None => Ok(false),
                 }
-                LogicalOp::Or => {
-                    if left_result {
-                        result = true;
-                    } else {
-                        result = match expr.right {
-                            Some(ref right) => self.conforms(entry, file_info, root_path, right)?,
-                            None => false,
-                        };
-                    }
-                }
-            }
+            };
+
+            result = match logical_op {
+                LogicalOp::And => if !left_result { false } else { right_result(self)? },
+                LogicalOp::Or => if left_result { true } else { right_result(self)? },
+            };
         } else if let Some(ref op) = expr.op {
             let mut temp_map = std::mem::take(&mut self.conforms_map);
             let field_value = self.get_column_expr_value(

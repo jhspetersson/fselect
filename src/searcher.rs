@@ -897,10 +897,7 @@ impl<'a> Searcher<'a> {
     }
 
     fn ok_to_visit_dir(&self, file_type: FileType) -> bool {
-        match self.current_follow_symlinks {
-            true => true,
-            false => !file_type.is_symlink(),
-        }
+        self.current_follow_symlinks || !file_type.is_symlink()
     }
 
     fn get_column_expr_value(

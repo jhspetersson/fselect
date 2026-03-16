@@ -1859,24 +1859,7 @@ impl<'a> Searcher<'a> {
 
                 return Ok(Variant::empty(VariantType::String));
             }
-            Field::IsBinary => {
-                self.fms
-                    .update_file_metadata(entry, self.current_follow_symlinks);
-
-                if let Some(meta) = self.fms.get_file_metadata() {
-                    if meta.is_dir() {
-                        return Ok(Variant::from_bool(false));
-                    }
-                }
-
-                if let Some(mime) = tree_magic_mini::from_filepath(&entry.path()) {
-                    let is_binary = !is_text_mime(mime);
-                    return Ok(Variant::from_bool(is_binary));
-                }
-
-                return Ok(Variant::from_bool(false));
-            }
-            Field::IsText => {
+            Field::IsBinary | Field::IsText => {
                 self.fms
                     .update_file_metadata(entry, self.current_follow_symlinks);
 
@@ -1888,7 +1871,8 @@ impl<'a> Searcher<'a> {
 
                 if let Some(mime) = tree_magic_mini::from_filepath(&entry.path()) {
                     let is_text = is_text_mime(mime);
-                    return Ok(Variant::from_bool(is_text));
+                    let result = matches!(field, Field::IsText) == is_text;
+                    return Ok(Variant::from_bool(result));
                 }
 
                 return Ok(Variant::from_bool(false));

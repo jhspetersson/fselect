@@ -1906,69 +1906,31 @@ impl<'a> Searcher<'a> {
 
                 return Ok(Variant::from_bool(false));
             }
-            Field::IsArchive => {
-                let is_archive = match file_info {
-                    Some(file_info) => self.is_archive(&file_info.name),
-                    None => self.is_archive(&entry.file_name().to_string_lossy()),
+            Field::IsArchive
+            | Field::IsAudio
+            | Field::IsBook
+            | Field::IsDoc
+            | Field::IsFont
+            | Field::IsImage
+            | Field::IsSource
+            | Field::IsVideo => {
+                let name = match file_info {
+                    Some(fi) => std::borrow::Cow::Borrowed(fi.name.as_str()),
+                    None => entry.file_name().to_string_lossy().into_owned().into(),
+                };
+                let result = match field {
+                    Field::IsArchive => self.is_archive(&name),
+                    Field::IsAudio => self.is_audio(&name),
+                    Field::IsBook => self.is_book(&name),
+                    Field::IsDoc => self.is_doc(&name),
+                    Field::IsFont => self.is_font(&name),
+                    Field::IsImage => self.is_image(&name),
+                    Field::IsSource => self.is_source(&name),
+                    Field::IsVideo => self.is_video(&name),
+                    _ => unreachable!(),
                 };
 
-                return Ok(Variant::from_bool(is_archive));
-            }
-            Field::IsAudio => {
-                let is_audio = match file_info {
-                    Some(file_info) => self.is_audio(&file_info.name),
-                    None => self.is_audio(&entry.file_name().to_string_lossy()),
-                };
-
-                return Ok(Variant::from_bool(is_audio));
-            }
-            Field::IsBook => {
-                let is_book = match file_info {
-                    Some(file_info) => self.is_book(&file_info.name),
-                    None => self.is_book(&entry.file_name().to_string_lossy()),
-                };
-
-                return Ok(Variant::from_bool(is_book));
-            }
-            Field::IsDoc => {
-                let is_doc = match file_info {
-                    Some(file_info) => self.is_doc(&file_info.name),
-                    None => self.is_doc(&entry.file_name().to_string_lossy()),
-                };
-
-                return Ok(Variant::from_bool(is_doc));
-            }
-            Field::IsFont => {
-                let is_font = match file_info {
-                    Some(file_info) => self.is_font(&file_info.name),
-                    None => self.is_font(&entry.file_name().to_string_lossy()),
-                };
-
-                return Ok(Variant::from_bool(is_font));
-            }
-            Field::IsImage => {
-                let is_image = match file_info {
-                    Some(file_info) => self.is_image(&file_info.name),
-                    None => self.is_image(&entry.file_name().to_string_lossy()),
-                };
-
-                return Ok(Variant::from_bool(is_image));
-            }
-            Field::IsSource => {
-                let is_source = match file_info {
-                    Some(file_info) => self.is_source(&file_info.name),
-                    None => self.is_source(&entry.file_name().to_string_lossy()),
-                };
-
-                return Ok(Variant::from_bool(is_source));
-            }
-            Field::IsVideo => {
-                let is_video = match file_info {
-                    Some(file_info) => self.is_video(&file_info.name),
-                    None => self.is_video(&entry.file_name().to_string_lossy()),
-                };
-
-                return Ok(Variant::from_bool(is_video));
+                return Ok(Variant::from_bool(result));
             }
             Field::Sha1 => {
                 return Ok(Variant::from_string(&crate::util::get_sha1_file_hash(entry)));

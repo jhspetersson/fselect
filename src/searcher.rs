@@ -337,18 +337,15 @@ impl<'a> Searcher<'a> {
                             }
                         }
 
-                        ext_roots.clear();
-                        ext_roots.append(&mut tmp);
+                        ext_roots = tmp;
                     } else if ext_roots.is_empty() {
                         ext_roots.push(part.to_string());
                     } else {
                         //update all roots
-                        let mut new_roots = ext_roots
+                        ext_roots = ext_roots
                             .iter()
                             .map(|root| root.to_string() + "/" + part)
-                            .collect::<Vec<String>>();
-                        ext_roots.clear();
-                        ext_roots.append(&mut new_roots);
+                            .collect();
                     }
                 }
 

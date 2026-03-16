@@ -1718,14 +1718,18 @@ impl<'a> Searcher<'a> {
                 self.fms.update_mp3_metadata(entry);
 
                 if let Some(mp3_info) = self.fms.get_mp3_metadata() {
-                    return Ok(Variant::from_int(mp3_info.frames[0].bitrate as i64));
+                    if let Some(frame) = mp3_info.frames.first() {
+                        return Ok(Variant::from_int(frame.bitrate as i64));
+                    }
                 }
             }
             Field::Freq => {
                 self.fms.update_mp3_metadata(entry);
 
                 if let Some(mp3_info) = self.fms.get_mp3_metadata() {
-                    return Ok(Variant::from_int(mp3_info.frames[0].sampling_freq as i64));
+                    if let Some(frame) = mp3_info.frames.first() {
+                        return Ok(Variant::from_int(frame.sampling_freq as i64));
+                    }
                 }
             }
             Field::Title => {

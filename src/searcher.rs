@@ -88,7 +88,7 @@ impl FileMetadataState {
     }
 
     fn get_line_count(&self) -> Option<usize> {
-        self.line_count.and_then(|o| o)
+        self.line_count.flatten()
     }
 
     fn update_mp3_metadata(&mut self, entry: &DirEntry) {

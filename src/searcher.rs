@@ -164,7 +164,7 @@ pub struct Searcher<'a> {
     dockerignore_filters: Vec<DockerignoreFilter>,
     visited_dirs: HashSet<PathBuf>,
     lscolors: LsColors,
-    dir_queue: Box<VecDeque<PathBuf>>,
+    dir_queue: VecDeque<PathBuf>,
     current_follow_symlinks: bool,
 
     fms: FileMetadataState,
@@ -226,7 +226,7 @@ impl<'a> Searcher<'a> {
             dockerignore_filters: vec![],
             visited_dirs: HashSet::new(),
             lscolors: LsColors::from_env().unwrap_or_default(),
-            dir_queue: Box::from(VecDeque::new()),
+            dir_queue: VecDeque::new(),
             current_follow_symlinks: false,
 
             fms: FileMetadataState::new(),

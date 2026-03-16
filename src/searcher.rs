@@ -754,7 +754,7 @@ impl<'a> Searcher<'a> {
                                         let mut ok = false;
 
                                         if file_type.is_symlink() && self.current_follow_symlinks {
-                                            if let Ok(resolved) = std::fs::read_link(&path) {
+                                            if let Ok(resolved) = fs::read_link(&path) {
                                                 let resolved_path = if resolved.is_relative() {
                                                     if let Some(parent) = path.parent() {
                                                         parent.join(&resolved)

@@ -2133,13 +2133,14 @@ impl<'a> Searcher<'a> {
         negate: bool,
     ) -> Result<bool, SearchError> {
         let args = self.get_in_args(expr);
+        let field_type = field_value.get_type();
         let mut found = false;
         for arg in &args {
             arg_map.clear();
             let arg_val = self.get_column_expr_value(
                 Some(entry), file_info, root_path, arg_map, None, arg,
             )?;
-            let matches = match field_value.get_type() {
+            let matches = match field_type {
                 VariantType::String => arg_val.to_string() == field_value.to_string(),
                 VariantType::Int | VariantType::Float => arg_val.to_float() == field_value.to_float(),
                 VariantType::Bool => arg_val.to_bool() == field_value.to_bool(),

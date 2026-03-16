@@ -5,7 +5,7 @@ use crate::output::ResultsFormatter;
 pub struct HtmlFormatter;
 
 impl ResultsFormatter for HtmlFormatter {
-    fn header(&mut self, raw_query: String, col_count: usize) -> Option<String> {
+    fn header(&mut self, raw_query: &str, col_count: usize) -> Option<String> {
         Some(format!("<html><head><title>{}</title></head><body><table><tr><th colspan=\"{}\">{}</th></tr>", raw_query, col_count, raw_query))
     }
 

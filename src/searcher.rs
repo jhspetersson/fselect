@@ -248,9 +248,8 @@ impl<'a> Searcher<'a> {
         let current_dir = std::env::current_dir()?;
 
         if !self.silent_mode {
-            let raw_query = self.query.raw_query.clone();
             let col_count = self.query.fields.len();
-            if let Err(e) = self.results_writer.write_header(raw_query, col_count, &mut std::io::stdout()) {
+            if let Err(e) = self.results_writer.write_header(&self.query.raw_query, col_count, &mut std::io::stdout()) {
                 if e.kind() == ErrorKind::BrokenPipe {
                     return Ok(());
                 }

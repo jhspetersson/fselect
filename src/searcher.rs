@@ -629,7 +629,7 @@ impl<'a> Searcher<'a> {
         process_queue: bool,
         root_dir: &Path,
     ) -> Result<(), SearchError> {
-        let canonical_path = match crate::util::canonical_path(&dir.to_path_buf()) {
+        let canonical_path = match canonical_path(&dir.to_path_buf()) {
             Ok(path) => path,
             Err(e) => {
                 self.error_count += 1;
@@ -650,7 +650,7 @@ impl<'a> Searcher<'a> {
                 self.visited_dirs.insert(canonical_pathbuf);
             }
         }
-        let canonical_depth = crate::util::calc_depth(&canonical_path);
+        let canonical_depth = calc_depth(&canonical_path);
 
         let base_depth = match root_depth {
             0 => canonical_depth,
@@ -1096,12 +1096,12 @@ impl<'a> Searcher<'a> {
                     Ok(Variant::from_string(&format!(
                         "[{}] {}",
                         entry.file_name().to_string_lossy(),
-                        crate::util::get_extension(&file_info.name)
+                        get_extension(&file_info.name)
                     )))
                 }
                 _ => {
                     Ok(Variant::from_string(
-                        &crate::util::get_extension(&entry.file_name().to_string_lossy())
+                        &get_extension(&entry.file_name().to_string_lossy())
                             .to_string(),
                     ))
                 }
@@ -1134,7 +1134,7 @@ impl<'a> Searcher<'a> {
                     )))
                 }
                 _ => {
-                    match crate::util::canonical_path(&entry.path()) {
+                    match canonical_path(&entry.path()) {
                         Ok(path) => {
                             Ok(Variant::from_string(&path))
                         },
@@ -1168,7 +1168,7 @@ impl<'a> Searcher<'a> {
                         return Ok(Variant::from_string(&parent.to_string_lossy().to_string()));
                     }
 
-                    if let Ok(path) = crate::util::canonical_path(&parent.to_path_buf()) {
+                    if let Ok(path) = canonical_path(&parent.to_path_buf()) {
                         return Ok(Variant::from_string(&path));
                     }
                 }
@@ -1901,16 +1901,16 @@ impl<'a> Searcher<'a> {
                 return Ok(Variant::from_bool(result));
             }
             Field::Sha1 => {
-                return Ok(Variant::from_string(&crate::util::get_sha1_file_hash(entry)));
+                return Ok(Variant::from_string(&get_sha1_file_hash(entry)));
             }
             Field::Sha256 => {
-                return Ok(Variant::from_string(&crate::util::get_sha256_file_hash(entry)));
+                return Ok(Variant::from_string(&get_sha256_file_hash(entry)));
             }
             Field::Sha512 => {
-                return Ok(Variant::from_string(&crate::util::get_sha512_file_hash(entry)));
+                return Ok(Variant::from_string(&get_sha512_file_hash(entry)));
             }
             Field::Sha3 => {
-                return Ok(Variant::from_string(&crate::util::get_sha3_512_file_hash(entry)));
+                return Ok(Variant::from_string(&get_sha3_512_file_hash(entry)));
             }
         };
 

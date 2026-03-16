@@ -33,7 +33,7 @@ use crate::ignore::hg::{matches_hgignore_filter, search_upstream_hgignore, Hgign
 use crate::mode;
 use crate::operators::{LogicalOp, Op};
 use crate::output::ResultsWriter;
-use crate::query::TraversalMode::Bfs;
+use crate::query::TraversalMode::{Bfs, Dfs};
 use crate::query::{Query, Root, TraversalMode};
 use crate::util::dimensions::get_dimensions;
 use crate::util::duration::get_duration;
@@ -775,7 +775,7 @@ impl<'a> Searcher<'a> {
                                         }
 
                                         if ok && self.ok_to_visit_dir(file_type) {
-                                            if traversal_mode == TraversalMode::Dfs {
+                                            if traversal_mode == Dfs {
                                                 #[cfg(feature = "git")]
                                                 let repo;
                                                 #[cfg(feature = "git")]
@@ -2741,7 +2741,7 @@ mod tests {
             #[cfg(feature = "git")]
             None,
             false, false,
-            TraversalMode::Dfs,
+            Dfs,
             true,
             &root,
         );
@@ -2780,7 +2780,7 @@ mod tests {
             #[cfg(feature = "git")]
             None,
             false, false,
-            TraversalMode::Bfs,
+            Bfs,
             true,
             &root,
         );
@@ -2825,7 +2825,7 @@ mod tests {
             #[cfg(feature = "git")]
             None,
             false, false,
-            TraversalMode::Dfs,
+            Dfs,
             true,
             &tmp,
         );
@@ -2860,7 +2860,7 @@ mod tests {
             #[cfg(feature = "git")]
             None,
             false, false,
-            TraversalMode::Dfs,
+            Dfs,
             true,
             &tmp,
         );
@@ -3064,7 +3064,7 @@ mod tests {
             #[cfg(feature = "git")]
             None,
             false, false,
-            TraversalMode::Dfs,
+            Dfs,
             true,
             &root_a,
         );
@@ -3080,7 +3080,7 @@ mod tests {
             #[cfg(feature = "git")]
             None,
             false, false,
-            TraversalMode::Dfs,
+            Dfs,
             true,
             &root_b,
         );

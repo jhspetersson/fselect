@@ -712,15 +712,11 @@ impl<'a> Searcher<'a> {
                                 if min_depth == 0 || depth >= min_depth {
                                     let checked = self.check_file(&entry, root_dir, &None);
                                     match checked {
-                                        Err(mut err) => {
+                                        Err(err) => {
                                             if err.is_fatal() {
                                                 return Err(err);
                                             }
-                                            self.error_count += 1;
-                                            if err.source.is_empty() {
-                                                err.source = path.to_string_lossy().to_string();
-                                            }
-                                            err.print();
+                                            self.handle_nonfatal_error(err, &path);
                                             continue;
                                         }
                                         Ok(()) => {}
@@ -741,15 +737,11 @@ impl<'a> Searcher<'a> {
                                                     if let Ok(afile) = archive.by_index(i) {
                                                         let file_info = to_file_info(&afile);
                                                         match self.check_file(&entry, root_dir, &Some(file_info)) {
-                                                            Err(mut err) => {
+                                                            Err(err) => {
                                                                 if err.is_fatal() {
                                                                     return Err(err);
                                                                 }
-                                                                self.error_count += 1;
-                                                                if err.source.is_empty() {
-                                                                    err.source = path.to_string_lossy().to_string();
-                                                                }
-                                                                err.print();
+                                                                self.handle_nonfatal_error(err, &path);
                                                                 continue;
                                                             }
                                                             Ok(()) => {}
@@ -816,15 +808,11 @@ impl<'a> Searcher<'a> {
                                                     root_dir,
                                                 );
 
-                                                if let Err(mut err) = result {
+                                                if let Err(err) = result {
                                                     if err.is_fatal() {
                                                         return Err(err);
                                                     }
-                                                    self.error_count += 1;
-                                                    if err.source.is_empty() {
-                                                        err.source = path.to_string_lossy().to_string();
-                                                    }
-                                                    err.print();
+                                                    self.handle_nonfatal_error(err, &path);
                                                 }
                                             } else {
                                                 self.dir_queue.push_back(path);
@@ -880,20 +868,24 @@ impl<'a> Searcher<'a> {
                     root_dir,
                 );
 
-                if let Err(mut err) = result {
+                if let Err(err) = result {
                     if err.is_fatal() {
                         return Err(err);
                     }
-                    self.error_count += 1;
-                    if err.source.is_empty() {
-                        err.source = path.to_string_lossy().to_string();
-                    }
-                    err.print();
+                    self.handle_nonfatal_error(err, &path);
                 }
             }
         }
 
         Ok(())
+    }
+
+    fn handle_nonfatal_error(&mut self, mut err: SearchError, default_source: &Path) {
+        self.error_count += 1;
+        if err.source.is_empty() {
+            err.source = default_source.to_string_lossy().to_string();
+        }
+        err.print();
     }
 
     fn ok_to_visit_dir(&self, file_type: FileType) -> bool {

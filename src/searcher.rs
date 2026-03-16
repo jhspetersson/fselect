@@ -2225,6 +2225,12 @@ impl<'a> Searcher<'a> {
                 LogicalOp::Or => if left_result { true } else { right_result(self)? },
             };
         } else if let Some(ref op) = expr.op {
+            match op {
+                Op::Exists => return Ok(self.check_exists(expr)),
+                Op::NotExists => return Ok(!self.check_exists(expr)),
+                _ => {}
+            }
+
             let mut temp_map = std::mem::take(&mut self.conforms_map);
             let field_value = self.get_column_expr_value(
                 Some(entry),
@@ -2236,7 +2242,7 @@ impl<'a> Searcher<'a> {
             )?;
             temp_map.clear();
             let value = match op {
-                Op::In | Op::NotIn | Op::Exists | Op::NotExists => Variant::empty(VariantType::String),
+                Op::In | Op::NotIn => Variant::empty(VariantType::String),
                 _ => {
                     let v = self.get_column_expr_value(
                         Some(entry),
@@ -2288,8 +2294,6 @@ impl<'a> Searcher<'a> {
                         Op::Ene => val.ne(&field_str),
                         Op::In => self.check_in_list(expr, entry, file_info, root_path, &mut arg_map, &field_value, false)?,
                         Op::NotIn => self.check_in_list(expr, entry, file_info, root_path, &mut arg_map, &field_value, true)?,
-                        Op::Exists => self.check_exists(expr),
-                        Op::NotExists => !self.check_exists(expr),
                         _ => false,
                     }
                 }
@@ -2305,8 +2309,6 @@ impl<'a> Searcher<'a> {
                         Op::Lte => int_value <= val,
                         Op::In => self.check_in_list(expr, entry, file_info, root_path, &mut arg_map, &field_value, false)?,
                         Op::NotIn => self.check_in_list(expr, entry, file_info, root_path, &mut arg_map, &field_value, true)?,
-                        Op::Exists => self.check_exists(expr),
-                        Op::NotExists => !self.check_exists(expr),
                         _ => false,
                     }
                 }
@@ -2322,8 +2324,6 @@ impl<'a> Searcher<'a> {
                         Op::Lte => float_value <= val,
                         Op::In => self.check_in_list(expr, entry, file_info, root_path, &mut arg_map, &field_value, false)?,
                         Op::NotIn => self.check_in_list(expr, entry, file_info, root_path, &mut arg_map, &field_value, true)?,
-                        Op::Exists => self.check_exists(expr),
-                        Op::NotExists => !self.check_exists(expr),
                         _ => false,
                     }
                 }
@@ -2338,8 +2338,6 @@ impl<'a> Searcher<'a> {
                         Op::Lte => field_value.to_bool() <= val,
                         Op::In => self.check_in_list(expr, entry, file_info, root_path, &mut arg_map, &field_value, false)?,
                         Op::NotIn => self.check_in_list(expr, entry, file_info, root_path, &mut arg_map, &field_value, true)?,
-                        Op::Exists => self.check_exists(expr),
-                        Op::NotExists => !self.check_exists(expr),
                         _ => false,
                     }
                 }
@@ -2359,8 +2357,6 @@ impl<'a> Searcher<'a> {
                         Op::Lte => dt <= finish,
                         Op::In => self.check_in_list(expr, entry, file_info, root_path, &mut arg_map, &field_value, false)?,
                         Op::NotIn => self.check_in_list(expr, entry, file_info, root_path, &mut arg_map, &field_value, true)?,
-                        Op::Exists => self.check_exists(expr),
-                        Op::NotExists => !self.check_exists(expr),
                         _ => false,
                     }
                 }

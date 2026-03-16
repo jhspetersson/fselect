@@ -271,7 +271,14 @@ impl<'a> Searcher<'a> {
                     if looks_like_regexp(part) {
                         // Create a regex from the part
                         let rx_string = format!("^{}$", part);
-                        let rx = Regex::new(&rx_string).unwrap();
+                        let rx = match Regex::new(&rx_string) {
+                            Ok(rx) => rx,
+                            Err(_) => {
+                                self.error_count += 1;
+                                error_message(part, "invalid regex in root path");
+                                continue;
+                            }
+                        };
                         let mut tmp = vec![];
 
                         if ext_roots.is_empty() {

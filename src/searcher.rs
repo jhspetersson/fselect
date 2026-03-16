@@ -280,9 +280,7 @@ impl<'a> Searcher<'a> {
                         let rx = match Regex::new(&rx_string) {
                             Ok(rx) => rx,
                             Err(_) => {
-                                self.error_count += 1;
-                                error_message(part, "invalid regex in root path");
-                                continue;
+                                return Err(SearchError::fatal(format!("invalid regex in root path: {}", part)));
                             }
                         };
                         let mut tmp = vec![];

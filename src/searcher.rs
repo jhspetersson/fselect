@@ -111,6 +111,13 @@ impl FileMetadataState {
         self.exif_metadata.as_ref().and_then(|o| o.as_ref())
     }
 
+    fn get_exif_string(&mut self, entry: &DirEntry, key: &str) -> Option<Variant> {
+        self.update_exif_metadata(entry);
+        self.get_exif_metadata()
+            .and_then(|info| info.get(key))
+            .map(|v| Variant::from_string(v))
+    }
+
     fn update_dimensions(&mut self, entry: &DirEntry) {
         if self.dimensions.is_none() {
             self.dimensions = Some(get_dimensions(entry.path()));
@@ -1820,112 +1827,35 @@ impl<'a> Searcher<'a> {
                     }
                 }
             }
-            Field::ExifMake => {
-                self.fms.update_exif_metadata(entry);
-
-                if let Some(exif_info) = self.fms.get_exif_metadata() {
-                    if let Some(exif_value) = exif_info.get("Make") {
-                        return Ok(Variant::from_string(exif_value));
-                    }
-                }
-            }
-            Field::ExifModel => {
-                self.fms.update_exif_metadata(entry);
-
-                if let Some(exif_info) = self.fms.get_exif_metadata() {
-                    if let Some(exif_value) = exif_info.get("Model") {
-                        return Ok(Variant::from_string(exif_value));
-                    }
-                }
-            }
-            Field::ExifSoftware => {
-                self.fms.update_exif_metadata(entry);
-
-                if let Some(exif_info) = self.fms.get_exif_metadata() {
-                    if let Some(exif_value) = exif_info.get("Software") {
-                        return Ok(Variant::from_string(exif_value));
-                    }
-                }
-            }
-            Field::ExifVersion => {
-                self.fms.update_exif_metadata(entry);
-
-                if let Some(exif_info) = self.fms.get_exif_metadata() {
-                    if let Some(exif_value) = exif_info.get("ExifVersion") {
-                        return Ok(Variant::from_string(exif_value));
-                    }
-                }
-            }
-            Field::ExifExposureTime => {
-                self.fms.update_exif_metadata(entry);
-
-                if let Some(exif_info) = self.fms.get_exif_metadata() {
-                    if let Some(exif_value) = exif_info.get("ExposureTime") {
-                        return Ok(Variant::from_string(exif_value));
-                    }
-                }
-            }
-            Field::ExifAperture => {
-                self.fms.update_exif_metadata(entry);
-
-                if let Some(exif_info) = self.fms.get_exif_metadata() {
-                    if let Some(exif_value) = exif_info.get("ApertureValue") {
-                        return Ok(Variant::from_string(exif_value));
-                    }
-                }
-            }
-            Field::ExifShutterSpeed => {
-                self.fms.update_exif_metadata(entry);
-
-                if let Some(exif_info) = self.fms.get_exif_metadata() {
-                    if let Some(exif_value) = exif_info.get("ShutterSpeedValue") {
-                        return Ok(Variant::from_string(exif_value));
-                    }
-                }
-            }
-            Field::ExifFNumber => {
-                self.fms.update_exif_metadata(entry);
-
-                if let Some(exif_info) = self.fms.get_exif_metadata() {
-                    if let Some(exif_value) = exif_info.get("FNumber") {
-                        return Ok(Variant::from_string(exif_value));
-                    }
-                }
-            }
-            Field::ExifIsoSpeed => {
-                self.fms.update_exif_metadata(entry);
-
-                if let Some(exif_info) = self.fms.get_exif_metadata() {
-                    if let Some(exif_value) = exif_info.get("ISOSpeed") {
-                        return Ok(Variant::from_string(exif_value));
-                    }
-                }
-            }
-            Field::ExifFocalLength => {
-                self.fms.update_exif_metadata(entry);
-
-                if let Some(exif_info) = self.fms.get_exif_metadata() {
-                    if let Some(exif_value) = exif_info.get("FocalLength") {
-                        return Ok( Variant::from_string(exif_value));
-                    }
-                }
-            }
-            Field::ExifLensMake => {
-                self.fms.update_exif_metadata(entry);
-
-                if let Some(exif_info) = self.fms.get_exif_metadata() {
-                    if let Some(exif_value) = exif_info.get("LensMake") {
-                        return Ok(Variant::from_string(exif_value));
-                    }
-                }
-            }
-            Field::ExifLensModel => {
-                self.fms.update_exif_metadata(entry);
-
-                if let Some(exif_info) = self.fms.get_exif_metadata() {
-                    if let Some(exif_value) = exif_info.get("LensModel") {
-                        return Ok(Variant::from_string(exif_value));
-                    }
+            Field::ExifMake
+            | Field::ExifModel
+            | Field::ExifSoftware
+            | Field::ExifVersion
+            | Field::ExifExposureTime
+            | Field::ExifAperture
+            | Field::ExifShutterSpeed
+            | Field::ExifFNumber
+            | Field::ExifIsoSpeed
+            | Field::ExifFocalLength
+            | Field::ExifLensMake
+            | Field::ExifLensModel => {
+                let key = match field {
+                    Field::ExifMake => "Make",
+                    Field::ExifModel => "Model",
+                    Field::ExifSoftware => "Software",
+                    Field::ExifVersion => "ExifVersion",
+                    Field::ExifExposureTime => "ExposureTime",
+                    Field::ExifAperture => "ApertureValue",
+                    Field::ExifShutterSpeed => "ShutterSpeedValue",
+                    Field::ExifFNumber => "FNumber",
+                    Field::ExifIsoSpeed => "ISOSpeed",
+                    Field::ExifFocalLength => "FocalLength",
+                    Field::ExifLensMake => "LensMake",
+                    Field::ExifLensModel => "LensModel",
+                    _ => unreachable!(),
+                };
+                if let Some(val) = self.fms.get_exif_string(entry, key) {
+                    return Ok(val);
                 }
             }
             Field::LineCount => {

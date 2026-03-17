@@ -1865,9 +1865,10 @@ impl<'a> Searcher<'a> {
             | Field::IsImage
             | Field::IsSource
             | Field::IsVideo => {
+                let os_name = entry.file_name();
                 let name = match file_info {
-                    Some(fi) => std::borrow::Cow::Borrowed(fi.name.as_str()),
-                    None => entry.file_name().to_string_lossy().into_owned().into(),
+                    Some(fi) => fi.name.as_str(),
+                    None => &os_name.to_string_lossy(),
                 };
                 let result = match field {
                     Field::IsArchive => self.is_archive(&name),

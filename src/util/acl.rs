@@ -25,6 +25,7 @@ const ACL_PERM_READ: u16 = 0x04;
 const ACL_PERM_WRITE: u16 = 0x02;
 const ACL_PERM_EXEC: u16 = 0x01;
 
+#[test]
 const ACL_UNDEFINED_ID: u32 = 0xFFFFFFFF;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -114,6 +115,7 @@ pub fn parse_acl(data: &[u8]) -> Option<Vec<AclEntry>> {
     Some(entries)
 }
 
+#[test]
 pub fn has_extended_acl(entries: &[AclEntry]) -> bool {
     entries.iter().any(|e| matches!(e.tag, AclTag::User(_) | AclTag::Group(_) | AclTag::Mask))
 }

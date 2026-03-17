@@ -2196,28 +2196,41 @@ impl<'a> Searcher<'a> {
             }
 
             let mut temp_map = std::mem::take(&mut self.conforms_map);
-            let field_value = self.get_column_expr_value(
+            let field_value = match self.get_column_expr_value(
                 Some(entry),
                 file_info,
                 root_path,
                 &mut temp_map,
                 None,
                 expr.left.as_ref().unwrap(),
-            )?;
+            ) {
+                Ok(v) => v,
+                Err(e) => {
+                    self.conforms_map = temp_map;
+                    return Err(e);
+                }
+            };
             temp_map.clear();
             let value = match op {
                 Op::In | Op::NotIn => Variant::empty(VariantType::String),
                 _ => {
-                    let v = self.get_column_expr_value(
+                    match self.get_column_expr_value(
                         Some(entry),
                         file_info,
                         root_path,
                         &mut temp_map,
                         None,
                         expr.right.as_ref().unwrap(),
-                    )?;
-                    temp_map.clear();
-                    v
+                    ) {
+                        Ok(v) => {
+                            temp_map.clear();
+                            v
+                        }
+                        Err(e) => {
+                            self.conforms_map = temp_map;
+                            return Err(e);
+                        }
+                    }
                 }
             };
             self.conforms_map = temp_map;

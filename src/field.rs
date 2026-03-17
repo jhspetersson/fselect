@@ -387,19 +387,19 @@ fields! {
         @description = "Returns a boolean signifying whether the file can be fully accessed by the others"
         OtherAll,
         
-        #[text = ["suid"], data_type = "boolean"]
+        #[text = ["suid", "is_suid"], data_type = "boolean"]
         @for_archived = true
         @weight = 1
         @description = "Returns a boolean signifying whether the file permissions have a SUID bit set"
         Suid,
-        
-        #[text = ["sgid"], data_type = "boolean"]
+
+        #[text = ["sgid", "is_sgid"], data_type = "boolean"]
         @for_archived = true
         @weight = 1
         @description = "Returns a boolean signifying whether the file permissions have a SGID bit set"
         Sgid,
 
-        #[text = ["is_sticky"], data_type = "boolean"]
+        #[text = ["is_sticky", "sticky"], data_type = "boolean"]
         @for_archived = true
         @weight = 1
         @description = "Returns a boolean signifying whether the file permissions have a sticky bit set"

@@ -202,10 +202,13 @@ Per-group permission bits.
 .BR other_read ", " other_write ", " other_exec ", " other_all " / " other_rwx
 Permission bits for other users.
 .TP
-.BR suid " / " sgid
-SUID / SGID bit.
+.BR suid " or " is_suid
+SUID bit.
 .TP
-.B is_sticky
+.BR sgid " or " is_sgid
+SGID bit.
+.TP
+.BR is_sticky " or " sticky
 Sticky bit.
 .SS Linux-specific
 .TP

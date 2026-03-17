@@ -2057,22 +2057,6 @@ impl<'a> Searcher<'a> {
         Variant::from_bool(false)
     }
 
-    fn get_in_args(&mut self, expr: &Expr) -> Vec<Expr> {
-        let right = expr.right.as_ref().unwrap();
-        match &right.args {
-            Some(args) => args.clone(),
-            None => {
-                if let Some(subquery) = &right.subquery {
-                    self.get_list_from_subquery(*subquery.clone()).iter().map(|s| {
-                        Expr::value(s.to_string())
-                    }).collect()
-                } else {
-                    vec![]
-                }
-            }
-        }
-    }
-
     fn check_exists(&mut self, expr: &Expr) -> bool {
         let right = expr.right.as_ref().unwrap();
         match &right.args {
@@ -2101,10 +2085,25 @@ impl<'a> Searcher<'a> {
         field_value: &Variant,
         negate: bool,
     ) -> Result<bool, SearchError> {
-        let args = self.get_in_args(expr);
+        let right = expr.right.as_ref().unwrap();
+        let owned_args;
+        let args: &[Expr] = match &right.args {
+            Some(args) => args,
+            None => {
+                owned_args = if let Some(subquery) = &right.subquery {
+                    self.get_list_from_subquery(*subquery.clone())
+                        .iter()
+                        .map(|s| Expr::value(s.to_string()))
+                        .collect()
+                } else {
+                    vec![]
+                };
+                &owned_args
+            }
+        };
         let field_type = field_value.get_type();
         let mut found = false;
-        for arg in &args {
+        for arg in args {
             arg_map.clear();
             let arg_val = self.get_column_expr_value(
                 Some(entry), file_info, root_path, arg_map, None, arg,

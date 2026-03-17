@@ -165,6 +165,14 @@ pub struct Searcher<'a> {
     lscolors: LsColors,
     dir_queue: VecDeque<PathBuf>,
     current_follow_symlinks: bool,
+    current_min_depth: u32,
+    current_max_depth: u32,
+    current_search_archives: bool,
+    current_apply_gitignore: bool,
+    current_apply_hgignore: bool,
+    current_apply_dockerignore: bool,
+    current_traversal_mode: TraversalMode,
+    current_root_dir: PathBuf,
 
     fms: FileMetadataState,
     conforms_map: HashMap<String, String>,
@@ -227,6 +235,14 @@ impl<'a> Searcher<'a> {
             lscolors: LsColors::from_env().unwrap_or_default(),
             dir_queue: VecDeque::new(),
             current_follow_symlinks: false,
+            current_min_depth: 0,
+            current_max_depth: 0,
+            current_search_archives: false,
+            current_apply_gitignore: false,
+            current_apply_hgignore: false,
+            current_apply_dockerignore: false,
+            current_traversal_mode: TraversalMode::Bfs,
+            current_root_dir: PathBuf::new(),
 
             fms: FileMetadataState::new(),
             conforms_map: HashMap::new(),
@@ -361,23 +377,23 @@ impl<'a> Searcher<'a> {
                 _ => None,
             };
 
-            let root_dir = Path::new(&root.path);
-            let min_depth = root.options.min_depth;
-            let max_depth = root.options.max_depth;
-            let search_archives = root.options.archives;
-            let apply_gitignore = root
+            self.current_root_dir = PathBuf::from(&root.path);
+            self.current_min_depth = root.options.min_depth;
+            self.current_max_depth = root.options.max_depth;
+            self.current_search_archives = root.options.archives;
+            self.current_apply_gitignore = root
                 .options
                 .gitignore
                 .unwrap_or(self.config.gitignore.unwrap_or(false));
-            let apply_hgignore = root
+            self.current_apply_hgignore = root
                 .options
                 .hgignore
                 .unwrap_or(self.config.hgignore.unwrap_or(false));
-            let apply_dockerignore = root
+            self.current_apply_dockerignore = root
                 .options
                 .dockerignore
                 .unwrap_or(self.config.dockerignore.unwrap_or(false));
-            let traversal_mode = root.options.traversal;
+            self.current_traversal_mode = root.options.traversal;
 
             self.dir_queue.clear();
             self.visited_dirs.clear();
@@ -385,28 +401,20 @@ impl<'a> Searcher<'a> {
             self.dockerignore_filters.clear();
 
             // Apply filters
-            if apply_hgignore {
-                search_upstream_hgignore(&mut self.hgignore_filters, root_dir);
+            if self.current_apply_hgignore {
+                search_upstream_hgignore(&mut self.hgignore_filters, &self.current_root_dir);
             }
 
-            if apply_dockerignore {
-                search_upstream_dockerignore(&mut self.dockerignore_filters, root_dir);
+            if self.current_apply_dockerignore {
+                search_upstream_dockerignore(&mut self.dockerignore_filters, &self.current_root_dir);
             }
 
             let result = self.visit_dir(
-                root_dir,
-                min_depth,
-                max_depth,
+                &self.current_root_dir.clone(),
                 0,
-                search_archives,
-                apply_gitignore,
                 #[cfg(feature = "git")]
-                Repository::discover(&root_dir).ok().as_ref(),
-                apply_hgignore,
-                apply_dockerignore,
-                traversal_mode,
+                Repository::discover(&self.current_root_dir).ok().as_ref(),
                 true,
-                root_dir,
             );
 
             if let Err(err) = result {
@@ -607,18 +615,10 @@ impl<'a> Searcher<'a> {
     fn visit_dir(
         &mut self,
         dir: &Path,
-        min_depth: u32,
-        max_depth: u32,
         root_depth: u32,
-        search_archives: bool,
-        apply_gitignore: bool,
         #[cfg(feature = "git")]
         git_repository: Option<&Repository>,
-        apply_hgignore: bool,
-        apply_dockerignore: bool,
-        traversal_mode: TraversalMode,
         process_queue: bool,
-        root_dir: &Path,
     ) -> Result<(), SearchError> {
         let canonical_path = match canonical_path(&dir.to_path_buf()) {
             Ok(path) => path,
@@ -662,7 +662,7 @@ impl<'a> Searcher<'a> {
                     match entry {
                         Ok(entry) => {
                             let mut path = entry.path();
-                            let pass_ignores = if apply_gitignore || apply_hgignore || apply_dockerignore {
+                            let pass_ignores = if self.current_apply_gitignore || self.current_apply_hgignore || self.current_apply_dockerignore {
                                 let canonical_path = match crate::util::canonical_path(&path) {
                                     Ok(canonicalized) => PathBuf::from(canonicalized),
                                     Err(_) => path.clone(),
@@ -670,19 +670,19 @@ impl<'a> Searcher<'a> {
 
                                 // Check the path against the filters
                                 #[cfg(feature = "git")]
-                                let pass_gitignore = !apply_gitignore
+                                let pass_gitignore = !self.current_apply_gitignore
                                     || !(git_repository.is_some() &&
                                     git_repository.unwrap().is_path_ignored(&canonical_path)
                                         .unwrap_or(false));
                                 #[cfg(not(feature = "git"))]
                                 let pass_gitignore = true;
 
-                                let pass_hgignore = !apply_hgignore
+                                let pass_hgignore = !self.current_apply_hgignore
                                     || !matches_hgignore_filter(
                                     &self.hgignore_filters,
                                     canonical_path.to_string_lossy().as_ref(),
                                 );
-                                let pass_dockerignore = !apply_dockerignore
+                                let pass_dockerignore = !self.current_apply_dockerignore
                                     || !matches_dockerignore_filter(
                                     &self.dockerignore_filters,
                                     canonical_path.to_string_lossy().as_ref(),
@@ -695,8 +695,8 @@ impl<'a> Searcher<'a> {
 
                             // If the path passes the filters, process it
                             if pass_ignores {
-                                if min_depth == 0 || depth >= min_depth {
-                                    let checked = self.check_file(&entry, root_dir, &None);
+                                if self.current_min_depth == 0 || depth >= self.current_min_depth {
+                                    let checked = self.check_file(&entry, &self.current_root_dir.clone(), &None);
                                     match checked {
                                         Err(err) => {
                                             if err.is_fatal() {
@@ -708,7 +708,7 @@ impl<'a> Searcher<'a> {
                                         Ok(()) => {}
                                     }
 
-                                    if search_archives
+                                    if self.current_search_archives
                                         && self.is_zip_archive(&path.to_string_lossy())
                                     {
                                         if let Ok(file) = fs::File::open(&path) {
@@ -722,7 +722,7 @@ impl<'a> Searcher<'a> {
 
                                                     if let Ok(afile) = archive.by_index(i) {
                                                         let file_info = to_file_info(&afile);
-                                                        match self.check_file(&entry, root_dir, &Some(file_info)) {
+                                                        match self.check_file(&entry, &self.current_root_dir.clone(), &Some(file_info)) {
                                                             Err(err) => {
                                                                 if err.is_fatal() {
                                                                     return Err(err);
@@ -740,7 +740,7 @@ impl<'a> Searcher<'a> {
                                 }
 
                                 // Recursively visit subdirectories if we're not too deep
-                                if max_depth == 0 || depth < max_depth {
+                                if self.current_max_depth == 0 || depth < self.current_max_depth {
                                     match entry.file_type() {
                                         Ok(file_type) => {
                                             let mut ok = false;
@@ -766,13 +766,13 @@ impl<'a> Searcher<'a> {
                                             }
 
                                             if ok && self.ok_to_visit_dir(file_type) {
-                                                if traversal_mode == Dfs {
+                                                if self.current_traversal_mode == Dfs {
                                                     #[cfg(feature = "git")]
                                                     let repo;
                                                     #[cfg(feature = "git")]
                                                     let git_repository = match git_repository {
                                                         Some(repo) => Some(repo),
-                                                        None if apply_gitignore => {
+                                                        None if self.current_apply_gitignore => {
                                                             repo = Repository::open(&path).ok();
                                                             repo.as_ref()
                                                         },
@@ -780,18 +780,10 @@ impl<'a> Searcher<'a> {
                                                     };
                                                     let result = self.visit_dir(
                                                         &path,
-                                                        min_depth,
-                                                        max_depth,
                                                         base_depth,
-                                                        search_archives,
-                                                        apply_gitignore,
                                                         #[cfg(feature = "git")]
                                                         git_repository,
-                                                        apply_hgignore,
-                                                        apply_dockerignore,
-                                                        traversal_mode,
                                                         false,
-                                                        root_dir,
                                                     );
 
                                                     if let Err(err) = result {
@@ -826,7 +818,7 @@ impl<'a> Searcher<'a> {
             }
         }
 
-        if traversal_mode == Bfs && process_queue {
+        if self.current_traversal_mode == Bfs && process_queue {
             while !self.dir_queue.is_empty() {
                 let path = self.dir_queue.pop_front().unwrap();
                 #[cfg(feature = "git")]
@@ -834,7 +826,7 @@ impl<'a> Searcher<'a> {
                 #[cfg(feature = "git")]
                 let git_repository = match git_repository {
                     Some(repo) => Some(repo),
-                    None if apply_gitignore => {
+                    None if self.current_apply_gitignore => {
                         repo = Repository::open(&path).ok();
                         repo.as_ref()
                     },
@@ -842,18 +834,10 @@ impl<'a> Searcher<'a> {
                 };
                 let result = self.visit_dir(
                     &path,
-                    min_depth,
-                    max_depth,
                     base_depth,
-                    search_archives,
-                    apply_gitignore,
                     #[cfg(feature = "git")]
                     git_repository,
-                    apply_hgignore,
-                    apply_dockerignore,
-                    traversal_mode,
                     false,
-                    root_dir,
                 );
 
                 if let Err(err) = result {
@@ -2728,17 +2712,15 @@ mod tests {
 
         let mut searcher = create_test_searcher();
         searcher.current_follow_symlinks = true;
+        searcher.current_traversal_mode = Dfs;
+        searcher.current_root_dir = root.clone();
 
         let _ = searcher.visit_dir(
             &root,
-            0, 0, 0,
-            false, false,
+            0,
             #[cfg(feature = "git")]
             None,
-            false, false,
-            Dfs,
             true,
-            &root,
         );
 
         let found = searcher.found;
@@ -2767,17 +2749,14 @@ mod tests {
 
         let mut searcher = create_test_searcher();
         searcher.current_follow_symlinks = true;
+        searcher.current_root_dir = root.clone();
 
         let _ = searcher.visit_dir(
             &root,
-            0, 0, 0,
-            false, false,
+            0,
             #[cfg(feature = "git")]
             None,
-            false, false,
-            Bfs,
             true,
-            &root,
         );
 
         let found = searcher.found;
@@ -2812,17 +2791,15 @@ mod tests {
 
         let mut searcher = create_test_searcher();
         searcher.current_follow_symlinks = true;
+        searcher.current_traversal_mode = Dfs;
+        searcher.current_root_dir = tmp.clone();
 
         let _ = searcher.visit_dir(
             &tmp,
-            0, 0, 0,
-            false, false,
+            0,
             #[cfg(feature = "git")]
             None,
-            false, false,
-            Dfs,
             true,
-            &tmp,
         );
 
         let found = searcher.found;
@@ -2847,17 +2824,15 @@ mod tests {
 
         let mut searcher = create_test_searcher();
         searcher.current_follow_symlinks = true;
+        searcher.current_traversal_mode = Dfs;
+        searcher.current_root_dir = tmp.clone();
 
         let _ = searcher.visit_dir(
             &tmp,
-            0, 0, 0,
-            false, false,
+            0,
             #[cfg(feature = "git")]
             None,
-            false, false,
-            Dfs,
             true,
-            &tmp,
         );
 
         let errors = searcher.error_count;
@@ -3051,33 +3026,28 @@ mod tests {
 
         let mut searcher = create_test_searcher();
         searcher.current_follow_symlinks = true;
+        searcher.current_traversal_mode = Dfs;
+        searcher.current_root_dir = root_a.clone();
 
         let _ = searcher.visit_dir(
             &root_a,
-            0, 0, 0,
-            false, false,
+            0,
             #[cfg(feature = "git")]
             None,
-            false, false,
-            Dfs,
             true,
-            &root_a,
         );
 
         let found_after_a = searcher.found;
 
         searcher.visited_dirs.clear();
+        searcher.current_root_dir = root_b.clone();
 
         let _ = searcher.visit_dir(
             &root_b,
-            0, 0, 0,
-            false, false,
+            0,
             #[cfg(feature = "git")]
             None,
-            false, false,
-            Dfs,
             true,
-            &root_b,
         );
 
         let found_after_b = searcher.found;

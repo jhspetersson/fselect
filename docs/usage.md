@@ -243,19 +243,19 @@ These are only available on Unix platforms when `users` feature has been enabled
 Used to check if a particular xattr exists or to get its value.
 Supported platforms are Linux, macOS, FreeBSD, and NetBSD. 
 
-| Function                      | Meaning                                             | Example                                               |
-|-------------------------------|-----------------------------------------------------|-------------------------------------------------------|
-| HAS_XATTR                     | Check if xattr exists                                   | `select "name, has_xattr(user.test) from /home/user"`           |
-| XATTR                         | Get value of xattr                                      | `select "name, xattr(user.test) from /home/user"`               |
-| HAS_EXTATTR                   | Check if a specific extended file attribute flag is set (Linux only) | `select "name from / where has_extattr('i')"`          |
-| ACL                           | Get all POSIX ACL entries in standard form (Linux only)  | `select "name, acl() from /home/user"`                           |
-| HAS_ACL_ENTRY                 | Check if a specific POSIX ACL entry exists (Linux only) | `select "name from /data where has_acl_entry('user:john')"`     |
-| ACL_ENTRY                     | Get permissions of a specific POSIX ACL entry (Linux only) | `select "name, acl_entry('group:staff') from /data"`         |
-| DEFAULT_ACL                   | Get all default POSIX ACL entries in standard form (Linux only) | `select "name, default_acl() from /data"`               |
-| HAS_DEFAULT_ACL_ENTRY         | Check if a specific default POSIX ACL entry exists (Linux only) | `select "name from /data where has_default_acl_entry('user:john')"` |
-| DEFAULT_ACL_ENTRY             | Get permissions of a specific default POSIX ACL entry (Linux only) | `select "name, default_acl_entry('group:staff') from /data"` |
-| HAS_CAPABILITIES or HAS_CAPS  | Check if any Linux capability exists for the file       | `select "name, has_caps() from /home/user"`                      |
-| HAS_CAPABILITY or HAS_CAP     | Check if given Linux capability exists for the file     | `select "name, has_cap('cap_bpf') from /home/user"`             |
+| Function                     | Meaning                                                              | Example                                                             |
+|------------------------------|----------------------------------------------------------------------|---------------------------------------------------------------------|
+| HAS_XATTR                    | Check if xattr exists                                                | `select "name, has_xattr(user.test) from /home/user"`               |
+| XATTR                        | Get value of xattr                                                   | `select "name, xattr(user.test) from /home/user"`                   |
+| HAS_EXTATTR                  | Check if a specific extended file attribute flag is set (Linux only) | `select "name from / where has_extattr('i')"`                       |
+| ACL                          | Get all POSIX ACL entries in standard form (Linux only)              | `select "name, acl() from /home/user"`                              |
+| HAS_ACL_ENTRY                | Check if a specific POSIX ACL entry exists (Linux only)              | `select "name from /data where has_acl_entry('user:john')"`         |
+| ACL_ENTRY                    | Get permissions of a specific POSIX ACL entry (Linux only)           | `select "name, acl_entry('group:staff') from /data"`                |
+| DEFAULT_ACL                  | Get all default POSIX ACL entries in standard form (Linux only)      | `select "name, default_acl() from /data"`                           |
+| HAS_DEFAULT_ACL_ENTRY        | Check if a specific default POSIX ACL entry exists (Linux only)      | `select "name from /data where has_default_acl_entry('user:john')"` |
+| DEFAULT_ACL_ENTRY            | Get permissions of a specific default POSIX ACL entry (Linux only)   | `select "name, default_acl_entry('group:staff') from /data"`        |
+| HAS_CAPABILITIES or HAS_CAPS | Check if any Linux capability exists for the file                    | `select "name, has_caps() from /home/user"`                         |
+| HAS_CAPABILITY or HAS_CAP    | Check if given Linux capability exists for the file                  | `select "name, has_cap('cap_bpf') from /home/user"`                 |
 
 #### POSIX ACLs
 

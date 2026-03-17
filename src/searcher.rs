@@ -1590,7 +1590,14 @@ impl<'a> Searcher<'a> {
                     }
                 }
 
-                #[cfg(not(target_os = "linux"))]
+                #[cfg(windows)]
+                {
+                    return Ok(Variant::from_bool(
+                        crate::util::win_acl::has_explicit_acl(&entry.path()),
+                    ));
+                }
+
+                #[cfg(not(any(target_os = "linux", windows)))]
                 {
                     return Ok(Variant::from_bool(false));
                 }

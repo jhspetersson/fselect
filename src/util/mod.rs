@@ -5,6 +5,8 @@ pub(crate) mod app_dirs;
 pub(crate) mod capabilities;
 #[cfg(target_os = "linux")]
 pub(crate) mod extattrs;
+#[cfg(windows)]
+pub(crate) mod win_acl;
 mod datetime;
 pub mod dimensions;
 pub mod duration;

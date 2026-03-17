@@ -59,6 +59,9 @@ xattr = "1.0"
 [target.'cfg(target_os = "linux")'.dependencies]
 libc = "0.2"
 
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Security_Authorization", "Win32_Security", "Win32_Foundation"] }
+
 [profile.release]
 lto = true
 

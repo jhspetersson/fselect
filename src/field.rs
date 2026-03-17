@@ -428,7 +428,7 @@ fields! {
 
         #[text = ["has_acl"], data_type = "boolean"]
         @weight = 2
-        @description = "Returns a boolean signifying whether the file has POSIX ACL entries beyond standard permissions"
+        @description = "Returns a boolean signifying whether the file has POSIX ACL entries beyond standard permissions or Windows explicit ACEs"
         HasAcl,
 
         #[text = ["has_default_acl"], data_type = "boolean"]

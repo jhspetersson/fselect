@@ -1305,6 +1305,45 @@ impl<'a> Searcher<'a> {
 
                 return Ok(Variant::empty(VariantType::String));
             }
+            Field::Atime => {
+                #[cfg(unix)]
+                {
+                    self.fms
+                        .update_file_metadata(entry, self.current_follow_symlinks);
+
+                    if let Some(attrs) = self.fms.get_file_metadata() {
+                        return Ok(Variant::from_int(attrs.atime()));
+                    }
+                }
+
+                return Ok(Variant::empty(VariantType::Int));
+            }
+            Field::Mtime => {
+                #[cfg(unix)]
+                {
+                    self.fms
+                        .update_file_metadata(entry, self.current_follow_symlinks);
+
+                    if let Some(attrs) = self.fms.get_file_metadata() {
+                        return Ok(Variant::from_int(attrs.mtime()));
+                    }
+                }
+
+                return Ok(Variant::empty(VariantType::Int));
+            }
+            Field::Ctime => {
+                #[cfg(unix)]
+                {
+                    self.fms
+                        .update_file_metadata(entry, self.current_follow_symlinks);
+
+                    if let Some(attrs) = self.fms.get_file_metadata() {
+                        return Ok(Variant::from_int(attrs.ctime()));
+                    }
+                }
+
+                return Ok(Variant::empty(VariantType::Int));
+            }
             Field::Mode => match file_info {
                 Some(file_info) => {
                     if let Some(mode) = file_info.mode {

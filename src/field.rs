@@ -313,7 +313,22 @@ fields! {
         @weight = 1
         @description = "Returns the number of hardlinks of the file"
         Hardlinks,
-        
+
+        #[text = ["atime"]]
+        @weight = 1
+        @description = "Returns the last access time as a Unix timestamp (seconds since epoch)"
+        Atime,
+
+        #[text = ["mtime"]]
+        @weight = 1
+        @description = "Returns the last modification time as a Unix timestamp (seconds since epoch)"
+        Mtime,
+
+        #[text = ["ctime"]]
+        @weight = 1
+        @description = "Returns the last status change time as a Unix timestamp (seconds since epoch)"
+        Ctime,
+
         #[text = ["mode"]]
         @for_archived = true
         @weight = 1

@@ -97,6 +97,9 @@ Subqueries have only limited support.
 | `accessed`                                   | Returns the time the file was last accessed (YYYY-MM-DD HH:MM:SS)                                                             |                                                               |
 | `created`                                    | Returns the file creation date (YYYY-MM-DD HH:MM:SS)                                                                          |                                                               |
 | `modified`                                   | Returns the time the file was last modified (YYYY-MM-DD HH:MM:SS)                                                             |                                                               |
+| `atime`                                      | Returns the last access time as a Unix timestamp (seconds since epoch)                                                        | Available only on Unix                                        |
+| `mtime`                                      | Returns the last modification time as a Unix timestamp (seconds since epoch)                                                  | Available only on Unix                                        |
+| `ctime`                                      | Returns the last status change time as a Unix timestamp (seconds since epoch)                                                 | Available only on Unix                                        |
 | `is_dir`                                     | Returns a boolean signifying whether the file path is a directory                                                             |                                                               |
 | `is_file`                                    | Returns a boolean signifying whether the file path is a file                                                                  |                                                               |
 | `is_symlink`                                 | Returns a boolean signifying whether the file path is a symlink                                                               |                                                               |
@@ -633,6 +636,20 @@ where ext = 'rs' and not exists (
     and tests.ext = 'rs'
 )
 ```
+
+### Unix timestamps
+
+The `atime`, `mtime`, and `ctime` fields return raw Unix timestamps (seconds since epoch) as integers.
+These are available only on Unix platforms and are useful when you need numeric comparison
+or want to pass exact values to external tools.
+
+    fselect name, mtime from /home/user/projects
+    fselect name, atime from /home/user where atime gt 1700000000
+    fselect "name, format_time(mtime) from /home/user"
+    fselect "name, day(accessed), mtime from /home/user"
+
+Unlike `accessed`, `modified`, and `created` which return formatted date/time strings,
+these fields return the raw integer value from the filesystem metadata.
 
 ### Date and time specifiers
 

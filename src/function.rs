@@ -573,6 +573,16 @@ pub fn get_value(
 
             Ok(Variant::empty(VariantType::Bool))
         }
+        #[cfg(windows)]
+        Function::HasXattr => {
+            if let Some(entry) = entry {
+                return Ok(Variant::from_bool(
+                    crate::util::win_xattr::has_named_ads(&entry.path(), &function_arg),
+                ));
+            }
+
+            Ok(Variant::empty(VariantType::Bool))
+        }
         #[cfg(unix)]
         Function::Xattr => {
             if let Some(entry) = entry {
@@ -582,6 +592,18 @@ pub fn get_value(
                             return Ok(Variant::from_string(&value));
                         }
                     }
+                }
+            }
+
+            Ok(Variant::empty(VariantType::String))
+        }
+        #[cfg(windows)]
+        Function::Xattr => {
+            if let Some(entry) = entry {
+                if let Some(value) =
+                    crate::util::win_xattr::read_named_ads(&entry.path(), &function_arg)
+                {
+                    return Ok(Variant::from_string(&value));
                 }
             }
 
@@ -1127,14 +1149,14 @@ functions! {
         @weight = 2
         @group = "Xattr"
         @description = "Check if the file has a specific extended attribute"
-        #[cfg(unix)]
+        #[cfg(any(unix, windows))]
         HasXattr,
 
         #[text = ["xattr"]]
         @weight = 2
         @group = "Xattr"
         @description = "Get the value of an extended attribute"
-        #[cfg(unix)]
+        #[cfg(any(unix, windows))]
         Xattr,
 
         #[text = ["has_extattr"], data_type = "boolean"]

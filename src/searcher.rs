@@ -1544,7 +1544,14 @@ impl<'a> Searcher<'a> {
                     }
                 }
 
-                #[cfg(not(unix))]
+                #[cfg(windows)]
+                {
+                    return Ok(Variant::from_bool(
+                        crate::util::win_xattr::has_any_ads(&entry.path()),
+                    ));
+                }
+
+                #[cfg(not(any(unix, windows)))]
                 {
                     return Ok(Variant::from_bool(false));
                 }

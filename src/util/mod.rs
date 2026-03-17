@@ -7,6 +7,8 @@ pub(crate) mod capabilities;
 pub(crate) mod extattrs;
 #[cfg(windows)]
 pub(crate) mod win_acl;
+#[cfg(windows)]
+pub(crate) mod win_xattr;
 mod datetime;
 pub mod dimensions;
 pub mod duration;

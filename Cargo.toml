@@ -60,7 +60,7 @@ xattr = "1.0"
 libc = "0.2"
 
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.61", features = ["Win32_Security_Authorization", "Win32_Security", "Win32_Foundation"] }
+windows-sys = { version = "0.61", features = ["Win32_Security_Authorization", "Win32_Security", "Win32_Foundation", "Win32_Storage_FileSystem"] }
 
 [profile.release]
 lto = true

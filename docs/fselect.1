@@ -234,11 +234,23 @@ True if any
 .B extattrs
 flag is set.
 .TP
+.B acl
+All POSIX ACL entries in standard form, comma-separated.
+Available only on Linux.
+.TP
 .B has_acl
 True if the file has POSIX ACL entries beyond standard Unix permissions.
 .TP
+.B default_acl
+All default POSIX ACL entries in standard form, comma-separated.
+Available only on Linux.
+.TP
 .B has_default_acl
 True if the directory has default POSIX ACL entries.
+.TP
+.BR has_capabilities " or " has_caps
+True if the file has Linux capabilities.
+Available only on Linux.
 .TP
 .BR capabilities " or " caps
 Linux capabilities string assigned to the file.
@@ -567,12 +579,6 @@ True if the given
 flag is set.
 Available only on Linux.
 .TP
-.BR ACL ()
-All POSIX ACL entries in
-.BR getfacl (1)
-format, comma-separated.
-Available only on Linux.
-.TP
 .BR HAS_ACL_ENTRY "(entry)"
 True if the specified ACL entry exists.
 Entry format:
@@ -584,17 +590,11 @@ Entry format:
 .BR ACL_ENTRY "(entry)"
 Permissions for the specified ACL entry.
 .TP
-.BR DEFAULT_ACL ()
-All default POSIX ACL entries.
-.TP
 .BR HAS_DEFAULT_ACL_ENTRY "(entry)"
 True if the specified default ACL entry exists.
 .TP
 .BR DEFAULT_ACL_ENTRY "(entry)"
 Permissions for the specified default ACL entry.
-.TP
-.BR HAS_CAPABILITIES " / " HAS_CAPS ()
-True if the file has any Linux capabilities.
 .TP
 .BR HAS_CAPABILITY " / " HAS_CAP "(cap)"
 True if the file has the given Linux capability.

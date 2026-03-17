@@ -1585,6 +1585,20 @@ impl<'a> Searcher<'a> {
                     return Ok(Variant::from_bool(false));
                 }
             }
+            Field::Acl => {
+                #[cfg(target_os = "linux")]
+                {
+                    if let Ok(file) = fs::File::open(entry.path()) {
+                        if let Ok(Some(acl_data)) = file.get_xattr("system.posix_acl_access") {
+                            if let Some(entries) = crate::util::acl::parse_acl(&acl_data) {
+                                return Ok(Variant::from_string(&crate::util::acl::format_acl(&entries)));
+                            }
+                        }
+                    }
+                }
+
+                return Ok(Variant::empty(VariantType::String));
+            }
             Field::HasAcl => {
                 #[cfg(target_os = "linux")]
                 {
@@ -1609,6 +1623,22 @@ impl<'a> Searcher<'a> {
                     return Ok(Variant::from_bool(false));
                 }
             }
+            Field::DefaultAcl => {
+                #[cfg(target_os = "linux")]
+                {
+                    if entry.path().is_dir() {
+                        if let Ok(file) = fs::File::open(entry.path()) {
+                            if let Ok(Some(acl_data)) = file.get_xattr("system.posix_acl_default") {
+                                if let Some(entries) = crate::util::acl::parse_acl(&acl_data) {
+                                    return Ok(Variant::from_string(&crate::util::acl::format_acl(&entries)));
+                                }
+                            }
+                        }
+                    }
+                }
+
+                return Ok(Variant::empty(VariantType::String));
+            }
             Field::HasDefaultAcl => {
                 #[cfg(target_os = "linux")]
                 {
@@ -1627,6 +1657,18 @@ impl<'a> Searcher<'a> {
                 {
                     return Ok(Variant::from_bool(false));
                 }
+            }
+            Field::HasCapabilities => {
+                #[cfg(target_os = "linux")]
+                {
+                    if let Ok(file) = fs::File::open(entry.path()) {
+                        if let Ok(caps_xattr) = file.get_xattr("security.capability") {
+                            return Ok(Variant::from_bool(caps_xattr.is_some()));
+                        }
+                    }
+                }
+
+                return Ok(Variant::from_bool(false));
             }
             Field::Capabilities => {
                 #[cfg(target_os = "linux")]

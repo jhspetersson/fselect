@@ -108,8 +108,11 @@ Subqueries have only limited support.
 | `has_xattrs`                                 | Returns a boolean signifying whether the file has extended attributes or alternate data streams on Windows                    |                                                               |
 | `extattrs`                                   | Returns the extended file attributes as a string of chattr/lsattr flag letters                                                | Available only on Linux                                       |
 | `has_extattrs`                               | Returns a boolean signifying whether the file has any extended file attributes set                                            | Available only on Linux                                       |
+| `acl`                                        | Returns all POSIX ACL entries in standard form                                                                                | Available only on Linux                                       |
 | `has_acl`                                    | Returns a boolean signifying whether the file has POSIX ACL entries beyond standard Unix permissions or Windows explicit ACEs | Available only on Linux and Windows                           |
+| `default_acl`                                | Returns all default POSIX ACL entries in standard form                                                                        | Available only on Linux                                       |
 | `has_default_acl`                            | Returns a boolean signifying whether the directory has default POSIX ACL entries                                              | Available only on Linux                                       |
+| `has_capabilities` or `has_caps`             | Returns a boolean signifying whether the file has capabilities                                                                | Available only on Linux                                       |
 | `capabilities` or `caps`                     | Returns a string describing Linux capabilities assigned to a file                                                             | Available only on Linux                                       |
 | `device`                                     | Returns the code of device the file is stored on                                                                              | Available only on Linux                                       |
 | `inode`                                      | Returns the number of inode                                                                                                   | Available only on Linux                                       |
@@ -248,13 +251,10 @@ Supported platforms are Linux, macOS, FreeBSD, and NetBSD.
 | HAS_XATTR                    | Check if xattr exists                                                | `select "name, has_xattr(user.test) from /home/user"`               |
 | XATTR                        | Get value of xattr                                                   | `select "name, xattr(user.test) from /home/user"`                   |
 | HAS_EXTATTR                  | Check if a specific extended file attribute flag is set (Linux only) | `select "name from / where has_extattr('i')"`                       |
-| ACL                          | Get all POSIX ACL entries in standard form (Linux only)              | `select "name, acl() from /home/user"`                              |
 | HAS_ACL_ENTRY                | Check if a specific POSIX ACL entry exists (Linux only)              | `select "name from /data where has_acl_entry('user:john')"`         |
 | ACL_ENTRY                    | Get permissions of a specific POSIX ACL entry (Linux only)           | `select "name, acl_entry('group:staff') from /data"`                |
-| DEFAULT_ACL                  | Get all default POSIX ACL entries in standard form (Linux only)      | `select "name, default_acl() from /data"`                           |
 | HAS_DEFAULT_ACL_ENTRY        | Check if a specific default POSIX ACL entry exists (Linux only)      | `select "name from /data where has_default_acl_entry('user:john')"` |
 | DEFAULT_ACL_ENTRY            | Get permissions of a specific default POSIX ACL entry (Linux only)   | `select "name, default_acl_entry('group:staff') from /data"`        |
-| HAS_CAPABILITIES or HAS_CAPS | Check if any Linux capability exists for the file                    | `select "name, has_caps() from /home/user"`                         |
 | HAS_CAPABILITY or HAS_CAP    | Check if given Linux capability exists for the file                  | `select "name, has_cap('cap_bpf') from /home/user"`                 |
 
 #### POSIX ACLs
@@ -266,7 +266,7 @@ permissions beyond the standard Unix owner/group/other model.
 The `has_acl` field returns true when a file has extended ACL entries (named users, named groups,
 or a mask entry) beyond the basic owner/group/other permissions.
 
-The `acl()` function returns all ACL entries in standard `getfacl`-like format, comma-separated:
+The `acl` field returns all ACL entries in standard `getfacl`-like format, comma-separated:
 `user::rwx,user:john:rw-,group::r-x,group:staff:r--,mask::rwx,other::r--`
 
 Use `has_acl_entry` and `acl_entry` to query specific entries. The entry specifier uses the format
@@ -274,7 +274,7 @@ Use `has_acl_entry` and `acl_entry` to query specific entries. The entry specifi
 An empty qualifier refers to the owning user/group. Examples:
 
     fselect name from /data where has_acl = true
-    fselect "name, acl() from /data where has_acl = true"
+    fselect "name, acl from /data where has_acl = true"
     fselect "name from /data where has_acl_entry('user:john')"
     fselect "name, acl_entry('group:staff') from /data"
 

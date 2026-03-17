@@ -426,15 +426,30 @@ fields! {
         @description = "Returns a boolean signifying whether the file has any extended file attributes set"
         HasExtattrs,
 
+        #[text = ["acl"]]
+        @weight = 2
+        @description = "Returns all POSIX ACL entries in standard form"
+        Acl,
+
         #[text = ["has_acl"], data_type = "boolean"]
         @weight = 2
         @description = "Returns a boolean signifying whether the file has POSIX ACL entries beyond standard permissions or Windows explicit ACEs"
         HasAcl,
 
+        #[text = ["default_acl"]]
+        @weight = 2
+        @description = "Returns all default POSIX ACL entries in standard form"
+        DefaultAcl,
+
         #[text = ["has_default_acl"], data_type = "boolean"]
         @weight = 2
         @description = "Returns a boolean signifying whether the directory has default POSIX ACL entries"
         HasDefaultAcl,
+
+        #[text = ["has_capabilities", "has_caps"], data_type = "boolean"]
+        @weight = 2
+        @description = "Returns a boolean signifying whether the file has capabilities"
+        HasCapabilities,
 
         #[text = ["capabilities", "caps"]]
         @weight = 2

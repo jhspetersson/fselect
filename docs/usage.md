@@ -111,7 +111,7 @@ Subqueries have only limited support.
 | `has_xattrs`                                 | Returns a boolean signifying whether the file has extended attributes or alternate data streams on Windows                    |                                                               |
 | `extattrs`                                   | Returns the extended file attributes as a string of chattr/lsattr flag letters                                                | Available only on Linux                                       |
 | `has_extattrs`                               | Returns a boolean signifying whether the file has any extended file attributes set                                            | Available only on Linux                                       |
-| `acl`                                        | Returns all POSIX ACL entries in standard form                                                                                | Available only on Linux                                       |
+| `acl`                                        | Returns all ACL entries in standard form (POSIX on Linux, DACL on Windows)                                                    | Available only on Linux and Windows                           |
 | `has_acl`                                    | Returns a boolean signifying whether the file has POSIX ACL entries beyond standard Unix permissions or Windows explicit ACEs | Available only on Linux and Windows                           |
 | `default_acl`                                | Returns all default POSIX ACL entries in standard form                                                                        | Available only on Linux                                       |
 | `has_default_acl`                            | Returns a boolean signifying whether the directory has default POSIX ACL entries                                              | Available only on Linux                                       |
@@ -262,11 +262,14 @@ Supported platforms are Linux, macOS, FreeBSD, and NetBSD.
 | DEFAULT_ACL_ENTRY            | Get permissions of a specific default POSIX ACL entry (Linux only)   | `select "name, default_acl_entry('group:staff') from /data"`        |
 | HAS_CAPABILITY or HAS_CAP    | Check if given Linux capability exists for the file                  | `select "name, has_cap('cap_bpf') from /home/user"`                 |
 
-#### POSIX ACLs
+#### ACLs
 
-**fselect** can read and query POSIX Access Control Lists stored as `system.posix_acl_access` or `system.posix_acl_default`
-extended attributes. This feature is available only on Linux. It is useful for auditing file
-permissions beyond the standard Unix owner/group/other model.
+**fselect** can read and display Access Control Lists on both Linux and Windows.
+
+##### POSIX ACLs (Linux)
+
+On Linux, **fselect** reads POSIX Access Control Lists stored as `system.posix_acl_access` or `system.posix_acl_default`
+extended attributes. It is useful for auditing file permissions beyond the standard Unix owner/group/other model.
 
 The `has_acl` field returns true when a file has extended ACL entries (named users, named groups,
 or a mask entry) beyond the basic owner/group/other permissions.
@@ -285,6 +288,25 @@ An empty qualifier refers to the owning user/group. Examples:
 
 When the `users` feature is enabled, uid/gid values are resolved to usernames/group names.
 Otherwise, numeric IDs are used in the output.
+
+##### Windows DACLs
+
+On Windows, **fselect** reads the Discretionary Access Control List (DACL) via the Win32 Security API.
+Only explicit (non-inherited) ACEs are shown.
+
+The `has_acl` field returns true when a file has at least one explicit (non-inherited) ACE in its DACL.
+
+The `acl` field returns all explicit ACEs as comma-separated entries in the format
+`type:trustee:permissions`, where:
+
+- **type** is `allow` or `deny`
+- **trustee** is the resolved account name (e.g., `BUILTIN\Administrators`, `NT AUTHORITY\SYSTEM`)
+- **permissions** is one of `full`, `modify`, `rx`, `read`, `write`, or a hex value for non-standard masks
+
+Example output: `allow:BUILTIN\Administrators:full,allow:NT AUTHORITY\SYSTEM:full,allow:BUILTIN\Users:rx`
+
+    fselect name from C:\ where has_acl = true
+    fselect "name, acl from C:\Users where has_acl = true"
 
 #### Extended file attributes
 

@@ -250,11 +250,22 @@ True if any
 flag is set.
 .TP
 .B acl
-All POSIX ACL entries in standard form, comma-separated.
-Available only on Linux.
+All ACL entries in standard form, comma-separated.
+On Linux, returns POSIX ACL entries in
+.BR getfacl (1)
+format.
+On Windows, returns explicit DACL entries as
+.BR type : trustee : permissions
+(e.g.,
+.BR allow:BUILTIN\eAdministrators:full ).
+Permission labels:
+.BR full ", " modify ", " rx ", " read ", " write ,
+or a hex value for non-standard masks.
+Available only on Linux and Windows.
 .TP
 .B has_acl
-True if the file has POSIX ACL entries beyond standard Unix permissions.
+True if the file has POSIX ACL entries beyond standard Unix permissions
+or explicit (non-inherited) Windows DACL entries.
 .TP
 .B default_acl
 All default POSIX ACL entries in standard form, comma-separated.

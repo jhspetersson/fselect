@@ -1649,6 +1649,13 @@ impl<'a> Searcher<'a> {
                     }
                 }
 
+                #[cfg(windows)]
+                {
+                    if let Some(acl_str) = crate::util::win_acl::format_acl(&entry.path()) {
+                        return Ok(Variant::from_string(&acl_str));
+                    }
+                }
+
                 return Ok(Variant::empty(VariantType::String));
             }
             Field::HasAcl => {

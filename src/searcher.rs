@@ -238,15 +238,7 @@ impl<'a> Searcher<'a> {
     }
 
     pub fn is_buffered(&self) -> bool {
-        self.has_ordering() || self.has_aggregate_column() || self.silent_mode
-    }
-
-    fn has_ordering(&self) -> bool {
-        self.query.is_ordered()
-    }
-
-    fn has_aggregate_column(&self) -> bool {
-        self.query.has_aggregate_column()
+        self.query.is_ordered() || self.query.has_aggregate_column() || self.silent_mode
     }
 
     /// Searches directories based on configured query and outputs results to stdout.
@@ -427,7 +419,7 @@ impl<'a> Searcher<'a> {
         let compute_time = std::time::Instant::now();
 
         // ======== Compute results =========
-        if self.has_aggregate_column() {
+        if self.query.has_aggregate_column() {
             if !self.query.grouping_fields.is_empty() {
                 let group_keys: Vec<String> = self
                     .query
@@ -1941,7 +1933,7 @@ impl<'a> Searcher<'a> {
 
         self.found += 1;
 
-        if self.has_aggregate_column() {
+        if self.query.has_aggregate_column() {
             for field in self.query.get_all_fields() {
                 file_map.insert(
                     field.to_string(),
@@ -2517,19 +2509,19 @@ mod tests {
     #[test]
     fn test_has_ordering() {
         let searcher_with_ordering = create_test_searcher_with_ordering();
-        assert!(searcher_with_ordering.has_ordering());
+        assert!(searcher_with_ordering.query.is_ordered());
 
         let searcher_without_ordering = create_test_searcher();
-        assert!(!searcher_without_ordering.has_ordering());
+        assert!(!searcher_without_ordering.query.is_ordered());
     }
 
     #[test]
     fn test_has_aggregate_column() {
         let searcher_with_aggregate = create_test_searcher_with_aggregate();
-        assert!(searcher_with_aggregate.has_aggregate_column());
+        assert!(searcher_with_aggregate.query.has_aggregate_column());
 
         let searcher_without_aggregate = create_test_searcher();
-        assert!(!searcher_without_aggregate.has_aggregate_column());
+        assert!(!searcher_without_aggregate.query.has_aggregate_column());
     }
 
     #[test]

@@ -749,72 +749,74 @@ impl<'a> Searcher<'a> {
 
                                 // Recursively visit subdirectories if we're not too deep
                                 if max_depth == 0 || depth < max_depth {
-                                    let result = entry.file_type();
-                                    if let Ok(file_type) = result {
-                                        let mut ok = false;
+                                    match entry.file_type() {
+                                        Ok(file_type) => {
+                                            let mut ok = false;
 
-                                        if file_type.is_symlink() && self.current_follow_symlinks {
-                                            if let Ok(resolved) = fs::read_link(&path) {
-                                                let resolved_path = if resolved.is_relative() {
-                                                    if let Some(parent) = path.parent() {
-                                                        parent.join(&resolved)
+                                            if file_type.is_symlink() && self.current_follow_symlinks {
+                                                if let Ok(resolved) = fs::read_link(&path) {
+                                                    let resolved_path = if resolved.is_relative() {
+                                                        if let Some(parent) = path.parent() {
+                                                            parent.join(&resolved)
+                                                        } else {
+                                                            resolved
+                                                        }
                                                     } else {
                                                         resolved
+                                                    };
+                                                    if resolved_path.is_dir() {
+                                                        ok = true;
+                                                        path = resolved_path;
+                                                    }
+                                                }
+                                            } else if file_type.is_dir() {
+                                                ok = true;
+                                            }
+
+                                            if ok && self.ok_to_visit_dir(file_type) {
+                                                if traversal_mode == Dfs {
+                                                    #[cfg(feature = "git")]
+                                                    let repo;
+                                                    #[cfg(feature = "git")]
+                                                    let git_repository = match git_repository {
+                                                        Some(repo) => Some(repo),
+                                                        None if apply_gitignore => {
+                                                            repo = Repository::open(&path).ok();
+                                                            repo.as_ref()
+                                                        },
+                                                        _ => None,
+                                                    };
+                                                    let result = self.visit_dir(
+                                                        &path,
+                                                        min_depth,
+                                                        max_depth,
+                                                        base_depth,
+                                                        search_archives,
+                                                        apply_gitignore,
+                                                        #[cfg(feature = "git")]
+                                                        git_repository,
+                                                        apply_hgignore,
+                                                        apply_dockerignore,
+                                                        traversal_mode,
+                                                        false,
+                                                        root_dir,
+                                                    );
+
+                                                    if let Err(err) = result {
+                                                        if err.is_fatal() {
+                                                            return Err(err);
+                                                        }
+                                                        self.handle_nonfatal_error(err, &path);
                                                     }
                                                 } else {
-                                                    resolved
-                                                };
-                                                if resolved_path.is_dir() {
-                                                    ok = true;
-                                                    path = resolved_path;
+                                                    self.dir_queue.push_back(path);
                                                 }
                                             }
-                                        } else if file_type.is_dir() {
-                                            ok = true;
                                         }
-
-                                        if ok && self.ok_to_visit_dir(file_type) {
-                                            if traversal_mode == Dfs {
-                                                #[cfg(feature = "git")]
-                                                let repo;
-                                                #[cfg(feature = "git")]
-                                                let git_repository = match git_repository {
-                                                    Some(repo) => Some(repo),
-                                                    None if apply_gitignore => {
-                                                        repo = Repository::open(&path).ok();
-                                                        repo.as_ref()
-                                                    },
-                                                    _ => None,
-                                                };
-                                                let result = self.visit_dir(
-                                                    &path,
-                                                    min_depth,
-                                                    max_depth,
-                                                    base_depth,
-                                                    search_archives,
-                                                    apply_gitignore,
-                                                    #[cfg(feature = "git")]
-                                                    git_repository,
-                                                    apply_hgignore,
-                                                    apply_dockerignore,
-                                                    traversal_mode,
-                                                    false,
-                                                    root_dir,
-                                                );
-
-                                                if let Err(err) = result {
-                                                    if err.is_fatal() {
-                                                        return Err(err);
-                                                    }
-                                                    self.handle_nonfatal_error(err, &path);
-                                                }
-                                            } else {
-                                                self.dir_queue.push_back(path);
-                                            }
+                                        Err(err) => {
+                                            self.error_count += 1;
+                                            path_error_message(&path, err);
                                         }
-                                    } else {
-                                        self.error_count += 1;
-                                        path_error_message(&path, result.err().unwrap());
                                     }
                                 }
                             }

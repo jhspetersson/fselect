@@ -293,6 +293,11 @@ fields! {
         @weight = 1
         @description = "Returns the code of device the file is stored on"
         Device,
+
+        #[text = ["rdev"]]
+        @weight = 1
+        @description = "Returns the device ID for special files (character and block devices)"
+        Rdev,
         
         #[text = ["inode"]]
         @weight = 1

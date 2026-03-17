@@ -1253,6 +1253,19 @@ impl<'a> Searcher<'a> {
 
                 return Ok(Variant::empty(VariantType::String));
             }
+            Field::Rdev => {
+                #[cfg(unix)]
+                {
+                    self.fms
+                        .update_file_metadata(entry, self.current_follow_symlinks);
+
+                    if let Some(attrs) = self.fms.get_file_metadata() {
+                        return Ok(Variant::from_int(attrs.rdev() as i64));
+                    }
+                }
+
+                return Ok(Variant::empty(VariantType::String));
+            }
             Field::Inode => {
                 #[cfg(unix)]
                 {

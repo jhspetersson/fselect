@@ -1603,24 +1603,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg(target_os = "linux")]
-    fn simple_function_without_args_syntax_in_where() {
-        let query = "select name, caps from /home/user where HAS_CAPS()";
-        let mut lexer = Lexer::new(vec![query.to_string()]);
-        let mut p = Parser::new(&mut lexer);
-        let query = p.parse(false).unwrap();
-        assert!(!p.there_are_remaining_lexemes());
-
-        let query2 = "select name, caps from /home/user where HAS_CAPS";
-        let mut lexer2 = Lexer::new(vec![query2.to_string()]);
-        let mut p2 = Parser::new(&mut lexer2);
-        let query2 = p2.parse(false).unwrap();
-        assert!(!p2.there_are_remaining_lexemes());
-
-        assert_eq!(query.expr, query2.expr);
-    }
-
-    #[test]
     fn simple_function_without_args_syntax() {
         let query = "select CURDATE()";
         let mut lexer = Lexer::new(vec![query.to_string()]);

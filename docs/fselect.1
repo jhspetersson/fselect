@@ -455,6 +455,34 @@ Year.
 .TP
 .BR DOW " / " DAYOFWEEK
 Day of the week (1 = Sunday, 2 = Monday, \&...).
+.TP
+.B DAYNAME
+Name of the day of the week (e.g., Monday, Tuesday).
+.TP
+.BR DOY " / " DAYOFYEAR
+Day of the year (1\(en366).
+.TP
+.BR DATE_ADD " / " DATEADD "(date, days)"
+Add
+.I days
+to a date and return the resulting datetime.
+.TP
+.BR DATE_SUB " / " DATESUB "(date, days)"
+Subtract
+.I days
+from a date and return the resulting datetime.
+.TP
+.BR DATE_DIFF " / " DATEDIFF "(date1, date2)"
+Number of days between
+.I date1
+and
+.IR date2 .
+.TP
+.BR FROM_UNIXTIME "(timestamp)"
+Convert a Unix timestamp (seconds since epoch) to a datetime string.
+.TP
+.BR LAST_DAY " / " LAST_DATE "(date)"
+Last day of the month for the given date.
 .SS String functions
 .TP
 .BR LENGTH " / " LEN

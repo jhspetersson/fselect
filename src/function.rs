@@ -13,6 +13,7 @@ use std::time::Duration;
 
 use chrono::Datelike;
 use chrono::Local;
+use chrono::DateTime;
 use human_time::ToHumanTimeString;
 use rand::RngExt;
 use serde::ser::{Serialize, Serializer};
@@ -520,6 +521,101 @@ pub fn get_value(
         Function::DayOfWeek => match parse_datetime(&function_arg) {
             Ok(date) => Ok(Variant::from_int(date.0.weekday().number_from_sunday() as i64)),
             _ => Ok(Variant::empty(VariantType::Int)),
+        },
+        Function::DayName => match parse_datetime(&function_arg) {
+            Ok(date) => {
+                let name = match date.0.weekday() {
+                    chrono::Weekday::Mon => "Monday",
+                    chrono::Weekday::Tue => "Tuesday",
+                    chrono::Weekday::Wed => "Wednesday",
+                    chrono::Weekday::Thu => "Thursday",
+                    chrono::Weekday::Fri => "Friday",
+                    chrono::Weekday::Sat => "Saturday",
+                    chrono::Weekday::Sun => "Sunday",
+                };
+                Ok(Variant::from_string(&name.to_string()))
+            }
+            _ => Ok(Variant::empty(VariantType::String)),
+        },
+        Function::DayOfYear => match parse_datetime(&function_arg) {
+            Ok(date) => Ok(Variant::from_int(date.0.ordinal() as i64)),
+            _ => Ok(Variant::empty(VariantType::Int)),
+        },
+        Function::DateAdd => {
+            if function_args.is_empty() {
+                return Err("DATE_ADD requires a second argument (number of days)".to_string());
+            }
+            let days: i64 = match function_args[0].parse() {
+                Ok(d) => d,
+                Err(_) => return Err(format!("Invalid number of days: {}", function_args[0])),
+            };
+            match parse_datetime(&function_arg) {
+                Ok(date) => {
+                    let result = date.0 + chrono::Duration::days(days);
+                    Ok(Variant::from_string(&format_datetime(&result)))
+                }
+                _ => Ok(Variant::empty(VariantType::String)),
+            }
+        }
+        Function::DateSub => {
+            if function_args.is_empty() {
+                return Err("DATE_SUB requires a second argument (number of days)".to_string());
+            }
+            let days: i64 = match function_args[0].parse() {
+                Ok(d) => d,
+                Err(_) => return Err(format!("Invalid number of days: {}", function_args[0])),
+            };
+            match parse_datetime(&function_arg) {
+                Ok(date) => {
+                    let result = date.0 - chrono::Duration::days(days);
+                    Ok(Variant::from_string(&format_datetime(&result)))
+                }
+                _ => Ok(Variant::empty(VariantType::String)),
+            }
+        }
+        Function::DateDiff => {
+            if function_args.is_empty() {
+                return Err("DATE_DIFF requires a second argument (date)".to_string());
+            }
+            let date1 = parse_datetime(&function_arg);
+            let date2 = parse_datetime(&function_args[0]);
+            match (date1, date2) {
+                (Ok(d1), Ok(d2)) => {
+                    let diff = d1.0.signed_duration_since(d2.0).num_days();
+                    Ok(Variant::from_int(diff))
+                }
+                _ => Ok(Variant::empty(VariantType::Int)),
+            }
+        }
+        Function::FromUnixtime => {
+            let timestamp: i64 = match function_arg.parse() {
+                Ok(t) => t,
+                Err(_) => return Ok(Variant::empty(VariantType::String)),
+            };
+            match DateTime::from_timestamp(timestamp, 0) {
+                Some(dt) => Ok(Variant::from_string(&format_datetime(&dt.naive_utc()))),
+                None => Ok(Variant::empty(VariantType::String)),
+            }
+        }
+        Function::LastDay => match parse_datetime(&function_arg) {
+            Ok(date) => {
+                let y = date.0.year();
+                let m = date.0.month();
+                // First day of next month minus one day
+                let last = if m == 12 {
+                    chrono::NaiveDate::from_ymd_opt(y + 1, 1, 1)
+                } else {
+                    chrono::NaiveDate::from_ymd_opt(y, m + 1, 1)
+                };
+                match last {
+                    Some(next_month) => {
+                        let last_day = next_month.pred_opt().unwrap();
+                        Ok(Variant::from_string(&format_date(&last_day)))
+                    }
+                    None => Ok(Variant::empty(VariantType::String)),
+                }
+            }
+            _ => Ok(Variant::empty(VariantType::String)),
         },
 
         #[cfg(all(unix, feature = "users"))]
@@ -1068,6 +1164,41 @@ functions! {
         @group = "Datetime"
         @description = "Get the day of the week from a date"
         DayOfWeek,
+
+        #[text = ["dayname"], data_type = "string"]
+        @group = "Datetime"
+        @description = "Get the name of the day of the week from a date"
+        DayName,
+
+        #[text = ["dayofyear", "doy"], data_type = "numeric"]
+        @group = "Datetime"
+        @description = "Get the day of the year from a date (1-366)"
+        DayOfYear,
+
+        #[text = ["date_add", "dateadd"]]
+        @group = "Datetime"
+        @description = "Add days to a date and return the resulting date"
+        DateAdd,
+
+        #[text = ["date_sub", "datesub"]]
+        @group = "Datetime"
+        @description = "Subtract days from a date and return the resulting date"
+        DateSub,
+
+        #[text = ["date_diff", "datediff"], data_type = "numeric"]
+        @group = "Datetime"
+        @description = "Get the number of days between two dates"
+        DateDiff,
+
+        #[text = ["from_unixtime"]]
+        @group = "Datetime"
+        @description = "Convert a Unix timestamp to a datetime string"
+        FromUnixtime,
+
+        #[text = ["last_day", "last_date"]]
+        @group = "Datetime"
+        @description = "Get the last day of the month for a given date"
+        LastDay,
 
         #[text = ["current_uid"], data_type = "numeric"]
         @weight = 1
@@ -1765,7 +1896,295 @@ mod tests {
         let result = get_value(&function, function_arg, function_args, entry, &file_info);
         assert_eq!(result.unwrap().to_int(), 1);
     }
-    
+
+    #[test]
+    fn function_dayname_sunday() {
+        let function = Function::DayName;
+        let function_arg = String::from("2023-10-01"); // Sunday
+        let function_args = vec![];
+        let entry = None;
+        let file_info = None;
+
+        let result = get_value(&function, function_arg, function_args, entry, &file_info);
+        assert_eq!(result.unwrap().to_string(), "Sunday");
+    }
+
+    #[test]
+    fn function_dayname_wednesday() {
+        let function = Function::DayName;
+        let function_arg = String::from("2023-10-04"); // Wednesday
+        let function_args = vec![];
+        let entry = None;
+        let file_info = None;
+
+        let result = get_value(&function, function_arg, function_args, entry, &file_info);
+        assert_eq!(result.unwrap().to_string(), "Wednesday");
+    }
+
+    #[test]
+    fn function_dayname_invalid() {
+        let function = Function::DayName;
+        let function_arg = String::from("not-a-date");
+        let function_args = vec![];
+        let entry = None;
+        let file_info = None;
+
+        let result = get_value(&function, function_arg, function_args, entry, &file_info);
+        assert_eq!(result.unwrap().to_string(), "");
+    }
+
+    #[test]
+    fn function_dayofyear() {
+        let function = Function::DayOfYear;
+        let function_arg = String::from("2023-03-01"); // 60th day
+        let function_args = vec![];
+        let entry = None;
+        let file_info = None;
+
+        let result = get_value(&function, function_arg, function_args, entry, &file_info);
+        assert_eq!(result.unwrap().to_int(), 60);
+    }
+
+    #[test]
+    fn function_dayofyear_jan1() {
+        let function = Function::DayOfYear;
+        let function_arg = String::from("2023-01-01");
+        let function_args = vec![];
+        let entry = None;
+        let file_info = None;
+
+        let result = get_value(&function, function_arg, function_args, entry, &file_info);
+        assert_eq!(result.unwrap().to_int(), 1);
+    }
+
+    #[test]
+    fn function_dayofyear_dec31() {
+        let function = Function::DayOfYear;
+        let function_arg = String::from("2023-12-31");
+        let function_args = vec![];
+        let entry = None;
+        let file_info = None;
+
+        let result = get_value(&function, function_arg, function_args, entry, &file_info);
+        assert_eq!(result.unwrap().to_int(), 365);
+    }
+
+    #[test]
+    fn function_date_add() {
+        let function = Function::DateAdd;
+        let function_arg = String::from("2023-10-01");
+        let function_args = vec![String::from("10")];
+        let entry = None;
+        let file_info = None;
+
+        let result = get_value(&function, function_arg, function_args, entry, &file_info);
+        assert!(result.unwrap().to_string().starts_with("2023-10-11"));
+    }
+
+    #[test]
+    fn function_date_add_negative() {
+        let function = Function::DateAdd;
+        let function_arg = String::from("2023-10-01");
+        let function_args = vec![String::from("-5")];
+        let entry = None;
+        let file_info = None;
+
+        let result = get_value(&function, function_arg, function_args, entry, &file_info);
+        assert!(result.unwrap().to_string().starts_with("2023-09-26"));
+    }
+
+    #[test]
+    fn function_date_add_missing_arg() {
+        let function = Function::DateAdd;
+        let function_arg = String::from("2023-10-01");
+        let function_args = vec![];
+        let entry = None;
+        let file_info = None;
+
+        let result = get_value(&function, function_arg, function_args, entry, &file_info);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn function_date_sub() {
+        let function = Function::DateSub;
+        let function_arg = String::from("2023-10-15");
+        let function_args = vec![String::from("10")];
+        let entry = None;
+        let file_info = None;
+
+        let result = get_value(&function, function_arg, function_args, entry, &file_info);
+        assert!(result.unwrap().to_string().starts_with("2023-10-05"));
+    }
+
+    #[test]
+    fn function_date_sub_cross_month() {
+        let function = Function::DateSub;
+        let function_arg = String::from("2023-03-01");
+        let function_args = vec![String::from("1")];
+        let entry = None;
+        let file_info = None;
+
+        let result = get_value(&function, function_arg, function_args, entry, &file_info);
+        assert!(result.unwrap().to_string().starts_with("2023-02-28"));
+    }
+
+    #[test]
+    fn function_date_sub_missing_arg() {
+        let function = Function::DateSub;
+        let function_arg = String::from("2023-10-01");
+        let function_args = vec![];
+        let entry = None;
+        let file_info = None;
+
+        let result = get_value(&function, function_arg, function_args, entry, &file_info);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn function_date_diff() {
+        let function = Function::DateDiff;
+        let function_arg = String::from("2023-10-15");
+        let function_args = vec![String::from("2023-10-01")];
+        let entry = None;
+        let file_info = None;
+
+        let result = get_value(&function, function_arg, function_args, entry, &file_info);
+        assert_eq!(result.unwrap().to_int(), 14);
+    }
+
+    #[test]
+    fn function_date_diff_negative() {
+        let function = Function::DateDiff;
+        let function_arg = String::from("2023-10-01");
+        let function_args = vec![String::from("2023-10-15")];
+        let entry = None;
+        let file_info = None;
+
+        let result = get_value(&function, function_arg, function_args, entry, &file_info);
+        assert_eq!(result.unwrap().to_int(), -14);
+    }
+
+    #[test]
+    fn function_date_diff_same_day() {
+        let function = Function::DateDiff;
+        let function_arg = String::from("2023-10-01");
+        let function_args = vec![String::from("2023-10-01")];
+        let entry = None;
+        let file_info = None;
+
+        let result = get_value(&function, function_arg, function_args, entry, &file_info);
+        assert_eq!(result.unwrap().to_int(), 0);
+    }
+
+    #[test]
+    fn function_date_diff_missing_arg() {
+        let function = Function::DateDiff;
+        let function_arg = String::from("2023-10-01");
+        let function_args = vec![];
+        let entry = None;
+        let file_info = None;
+
+        let result = get_value(&function, function_arg, function_args, entry, &file_info);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn function_from_unixtime() {
+        let function = Function::FromUnixtime;
+        let function_arg = String::from("0");
+        let function_args = vec![];
+        let entry = None;
+        let file_info = None;
+
+        let result = get_value(&function, function_arg, function_args, entry, &file_info);
+        assert_eq!(result.unwrap().to_string(), "1970-01-01 00:00:00");
+    }
+
+    #[test]
+    fn function_from_unixtime_specific() {
+        let function = Function::FromUnixtime;
+        let function_arg = String::from("1696118400"); // 2023-10-01 00:00:00 UTC
+        let function_args = vec![];
+        let entry = None;
+        let file_info = None;
+
+        let result = get_value(&function, function_arg, function_args, entry, &file_info);
+        assert_eq!(result.unwrap().to_string(), "2023-10-01 00:00:00");
+    }
+
+    #[test]
+    fn function_from_unixtime_invalid() {
+        let function = Function::FromUnixtime;
+        let function_arg = String::from("not-a-number");
+        let function_args = vec![];
+        let entry = None;
+        let file_info = None;
+
+        let result = get_value(&function, function_arg, function_args, entry, &file_info);
+        assert_eq!(result.unwrap().to_string(), "");
+    }
+
+    #[test]
+    fn function_last_day_october() {
+        let function = Function::LastDay;
+        let function_arg = String::from("2023-10-15");
+        let function_args = vec![];
+        let entry = None;
+        let file_info = None;
+
+        let result = get_value(&function, function_arg, function_args, entry, &file_info);
+        assert_eq!(result.unwrap().to_string(), "2023-10-31");
+    }
+
+    #[test]
+    fn function_last_day_february() {
+        let function = Function::LastDay;
+        let function_arg = String::from("2023-02-01");
+        let function_args = vec![];
+        let entry = None;
+        let file_info = None;
+
+        let result = get_value(&function, function_arg, function_args, entry, &file_info);
+        assert_eq!(result.unwrap().to_string(), "2023-02-28");
+    }
+
+    #[test]
+    fn function_last_day_february_leap() {
+        let function = Function::LastDay;
+        let function_arg = String::from("2024-02-10");
+        let function_args = vec![];
+        let entry = None;
+        let file_info = None;
+
+        let result = get_value(&function, function_arg, function_args, entry, &file_info);
+        assert_eq!(result.unwrap().to_string(), "2024-02-29");
+    }
+
+    #[test]
+    fn function_last_day_december() {
+        let function = Function::LastDay;
+        let function_arg = String::from("2023-12-05");
+        let function_args = vec![];
+        let entry = None;
+        let file_info = None;
+
+        let result = get_value(&function, function_arg, function_args, entry, &file_info);
+        assert_eq!(result.unwrap().to_string(), "2023-12-31");
+    }
+
+    #[test]
+    fn function_last_day_invalid() {
+        let function = Function::LastDay;
+        let function_arg = String::from("not-a-date");
+        let function_args = vec![];
+        let entry = None;
+        let file_info = None;
+
+        let result = get_value(&function, function_arg, function_args, entry, &file_info);
+        assert_eq!(result.unwrap().to_string(), "");
+    }
+
     #[test]
     #[cfg(all(unix, feature = "users"))]
     fn function_current_uid() {

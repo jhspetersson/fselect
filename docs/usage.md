@@ -234,6 +234,13 @@ Used mostly for formatting results.
 | MONTH                               | Extract month of the year                              | `select month(name) from /home/user/Downloads`                           |
 | YEAR                                | Extract year of the date                               | `select year(name) from /home/user/Downloads`                            |
 | DOW or DAYOFWEEK                    | Returns day of the week (1 - Sunday, 2 - Monday, etc.) | `select name, modified, dow(modified) from /home/user/projects/FizzBuzz` |
+| DAYNAME                             | Returns the name of the day of the week                | `select dayname(modified) from /home/user/Downloads`                     |
+| DOY or DAYOFYEAR                    | Returns the day of the year (1-366)                    | `select dayofyear(modified) from /home/user/Downloads`                   |
+| DATE_ADD or DATEADD                 | Add days to a date                                     | `select "date_add(modified, 30) from /home/user"`                        |
+| DATE_SUB or DATESUB                 | Subtract days from a date                              | `select "date_sub(modified, 7) from /home/user"`                         |
+| DATE_DIFF or DATEDIFF               | Number of days between two dates                       | `select "date_diff(modified, created) from /home/user"`                  |
+| FROM_UNIXTIME                       | Convert a Unix timestamp to a datetime string          | `select "from_unixtime(mtime) from /home/user"`                          |
+| LAST_DAY or LAST_DATE               | Last day of the month for a given date                 | `select "last_day(modified) from /home/user"`                            |
 
 #### User functions
 

@@ -1187,11 +1187,11 @@ impl<'a> Searcher<'a> {
                     return Ok(Variant::from_bool(false));
                 }
                 _ => {
-                    self.fms
-                        .update_file_metadata(entry, self.current_follow_symlinks);
-
-                    if let Some(attrs) = self.fms.get_file_metadata() {
-                        return Ok(Variant::from_bool(attrs.file_type().is_symlink()));
+                    // Always use symlink_metadata (follow_symlinks=false) here,
+                    // because fs::metadata resolves symlinks and would never
+                    // report is_symlink() = true.
+                    if let Some(meta) = get_metadata(entry, false) {
+                        return Ok(Variant::from_bool(meta.file_type().is_symlink()));
                     }
                 }
             },
@@ -3056,7 +3056,7 @@ mod tests {
     }
 
     #[test]
-    fn test_is_symlink_false_when_following_symlinks() {
+    fn test_is_symlink_true_when_following_symlinks() {
         let tmp = std::env::temp_dir().join("fselect_test_symlink_follow_islink");
         let _ = fs::remove_dir_all(&tmp);
         fs::create_dir_all(&tmp).unwrap();
@@ -3083,8 +3083,8 @@ mod tests {
 
         assert_eq!(
             result.to_string(),
-            "false",
-            "is_symlink should be false when following symlinks"
+            "true",
+            "is_symlink should be true for a symlink even when follow_symlinks is on"
         );
     }
 

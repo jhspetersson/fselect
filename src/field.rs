@@ -436,6 +436,11 @@ fields! {
         @description = "Returns a boolean signifying whether the file has extended attributes"
         HasXattrs,
 
+        #[text = ["xattr_count"], data_type = "numeric"]
+        @weight = 2
+        @description = "Returns the count of extended attributes on the file or alternate data streams on Windows"
+        XattrCount,
+
         #[text = ["extattrs"]]
         @weight = 2
         @description = "Returns the extended file attributes as a string of chattr/lsattr flag letters"

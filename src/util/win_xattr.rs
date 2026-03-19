@@ -61,6 +61,53 @@ pub fn has_any_ads(path: &Path) -> bool {
     false
 }
 
+/// Returns the number of non-default alternate data streams on the file at `path`.
+pub fn count_ads(path: &Path) -> usize {
+    let wide: Vec<u16> = path
+        .as_os_str()
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
+
+    let mut stream_data: WIN32_FIND_STREAM_DATA = unsafe { std::mem::zeroed() };
+
+    let handle: HANDLE = unsafe {
+        FindFirstStreamW(
+            wide.as_ptr(),
+            FindStreamInfoStandard,
+            &mut stream_data as *mut _ as *mut core::ffi::c_void,
+            0,
+        )
+    };
+
+    if handle == INVALID_HANDLE_VALUE {
+        return 0;
+    }
+
+    let mut count = 0;
+
+    loop {
+        let name = stream_name_from_data(&stream_data);
+        if name != "::$DATA" {
+            count += 1;
+        }
+
+        let ok = unsafe {
+            FindNextStreamW(
+                handle,
+                &mut stream_data as *mut _ as *mut core::ffi::c_void,
+            )
+        };
+
+        if ok == 0 {
+            break;
+        }
+    }
+
+    unsafe { FindClose(handle) };
+    count
+}
+
 /// Returns `true` if the file at `path` has an alternate data stream with the
 /// given `name`. The name should be provided without the `:` prefix or `:$DATA`
 /// suffix (e.g., just `"Zone.Identifier"`).

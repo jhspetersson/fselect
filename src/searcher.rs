@@ -1608,6 +1608,28 @@ impl<'a> Searcher<'a> {
                     return Ok(Variant::from_bool(false));
                 }
             }
+            Field::XattrCount => {
+                #[cfg(unix)]
+                {
+                    if let Ok(file) = fs::File::open(entry.path()) {
+                        if let Ok(xattrs) = file.list_xattr() {
+                            return Ok(Variant::from_int(xattrs.count() as i64));
+                        }
+                    }
+                }
+
+                #[cfg(windows)]
+                {
+                    return Ok(Variant::from_int(
+                        crate::util::win_xattr::count_ads(&entry.path()) as i64,
+                    ));
+                }
+
+                #[cfg(not(any(unix, windows)))]
+                {
+                    return Ok(Variant::from_int(0));
+                }
+            }
             Field::Extattrs => {
                 #[cfg(target_os = "linux")]
                 {

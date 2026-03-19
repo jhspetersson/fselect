@@ -54,12 +54,11 @@ fn main() -> ExitCode {
         Ok(cnf) => cnf,
         Err(err) => {
             eprintln!("{}", err);
-            default_config.clone()
+            Config::default()
         }
     };
 
-    let env_var_value = std::env::var("NO_COLOR").ok().unwrap_or_default();
-    let env_no_color = str_to_bool(&env_var_value).unwrap_or(false);
+    let env_no_color = std::env::var("NO_COLOR").is_ok();
     let mut no_color = env_no_color || config.no_color.unwrap_or(false);
 
     #[cfg(windows)]
@@ -134,14 +133,16 @@ fn main() -> ExitCode {
             || first_arg.starts_with("--config")
             || first_arg.starts_with("/c")
         {
+            if args.len() < 2 {
+                eprintln!("Error: --config requires a path argument");
+                return ExitCode::from(2);
+            }
+
             let config_path = args[1].to_ascii_lowercase();
-            config = match Config::from(PathBuf::from(&config_path)) {
-                Ok(cnf) => cnf,
-                Err(err) => {
-                    eprintln!("{}", err);
-                    default_config.clone()
-                }
-            };
+            config = Config::from(PathBuf::from(&config_path)).unwrap_or_else(|err| {
+                eprintln!("{}", err);
+                Config::default()
+            });
 
             args.remove(0);
         } else if first_arg.starts_with("--no-error") {
@@ -187,62 +188,56 @@ fn main() -> ExitCode {
                 loop {
                     let readline = rl.readline("query> ");
                     match readline {
-                        Ok(cmd)
-                            if cmd.to_ascii_lowercase().trim() == "quit"
-                                || cmd.to_ascii_lowercase().trim() == "exit" =>
-                        {
-                            break
-                        }
-                        Ok(cmd) if cmd.to_ascii_lowercase().trim() == "help" => {
-                            usage_info(config.clone(), default_config.clone(), no_color);
-                        }
-                        Ok(cmd) if cmd.to_ascii_lowercase().trim() == "pwd" => {
-                            match env::current_dir() {
-                                Ok(path) => println!("{}", path.to_string_lossy()),
-                                Err(err) => error_message("pwd", &err.to_string()),
-                            }
-                        }
-                        Ok(cmd) if cmd.to_ascii_lowercase().trim().starts_with("cd") => {
-                            let parts: Vec<&str> = cmd.trim().split_whitespace().collect();
-                            if parts.len() < 2 {
-                                error_message("cd", "no path specified");
+                        Ok(cmd) => {
+                            let trimmed = cmd.trim().to_ascii_lowercase();
+                            if trimmed == "quit" || trimmed == "exit" {
+                                break;
+                            } else if trimmed == "help" {
+                                usage_info(config.clone(), default_config.clone(), no_color);
+                            } else if trimmed == "pwd" {
+                                match env::current_dir() {
+                                    Ok(path) => println!("{}", path.to_string_lossy()),
+                                    Err(err) => error_message("pwd", &err.to_string()),
+                                }
+                            } else if trimmed.starts_with("cd") {
+                                let parts: Vec<&str> = cmd.trim().split_whitespace().collect();
+                                if parts.len() < 2 {
+                                    error_message("cd", "no path specified");
+                                } else {
+                                    let _ = rl.add_history_entry(&cmd);
+                                    let new_path: String = parts.iter().skip(1).cloned().collect::<Vec<&str>>().join(" ");
+                                    match env::set_current_dir(new_path) {
+                                        Ok(()) => {}
+                                        Err(err) => error_message("cd", &err.to_string()),
+                                    }
+                                }
+                            } else if trimmed.starts_with("errors") {
+                                let _ = rl.add_history_entry(&cmd);
+                                let parts: Vec<&str> = cmd.trim().split_whitespace().collect();
+                                if parts.len() == 2 {
+                                    let no_errors = !str_to_bool(&parts[1]).unwrap_or(true);
+                                    set_no_errors(no_errors);
+                                }
+                                println!("Errors are {}", if no_color {
+                                    (if get_no_errors() { "OFF" } else { "ON" }).into()
+                                } else {
+                                    Yellow.paint(if get_no_errors() { "OFF" } else { "ON" })
+                                });
+                            } else if trimmed.starts_with("debug") {
+                                let _ = rl.add_history_entry(&cmd);
+                                let parts: Vec<&str> = cmd.trim().split_whitespace().collect();
+                                if parts.len() == 2 {
+                                    config.debug = str_to_bool(&parts[1]).unwrap_or(false);
+                                }
+                                if no_color {
+                                    println!("DEBUG IS {}", (if config.debug { "ON" } else { "OFF" }));
+                                } else {
+                                    println!("DEBUG IS {}", Yellow.paint(if config.debug { "ON" } else { "OFF" }));
+                                }
                             } else {
                                 let _ = rl.add_history_entry(&cmd);
-                                let new_path: String = parts.iter().skip(1).cloned().collect::<Vec<&str>>().join(" ");
-                                match env::set_current_dir(new_path) {
-                                    Ok(()) => {}
-                                    Err(err) => error_message("cd", &err.to_string()),
-                                }
+                                exec_search(vec![cmd], &mut config, &default_config, no_color);
                             }
-                        }
-                        Ok(cmd) if cmd.to_ascii_lowercase().trim().starts_with("errors") => {
-                            let _ = rl.add_history_entry(&cmd);
-                            let parts: Vec<&str> = cmd.trim().split_whitespace().collect();
-                            if parts.len() == 2 {
-                                let no_errors = !str_to_bool(&parts[1]).unwrap_or(true);
-                                set_no_errors(no_errors);
-                            }
-                            println!("Errors are {}", if no_color {
-                                (if get_no_errors() { "OFF" } else { "ON" }).into()
-                            } else {
-                                Yellow.paint(if get_no_errors() { "OFF" } else { "ON" })
-                            });
-                        }
-                        Ok(cmd) if cmd.to_ascii_lowercase().trim().starts_with("debug") => {
-                            let _ = rl.add_history_entry(&cmd);
-                            let parts: Vec<&str> = cmd.trim().split_whitespace().collect();
-                            if parts.len() == 2 {
-                                config.debug = str_to_bool(&parts[1]).unwrap_or(false);
-                            }
-                            if no_color {
-                                println!("DEBUG IS {}", (if config.debug { "ON" } else { "OFF" }));
-                            } else {
-                                println!("DEBUG IS {}", Yellow.paint(if config.debug { "ON" } else { "OFF" }));
-                            }
-                        }
-                        Ok(query) => {
-                            let _ = rl.add_history_entry(&query);
-                            exec_search(vec![query], &mut config, &default_config, no_color, true);
                         }
                         Err(ReadlineError::Interrupted) => {
                             println!("CTRL-C");
@@ -272,7 +267,7 @@ fn main() -> ExitCode {
             }
         }
     } else {
-        exit_value = Some(exec_search(args, &mut config, &default_config, no_color, false));
+        exit_value = Some(exec_search(args, &mut config, &default_config, no_color));
     }
 
     config.save();
@@ -296,7 +291,7 @@ fn main() -> ExitCode {
     ExitCode::SUCCESS
 }
 
-fn exec_search(query: Vec<String>, config: &mut Config, default_config: &Config, no_color: bool, interactive: bool) -> u8 {
+fn exec_search(query: Vec<String>, config: &mut Config, default_config: &Config, no_color: bool) -> u8 {
     if config.debug {
         dbg!(&query);
     }
@@ -311,10 +306,7 @@ fn exec_search(query: Vec<String>, config: &mut Config, default_config: &Config,
 
     if parser.there_are_remaining_lexemes() {
         error_message("query", "could not parse tokens at the end of the query");
-
-        if !interactive {
-            std::process::exit(2);
-        }
+        return 2;
     }
 
     match query {

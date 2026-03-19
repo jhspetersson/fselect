@@ -186,6 +186,16 @@ static FIELD_WITH_ALIAS: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new("^([a-zA-Z0-9_]+)\\.([a-zA-Z0-9_]+)$").unwrap()
 });
 
+macro_rules! try_output {
+    ($expr:expr, $ret:expr) => {
+        if let Err(e) = $expr {
+            if e.kind() == ErrorKind::BrokenPipe {
+                return $ret;
+            }
+        }
+    };
+}
+
 impl<'a> Searcher<'a> {
     pub fn new(
         query: &'a Query,
@@ -263,11 +273,7 @@ impl<'a> Searcher<'a> {
 
         if !self.silent_mode {
             let col_count = self.query.fields.len();
-            if let Err(e) = self.results_writer.write_header(&self.query.raw_query, col_count, &mut std::io::stdout()) {
-                if e.kind() == ErrorKind::BrokenPipe {
-                    return Ok(());
-                }
-            }
+            try_output!(self.results_writer.write_header(&self.query.raw_query, col_count, &mut std::io::stdout()), Ok(()));
         }
 
         let start_time = std::time::Instant::now();
@@ -486,18 +492,10 @@ impl<'a> Searcher<'a> {
                     let rendered = String::from(buf);
                     if !self.silent_mode {
                         if !first {
-                            if let Err(e) = self.results_writer.write_row_separator(&mut std::io::stdout()) {
-                                if e.kind() == ErrorKind::BrokenPipe {
-                                    return Ok(());
-                                }
-                            }
+                            try_output!(self.results_writer.write_row_separator(&mut std::io::stdout()), Ok(()));
                         }
                         first = false;
-                        if let Err(e) = write!(std::io::stdout(), "{}", &rendered) {
-                            if e.kind() == ErrorKind::BrokenPipe {
-                                return Ok(());
-                            }
-                        }
+                        try_output!(write!(std::io::stdout(), "{}", &rendered), Ok(()));
                     }
                     self.output_buffer.insert(
                         Criteria::new(Rc::new(vec![]), vec![], Rc::new(vec![])),
@@ -533,11 +531,7 @@ impl<'a> Searcher<'a> {
                 );
 
                 if !self.silent_mode {
-                    if let Err(e) = write!(std::io::stdout(), "{}", rendered) {
-                        if e.kind() == ErrorKind::BrokenPipe {
-                            return Ok(());
-                        }
-                    }
+                    try_output!(write!(std::io::stdout(), "{}", rendered), Ok(()));
                 }
             }
         } else if self.is_buffered() && !self.silent_mode {
@@ -545,19 +539,10 @@ impl<'a> Searcher<'a> {
             for piece in self.output_buffer.iter_values().skip(self.query.offset as usize) {
                 if first {
                     first = false;
-                } else if let Err(e) = self
-                    .results_writer
-                    .write_row_separator(&mut std::io::stdout())
-                {
-                    if e.kind() == ErrorKind::BrokenPipe {
-                        return Ok(());
-                    }
+                } else {
+                    try_output!(self.results_writer.write_row_separator(&mut std::io::stdout()), Ok(()));
                 }
-                if let Err(e) = write!(std::io::stdout(), "{}", piece) {
-                    if e.kind() == ErrorKind::BrokenPipe {
-                        return Ok(());
-                    }
-                }
+                try_output!(write!(std::io::stdout(), "{}", piece), Ok(()));
             }
         }
 
@@ -2123,10 +2108,9 @@ impl<'a> Searcher<'a> {
                 ),
                 String::from(buf),
             );
-        } else if let Err(e) = write!(std::io::stdout(), "{}", String::from(buf)) {
-            if e.kind() == ErrorKind::BrokenPipe {
-                return Err(SearchError::fatal("broken pipe").with_source("output"));
-            }
+        } else {
+            try_output!(write!(std::io::stdout(), "{}", String::from(buf)),
+                        Err(SearchError::fatal("broken pipe").with_source("output")));
         }
 
         Ok(())

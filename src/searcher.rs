@@ -663,16 +663,13 @@ impl<'a> Searcher<'a> {
                         Ok(entry) => {
                             let mut path = entry.path();
                             let pass_ignores = if self.current_apply_gitignore || self.current_apply_hgignore || self.current_apply_dockerignore {
-                                let canonical_path = match crate::util::canonical_path(&path) {
-                                    Ok(canonicalized) => PathBuf::from(canonicalized),
-                                    Err(_) => path.clone(),
-                                };
+                                let canonical_entry_path = PathBuf::from(&canonical_path).join(entry.file_name());
 
                                 // Check the path against the filters
                                 #[cfg(feature = "git")]
                                 let pass_gitignore = !self.current_apply_gitignore
                                     || !(git_repository.is_some() &&
-                                    git_repository.unwrap().is_path_ignored(&canonical_path)
+                                    git_repository.unwrap().is_path_ignored(&canonical_entry_path)
                                         .unwrap_or(false));
                                 #[cfg(not(feature = "git"))]
                                 let pass_gitignore = true;
@@ -680,12 +677,12 @@ impl<'a> Searcher<'a> {
                                 let pass_hgignore = !self.current_apply_hgignore
                                     || !matches_hgignore_filter(
                                     &self.hgignore_filters,
-                                    canonical_path.to_string_lossy().as_ref(),
+                                    canonical_entry_path.to_string_lossy().as_ref(),
                                 );
                                 let pass_dockerignore = !self.current_apply_dockerignore
                                     || !matches_dockerignore_filter(
                                     &self.dockerignore_filters,
-                                    canonical_path.to_string_lossy().as_ref(),
+                                    canonical_entry_path.to_string_lossy().as_ref(),
                                 );
 
                                 pass_gitignore && pass_hgignore && pass_dockerignore

@@ -974,29 +974,20 @@ impl <'a> Parser<'a> {
     }
 
     fn parse_function(&mut self, function: Function) -> Result<Expr, String> {
-        let is_boolean_function = function.is_boolean_function();
         let mut function_expr = Expr::function(function);
 
         let mut curly_mode = false;
         if let Some(lexeme) = self.next_lexeme() {
             if lexeme != Lexeme::Open && lexeme != Lexeme::CurlyOpen {
                 self.drop_lexeme();
-                if is_boolean_function {
-                    return Ok(function_expr);
-                }
-
-                return Err("Error in function expression".to_string());
+                return Ok(function_expr);
             }
 
             if lexeme == Lexeme::CurlyOpen {
                 curly_mode = true;
             }
         } else {
-            if is_boolean_function {
-                return Ok(function_expr);
-            }
-
-            return Err("Error in function expression".to_string());
+            return Ok(function_expr);
         }
 
         if let Ok(Some(function_arg)) = self.parse_expr() {
@@ -2721,19 +2712,100 @@ mod tests {
     }
 
     #[test]
-    fn unquoted_function_name_as_value_fallback() {
+    fn unquoted_function_name_parsed_as_function() {
         let query = "select name from /test where name = upper";
         let mut lexer = Lexer::new(vec![query.to_string()]);
         let mut p = Parser::new(&mut lexer);
         let result = p.parse(false);
         assert!(result.is_ok());
         let query = result.unwrap();
-        assert!(!query.expr.is_none());
+        assert!(query.expr.is_some());
 
         let expr = query.expr.unwrap();
         assert_eq!(expr.op, Some(Op::Eq));
         let right = expr.right.unwrap();
-        assert_eq!(right.val, Some(String::from("upper")));
+        assert_eq!(right.function, Some(Function::Upper));
+    }
+
+    #[test]
+    fn zero_arg_function_without_parens_as_function_arg() {
+        let query = "select dayname(curdate()) from /test limit 1";
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
+        let query = p.parse(false).unwrap();
+        assert!(!p.there_are_remaining_lexemes());
+
+        let query2 = "select dayname(curdate) from /test limit 1";
+        let mut lexer2 = Lexer::new(vec![query2.to_string()]);
+        let mut p2 = Parser::new(&mut lexer2);
+        let query2 = p2.parse(false).unwrap();
+        assert!(!p2.there_are_remaining_lexemes());
+
+        assert_eq!(query.fields, query2.fields);
+    }
+
+    #[test]
+    fn zero_arg_function_without_parens_in_where() {
+        let query = "select name from /test where name = curdate()";
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
+        let query = p.parse(false).unwrap();
+        assert!(!p.there_are_remaining_lexemes());
+
+        let query2 = "select name from /test where name = curdate";
+        let mut lexer2 = Lexer::new(vec![query2.to_string()]);
+        let mut p2 = Parser::new(&mut lexer2);
+        let query2 = p2.parse(false).unwrap();
+        assert!(!p2.there_are_remaining_lexemes());
+
+        assert_eq!(query.expr, query2.expr);
+    }
+
+    #[test]
+    fn zero_arg_function_without_parens_does_not_eat_next_token() {
+        let query = "select name from /test where name = curdate and size > 100";
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
+        let query = p.parse(false).unwrap();
+        assert!(!p.there_are_remaining_lexemes());
+
+        let expr = query.expr.unwrap();
+        assert_eq!(expr.logical_op, Some(LogicalOp::And));
+        assert!(expr.right.is_some());
+    }
+
+    #[test]
+    fn multiple_zero_arg_functions_without_parens() {
+        let query = "select curdate(), curtime() from /test limit 1";
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
+        let query = p.parse(false).unwrap();
+        assert!(!p.there_are_remaining_lexemes());
+
+        let query2 = "select curdate, curtime from /test limit 1";
+        let mut lexer2 = Lexer::new(vec![query2.to_string()]);
+        let mut p2 = Parser::new(&mut lexer2);
+        let query2 = p2.parse(false).unwrap();
+        assert!(!p2.there_are_remaining_lexemes());
+
+        assert_eq!(query.fields, query2.fields);
+    }
+
+    #[test]
+    fn nested_functions_without_parens_on_inner() {
+        let query = "select upper(dayname(now())) from /test limit 1";
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
+        let query = p.parse(false).unwrap();
+        assert!(!p.there_are_remaining_lexemes());
+
+        let query2 = "select upper(dayname(now)) from /test limit 1";
+        let mut lexer2 = Lexer::new(vec![query2.to_string()]);
+        let mut p2 = Parser::new(&mut lexer2);
+        let query2 = p2.parse(false).unwrap();
+        assert!(!p2.there_are_remaining_lexemes());
+
+        assert_eq!(query.fields, query2.fields);
     }
 
 }

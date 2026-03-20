@@ -631,6 +631,11 @@ fields! {
         @weight = 16
         @description = "Returns lens model used to take the photo"
         ExifLensModel,
+
+        #[text = ["exif_description", "exif_desc"]]
+        @weight = 16
+        @description = "Returns image description from EXIF metadata"
+        ExifDescription,
         
         #[text = ["mime"]]
         @weight = 16

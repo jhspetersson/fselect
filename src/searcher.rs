@@ -1915,7 +1915,22 @@ impl<'a> Searcher<'a> {
             | Field::ExifCopyright
             | Field::ExifOrientation
             | Field::ExifFlash
-            | Field::ExifColorSpace => {
+            | Field::ExifColorSpace
+            | Field::ExifExposureProgram
+            | Field::ExifExposureBias
+            | Field::ExifWhiteBalance
+            | Field::ExifMeteringMode
+            | Field::ExifSceneType
+            | Field::ExifContrast
+            | Field::ExifSaturation
+            | Field::ExifSharpness
+            | Field::ExifBodySerial
+            | Field::ExifLensSerial
+            | Field::ExifUserComment
+            | Field::ExifImageWidth
+            | Field::ExifImageHeight
+            | Field::ExifMaxAperture
+            | Field::ExifDigitalZoom => {
                 let key = match field {
                     Field::ExifMake => "Make",
                     Field::ExifModel => "Model",
@@ -1936,6 +1951,21 @@ impl<'a> Searcher<'a> {
                     Field::ExifOrientation => "Orientation",
                     Field::ExifFlash => "Flash",
                     Field::ExifColorSpace => "ColorSpace",
+                    Field::ExifExposureProgram => "ExposureProgram",
+                    Field::ExifExposureBias => "ExposureBiasValue",
+                    Field::ExifWhiteBalance => "WhiteBalance",
+                    Field::ExifMeteringMode => "MeteringMode",
+                    Field::ExifSceneType => "SceneCaptureType",
+                    Field::ExifContrast => "Contrast",
+                    Field::ExifSaturation => "Saturation",
+                    Field::ExifSharpness => "Sharpness",
+                    Field::ExifBodySerial => "BodySerialNumber",
+                    Field::ExifLensSerial => "LensSerialNumber",
+                    Field::ExifUserComment => "UserComment",
+                    Field::ExifImageWidth => "PixelXDimension",
+                    Field::ExifImageHeight => "PixelYDimension",
+                    Field::ExifMaxAperture => "MaxApertureValue",
+                    Field::ExifDigitalZoom => "DigitalZoomRatio",
                     _ => unreachable!(),
                 };
                 if let Some(val) = self.fms.get_exif_string(entry, key) {

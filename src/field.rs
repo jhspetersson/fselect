@@ -661,6 +661,81 @@ fields! {
         @weight = 16
         @description = "Returns the color space of the image"
         ExifColorSpace,
+
+        #[text = ["exif_exposure_program", "exif_exp_program"]]
+        @weight = 16
+        @description = "Returns the exposure program used"
+        ExifExposureProgram,
+
+        #[text = ["exif_exposure_bias", "exif_exp_bias"], data_type = "numeric"]
+        @weight = 16
+        @description = "Returns the exposure bias value"
+        ExifExposureBias,
+
+        #[text = ["exif_white_balance", "exif_wb"]]
+        @weight = 16
+        @description = "Returns the white balance mode"
+        ExifWhiteBalance,
+
+        #[text = ["exif_metering_mode"]]
+        @weight = 16
+        @description = "Returns the metering mode"
+        ExifMeteringMode,
+
+        #[text = ["exif_scene_type", "exif_scene"]]
+        @weight = 16
+        @description = "Returns the scene capture type"
+        ExifSceneType,
+
+        #[text = ["exif_contrast"]]
+        @weight = 16
+        @description = "Returns the contrast setting"
+        ExifContrast,
+
+        #[text = ["exif_saturation"]]
+        @weight = 16
+        @description = "Returns the saturation setting"
+        ExifSaturation,
+
+        #[text = ["exif_sharpness"]]
+        @weight = 16
+        @description = "Returns the sharpness setting"
+        ExifSharpness,
+
+        #[text = ["exif_body_serial", "exif_serial"]]
+        @weight = 16
+        @description = "Returns the camera body serial number"
+        ExifBodySerial,
+
+        #[text = ["exif_lens_serial"]]
+        @weight = 16
+        @description = "Returns the lens serial number"
+        ExifLensSerial,
+
+        #[text = ["exif_user_comment", "exif_comment"]]
+        @weight = 16
+        @description = "Returns the user comment from EXIF metadata"
+        ExifUserComment,
+
+        #[text = ["exif_image_width", "exif_width"]]
+        @weight = 16
+        @description = "Returns the image width from EXIF metadata"
+        ExifImageWidth,
+
+        #[text = ["exif_image_height", "exif_height"]]
+        @weight = 16
+        @description = "Returns the image height from EXIF metadata"
+        ExifImageHeight,
+
+        #[text = ["exif_max_aperture"]]
+        @weight = 16
+        @description = "Returns the max aperture value of the lens"
+        ExifMaxAperture,
+
+        #[text = ["exif_digital_zoom", "exif_dzoom"], data_type = "numeric"]
+        @weight = 16
+        @description = "Returns the digital zoom ratio"
+        ExifDigitalZoom,
         
         #[text = ["mime"]]
         @weight = 16

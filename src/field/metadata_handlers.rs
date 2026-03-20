@@ -304,10 +304,7 @@ pub fn handle_has_xattrs(ctx: &mut FieldContext) -> Result<Variant, SearchError>
         ));
     }
 
-    #[cfg(not(any(unix, windows)))]
-    {
-        return Ok(Variant::from_bool(false));
-    }
+    Ok(Variant::empty(VariantType::Bool))
 }
 
 pub fn handle_xattr_count(ctx: &mut FieldContext) -> Result<Variant, SearchError> {
@@ -327,10 +324,7 @@ pub fn handle_xattr_count(ctx: &mut FieldContext) -> Result<Variant, SearchError
         ));
     }
 
-    #[cfg(not(any(unix, windows)))]
-    {
-        return Ok(Variant::from_int(0));
-    }
+    Ok(Variant::empty(VariantType::Int))
 }
 
 pub fn handle_extattrs(ctx: &mut FieldContext) -> Result<Variant, SearchError> {
@@ -358,10 +352,7 @@ pub fn handle_has_extattrs(ctx: &mut FieldContext) -> Result<Variant, SearchErro
         }
     }
 
-    #[cfg(not(target_os = "linux"))]
-    {
-        return Ok(Variant::from_bool(false));
-    }
+    Ok(Variant::empty(VariantType::Bool))
 }
 
 pub fn handle_acl(ctx: &mut FieldContext) -> Result<Variant, SearchError> {
@@ -405,10 +396,7 @@ pub fn handle_has_acl(ctx: &mut FieldContext) -> Result<Variant, SearchError> {
         ));
     }
 
-    #[cfg(not(any(target_os = "linux", windows)))]
-    {
-        return Ok(Variant::from_bool(false));
-    }
+    Ok(Variant::empty(VariantType::Bool))
 }
 
 pub fn handle_default_acl(ctx: &mut FieldContext) -> Result<Variant, SearchError> {
@@ -442,10 +430,7 @@ pub fn handle_has_default_acl(ctx: &mut FieldContext) -> Result<Variant, SearchE
         }
     }
 
-    #[cfg(not(target_os = "linux"))]
-    {
-        return Ok(Variant::from_bool(false));
-    }
+    Ok(Variant::empty(VariantType::Bool))
 }
 
 pub fn handle_has_capabilities(ctx: &mut FieldContext) -> Result<Variant, SearchError> {
@@ -458,7 +443,7 @@ pub fn handle_has_capabilities(ctx: &mut FieldContext) -> Result<Variant, Search
         }
     }
 
-    Ok(Variant::from_bool(false))
+    Ok(Variant::empty(VariantType::Bool))
 }
 
 pub fn handle_capabilities(ctx: &mut FieldContext) -> Result<Variant, SearchError> {

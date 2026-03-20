@@ -1854,11 +1854,16 @@ impl<'a> Searcher<'a> {
                     }
                 }
             }
-            Field::ExifDateTime => {
+            Field::ExifDateTime | Field::ExifDateTimeOriginal => {
                 self.fms.update_exif_metadata(entry);
+                let key = match field {
+                    Field::ExifDateTime => "DateTime",
+                    Field::ExifDateTimeOriginal => "DateTimeOriginal",
+                    _ => unreachable!(),
+                };
 
                 if let Some(exif_info) = self.fms.get_exif_metadata() {
-                    if let Some(exif_value) = exif_info.get("DateTime") {
+                    if let Some(exif_value) = exif_info.get(key) {
                         if let Ok(exif_datetime) = parse_datetime(exif_value) {
                             return Ok(Variant::from_datetime(exif_datetime.0));
                         }

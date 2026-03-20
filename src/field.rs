@@ -546,6 +546,11 @@ fields! {
         @weight = 16
         @description = "Returns date and time of taken photo"
         ExifDateTime,
+
+        #[text = ["exif_datetime_original", "exif_dto"], data_type = "datetime"]
+        @weight = 16
+        @description = "Returns original date and time when the photo was taken"
+        ExifDateTimeOriginal,
         
         #[text = ["exif_altitude", "exif_alt"], data_type = "numeric"]
         @weight = 16

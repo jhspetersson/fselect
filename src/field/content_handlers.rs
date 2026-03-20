@@ -65,3 +65,162 @@ fn check_extension(
         config_ext.as_ref().unwrap_or(default_ext.as_ref().unwrap()),
     )
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::config::Config;
+
+    use super::*;
+
+    fn is_archive(config: &Config, default_config: &Config, name: &str) -> bool {
+        check_extension(name, &config.is_archive, &default_config.is_archive)
+    }
+
+    fn is_audio(config: &Config, default_config: &Config, name: &str) -> bool {
+        check_extension(name, &config.is_audio, &default_config.is_audio)
+    }
+
+    fn is_book(config: &Config, default_config: &Config, name: &str) -> bool {
+        check_extension(name, &config.is_book, &default_config.is_book)
+    }
+
+    fn is_doc(config: &Config, default_config: &Config, name: &str) -> bool {
+        check_extension(name, &config.is_doc, &default_config.is_doc)
+    }
+
+    fn is_font(config: &Config, default_config: &Config, name: &str) -> bool {
+        check_extension(name, &config.is_font, &default_config.is_font)
+    }
+
+    fn is_image(config: &Config, default_config: &Config, name: &str) -> bool {
+        check_extension(name, &config.is_image, &default_config.is_image)
+    }
+
+    fn is_source(config: &Config, default_config: &Config, name: &str) -> bool {
+        check_extension(name, &config.is_source, &default_config.is_source)
+    }
+
+    fn is_video(config: &Config, default_config: &Config, name: &str) -> bool {
+        check_extension(name, &config.is_video, &default_config.is_video)
+    }
+
+    #[test]
+    fn test_is_archive() {
+        let config = Config::default();
+        let default_config = Config::default();
+
+        assert!(is_archive(&config, &default_config, "test.zip"));
+        assert!(is_archive(&config, &default_config, "test.tar"));
+        assert!(is_archive(&config, &default_config, "test.gz"));
+        assert!(is_archive(&config, &default_config, "test.rar"));
+
+        assert!(!is_archive(&config, &default_config, "test.txt"));
+        assert!(!is_archive(&config, &default_config, "test.jpg"));
+        assert!(!is_archive(&config, &default_config, "test"));
+    }
+
+    #[test]
+    fn test_is_audio() {
+        let config = Config::default();
+        let default_config = Config::default();
+
+        assert!(is_audio(&config, &default_config, "test.mp3"));
+        assert!(is_audio(&config, &default_config, "test.wav"));
+        assert!(is_audio(&config, &default_config, "test.flac"));
+        assert!(is_audio(&config, &default_config, "test.ogg"));
+
+        assert!(!is_audio(&config, &default_config, "test.txt"));
+        assert!(!is_audio(&config, &default_config, "test.jpg"));
+        assert!(!is_audio(&config, &default_config, "test"));
+    }
+
+    #[test]
+    fn test_is_book() {
+        let config = Config::default();
+        let default_config = Config::default();
+
+        assert!(is_book(&config, &default_config, "test.pdf"));
+        assert!(is_book(&config, &default_config, "test.epub"));
+        assert!(is_book(&config, &default_config, "test.mobi"));
+        assert!(is_book(&config, &default_config, "test.djvu"));
+
+        assert!(!is_book(&config, &default_config, "test.txt"));
+        assert!(!is_book(&config, &default_config, "test.jpg"));
+        assert!(!is_book(&config, &default_config, "test"));
+    }
+
+    #[test]
+    fn test_is_doc() {
+        let config = Config::default();
+        let default_config = Config::default();
+
+        assert!(is_doc(&config, &default_config, "test.doc"));
+        assert!(is_doc(&config, &default_config, "test.docx"));
+        assert!(is_doc(&config, &default_config, "test.pdf"));
+        assert!(is_doc(&config, &default_config, "test.xls"));
+
+        assert!(!is_doc(&config, &default_config, "test.txt"));
+        assert!(!is_doc(&config, &default_config, "test.jpg"));
+        assert!(!is_doc(&config, &default_config, "test"));
+    }
+
+    #[test]
+    fn test_is_font() {
+        let config = Config::default();
+        let default_config = Config::default();
+
+        assert!(is_font(&config, &default_config, "test.ttf"));
+        assert!(is_font(&config, &default_config, "test.otf"));
+        assert!(is_font(&config, &default_config, "test.woff"));
+        assert!(is_font(&config, &default_config, "test.woff2"));
+
+        assert!(!is_font(&config, &default_config, "test.txt"));
+        assert!(!is_font(&config, &default_config, "test.jpg"));
+        assert!(!is_font(&config, &default_config, "test"));
+    }
+
+    #[test]
+    fn test_is_image() {
+        let config = Config::default();
+        let default_config = Config::default();
+
+        assert!(is_image(&config, &default_config, "test.jpg"));
+        assert!(is_image(&config, &default_config, "test.png"));
+        assert!(is_image(&config, &default_config, "test.gif"));
+        assert!(is_image(&config, &default_config, "test.svg"));
+
+        assert!(!is_image(&config, &default_config, "test.txt"));
+        assert!(!is_image(&config, &default_config, "test.mp3"));
+        assert!(!is_image(&config, &default_config, "test"));
+    }
+
+    #[test]
+    fn test_is_source() {
+        let config = Config::default();
+        let default_config = Config::default();
+
+        assert!(is_source(&config, &default_config, "test.rs"));
+        assert!(is_source(&config, &default_config, "test.c"));
+        assert!(is_source(&config, &default_config, "test.cpp"));
+        assert!(is_source(&config, &default_config, "test.java"));
+
+        assert!(!is_source(&config, &default_config, "test.txt"));
+        assert!(!is_source(&config, &default_config, "test.jpg"));
+        assert!(!is_source(&config, &default_config, "test"));
+    }
+
+    #[test]
+    fn test_is_video() {
+        let config = Config::default();
+        let default_config = Config::default();
+
+        assert!(is_video(&config, &default_config, "test.mp4"));
+        assert!(is_video(&config, &default_config, "test.avi"));
+        assert!(is_video(&config, &default_config, "test.mkv"));
+        assert!(is_video(&config, &default_config, "test.mov"));
+
+        assert!(!is_video(&config, &default_config, "test.txt"));
+        assert!(!is_video(&config, &default_config, "test.jpg"));
+        assert!(!is_video(&config, &default_config, "test"));
+    }
+}

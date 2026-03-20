@@ -1362,45 +1362,6 @@ impl<'a> Searcher<'a> {
         self.check_extension(file_name, &self.config.is_zip_archive, &self.default_config.is_zip_archive)
     }
 
-    #[cfg(test)]
-    fn is_archive(&self, file_name: &str) -> bool {
-        self.check_extension(file_name, &self.config.is_archive, &self.default_config.is_archive)
-    }
-
-    #[cfg(test)]
-    fn is_audio(&self, file_name: &str) -> bool {
-        self.check_extension(file_name, &self.config.is_audio, &self.default_config.is_audio)
-    }
-
-    #[cfg(test)]
-    fn is_book(&self, file_name: &str) -> bool {
-        self.check_extension(file_name, &self.config.is_book, &self.default_config.is_book)
-    }
-
-    #[cfg(test)]
-    fn is_doc(&self, file_name: &str) -> bool {
-        self.check_extension(file_name, &self.config.is_doc, &self.default_config.is_doc)
-    }
-
-    #[cfg(test)]
-    fn is_font(&self, file_name: &str) -> bool {
-        self.check_extension(file_name, &self.config.is_font, &self.default_config.is_font)
-    }
-
-    #[cfg(test)]
-    fn is_image(&self, file_name: &str) -> bool {
-        self.check_extension(file_name, &self.config.is_image, &self.default_config.is_image)
-    }
-
-    #[cfg(test)]
-    fn is_source(&self, file_name: &str) -> bool {
-        self.check_extension(file_name, &self.config.is_source, &self.default_config.is_source)
-    }
-
-    #[cfg(test)]
-    fn is_video(&self, file_name: &str) -> bool {
-        self.check_extension(file_name, &self.config.is_video, &self.default_config.is_video)
-    }
 }
 
 #[cfg(test)]
@@ -1408,43 +1369,9 @@ mod tests {
     use super::*;
     use crate::expr::Expr;
     use crate::field::Field;
-    use crate::fileinfo::FileInfo;
     use crate::function::Function;
     use crate::query::{OutputFormat, Query, Root, RootOptions};
 
-    // Tests for FileMetadataState
-    #[test]
-    fn test_file_metadata_state_new() {
-        let state = FileMetadataState::new();
-
-        assert!(state.file_metadata.is_none());
-        assert!(state.line_count.is_none());
-        assert!(state.dimensions.is_none());
-        assert!(state.duration.is_none());
-        assert!(state.mp3_metadata.is_none());
-        assert!(state.exif_metadata.is_none());
-    }
-
-    #[test]
-    fn test_file_metadata_state_clear() {
-        let mut state = FileMetadataState::new();
-
-        state.file_metadata = Some(None);
-        state.line_count = Some(None);
-        state.dimensions = Some(None);
-        state.duration = Some(None);
-        state.mp3_metadata = Some(None);
-        state.exif_metadata = Some(None);
-
-        state.clear();
-
-        assert!(state.file_metadata.is_none());
-        assert!(state.line_count.is_none());
-        assert!(state.dimensions.is_none());
-        assert!(state.duration.is_none());
-        assert!(state.mp3_metadata.is_none());
-        assert!(state.exif_metadata.is_none());
-    }
 
     fn create_test_searcher() -> Searcher<'static> {
         // Create a minimal Query instance for testing
@@ -1567,133 +1494,6 @@ mod tests {
         assert!(!searcher.is_zip_archive("test"));
     }
 
-    #[test]
-    fn test_is_archive() {
-        let searcher = create_test_searcher();
-
-        // Test with archive extensions
-        assert!(searcher.is_archive("test.zip"));
-        assert!(searcher.is_archive("test.tar"));
-        assert!(searcher.is_archive("test.gz"));
-        assert!(searcher.is_archive("test.rar"));
-
-        // Test with non-archive extensions
-        assert!(!searcher.is_archive("test.txt"));
-        assert!(!searcher.is_archive("test.jpg"));
-        assert!(!searcher.is_archive("test"));
-    }
-
-    #[test]
-    fn test_is_audio() {
-        let searcher = create_test_searcher();
-
-        // Test with audio extensions
-        assert!(searcher.is_audio("test.mp3"));
-        assert!(searcher.is_audio("test.wav"));
-        assert!(searcher.is_audio("test.flac"));
-        assert!(searcher.is_audio("test.ogg"));
-
-        // Test with non-audio extensions
-        assert!(!searcher.is_audio("test.txt"));
-        assert!(!searcher.is_audio("test.jpg"));
-        assert!(!searcher.is_audio("test"));
-    }
-
-    #[test]
-    fn test_is_book() {
-        let searcher = create_test_searcher();
-
-        // Test with book extensions
-        assert!(searcher.is_book("test.pdf"));
-        assert!(searcher.is_book("test.epub"));
-        assert!(searcher.is_book("test.mobi"));
-        assert!(searcher.is_book("test.djvu"));
-
-        // Test with non-book extensions
-        assert!(!searcher.is_book("test.txt"));
-        assert!(!searcher.is_book("test.jpg"));
-        assert!(!searcher.is_book("test"));
-    }
-
-    #[test]
-    fn test_is_doc() {
-        let searcher = create_test_searcher();
-
-        // Test with document extensions
-        assert!(searcher.is_doc("test.doc"));
-        assert!(searcher.is_doc("test.docx"));
-        assert!(searcher.is_doc("test.pdf"));
-        assert!(searcher.is_doc("test.xls"));
-
-        // Test with non-document extensions
-        assert!(!searcher.is_doc("test.txt"));
-        assert!(!searcher.is_doc("test.jpg"));
-        assert!(!searcher.is_doc("test"));
-    }
-
-    #[test]
-    fn test_is_font() {
-        let searcher = create_test_searcher();
-
-        // Test with font extensions
-        assert!(searcher.is_font("test.ttf"));
-        assert!(searcher.is_font("test.otf"));
-        assert!(searcher.is_font("test.woff"));
-        assert!(searcher.is_font("test.woff2"));
-
-        // Test with non-font extensions
-        assert!(!searcher.is_font("test.txt"));
-        assert!(!searcher.is_font("test.jpg"));
-        assert!(!searcher.is_font("test"));
-    }
-
-    #[test]
-    fn test_is_image() {
-        let searcher = create_test_searcher();
-
-        // Test with image extensions
-        assert!(searcher.is_image("test.jpg"));
-        assert!(searcher.is_image("test.png"));
-        assert!(searcher.is_image("test.gif"));
-        assert!(searcher.is_image("test.svg"));
-
-        // Test with non-image extensions
-        assert!(!searcher.is_image("test.txt"));
-        assert!(!searcher.is_image("test.mp3"));
-        assert!(!searcher.is_image("test"));
-    }
-
-    #[test]
-    fn test_is_source() {
-        let searcher = create_test_searcher();
-
-        // Test with source code extensions
-        assert!(searcher.is_source("test.rs"));
-        assert!(searcher.is_source("test.c"));
-        assert!(searcher.is_source("test.cpp"));
-        assert!(searcher.is_source("test.java"));
-
-        // Test with non-source extensions
-        assert!(!searcher.is_source("test.txt"));
-        assert!(!searcher.is_source("test.jpg"));
-        assert!(!searcher.is_source("test"));
-    }
-
-    #[test]
-    fn test_is_video() {
-        let searcher = create_test_searcher();
-
-        // Test with video extensions
-        assert!(searcher.is_video("test.mp4"));
-        assert!(searcher.is_video("test.avi"));
-        assert!(searcher.is_video("test.mkv"));
-        assert!(searcher.is_video("test.mov"));
-
-        // Test with non-video extensions
-        assert!(!searcher.is_video("test.txt"));
-        assert!(!searcher.is_video("test.jpg"));
-        assert!(!searcher.is_video("test"));
-    }
 
     #[test]
     fn test_bound_column_resolution_across_root_aliases() {
@@ -1874,55 +1674,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_is_file_false_for_backslash_terminated_archive_entry() {
-        let tmp = std::env::temp_dir().join("fselect_test_isfile_backslash");
-        let _ = fs::remove_dir_all(&tmp);
-        fs::create_dir_all(&tmp).unwrap();
-        fs::write(tmp.join("dummy.txt"), "").unwrap();
-
-        let entry = fs::read_dir(&tmp).unwrap().next().unwrap().unwrap();
-
-        let file_info = Some(FileInfo {
-            name: String::from("somedir\\"),
-            size: 0,
-            mode: None,
-            modified: None,
-        });
-
-        let mut searcher = create_test_searcher();
-        let result = searcher.get_field_value(&entry, &file_info, &tmp, &Field::IsFile).unwrap();
-        let _ = fs::remove_dir_all(&tmp);
-
-        // A directory entry (name ends with \) should NOT be reported as a file
-        assert_eq!(result.to_string(), "false");
-    }
-
-    #[test]
-    fn test_is_dir_and_is_file_consistent_for_backslash_archive_entry() {
-        let tmp = std::env::temp_dir().join("fselect_test_consistency_backslash");
-        let _ = fs::remove_dir_all(&tmp);
-        fs::create_dir_all(&tmp).unwrap();
-        fs::write(tmp.join("dummy.txt"), "").unwrap();
-
-        let entry = fs::read_dir(&tmp).unwrap().next().unwrap().unwrap();
-
-        let file_info = Some(FileInfo {
-            name: String::from("somedir\\"),
-            size: 0,
-            mode: None,
-            modified: None,
-        });
-
-        let mut searcher = create_test_searcher();
-        let is_dir = searcher.get_field_value(&entry, &file_info, &tmp, &Field::IsDir).unwrap();
-        let is_file = searcher.get_field_value(&entry, &file_info, &tmp, &Field::IsFile).unwrap();
-        let _ = fs::remove_dir_all(&tmp);
-
-        // is_dir and is_file should be mutually exclusive for directories
-        assert_eq!(is_dir.to_string(), "true");
-        assert_eq!(is_file.to_string(), "false");
-    }
 
     #[test]
     fn test_hgignore_filters_survive_clear_before_load() {
@@ -1967,75 +1718,6 @@ mod tests {
         assert!(filters_count > 0, "hgignore filters should be available after clear-then-load");
     }
 
-    #[test]
-    fn test_is_symlink_true_when_following_symlinks() {
-        let tmp = std::env::temp_dir().join("fselect_test_symlink_follow_islink");
-        let _ = fs::remove_dir_all(&tmp);
-        fs::create_dir_all(&tmp).unwrap();
-        fs::write(tmp.join("real_file.txt"), "hello world").unwrap();
-
-        #[cfg(unix)]
-        std::os::unix::fs::symlink("real_file.txt", tmp.join("link")).unwrap();
-        #[cfg(windows)]
-        std::os::windows::fs::symlink_file(tmp.join("real_file.txt"), tmp.join("link")).unwrap();
-
-        let entry = fs::read_dir(&tmp)
-            .unwrap()
-            .filter_map(|e| e.ok())
-            .find(|e| e.file_name() == "link")
-            .unwrap();
-
-        let mut searcher = create_test_searcher();
-        searcher.current_follow_symlinks = true;
-
-        let result = searcher
-            .get_field_value(&entry, &None, &tmp, &Field::IsSymlink)
-            .unwrap();
-        let _ = fs::remove_dir_all(&tmp);
-
-        assert_eq!(
-            result.to_string(),
-            "true",
-            "is_symlink should be true for a symlink even when follow_symlinks is on"
-        );
-    }
-
-    #[test]
-    fn test_size_follows_symlink_when_requested() {
-        let tmp = std::env::temp_dir().join("fselect_test_symlink_follow_size");
-        let _ = fs::remove_dir_all(&tmp);
-        fs::create_dir_all(&tmp).unwrap();
-        let content = "hello world, this is a reasonably long test string for size comparison";
-        fs::write(tmp.join("real_file.txt"), content).unwrap();
-
-        #[cfg(unix)]
-        std::os::unix::fs::symlink("real_file.txt", tmp.join("link")).unwrap();
-        #[cfg(windows)]
-        std::os::windows::fs::symlink_file(tmp.join("real_file.txt"), tmp.join("link")).unwrap();
-
-        let entry = fs::read_dir(&tmp)
-            .unwrap()
-            .filter_map(|e| e.ok())
-            .find(|e| e.file_name() == "link")
-            .unwrap();
-
-        let mut searcher = create_test_searcher();
-        searcher.current_follow_symlinks = true;
-
-        let result = searcher
-            .get_field_value(&entry, &None, &tmp, &Field::Size)
-            .unwrap();
-        let _ = fs::remove_dir_all(&tmp);
-
-        let size = result.to_int();
-        let expected_size = content.len() as i64;
-
-        assert_eq!(
-            size, expected_size,
-            "size should be target file's size ({}) when following symlinks, got {}",
-            expected_size, size
-        );
-    }
 
     #[cfg(unix)]
     #[test]

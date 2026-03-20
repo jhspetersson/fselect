@@ -123,3 +123,41 @@ pub struct FieldContext<'a> {
     #[cfg(all(unix, feature = "users"))]
     pub user_cache: &'a UsersCache,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_file_metadata_state_new() {
+        let state = FileMetadataState::new();
+
+        assert!(state.file_metadata.is_none());
+        assert!(state.line_count.is_none());
+        assert!(state.dimensions.is_none());
+        assert!(state.duration.is_none());
+        assert!(state.mp3_metadata.is_none());
+        assert!(state.exif_metadata.is_none());
+    }
+
+    #[test]
+    fn test_file_metadata_state_clear() {
+        let mut state = FileMetadataState::new();
+
+        state.file_metadata = Some(None);
+        state.line_count = Some(None);
+        state.dimensions = Some(None);
+        state.duration = Some(None);
+        state.mp3_metadata = Some(None);
+        state.exif_metadata = Some(None);
+
+        state.clear();
+
+        assert!(state.file_metadata.is_none());
+        assert!(state.line_count.is_none());
+        assert!(state.dimensions.is_none());
+        assert!(state.duration.is_none());
+        assert!(state.mp3_metadata.is_none());
+        assert!(state.exif_metadata.is_none());
+    }
+}

@@ -500,3 +500,165 @@ pub fn check_file_mode(
     }
     Variant::from_bool(false)
 }
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+    use std::path::Path;
+
+    use crate::config::Config;
+    use crate::field::Field;
+    use crate::field::context::{FieldContext, FileMetadataState};
+    use crate::field::dispatch;
+    use crate::fileinfo::FileInfo;
+
+    fn make_ctx<'a>(
+        entry: &'a fs::DirEntry,
+        file_info: &'a Option<FileInfo>,
+        root_path: &'a Path,
+        fms: &'a mut FileMetadataState,
+        config: &'a Config,
+        default_config: &'a Config,
+    ) -> FieldContext<'a> {
+        FieldContext {
+            entry,
+            file_info,
+            root_path,
+            fms,
+            follow_symlinks: true,
+            config,
+            default_config,
+            #[cfg(all(unix, feature = "users"))]
+            user_cache: &uzers::UsersCache::new(),
+        }
+    }
+
+    #[test]
+    fn test_is_file_false_for_backslash_terminated_archive_entry() {
+        let tmp = std::env::temp_dir().join("fselect_test_isfile_backslash_h");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        fs::write(tmp.join("dummy.txt"), "").unwrap();
+
+        let entry = fs::read_dir(&tmp).unwrap().next().unwrap().unwrap();
+
+        let file_info = Some(FileInfo {
+            name: String::from("somedir\\"),
+            size: 0,
+            mode: None,
+            modified: None,
+        });
+
+        let config = Config::default();
+        let default_config = Config::default();
+        let mut fms = FileMetadataState::new();
+        let mut ctx = make_ctx(&entry, &file_info, &tmp, &mut fms, &config, &default_config);
+        let result = dispatch::get_field_value(&mut ctx, &Field::IsFile).unwrap();
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(result.to_string(), "false");
+    }
+
+    #[test]
+    fn test_is_dir_and_is_file_consistent_for_backslash_archive_entry() {
+        let tmp = std::env::temp_dir().join("fselect_test_consistency_backslash_h");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        fs::write(tmp.join("dummy.txt"), "").unwrap();
+
+        let entry = fs::read_dir(&tmp).unwrap().next().unwrap().unwrap();
+
+        let file_info = Some(FileInfo {
+            name: String::from("somedir\\"),
+            size: 0,
+            mode: None,
+            modified: None,
+        });
+
+        let config = Config::default();
+        let default_config = Config::default();
+        let mut fms = FileMetadataState::new();
+
+        let mut ctx = make_ctx(&entry, &file_info, &tmp, &mut fms, &config, &default_config);
+        let is_dir = dispatch::get_field_value(&mut ctx, &Field::IsDir).unwrap();
+        let is_file = dispatch::get_field_value(&mut ctx, &Field::IsFile).unwrap();
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(is_dir.to_string(), "true");
+        assert_eq!(is_file.to_string(), "false");
+    }
+
+    #[test]
+    fn test_is_symlink_true_when_following_symlinks() {
+        let tmp = std::env::temp_dir().join("fselect_test_symlink_follow_islink_h");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        fs::write(tmp.join("real_file.txt"), "hello world").unwrap();
+
+        #[cfg(unix)]
+        std::os::unix::fs::symlink("real_file.txt", tmp.join("link")).unwrap();
+        #[cfg(windows)]
+        std::os::windows::fs::symlink_file(tmp.join("real_file.txt"), tmp.join("link")).unwrap();
+
+        let entry = fs::read_dir(&tmp)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .find(|e| e.file_name() == "link")
+            .unwrap();
+
+        let config = Config::default();
+        let default_config = Config::default();
+        let mut fms = FileMetadataState::new();
+        let file_info = None;
+        let mut ctx = make_ctx(&entry, &file_info, &tmp, &mut fms, &config, &default_config);
+        ctx.follow_symlinks = true;
+
+        let result = dispatch::get_field_value(&mut ctx, &Field::IsSymlink).unwrap();
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(
+            result.to_string(),
+            "true",
+            "is_symlink should be true for a symlink even when follow_symlinks is on"
+        );
+    }
+
+    #[test]
+    fn test_size_follows_symlink_when_requested() {
+        let tmp = std::env::temp_dir().join("fselect_test_symlink_follow_size_h");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        let content = "hello world, this is a reasonably long test string for size comparison";
+        fs::write(tmp.join("real_file.txt"), content).unwrap();
+
+        #[cfg(unix)]
+        std::os::unix::fs::symlink("real_file.txt", tmp.join("link")).unwrap();
+        #[cfg(windows)]
+        std::os::windows::fs::symlink_file(tmp.join("real_file.txt"), tmp.join("link")).unwrap();
+
+        let entry = fs::read_dir(&tmp)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .find(|e| e.file_name() == "link")
+            .unwrap();
+
+        let config = Config::default();
+        let default_config = Config::default();
+        let mut fms = FileMetadataState::new();
+        let file_info = None;
+        let mut ctx = make_ctx(&entry, &file_info, &tmp, &mut fms, &config, &default_config);
+        ctx.follow_symlinks = true;
+
+        let result = dispatch::get_field_value(&mut ctx, &Field::Size).unwrap();
+        let _ = fs::remove_dir_all(&tmp);
+
+        let size = result.to_int();
+        let expected_size = content.len() as i64;
+
+        assert_eq!(
+            size, expected_size,
+            "size should be target file's size ({}) when following symlinks, got {}",
+            expected_size, size
+        );
+    }
+}

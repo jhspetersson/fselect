@@ -1892,6 +1892,13 @@ impl<'a> Searcher<'a> {
                     }
                 }
             }
+            Field::ExifIsoSpeed => {
+                if let Some(val) = self.fms.get_exif_string(entry, "ISOSpeed")
+                    .or_else(|| self.fms.get_exif_string(entry, "PhotographicSensitivity"))
+                {
+                    return Ok(val);
+                }
+            }
             Field::ExifMake
             | Field::ExifModel
             | Field::ExifSoftware
@@ -1900,7 +1907,6 @@ impl<'a> Searcher<'a> {
             | Field::ExifAperture
             | Field::ExifShutterSpeed
             | Field::ExifFNumber
-            | Field::ExifIsoSpeed
             | Field::ExifFocalLength
             | Field::ExifLensMake
             | Field::ExifLensModel => {
@@ -1913,7 +1919,6 @@ impl<'a> Searcher<'a> {
                     Field::ExifAperture => "ApertureValue",
                     Field::ExifShutterSpeed => "ShutterSpeedValue",
                     Field::ExifFNumber => "FNumber",
-                    Field::ExifIsoSpeed => "ISOSpeed",
                     Field::ExifFocalLength => "FocalLength",
                     Field::ExifLensMake => "LensMake",
                     Field::ExifLensModel => "LensModel",

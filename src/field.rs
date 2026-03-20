@@ -656,6 +656,11 @@ fields! {
         @weight = 16
         @description = "Returns the flash status when the photo was taken"
         ExifFlash,
+
+        #[text = ["exif_color_space"]]
+        @weight = 16
+        @description = "Returns the color space of the image"
+        ExifColorSpace,
         
         #[text = ["mime"]]
         @weight = 16

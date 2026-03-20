@@ -1914,7 +1914,8 @@ impl<'a> Searcher<'a> {
             | Field::ExifArtist
             | Field::ExifCopyright
             | Field::ExifOrientation
-            | Field::ExifFlash => {
+            | Field::ExifFlash
+            | Field::ExifColorSpace => {
                 let key = match field {
                     Field::ExifMake => "Make",
                     Field::ExifModel => "Model",
@@ -1934,6 +1935,7 @@ impl<'a> Searcher<'a> {
                     Field::ExifCopyright => "Copyright",
                     Field::ExifOrientation => "Orientation",
                     Field::ExifFlash => "Flash",
+                    Field::ExifColorSpace => "ColorSpace",
                     _ => unreachable!(),
                 };
                 if let Some(val) = self.fms.get_exif_string(entry, key) {

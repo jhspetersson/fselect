@@ -651,6 +651,11 @@ fields! {
         @weight = 16
         @description = "Returns the image orientation"
         ExifOrientation,
+
+        #[text = ["exif_flash"]]
+        @weight = 16
+        @description = "Returns the flash status when the photo was taken"
+        ExifFlash,
         
         #[text = ["mime"]]
         @weight = 16

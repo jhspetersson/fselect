@@ -607,7 +607,7 @@ fn parse_location_string(s: String, location_ref: String, modifier_value: &str) 
     if parts.len() == 3 {
         let mut coord = parts[0].parse::<f32>().unwrap_or(0.0)
             + parts[1].parse::<f32>().unwrap_or(0.0) / 60.0
-            + parts[2].parse::<f32>().unwrap_or(0.0) / 3660.0;
+            + parts[2].parse::<f32>().unwrap_or(0.0) / 3600.0;
         if location_ref.eq(modifier_value) {
             coord = -coord;
         }

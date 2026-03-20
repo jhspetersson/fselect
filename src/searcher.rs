@@ -654,9 +654,9 @@ impl<'a> Searcher<'a> {
                                 // Check the path against the filters
                                 #[cfg(feature = "git")]
                                 let pass_gitignore = !self.current_apply_gitignore
-                                    || !(git_repository.is_some() &&
-                                    git_repository.unwrap().is_path_ignored(&canonical_entry_path)
-                                        .unwrap_or(false));
+                                    || !git_repository
+                                        .is_some_and(|repo| repo.is_path_ignored(&canonical_entry_path)
+                                            .unwrap_or(false));
                                 #[cfg(not(feature = "git"))]
                                 let pass_gitignore = true;
 

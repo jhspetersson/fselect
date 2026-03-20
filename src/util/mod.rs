@@ -549,7 +549,7 @@ pub fn get_exif_metadata(entry: &DirEntry) -> Option<HashMap<String, String>> {
                         exif_info.insert(
                             field_tag,
                             vec.iter()
-                                .map(|r| (r.num / r.denom).to_string())
+                                .map(|r| (r.num as f64 / r.denom as f64).to_string())
                                 .collect::<Vec<String>>()
                                 .join(";"),
                         );

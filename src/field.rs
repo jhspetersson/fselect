@@ -646,6 +646,11 @@ fields! {
         @weight = 16
         @description = "Returns the copyright information"
         ExifCopyright,
+
+        #[text = ["exif_orientation"]]
+        @weight = 16
+        @description = "Returns the image orientation"
+        ExifOrientation,
         
         #[text = ["mime"]]
         @weight = 16

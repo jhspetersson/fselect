@@ -512,25 +512,29 @@ mod tests {
     use crate::field::dispatch;
     use crate::fileinfo::FileInfo;
 
-    fn make_ctx<'a>(
-        entry: &'a fs::DirEntry,
-        file_info: &'a Option<FileInfo>,
-        root_path: &'a Path,
-        fms: &'a mut FileMetadataState,
-        config: &'a Config,
-        default_config: &'a Config,
-    ) -> FieldContext<'a> {
-        FieldContext {
+    fn test_field(
+        entry: &fs::DirEntry,
+        file_info: &Option<FileInfo>,
+        root_path: &Path,
+        field: &Field,
+    ) -> crate::util::Variant {
+        let config = Config::default();
+        let default_config = Config::default();
+        let mut fms = FileMetadataState::new();
+        #[cfg(all(unix, feature = "users"))]
+        let user_cache = uzers::UsersCache::new();
+        let mut ctx = FieldContext {
             entry,
             file_info,
             root_path,
-            fms,
+            fms: &mut fms,
             follow_symlinks: true,
-            config,
-            default_config,
+            config: &config,
+            default_config: &default_config,
             #[cfg(all(unix, feature = "users"))]
-            user_cache: &uzers::UsersCache::new(),
-        }
+            user_cache: &user_cache,
+        };
+        dispatch::get_field_value(&mut ctx, field).unwrap()
     }
 
     #[test]
@@ -541,7 +545,6 @@ mod tests {
         fs::write(tmp.join("dummy.txt"), "").unwrap();
 
         let entry = fs::read_dir(&tmp).unwrap().next().unwrap().unwrap();
-
         let file_info = Some(FileInfo {
             name: String::from("somedir\\"),
             size: 0,
@@ -549,13 +552,8 @@ mod tests {
             modified: None,
         });
 
-        let config = Config::default();
-        let default_config = Config::default();
-        let mut fms = FileMetadataState::new();
-        let mut ctx = make_ctx(&entry, &file_info, &tmp, &mut fms, &config, &default_config);
-        let result = dispatch::get_field_value(&mut ctx, &Field::IsFile).unwrap();
+        let result = test_field(&entry, &file_info, &tmp, &Field::IsFile);
         let _ = fs::remove_dir_all(&tmp);
-
         assert_eq!(result.to_string(), "false");
     }
 
@@ -567,7 +565,6 @@ mod tests {
         fs::write(tmp.join("dummy.txt"), "").unwrap();
 
         let entry = fs::read_dir(&tmp).unwrap().next().unwrap().unwrap();
-
         let file_info = Some(FileInfo {
             name: String::from("somedir\\"),
             size: 0,
@@ -575,13 +572,8 @@ mod tests {
             modified: None,
         });
 
-        let config = Config::default();
-        let default_config = Config::default();
-        let mut fms = FileMetadataState::new();
-
-        let mut ctx = make_ctx(&entry, &file_info, &tmp, &mut fms, &config, &default_config);
-        let is_dir = dispatch::get_field_value(&mut ctx, &Field::IsDir).unwrap();
-        let is_file = dispatch::get_field_value(&mut ctx, &Field::IsFile).unwrap();
+        let is_dir = test_field(&entry, &file_info, &tmp, &Field::IsDir);
+        let is_file = test_field(&entry, &file_info, &tmp, &Field::IsFile);
         let _ = fs::remove_dir_all(&tmp);
 
         assert_eq!(is_dir.to_string(), "true");
@@ -606,14 +598,7 @@ mod tests {
             .find(|e| e.file_name() == "link")
             .unwrap();
 
-        let config = Config::default();
-        let default_config = Config::default();
-        let mut fms = FileMetadataState::new();
-        let file_info = None;
-        let mut ctx = make_ctx(&entry, &file_info, &tmp, &mut fms, &config, &default_config);
-        ctx.follow_symlinks = true;
-
-        let result = dispatch::get_field_value(&mut ctx, &Field::IsSymlink).unwrap();
+        let result = test_field(&entry, &None, &tmp, &Field::IsSymlink);
         let _ = fs::remove_dir_all(&tmp);
 
         assert_eq!(
@@ -642,14 +627,7 @@ mod tests {
             .find(|e| e.file_name() == "link")
             .unwrap();
 
-        let config = Config::default();
-        let default_config = Config::default();
-        let mut fms = FileMetadataState::new();
-        let file_info = None;
-        let mut ctx = make_ctx(&entry, &file_info, &tmp, &mut fms, &config, &default_config);
-        ctx.follow_symlinks = true;
-
-        let result = dispatch::get_field_value(&mut ctx, &Field::Size).unwrap();
+        let result = test_field(&entry, &None, &tmp, &Field::Size);
         let _ = fs::remove_dir_all(&tmp);
 
         let size = result.to_int();

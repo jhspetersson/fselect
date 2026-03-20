@@ -636,6 +636,7 @@ impl<'a> Searcher<'a> {
         let depth = canonical_depth.saturating_sub(base_depth) + 1;
 
         // Read the directory and process each entry
+        let root_dir = self.current_root_dir.clone();
         match fs::read_dir(dir) {
             Ok(entry_list) => {
                 for entry in entry_list {
@@ -678,7 +679,7 @@ impl<'a> Searcher<'a> {
                             // If the path passes the filters, process it
                             if pass_ignores {
                                 if self.current_min_depth == 0 || depth >= self.current_min_depth {
-                                    let checked = self.check_file(&entry, &self.current_root_dir.clone(), &None);
+                                    let checked = self.check_file(&entry, &root_dir, &None);
                                     match checked {
                                         Err(err) => {
                                             if err.is_fatal() {
@@ -704,7 +705,7 @@ impl<'a> Searcher<'a> {
 
                                                     if let Ok(afile) = archive.by_index(i) {
                                                         let file_info = to_file_info(&afile);
-                                                        match self.check_file(&entry, &self.current_root_dir.clone(), &Some(file_info)) {
+                                                        match self.check_file(&entry, &root_dir, &Some(file_info)) {
                                                             Err(err) => {
                                                                 if err.is_fatal() {
                                                                     return Err(err);

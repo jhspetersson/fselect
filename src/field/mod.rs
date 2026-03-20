@@ -1,5 +1,15 @@
 //! Defines the various fields available in the query language
 
+pub mod context;
+pub mod dispatch;
+mod content_handlers;
+mod exif_handlers;
+mod hash_handlers;
+mod media_handlers;
+mod metadata_handlers;
+mod mode_handlers;
+mod path_handlers;
+
 use std::fmt::Display;
 use std::fmt::Error;
 use std::fmt::Formatter;

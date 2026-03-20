@@ -9,7 +9,7 @@ pub(crate) mod extattrs;
 pub(crate) mod win_acl;
 #[cfg(windows)]
 pub(crate) mod win_xattr;
-mod datetime;
+pub(crate) mod datetime;
 pub mod dimensions;
 pub mod duration;
 pub(crate) mod error;

@@ -1901,6 +1901,7 @@ impl<'a> Searcher<'a> {
             | Field::ExifShutterSpeed
             | Field::ExifFNumber
             | Field::ExifIsoSpeed
+            | Field::ExifPhotographicSensitivity
             | Field::ExifFocalLength
             | Field::ExifLensMake
             | Field::ExifLensModel => {
@@ -1914,6 +1915,7 @@ impl<'a> Searcher<'a> {
                     Field::ExifShutterSpeed => "ShutterSpeedValue",
                     Field::ExifFNumber => "FNumber",
                     Field::ExifIsoSpeed => "ISOSpeed",
+                    Field::ExifPhotographicSensitivity => "PhotographicSensitivity",
                     Field::ExifFocalLength => "FocalLength",
                     Field::ExifLensMake => "LensMake",
                     Field::ExifLensModel => "LensModel",

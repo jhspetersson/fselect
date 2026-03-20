@@ -604,8 +604,13 @@ fields! {
         
         #[text = ["exif_iso_speed", "exif_iso"]]
         @weight = 16
-        @description = "Returns ISO speed of the photo taken"
+        @description = "Returns ISO speed of the photo taken (EXIF 2.3 ISOSpeed tag)"
         ExifIsoSpeed,
+
+        #[text = ["exif_sensitivity", "exif_photo_sensitivity"]]
+        @weight = 16
+        @description = "Returns photographic sensitivity (ISO) of the photo taken"
+        ExifPhotographicSensitivity,
         
         #[text = ["exif_focal_length", "exif_focal_len"], data_type = "numeric"]
         @weight = 16

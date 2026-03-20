@@ -641,6 +641,11 @@ fields! {
         @weight = 16
         @description = "Returns the artist or photographer name"
         ExifArtist,
+
+        #[text = ["exif_copyright"]]
+        @weight = 16
+        @description = "Returns the copyright information"
+        ExifCopyright,
         
         #[text = ["mime"]]
         @weight = 16

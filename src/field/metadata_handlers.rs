@@ -304,6 +304,7 @@ pub fn handle_has_xattrs(ctx: &mut FieldContext) -> Result<Variant, SearchError>
         ));
     }
 
+    #[cfg(not(windows))]
     Ok(Variant::empty(VariantType::Bool))
 }
 
@@ -324,6 +325,7 @@ pub fn handle_xattr_count(ctx: &mut FieldContext) -> Result<Variant, SearchError
         ));
     }
 
+    #[cfg(not(windows))]
     Ok(Variant::empty(VariantType::Int))
 }
 
@@ -396,6 +398,7 @@ pub fn handle_has_acl(ctx: &mut FieldContext) -> Result<Variant, SearchError> {
         ));
     }
 
+    #[cfg(not(windows))]
     Ok(Variant::empty(VariantType::Bool))
 }
 

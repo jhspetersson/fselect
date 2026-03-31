@@ -129,12 +129,16 @@ pub fn parse_datetime(s: &str) -> Result<(NaiveDateTime, NaiveDateTime), String>
                     _ => Err("Error parsing date/time value: ".to_string() + s),
                 }
             } else if s.len() >= 2 && (s.starts_with("+") || s.starts_with("-")) {
-                let days = s.parse::<i64>().unwrap();
-                let date = Local::now().date_naive() + Duration::days(days);
-                let start = date.and_hms_opt(0, 0, 0).unwrap();
-                let finish = date.and_hms_opt(23, 59, 59).unwrap();
+                match s.parse::<i64>() {
+                    Ok(days) => {
+                        let date = Local::now().date_naive() + Duration::days(days);
+                        let start = date.and_hms_opt(0, 0, 0).unwrap();
+                        let finish = date.and_hms_opt(23, 59, 59).unwrap();
 
-                Ok((start, finish))
+                        Ok((start, finish))
+                    }
+                    Err(_) => Err("Error parsing date/time value: ".to_string() + s),
+                }
             } else {
                 Err("Error parsing date/time value: ".to_string() + s)
             }
@@ -239,6 +243,12 @@ mod tests {
 
         assert!(result.is_err());
         assert_eq!(result.unwrap_err(), "Error parsing date/time value: invalid-date");
+    }
+
+    #[test]
+    fn test_parse_non_numeric_plus_minus() {
+        assert!(parse_datetime("+abc").is_err());
+        assert!(parse_datetime("-xyz").is_err());
     }
 
     #[test]

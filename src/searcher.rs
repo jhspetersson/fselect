@@ -1133,8 +1133,10 @@ impl<'a> Searcher<'a> {
         field_str: &str,
         converter: fn(&str) -> Result<String, String>,
         err_prefix: &str,
+        cache_prefix: &str,
     ) -> Result<bool, SearchError> {
-        if let Some(regex) = self.regex_cache.get(&val) {
+        let cache_key = format!("{}:{}", cache_prefix, val);
+        if let Some(regex) = self.regex_cache.get(&cache_key) {
             return Ok(regex.is_match(field_str));
         }
         match converter(&val) {
@@ -1142,7 +1144,7 @@ impl<'a> Searcher<'a> {
                 match Regex::new(&pattern) {
                     Ok(regex) => {
                         let matched = regex.is_match(field_str);
-                        self.regex_cache.insert(val, regex);
+                        self.regex_cache.insert(cache_key, regex);
                         Ok(matched)
                     }
                     _ => Err(SearchError::normal(format!("{}{}", err_prefix, val)).with_source("expression")),
@@ -1157,7 +1159,8 @@ impl<'a> Searcher<'a> {
         val: String,
         field_str: &str,
     ) -> Result<bool, SearchError> {
-        if let Some(regex) = self.regex_cache.get(&val) {
+        let cache_key = format!("glob:{}", val);
+        if let Some(regex) = self.regex_cache.get(&cache_key) {
             return Ok(regex.is_match(field_str));
         }
         match convert_glob_to_pattern(&val) {
@@ -1165,7 +1168,7 @@ impl<'a> Searcher<'a> {
                 match Regex::new(&pattern) {
                     Ok(regex) => {
                         let matched = regex.is_match(field_str);
-                        self.regex_cache.insert(val, regex);
+                        self.regex_cache.insert(cache_key, regex);
                         Ok(matched)
                     }
                     _ => Ok(val.eq(field_str)),
@@ -1262,14 +1265,14 @@ impl<'a> Searcher<'a> {
                         }
                         Op::Rx | Op::NotRx => {
                             fn identity(s: &str) -> Result<String, String> { Ok(s.to_string()) }
-                            let matched = self.match_pattern(val, &field_str, identity, "Incorrect regex expression: ");
+                            let matched = self.match_pattern(val, &field_str, identity, "Incorrect regex expression: ", "rx");
                             return if *op == Op::NotRx { matched.map(|m| !m) } else { matched };
                         }
                         Op::Like => {
-                            return self.match_pattern(val, &field_str, convert_like_to_pattern, "Incorrect LIKE expression: ");
+                            return self.match_pattern(val, &field_str, convert_like_to_pattern, "Incorrect LIKE expression: ", "like");
                         }
                         Op::NotLike => {
-                            return self.match_pattern(val, &field_str, convert_like_to_pattern, "Incorrect LIKE expression: ").map(|m| !m);
+                            return self.match_pattern(val, &field_str, convert_like_to_pattern, "Incorrect LIKE expression: ", "like").map(|m| !m);
                         }
                         Op::Gt => field_str > val,
                         Op::Gte => field_str >= val,
@@ -1817,6 +1820,43 @@ mod tests {
             "root_b should find files through its own symlink, found_a={} found_b={}",
             found_after_a, found_after_b
         );
+    }
+
+    #[test]
+    fn test_regex_cache_glob_then_like_no_collision() {
+        // Pattern "test*" means different things in glob vs LIKE:
+        // glob: test.* (wildcard)  LIKE: test\* (literal asterisk)
+        let mut searcher = create_test_searcher();
+        let pattern = "test*".to_string();
+
+        // First: glob caches "test*" as wildcard match
+        let glob_result = searcher.match_glob(pattern.clone(), "test_hello").unwrap();
+        assert!(glob_result, "glob test* should match test_hello");
+
+        // Second: LIKE should NOT match "test_hello" because * is literal in LIKE
+        let like_result = searcher.match_pattern(
+            pattern.clone(), "test_hello",
+            convert_like_to_pattern, "err: ", "like",
+        ).unwrap();
+        assert!(!like_result, "LIKE test* should NOT match test_hello (literal asterisk)");
+    }
+
+    #[test]
+    fn test_regex_cache_like_then_glob_no_collision() {
+        // Vice versa: LIKE cached first, then glob
+        let mut searcher = create_test_searcher();
+        let pattern = "test*".to_string();
+
+        // First: LIKE caches "test*" as literal asterisk match
+        let like_result = searcher.match_pattern(
+            pattern.clone(), "test*",
+            convert_like_to_pattern, "err: ", "like",
+        ).unwrap();
+        assert!(like_result, "LIKE test* should match literal test*");
+
+        // Second: glob should match wildcard, not be corrupted by LIKE cache
+        let glob_result = searcher.match_glob(pattern.clone(), "test_hello").unwrap();
+        assert!(glob_result, "glob test* should match test_hello even after LIKE cached same pattern");
     }
 
 }

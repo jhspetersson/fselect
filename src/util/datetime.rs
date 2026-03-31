@@ -143,20 +143,11 @@ pub fn parse_datetime(s: &str) -> Result<(NaiveDateTime, NaiveDateTime), String>
 }
 
 pub fn to_local_datetime(dt: &zip::DateTime) -> NaiveDateTime {
-    Local::now()
-        .naive_local()
-        .with_year(dt.year() as i32)
-        .unwrap()
-        .with_month(dt.month() as u32)
-        .unwrap()
-        .with_day(dt.day() as u32)
-        .unwrap()
-        .with_hour(dt.hour() as u32)
-        .unwrap()
-        .with_minute(dt.minute() as u32)
-        .unwrap()
-        .with_second(dt.second() as u32)
-        .unwrap()
+    let date = NaiveDate::from_ymd_opt(dt.year() as i32, dt.month() as u32, dt.day() as u32)
+        .unwrap_or_else(|| NaiveDate::from_ymd_opt(dt.year() as i32, 1, 1).unwrap());
+    let time = NaiveTime::from_hms_opt(dt.hour() as u32, dt.minute() as u32, dt.second() as u32)
+        .unwrap_or_else(|| NaiveTime::from_hms_opt(0, 0, 0).unwrap());
+    NaiveDateTime::new(date, time)
 }
 
 pub fn format_datetime(dt: &NaiveDateTime) -> String {
@@ -248,6 +239,18 @@ mod tests {
 
         assert!(result.is_err());
         assert_eq!(result.unwrap_err(), "Error parsing date/time value: invalid-date");
+    }
+
+    #[test]
+    fn test_to_local_datetime_feb() {
+        // Regression: previously panicked when current day > days in target month
+        let dt = zip::DateTime::from_date_and_time(2023, 2, 15, 10, 30, 0).unwrap();
+        let result = to_local_datetime(&dt);
+        assert_eq!(result.year(), 2023);
+        assert_eq!(result.month(), 2);
+        assert_eq!(result.day(), 15);
+        assert_eq!(result.hour(), 10);
+        assert_eq!(result.minute(), 30);
     }
 
     #[test]

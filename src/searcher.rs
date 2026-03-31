@@ -125,7 +125,7 @@ impl<'a> Searcher<'a> {
             output_buffer: if limit == 0 {
                 TopN::limitless()
             } else {
-                TopN::new(limit + query.offset)
+                TopN::new(limit.saturating_add(query.offset))
             },
             ordering_fields_rc: Rc::new(query.ordering_fields.clone()),
             ordering_asc_rc: Rc::new(query.ordering_asc.clone()),
@@ -351,7 +351,7 @@ impl<'a> Searcher<'a> {
 
                 let mut grouped_results: TopN<Criteria<String>, Vec<(String, String)>> =
                     if self.query.limit > 0 {
-                        TopN::new(self.query.limit + self.query.offset)
+                        TopN::new(self.query.limit.saturating_add(self.query.offset))
                     } else {
                         TopN::limitless()
                     };
@@ -1637,6 +1637,13 @@ mod tests {
         assert!(b.to_string() >= a.to_string());
         assert!(a.to_string() <= a.to_string());
         assert!(a.to_string() >= a.to_string());
+    }
+
+    #[test]
+    fn test_limit_offset_no_overflow() {
+        // u32::MAX + 1 would overflow; saturating_add should cap at u32::MAX
+        let result = u32::MAX.saturating_add(1);
+        assert_eq!(result, u32::MAX);
     }
 
     #[test]

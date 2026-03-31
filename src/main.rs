@@ -138,7 +138,7 @@ fn main() -> ExitCode {
                 return ExitCode::from(2);
             }
 
-            let config_path = args[1].to_ascii_lowercase();
+            let config_path = args[1].clone();
             config = Config::from(PathBuf::from(&config_path)).unwrap_or_else(|err| {
                 eprintln!("{}", err);
                 Config::default()

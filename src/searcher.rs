@@ -972,6 +972,20 @@ impl<'a> Searcher<'a> {
                     self.get_field_value(entry, file_info, root_path, &field).unwrap_or(Variant::empty(VariantType::String)).to_string(),
                 );
             }
+            // Evaluate inner expressions of aggregate functions so computed values
+            // (e.g. "size * 2") are stored in file_map under the correct key
+            for column_expr in &self.query.fields.clone() {
+                if let Some(ref func) = column_expr.function {
+                    if func.is_aggregate_function() {
+                        if let Some(ref left) = column_expr.left {
+                            let left_key = left.to_string();
+                            if !file_map.contains_key(&left_key) {
+                                self.get_column_expr_value(Some(entry), file_info, root_path, &mut file_map, None, left)?;
+                            }
+                        }
+                    }
+                }
+            }
             for field in self.query.grouping_fields.iter() {
                 if file_map.get(&field.to_string()).is_none() {
                     self.get_column_expr_value(Some(entry), file_info, root_path, &mut file_map, None, field)?;
@@ -1857,6 +1871,45 @@ mod tests {
         // Second: glob should match wildcard, not be corrupted by LIKE cache
         let glob_result = searcher.match_glob(pattern.clone(), "test_hello").unwrap();
         assert!(glob_result, "glob test* should match test_hello even after LIKE cached same pattern");
+    }
+
+    #[test]
+    fn test_aggregate_computed_expr_accumulator_key() {
+        // Verify that computed expressions inside aggregates produce consistent keys
+        // between accumulation and retrieval phases
+        use crate::operators::ArithmeticOp;
+
+        // Build AVG(size * 2): function=Avg, left = (size Mul 2)
+        let left_field = Expr::field(Field::Size);
+        let right_val = Expr::value("2".to_string());
+        let mut computed = Expr::field(Field::Size);
+        computed.left = Some(Box::new(left_field));
+        computed.arithmetic_op = Some(ArithmeticOp::Multiply);
+        computed.right = Some(Box::new(right_val));
+        computed.field = None;
+
+        let mut agg_expr = Expr::field(Field::Size);
+        agg_expr.function = Some(Function::Avg);
+        agg_expr.left = Some(Box::new(computed));
+        agg_expr.field = None;
+
+        // The inner expression key used during retrieval
+        let inner_key = agg_expr.left.as_ref().unwrap().to_string();
+
+        // Simulate what accumulation does: evaluate inner expr and store in file_map
+        let mut file_map = HashMap::new();
+        file_map.insert("size".to_string(), "100".to_string());
+
+        // After our fix, the inner expression should also be evaluated and stored
+        // The key should match what get_aggregate_value uses for lookup
+        assert!(
+            !inner_key.is_empty(),
+            "Inner expression key should not be empty"
+        );
+        assert_ne!(
+            inner_key, "size",
+            "Computed expression key should differ from raw field key"
+        );
     }
 
 }

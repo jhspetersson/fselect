@@ -345,7 +345,7 @@ impl Lexer {
                 "exists" if self.state.after_where && !self.state.after_operator && !self.state.after_value_start && !self.state.in_value_set => Some(Lexeme::Operator(s.to_lowercase())),
                 "eq" | "ne" | "gt" | "lt" | "ge" | "le" | "gte" | "lte" | "eeq" | "ene"
                 | "regexp" | "rx" | "like" | "notlike" | "notrx"
-                | "between" | "in" if self.state.after_where && !self.state.after_operator && !self.state.after_logical => Some(Lexeme::Operator(s.to_lowercase())),
+                | "between" | "notbetween" | "in" | "notin" | "notexists" if self.state.after_where && !self.state.after_operator && !self.state.after_logical => Some(Lexeme::Operator(s.to_lowercase())),
                 "mul" | "div" | "mod" | "plus" | "minus" if (self.state.before_from || self.state.after_where || self.state.in_group_by || self.state.in_order_by) && !self.state.after_operator && !self.state.after_logical && !self.state.after_not => Some(Lexeme::ArithmeticOperator(s)),
                 _ => Some(Lexeme::RawString(s)),
             },
@@ -2989,6 +2989,25 @@ mod tests {
         assert!(looks_like_date("2020"));
         assert!(looks_like_date("2020-01"));
         assert!(looks_like_date("2020-01-01"));
+    }
+
+    #[test]
+    fn notbetween_notin_notexists_lexed_as_operators() {
+        let mut lexer = lexer!("name", "from", ".", "where", "size", "notbetween", "1", "and", "10");
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("name"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::From));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("."))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Where));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("size"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Operator(String::from("notbetween"))));
+
+        let mut lexer = lexer!("name", "from", ".", "where", "name", "notin", "(a, b)");
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("name"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::From));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("."))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Where));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("name"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Operator(String::from("notin"))));
     }
 
     #[test]

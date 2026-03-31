@@ -617,9 +617,8 @@ pub fn get_value(
                 } else {
                     chrono::NaiveDate::from_ymd_opt(y, m + 1, 1)
                 };
-                match last {
-                    Some(next_month) => {
-                        let last_day = next_month.pred_opt().unwrap();
+                match last.and_then(|d| d.pred_opt()) {
+                    Some(last_day) => {
                         Ok(Variant::from_string(&format_date(&last_day)))
                     }
                     None => Ok(Variant::empty(VariantType::String)),
@@ -2193,6 +2192,18 @@ mod tests {
 
         let result = get_value(&function, function_arg, function_args, entry, &file_info);
         assert_eq!(result.unwrap().to_string(), "");
+    }
+
+    #[test]
+    fn function_last_day_min_date() {
+        let function = Function::LastDay;
+        let function_arg = String::from("0001-01-01");
+        let function_args = vec![];
+        let entry = None;
+        let file_info = None;
+
+        let result = get_value(&function, function_arg, function_args, entry, &file_info);
+        assert!(result.is_ok(), "LAST_DAY should not panic on edge dates");
     }
 
     #[test]

@@ -461,7 +461,7 @@ pub fn capitalize_initials(s: &str) -> String {
 pub fn parse_unix_filename(s: &str) -> &str {
     let last_slash = s.rfind('/');
     match last_slash {
-        Some(idx) => &s[idx..],
+        Some(idx) => &s[idx + 1..],
         _ => s,
     }
 }
@@ -889,6 +889,14 @@ mod tests {
         assert_eq!(get_extension("has_ext.foo"), String::from("foo"));
         assert_eq!(get_extension("has_ext.foobar"), String::from("foobar"));
         assert_eq!(get_extension("has.extension.foo"), String::from("foo"));
+    }
+
+    #[test]
+    fn test_parse_unix_filename() {
+        assert_eq!(parse_unix_filename("file.txt"), "file.txt");
+        assert_eq!(parse_unix_filename("path/to/file.txt"), "file.txt");
+        assert_eq!(parse_unix_filename("path/to/.hidden"), ".hidden");
+        assert_eq!(parse_unix_filename("/root.txt"), "root.txt");
     }
 
     #[test]

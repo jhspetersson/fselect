@@ -467,7 +467,11 @@ Interactive mode:
 
 fn format_root_options() -> String {
     RootOptions::get_names_and_descriptions().iter()
-        .map(|(names, description)| names.join(" | ").to_string() + " ".repeat(32 - names.join(" | ").to_string().len()).as_str() + description)
+        .map(|(names, description)| {
+            let joined = names.join(" | ");
+            let pad = if 32 > joined.len() { 32 - joined.len() } else { 1 };
+            joined + &" ".repeat(pad) + description
+        })
         .collect::<Vec<_>>().join("\n    ")
 }
 
@@ -500,7 +504,11 @@ fn format_function_usage() -> String {
 
 fn format_output_usage() -> String {
     OutputFormat::get_names_and_descriptions().iter()
-        .map(|(name, description)| name.to_string() + " ".repeat(32 - name.to_string().len()).as_str() + description)
+        .map(|(name, description)| {
+            let name = name.to_string();
+            let pad = if 32 > name.len() { 32 - name.len() } else { 1 };
+            name + &" ".repeat(pad) + description
+        })
         .collect::<Vec<_>>().join("\n    ")
 }
 

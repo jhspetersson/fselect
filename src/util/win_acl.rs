@@ -227,24 +227,15 @@ fn format_sid_fallback(sid: *mut core::ffi::c_void) -> String {
 }
 
 /// Map an access mask to a human-readable permission string.
-fn format_access_mask(mask: u32) -> &'static str {
+fn format_access_mask(mask: u32) -> String {
     match mask {
-        FILE_ALL_ACCESS => "full",
-        FILE_MODIFY => "modify",
-        FILE_READ_EXECUTE => "rx",
-        FILE_READ => "read",
-        FILE_WRITE => "write",
-        _ => mask_to_static(mask),
+        FILE_ALL_ACCESS => "full".to_string(),
+        FILE_MODIFY => "modify".to_string(),
+        FILE_READ_EXECUTE => "rx".to_string(),
+        FILE_READ => "read".to_string(),
+        FILE_WRITE => "write".to_string(),
+        _ => format!("0x{:08x}", mask),
     }
-}
-
-/// For non-standard masks, return a hex string.
-/// We use a small set of known combined masks plus a generic hex fallback.
-fn mask_to_static(mask: u32) -> &'static str {
-    // Leak a small string for uncommon masks. These are very few distinct
-    // values in practice (typically <10 per system), so this is acceptable.
-    let s = format!("0x{:08x}", mask);
-    Box::leak(s.into_boxed_str())
 }
 
 #[cfg(test)]

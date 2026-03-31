@@ -182,13 +182,17 @@ impl Variant {
 
     pub fn to_bool(&self) -> bool {
         if let Some(value) = self.bool_value {
-            value
-        } else if !self.string_value.is_empty() {
-            str_to_bool(&self.string_value).unwrap_or(false)
-        } else if let Some(int_value) = self.int_value {
-            int_value == 1
+            return value;
+        }
+        if !self.string_value.is_empty() {
+            if let Some(value) = str_to_bool(&self.string_value) {
+                return value;
+            }
+        }
+        if let Some(int_value) = self.int_value {
+            int_value != 0
         } else if let Some(float_value) = self.float_value {
-            float_value == 1.0
+            float_value != 0.0
         } else {
             false
         }
@@ -415,7 +419,9 @@ mod tests {
     #[test]
     fn to_bool_from_int_other() {
         let v = Variant::from_int(42);
-        assert_eq!(v.to_bool(), false);
+        assert_eq!(v.to_bool(), true, "non-zero int should be truthy");
+        let v = Variant::from_int(-1);
+        assert_eq!(v.to_bool(), true, "negative int should be truthy");
     }
 
     #[test]
@@ -428,6 +434,12 @@ mod tests {
     fn to_bool_from_float_zero() {
         let v = Variant::from_float(0.0);
         assert_eq!(v.to_bool(), false);
+    }
+
+    #[test]
+    fn to_bool_from_float_nonzero() {
+        let v = Variant::from_float(3.14);
+        assert_eq!(v.to_bool(), true, "non-zero float should be truthy");
     }
 
     #[test]

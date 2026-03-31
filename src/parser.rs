@@ -621,7 +621,7 @@ impl <'a> Parser<'a> {
         let lexeme = self.next_lexeme();
         let mut result = match lexeme {
             Some(Lexeme::Operator(s)) if s.as_str() == "between" || s.as_str() == "notbetween" => {
-                let is_negated = not || s.as_str() == "notbetween";
+                let is_negated = not ^ (s.as_str() == "notbetween");
 
                 let left_between = self.parse_add_sub()?;
 
@@ -2802,6 +2802,23 @@ mod tests {
         assert!(result.is_ok());
         let query = result.unwrap();
         assert!(query.expr.is_some());
+    }
+
+    #[test]
+    fn not_notbetween_double_negation() {
+        // "not notbetween" = double negation = "between"
+        let q1 = "select name from /test where size not notbetween 100 and 200";
+        let mut lexer1 = Lexer::new(vec![q1.to_string()]);
+        let mut p1 = Parser::new(&mut lexer1);
+        let result1 = p1.parse(false).unwrap();
+
+        let q2 = "select name from /test where size between 100 and 200";
+        let mut lexer2 = Lexer::new(vec![q2.to_string()]);
+        let mut p2 = Parser::new(&mut lexer2);
+        let result2 = p2.parse(false).unwrap();
+
+        // Both should produce the same expression tree
+        assert_eq!(format!("{:?}", result1.expr), format!("{:?}", result2.expr));
     }
 
     #[test]

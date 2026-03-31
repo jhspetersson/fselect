@@ -240,10 +240,9 @@ fn convert_hgignore_regexp(regexp: &str, file_path: &Path) -> Result<Regex, Stri
         let mut pattern = regex::escape(&file_path.to_string_lossy());
         if !regexp.starts_with("^") {
             pattern = pattern.add("/([^/]+/)*");
-        }
-
-        if !regexp.starts_with("^") {
             pattern = pattern.add(".*");
+        } else {
+            pattern = pattern.add("/");
         }
 
         pattern = pattern.add(&regexp.trim_start_matches("^"));
@@ -256,10 +255,9 @@ fn convert_hgignore_regexp(regexp: &str, file_path: &Path) -> Result<Regex, Stri
         let mut pattern = regex::escape(&file_path.to_string_lossy());
         if !regexp.starts_with("^") {
             pattern = pattern.add("\\\\([^\\\\]+\\\\)*");
-        }
-
-        if !regexp.starts_with("^") {
             pattern = pattern.add(".*");
+        } else {
+            pattern = pattern.add("\\\\");
         }
 
         pattern = pattern.add(&regexp.trim_start_matches("^"));
@@ -370,5 +368,20 @@ mod tests {
             "brackets should be escaped but got: {}",
             regex_str
         );
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn regexp_caret_anchored_includes_separator() {
+        let regex = convert_hgignore_regexp("^src/main", Path::new("/repo")).unwrap();
+        assert!(regex.is_match("/repo/src/main.rs"), "^-anchored pattern should match");
+        assert!(!regex.is_match("/reposrc/main.rs"), "should not match without separator");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn regexp_caret_anchored_includes_separator_windows() {
+        let regex = convert_hgignore_regexp("^src/main", Path::new("C:\\repo")).unwrap();
+        assert!(regex.is_match("C:\\repo\\src/main.rs"), "^-anchored pattern should match");
     }
 }

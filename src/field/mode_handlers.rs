@@ -8,7 +8,7 @@ pub fn handle_mode(ctx: &mut FieldContext) -> Result<Variant, SearchError> {
     match ctx.file_info {
         Some(file_info) => {
             if let Some(mode) = file_info.mode {
-                return Ok(Variant::from_string(&mode::format_mode(mode)));
+                return Ok(Variant::from_string(&mode::format_unix_mode(mode)));
             }
             Ok(Variant::empty(VariantType::String))
         }

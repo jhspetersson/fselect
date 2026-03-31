@@ -30,6 +30,47 @@ pub fn format_mode(mode: u32) -> String {
     }
 }
 
+/// Format a Unix mode value regardless of platform (for archive entries).
+pub fn format_unix_mode(mode: u32) -> String {
+    let mut s = String::new();
+
+    if mode & S_IFMT == 0o120000 {
+        s.push('l')
+    } else if mode & S_IFMT == S_IFBLK {
+        s.push('b')
+    } else if mode & S_IFMT == S_IFCHR {
+        s.push('c')
+    } else if mode & S_IFMT == S_IFSOCK {
+        s.push('s')
+    } else if mode & S_IFMT == S_IFIFO {
+        s.push('p')
+    } else if mode & S_IFMT == 0o040000 {
+        s.push('d')
+    } else {
+        s.push('-')
+    }
+
+    s.push(if mode_user_read(mode) { 'r' } else { '-' });
+    s.push(if mode_user_write(mode) { 'w' } else { '-' });
+    s.push(if mode_user_exec(mode) {
+        if mode_suid(mode) { 's' } else { 'x' }
+    } else if mode_suid(mode) { 'S' } else { '-' });
+
+    s.push(if mode_group_read(mode) { 'r' } else { '-' });
+    s.push(if mode_group_write(mode) { 'w' } else { '-' });
+    s.push(if mode_group_exec(mode) {
+        if mode_sgid(mode) { 's' } else { 'x' }
+    } else if mode_sgid(mode) { 'S' } else { '-' });
+
+    s.push(if mode_other_read(mode) { 'r' } else { '-' });
+    s.push(if mode_other_write(mode) { 'w' } else { '-' });
+    s.push(if mode_other_exec(mode) {
+        if mode_sticky(mode) { 't' } else { 'x' }
+    } else if mode_sticky(mode) { 'T' } else { '-' });
+
+    s
+}
+
 #[cfg(unix)]
 fn get_mode_unix(mode: u32) -> String {
     let mut s = String::new();
@@ -560,6 +601,15 @@ mod tests {
             let mode = FILE_ATTRIBUTE_READONLY | FILE_ATTRIBUTE_HIDDEN;
             assert_eq!(format_mode(mode), "Hidden, Readonly");
         }
+    }
+
+    #[test]
+    fn test_format_unix_mode() {
+        assert_eq!(format_unix_mode(0o100644), "-rw-r--r--");
+        assert_eq!(format_unix_mode(0o100755), "-rwxr-xr-x");
+        assert_eq!(format_unix_mode(0o40755), "drwxr-xr-x");
+        assert_eq!(format_unix_mode(0o120777), "lrwxrwxrwx");
+        assert_eq!(format_unix_mode(0o104755), "-rwsr-xr-x");
     }
 
     #[test]

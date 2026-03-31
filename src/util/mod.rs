@@ -60,7 +60,7 @@ use crate::mode;
 pub use dimensions::Dimensions;
 pub use duration::Duration;
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Criteria<T>
 where
     T: Display + ToString,
@@ -156,6 +156,12 @@ where
             .0;
 
         a.cmp(&b)
+    }
+}
+
+impl<T: Display + Ord> PartialOrd for Criteria<T> {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
     }
 }
 
@@ -805,6 +811,14 @@ mod tests {
         let c2 = Criteria::new(fields.clone(), vec![1, 3, 1], orderings.clone());
 
         assert_eq!(c1.cmp(&c2), Ordering::Greater);
+    }
+
+    #[test]
+    fn test_partial_cmp_consistent_with_cmp() {
+        let c1 = basic_criteria(&[1, 3, 2]);
+        let c2 = basic_criteria(&[1, 2, 3]);
+
+        assert_eq!(c1.partial_cmp(&c2), Some(c1.cmp(&c2)));
     }
 
     #[test]

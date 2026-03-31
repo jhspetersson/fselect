@@ -342,10 +342,10 @@ impl Lexer {
                     self.state.in_order_by = false;
                     Some(Lexeme::Into)
                 }
-                "exists" if self.state.after_where && !self.state.after_operator && !self.state.after_value_start && !self.state.in_value_set => Some(Lexeme::Operator(s.to_lowercase())),
+                "exists" | "notexists" if self.state.after_where && !self.state.after_operator && !self.state.after_value_start && !self.state.in_value_set => Some(Lexeme::Operator(s.to_lowercase())),
                 "eq" | "ne" | "gt" | "lt" | "ge" | "le" | "gte" | "lte" | "eeq" | "ene"
                 | "regexp" | "rx" | "like" | "notlike" | "notrx"
-                | "between" | "notbetween" | "in" | "notin" | "notexists" if self.state.after_where && !self.state.after_operator && !self.state.after_logical => Some(Lexeme::Operator(s.to_lowercase())),
+                | "between" | "notbetween" | "in" | "notin" if self.state.after_where && !self.state.after_operator && !self.state.after_logical => Some(Lexeme::Operator(s.to_lowercase())),
                 "mul" | "div" | "mod" | "plus" | "minus" if (self.state.before_from || self.state.after_where || self.state.in_group_by || self.state.in_order_by) && !self.state.after_operator && !self.state.after_logical && !self.state.after_not => Some(Lexeme::ArithmeticOperator(s)),
                 _ => Some(Lexeme::RawString(s)),
             },
@@ -3030,6 +3030,24 @@ mod tests {
             Some(Lexeme::RawString(String::from("10"))),
             "10 after comma in LIMIT should be a separate token, not merged with offset"
         );
+    }
+
+    #[test]
+    fn test_notexists_after_where() {
+        let mut lexer = lexer!("select", "name", "from", ".", "where", "notexists");
+        while let Some(l) = lexer.next_lexeme() {
+            if l == Lexeme::Where { break; }
+        }
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Operator(String::from("notexists"))));
+    }
+
+    #[test]
+    fn test_notexists_after_and() {
+        let mut lexer = lexer!("select", "name", "from", ".", "where", "name", "=", "test", "and", "notexists");
+        while let Some(l) = lexer.next_lexeme() {
+            if matches!(l, Lexeme::And) { break; }
+        }
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Operator(String::from("notexists"))));
     }
 
 }

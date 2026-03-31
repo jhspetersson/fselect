@@ -292,7 +292,7 @@ pub fn format_filesize(size: u64, modifier: &str) -> Result<String, String> {
     if let Some(cap) = FILE_SIZE_FORMAT_REGEX.captures(&modifier) {
         zeroes = cap
             .name("zeroes")
-            .map_or(-1, |m| m.as_str().parse::<i32>().unwrap());
+            .map_or(-1, |m| m.as_str().parse::<i32>().unwrap_or(20));
         space = cap.name("space").map_or(false, |m| m.as_str() == " ");
         modifier = cap
             .name("units")
@@ -894,6 +894,13 @@ mod tests {
         assert_eq!(format_filesize(file_size, "%.0kb").unwrap(), String::from("1678KB"));
         assert_eq!(format_filesize(file_size, "%.0s").unwrap(), String::from("2M"));
         assert_eq!(format_filesize(file_size, "%.0 s").unwrap(), String::from("2 M"));
+    }
+
+    #[test]
+    fn test_format_filesize_large_precision() {
+        // Should not panic on absurdly large precision values
+        let result = format_filesize(1024, "%.9999999999");
+        assert!(result.is_ok());
     }
 
     #[test]

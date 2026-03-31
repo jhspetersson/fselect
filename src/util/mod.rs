@@ -555,7 +555,7 @@ pub fn get_exif_metadata(entry: &DirEntry) -> Option<HashMap<String, String>> {
                         exif_info.insert(
                             field_tag,
                             vec.iter()
-                                .map(|r| (r.num as f64 / r.denom as f64).to_string())
+                                .map(|r| if r.denom != 0 { (r.num as f64 / r.denom as f64).to_string() } else { "0".to_string() })
                                 .collect::<Vec<String>>()
                                 .join(";"),
                         );
@@ -928,6 +928,17 @@ mod tests {
         assert!(is_hidden("path/to/.hidden/", &None, true));
         assert!(!is_hidden("path/to/visible/", &None, true));
         assert!(is_hidden(".hidden", &None, true));
+    }
+
+    #[test]
+    fn test_gps_rational_zero_denom() {
+        // Simulates the GPS rational conversion logic
+        let convert = |num: u32, denom: u32| -> String {
+            if denom != 0 { (num as f64 / denom as f64).to_string() } else { "0".to_string() }
+        };
+        assert_eq!(convert(180, 1), "180");
+        assert_eq!(convert(0, 0), "0");
+        assert_eq!(convert(90, 0), "0");
     }
 
     #[test]

@@ -78,24 +78,20 @@ pub fn parse_datetime(s: &str) -> Result<(NaiveDateTime, NaiveDateTime), String>
 
             match Local.with_ymd_and_hms(year, month, day, 0, 0, 0) {
                 LocalResult::Single(date) => {
-                    let start = date
-                        .naive_local()
+                    let base = date.naive_local();
+                    let start = base
                         .with_hour(hour_start)
-                        .unwrap()
-                        .with_minute(min_start)
-                        .unwrap()
-                        .with_second(sec_start)
-                        .unwrap();
-                    let finish = date
-                        .naive_local()
+                        .and_then(|d| d.with_minute(min_start))
+                        .and_then(|d| d.with_second(sec_start));
+                    let finish = base
                         .with_hour(hour_finish)
-                        .unwrap()
-                        .with_minute(min_finish)
-                        .unwrap()
-                        .with_second(sec_finish)
-                        .unwrap();
+                        .and_then(|d| d.with_minute(min_finish))
+                        .and_then(|d| d.with_second(sec_finish));
 
-                    Ok((start, finish))
+                    match (start, finish) {
+                        (Some(s), Some(f)) => Ok((s, f)),
+                        _ => Err("Error parsing date/time value: ".to_string() + s),
+                    }
                 }
                 _ => Err("Error converting date/time to local: ".to_string() + s),
             }
@@ -243,6 +239,13 @@ mod tests {
 
         assert!(result.is_err());
         assert_eq!(result.unwrap_err(), "Error parsing date/time value: invalid-date");
+    }
+
+    #[test]
+    fn test_parse_out_of_range_time() {
+        assert!(parse_datetime("2024-01-01 25:00:00").is_err());
+        assert!(parse_datetime("2024-01-01 12:61:00").is_err());
+        assert!(parse_datetime("2024-01-01 12:00:99").is_err());
     }
 
     #[test]

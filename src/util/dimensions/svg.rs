@@ -21,7 +21,7 @@ impl DimensionsExtractor for SvgDimensionsExtractor {
         for event in svg::open(path, &mut content).unwrap() {
             if let Event::Tag(SVG, _, attributes) = event {
                 if let (Some(width_value), Some(height_value)) =
-                    (attributes.get("height"), attributes.get("width"))
+                    (attributes.get("width"), attributes.get("height"))
                 {
                     let width = width_value
                         .parse::<usize>()
@@ -53,6 +53,18 @@ mod test {
             Some(Dimensions {
                 width: 144,
                 height: 144,
+            }),
+        )
+    }
+
+    #[test]
+    fn test_non_square() -> Result<(), Box<dyn Error>> {
+        test_successful(
+            SvgDimensionsExtractor,
+            "image/rect.svg",
+            Some(Dimensions {
+                width: 200,
+                height: 100,
             }),
         )
     }

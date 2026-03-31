@@ -551,8 +551,13 @@ pub fn get_value(
             };
             match parse_datetime(&function_arg) {
                 Ok(date) => {
-                    let result = date.0 + chrono::Duration::days(days);
-                    Ok(Variant::from_string(&format_datetime(&result)))
+                    match chrono::Duration::try_days(days) {
+                        Some(duration) => {
+                            let result = date.0 + duration;
+                            Ok(Variant::from_string(&format_datetime(&result)))
+                        }
+                        None => Err(format!("Number of days out of range: {}", days)),
+                    }
                 }
                 _ => Ok(Variant::empty(VariantType::String)),
             }
@@ -567,8 +572,13 @@ pub fn get_value(
             };
             match parse_datetime(&function_arg) {
                 Ok(date) => {
-                    let result = date.0 - chrono::Duration::days(days);
-                    Ok(Variant::from_string(&format_datetime(&result)))
+                    match chrono::Duration::try_days(days) {
+                        Some(duration) => {
+                            let result = date.0 - duration;
+                            Ok(Variant::from_string(&format_datetime(&result)))
+                        }
+                        None => Err(format!("Number of days out of range: {}", days)),
+                    }
                 }
                 _ => Ok(Variant::empty(VariantType::String)),
             }
@@ -3171,5 +3181,29 @@ mod tests {
             &None,
         );
         assert_eq!(result.unwrap().to_int(), 3);
+    }
+
+    #[test]
+    fn date_add_extreme_days_no_panic() {
+        let result = get_value(
+            &Function::DateAdd,
+            String::from("2024-01-01"),
+            vec![String::from("999999999999999")],
+            None,
+            &None,
+        );
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn date_sub_extreme_days_no_panic() {
+        let result = get_value(
+            &Function::DateSub,
+            String::from("2024-01-01"),
+            vec![String::from("999999999999999")],
+            None,
+            &None,
+        );
+        assert!(result.is_err());
     }
 }

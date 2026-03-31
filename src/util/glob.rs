@@ -9,7 +9,7 @@ pub fn is_glob(s: &str) -> bool {
 
 pub fn convert_glob_to_pattern(s: &str) -> Result<String, String> {
     let string = s.to_string();
-    let regex = Regex::new("(\\?|\\.|\\*|\\[|\\]|\\(|\\)|\\^|\\$)").unwrap();
+    let regex = Regex::new("(\\?|\\.|\\*|\\[|\\]|\\(|\\)|\\^|\\$|\\+|\\{|\\}|\\||\\\\)").unwrap();
     let string = regex.replace_all(&string, |c: &Captures| {
         match c.index(0) {
             "." => "\\.",
@@ -21,6 +21,11 @@ pub fn convert_glob_to_pattern(s: &str) -> Result<String, String> {
             ")" => "\\)",
             "^" => "\\^",
             "$" => "\\$",
+            "+" => "\\+",
+            "{" => "\\{",
+            "}" => "\\}",
+            "|" => "\\|",
+            "\\" => "\\\\",
             _ => "",
         }
         .to_string()
@@ -35,7 +40,7 @@ pub fn convert_glob_to_pattern(s: &str) -> Result<String, String> {
 
 pub fn convert_like_to_pattern(s: &str) -> Result<String, String> {
     let string = s.to_string();
-    let regex = Regex::new("(%|_|\\?|\\.|\\*|\\[|\\]|\\(|\\)|\\^|\\$)").unwrap();
+    let regex = Regex::new("(%|_|\\?|\\.|\\*|\\[|\\]|\\(|\\)|\\^|\\$|\\+|\\{|\\}|\\||\\\\)").unwrap();
     let string = regex.replace_all(&string, |c: &Captures| {
         match c.index(0) {
             "%" => ".*",
@@ -49,6 +54,11 @@ pub fn convert_like_to_pattern(s: &str) -> Result<String, String> {
             ")" => "\\)",
             "^" => "\\^",
             "$" => "\\$",
+            "+" => "\\+",
+            "{" => "\\{",
+            "}" => "\\}",
+            "|" => "\\|",
+            "\\" => "\\\\",
             _ => "",
         }
         .to_string()
@@ -138,5 +148,35 @@ mod tests {
     fn test_convert_like_to_pattern_special_chars() {
         let pattern = convert_like_to_pattern("file*.txt").unwrap();
         assert_eq!(pattern, "^(?i)file\\*\\.txt$");
+    }
+
+    #[test]
+    fn test_convert_glob_escapes_plus() {
+        let pattern = convert_glob_to_pattern("a+b.txt").unwrap();
+        assert_eq!(pattern, "^(?i)a\\+b\\.txt$");
+    }
+
+    #[test]
+    fn test_convert_glob_escapes_braces() {
+        let pattern = convert_glob_to_pattern("file{1}.txt").unwrap();
+        assert_eq!(pattern, "^(?i)file\\{1\\}\\.txt$");
+    }
+
+    #[test]
+    fn test_convert_glob_escapes_pipe() {
+        let pattern = convert_glob_to_pattern("a|b.txt").unwrap();
+        assert_eq!(pattern, "^(?i)a\\|b\\.txt$");
+    }
+
+    #[test]
+    fn test_convert_like_escapes_plus() {
+        let pattern = convert_like_to_pattern("a+b").unwrap();
+        assert_eq!(pattern, "^(?i)a\\+b$");
+    }
+
+    #[test]
+    fn test_convert_like_escapes_braces() {
+        let pattern = convert_like_to_pattern("file{1}").unwrap();
+        assert_eq!(pattern, "^(?i)file\\{1\\}$");
     }
 }

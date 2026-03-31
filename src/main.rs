@@ -199,7 +199,7 @@ fn main() -> ExitCode {
                                     Ok(path) => println!("{}", path.to_string_lossy()),
                                     Err(err) => error_message("pwd", &err.to_string()),
                                 }
-                            } else if trimmed.starts_with("cd") {
+                            } else if trimmed == "cd" || trimmed.starts_with("cd ") {
                                 let parts: Vec<&str> = cmd.trim().split_whitespace().collect();
                                 if parts.len() < 2 {
                                     error_message("cd", "no path specified");
@@ -211,7 +211,7 @@ fn main() -> ExitCode {
                                         Err(err) => error_message("cd", &err.to_string()),
                                     }
                                 }
-                            } else if trimmed.starts_with("errors") {
+                            } else if trimmed == "errors" || trimmed.starts_with("errors ") {
                                 let _ = rl.add_history_entry(&cmd);
                                 let parts: Vec<&str> = cmd.trim().split_whitespace().collect();
                                 if parts.len() == 2 {
@@ -223,7 +223,7 @@ fn main() -> ExitCode {
                                 } else {
                                     Yellow.paint(if get_no_errors() { "OFF" } else { "ON" })
                                 });
-                            } else if trimmed.starts_with("debug") {
+                            } else if trimmed == "debug" || trimmed.starts_with("debug ") {
                                 let _ = rl.add_history_entry(&cmd);
                                 let parts: Vec<&str> = cmd.trim().split_whitespace().collect();
                                 if parts.len() == 2 {
@@ -555,4 +555,26 @@ fn complete_output_formats_info() {
             .collect::<Vec<_>>()
             .join(" ")
     )
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn test_repl_command_matching() {
+        // Verify that the REPL command matching logic doesn't match partial words
+        let trimmed = "cdata";
+        assert!(!(trimmed == "cd" || trimmed.starts_with("cd ")));
+
+        let trimmed = "cd /tmp";
+        assert!(trimmed == "cd" || trimmed.starts_with("cd "));
+
+        let trimmed = "errors_table";
+        assert!(!(trimmed == "errors" || trimmed.starts_with("errors ")));
+
+        let trimmed = "debugger";
+        assert!(!(trimmed == "debug" || trimmed.starts_with("debug ")));
+
+        let trimmed = "debug true";
+        assert!(trimmed == "debug" || trimmed.starts_with("debug "));
+    }
 }

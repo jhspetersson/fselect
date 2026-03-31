@@ -938,7 +938,7 @@ pub fn get_aggregate_value(
 }
 
 functions! {
-    #[group_order = ["String", "Japanese string", "Numeric", "Datetime", "Aggregate", "Xattr", "Other"]]
+    #[group_order = ["String", "Japanese string", "Greek string", "Numeric", "Datetime", "Aggregate", "Xattr", "Other"]]
     #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Hash)]
     pub enum Function {
         #[text = ["lower", "lowercase", "lcase"]]
@@ -3151,6 +3151,14 @@ mod tests {
             &None,
         );
         assert_eq!(result.unwrap().to_int(), 0);
+    }
+
+    #[test]
+    fn greek_string_group_in_help() {
+        let groups = Function::get_groups();
+        assert!(groups.contains(&"Greek string"));
+        let descs = Function::get_names_and_descriptions();
+        assert!(descs.contains_key("Greek string"));
     }
 
     #[test]

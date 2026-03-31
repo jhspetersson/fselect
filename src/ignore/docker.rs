@@ -136,7 +136,7 @@ fn convert_dockerignore_pattern(
 }
 
 static DOCKER_CONVERT_REPLACE_REGEX: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new("(\\*\\*|\\?|\\.|\\*)").unwrap()
+    Regex::new("(\\*\\*|\\?|\\.|\\*|\\[|\\]|\\(|\\)|\\^|\\$|\\+|\\{|\\}|\\||\\\\)").unwrap()
 });
 
 fn convert_dockerignore_glob(glob: &str, file_path: &Path) -> Result<Regex, String> {
@@ -147,6 +147,17 @@ fn convert_dockerignore_glob(glob: &str, file_path: &Path) -> Result<Regex, Stri
                 "." => "\\.",
                 "*" => "[^/]*",
                 "?" => "[^/]",
+                "[" => "\\[",
+                "]" => "\\]",
+                "(" => "\\(",
+                ")" => "\\)",
+                "^" => "\\^",
+                "$" => "\\$",
+                "+" => "\\+",
+                "{" => "\\{",
+                "}" => "\\}",
+                "|" => "\\|",
+                "\\" => "\\\\",
                 _ => "",
             }
             .to_string()
@@ -213,6 +224,32 @@ mod tests {
         assert!(
             regex_str.contains("my\\.project"),
             "dots in path should be escaped but got: {}",
+            regex_str
+        );
+    }
+
+    #[test]
+    fn glob_with_brackets_is_escaped() {
+        let result = convert_dockerignore_glob("data[1].txt", Path::new("/tmp"));
+        assert!(result.is_ok(), "should not fail on brackets");
+        let regex = result.unwrap();
+        let regex_str = regex.as_str();
+        assert!(
+            regex_str.contains("\\[") && regex_str.contains("\\]"),
+            "brackets should be escaped but got: {}",
+            regex_str
+        );
+    }
+
+    #[test]
+    fn glob_with_plus_is_escaped() {
+        let result = convert_dockerignore_glob("a+b.txt", Path::new("/tmp"));
+        assert!(result.is_ok());
+        let regex = result.unwrap();
+        let regex_str = regex.as_str();
+        assert!(
+            regex_str.contains("\\+"),
+            "plus should be escaped but got: {}",
             regex_str
         );
     }

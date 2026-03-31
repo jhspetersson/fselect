@@ -842,11 +842,8 @@ pub fn get_value(
                         let limit = function_args.first().unwrap();
                         match limit.parse::<i64>() {
                             Ok(limit) => {
-                                if val >= limit {
-                                    Ok(Variant::from_int(val))
-                                } else {
-                                    Ok(Variant::from_int(rng.random_range(val..=limit)))
-                                }
+                                let (lo, hi) = if val <= limit { (val, limit) } else { (limit, val) };
+                                Ok(Variant::from_int(rng.random_range(lo..=hi)))
                             }
                             _ => Err(format!(
                                 "Could not parse limit argument of RANDOM function: {}",
@@ -2394,7 +2391,7 @@ mod tests {
     }
 
     #[test]
-    fn random_panics_on_inverted_range() {
+    fn random_inverted_range_returns_value_in_range() {
         let result = get_value(
             &Function::Random,
             String::from("5"),
@@ -2402,7 +2399,8 @@ mod tests {
             None,
             &None,
         );
-        assert!(result.is_ok());
+        let val = result.unwrap().to_int();
+        assert!(val >= 3 && val <= 5, "RANDOM(5,3) should return value in [3,5], got {}", val);
     }
 
     #[test]

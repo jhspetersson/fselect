@@ -4,9 +4,17 @@ use crate::output::ResultsFormatter;
 
 pub struct HtmlFormatter;
 
+fn escape_html(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+}
+
 impl ResultsFormatter for HtmlFormatter {
     fn header(&mut self, raw_query: &str, col_count: usize) -> Option<String> {
-        Some(format!("<html><head><title>{}</title></head><body><table><tr><th colspan=\"{}\">{}</th></tr>", raw_query, col_count, raw_query))
+        let escaped = escape_html(raw_query);
+        Some(format!("<html><head><title>{}</title></head><body><table><tr><th colspan=\"{}\">{}</th></tr>", escaped, col_count, escaped))
     }
 
     fn row_started(&mut self) -> Option<String> {
@@ -14,7 +22,7 @@ impl ResultsFormatter for HtmlFormatter {
     }
 
     fn format_element(&mut self, _: &str, record: &str, _is_last: bool) -> Option<String> {
-        Some(format!("<td>{}</td>", record))
+        Some(format!("<td>{}</td>", escape_html(record)))
     }
 
     fn row_ended(&mut self) -> Option<String> {
@@ -28,6 +36,7 @@ impl ResultsFormatter for HtmlFormatter {
 
 #[cfg(test)]
 mod test {
+    use super::*;
     use crate::output::html::HtmlFormatter;
     use crate::output::test::write_test_items;
 
@@ -35,5 +44,12 @@ mod test {
     fn test() {
         let result = write_test_items(&mut HtmlFormatter);
         assert_eq!("<html><head><title>select key, value</title></head><body><table><tr><th colspan=\"2\">select key, value</th></tr><tr><td>foo_value</td><td>BAR value</td></tr><tr><td>123</td><td></td></tr></table></body></html>", result);
+    }
+
+    #[test]
+    fn test_escape_html() {
+        assert_eq!(escape_html("<script>alert(1)</script>"), "&lt;script&gt;alert(1)&lt;/script&gt;");
+        assert_eq!(escape_html("a&b"), "a&amp;b");
+        assert_eq!(escape_html("\"hello\""), "&quot;hello&quot;");
     }
 }

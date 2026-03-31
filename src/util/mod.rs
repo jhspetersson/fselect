@@ -640,7 +640,8 @@ pub fn is_shebang(path: &PathBuf) -> bool {
 pub fn is_hidden(file_name: &str, metadata: &Option<Metadata>, archive_mode: bool) -> bool {
     if archive_mode {
         if !file_name.contains('\\') {
-            return parse_unix_filename(file_name).starts_with('.');
+            let name = file_name.trim_end_matches('/');
+            return parse_unix_filename(name).starts_with('.');
         } else {
             return false;
         }
@@ -918,6 +919,15 @@ mod tests {
         assert_eq!(parse_unix_filename("path/to/file.txt"), "file.txt");
         assert_eq!(parse_unix_filename("path/to/.hidden"), ".hidden");
         assert_eq!(parse_unix_filename("/root.txt"), "root.txt");
+    }
+
+    #[test]
+    fn test_is_hidden_archive_trailing_slash() {
+        // Archive directory entries often have trailing slashes
+        assert!(is_hidden(".hidden/", &None, true));
+        assert!(is_hidden("path/to/.hidden/", &None, true));
+        assert!(!is_hidden("path/to/visible/", &None, true));
+        assert!(is_hidden(".hidden", &None, true));
     }
 
     #[test]

@@ -217,7 +217,7 @@ impl Display for Variant {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::NaiveDate;
+    use chrono::{NaiveDate, Timelike};
 
     #[test]
     fn from_int() {
@@ -358,6 +358,17 @@ mod tests {
         let v = Variant::from_string(&String::from("2024-06-15"));
         let result = v.to_datetime();
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn to_datetime_date_only_returns_day_range() {
+        let v = Variant::from_string(&String::from("2024-06-15"));
+        let (start, finish) = v.to_datetime().unwrap();
+        // Date-only should span midnight to 23:59:59
+        assert_eq!(start.hour(), 0);
+        assert_eq!(finish.hour(), 23);
+        assert_eq!(finish.minute(), 59);
+        assert_eq!(finish.second(), 59);
     }
 
     #[test]

@@ -1114,8 +1114,9 @@ impl<'a> Searcher<'a> {
                 VariantType::Int | VariantType::Float => arg_val.to_float() == field_value.to_float(),
                 VariantType::Bool => arg_val.to_bool() == field_value.to_bool(),
                 VariantType::DateTime => {
-                    arg_val.to_datetime()?.0.and_utc().timestamp()
-                        == field_value.to_datetime()?.0.and_utc().timestamp()
+                    let field_dt = field_value.to_datetime()?.0;
+                    let (arg_start, arg_finish) = arg_val.to_datetime()?;
+                    field_dt >= arg_start && field_dt <= arg_finish
                 }
             };
             if matches {

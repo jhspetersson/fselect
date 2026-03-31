@@ -1125,7 +1125,8 @@ impl<'a> Searcher<'a> {
             )?;
             let matches = match field_type {
                 VariantType::String => arg_val.to_string() == field_value.to_string(),
-                VariantType::Int | VariantType::Float => arg_val.to_float() == field_value.to_float(),
+                VariantType::Int => arg_val.to_int() == field_value.to_int(),
+                VariantType::Float => arg_val.to_float() == field_value.to_float(),
                 VariantType::Bool => arg_val.to_bool() == field_value.to_bool(),
                 VariantType::DateTime => {
                     let field_dt = field_value.to_datetime()?.0;
@@ -1910,6 +1911,21 @@ mod tests {
             inner_key, "size",
             "Computed expression key should differ from raw field key"
         );
+    }
+
+    #[test]
+    fn test_in_list_uses_int_comparison_not_float() {
+        // Large i64 values lose precision when converted to f64
+        let large: i64 = (1_i64 << 53) + 1; // 9007199254740993
+        let a = Variant::from_int(large);
+        let b = Variant::from_int(large);
+
+        // Int comparison should match
+        assert_eq!(a.to_int(), b.to_int(), "int comparison should be exact");
+
+        // Float comparison would lose precision for this value
+        let as_float = large as f64;
+        assert_ne!(as_float as i64, large, "f64 loses precision for 2^53+1");
     }
 
 }

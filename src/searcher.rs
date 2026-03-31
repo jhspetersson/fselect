@@ -1270,6 +1270,10 @@ impl<'a> Searcher<'a> {
                         Op::NotLike => {
                             return self.match_pattern(val, &field_str, convert_like_to_pattern, "Incorrect LIKE expression: ").map(|m| !m);
                         }
+                        Op::Gt => field_str > val,
+                        Op::Gte => field_str >= val,
+                        Op::Lt => field_str < val,
+                        Op::Lte => field_str <= val,
                         Op::Eeq => val.eq(&field_str),
                         Op::Ene => val.ne(&field_str),
                         Op::In => self.check_in_list(expr, entry, file_info, root_path, &mut arg_map, &field_value, false)?,
@@ -1597,6 +1601,21 @@ mod tests {
             "should find file through relative symlink, found={} errors={}",
             found, errors
         );
+    }
+
+    #[test]
+    fn test_string_ordering_comparisons() {
+        // Verify that string comparisons work correctly for Gt, Gte, Lt, Lte
+        let a = Variant::from_string(&String::from("apple"));
+        let b = Variant::from_string(&String::from("banana"));
+
+        // "apple" < "banana" lexicographically
+        assert!(a.to_string() < b.to_string());
+        assert!(b.to_string() > a.to_string());
+        assert!(a.to_string() <= b.to_string());
+        assert!(b.to_string() >= a.to_string());
+        assert!(a.to_string() <= a.to_string());
+        assert!(a.to_string() >= a.to_string());
     }
 
     #[test]

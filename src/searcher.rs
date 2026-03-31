@@ -158,7 +158,7 @@ impl<'a> Searcher<'a> {
     }
 
     pub fn is_buffered(&self) -> bool {
-        self.query.is_ordered() || self.query.has_aggregate_column() || self.silent_mode
+        self.query.is_ordered() || self.query.has_aggregate_column() || self.query.offset > 0 || self.silent_mode
     }
 
     /// Searches directories based on configured query and outputs results to stdout.
@@ -1462,6 +1462,26 @@ mod tests {
     fn test_is_buffered_without_ordering_or_aggregate() {
         let searcher = create_test_searcher();
         assert!(!searcher.is_buffered());
+    }
+
+    #[test]
+    fn test_is_buffered_with_offset() {
+        let query = Box::leak(Box::new(Query {
+            fields: Vec::new(),
+            roots: Vec::new(),
+            expr: None,
+            grouping_fields: Vec::new(),
+            ordering_fields: Vec::new(),
+            ordering_asc: Vec::new(),
+            limit: 10,
+            offset: 5,
+            output_format: OutputFormat::Tabs,
+            raw_query: String::new(),
+        }));
+        let config = Box::leak(Box::new(Config::default()));
+        let default_config = Box::leak(Box::new(Config::default()));
+        let searcher = Searcher::new(query, config, default_config, false);
+        assert!(searcher.is_buffered());
     }
 
     #[test]

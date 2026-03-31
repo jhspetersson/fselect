@@ -172,6 +172,10 @@ fn convert_dockerignore_glob(glob: &str, file_path: &Path) -> Result<Regex, Stri
         pattern.remove(0);
     }
 
+    if pattern.is_empty() {
+        return Err("Error parsing .dockerignore pattern: ".to_string() + glob);
+    }
+
     #[cfg(windows)]
     let path = file_path
         .to_string_lossy()
@@ -252,5 +256,11 @@ mod tests {
             "plus should be escaped but got: {}",
             regex_str
         );
+    }
+
+    #[test]
+    fn test_all_slashes_pattern_rejected() {
+        let result = convert_dockerignore_glob("///", Path::new("/tmp"));
+        assert!(result.is_err(), "pattern of only slashes should be rejected");
     }
 }

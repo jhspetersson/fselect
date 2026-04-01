@@ -1,0 +1,1047 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>fselect &mdash; Find files with SQL-like queries</title>
+    <meta name="description" content="fselect is a command-line tool to search files with SQL-like queries. Filter by size, date, name, content, image dimensions, MP3 tags, and more.">
+    <style>
+        :root {
+            --bg: #0f1117;
+            --surface: #161822;
+            --surface2: #1e2030;
+            --border: #2a2d3e;
+            --text: #cdd6f4;
+            --text-dim: #8891b0;
+            --accent: #89b4fa;
+            --accent2: #a6e3a1;
+            --accent3: #f9e2af;
+            --accent4: #f38ba8;
+            --accent5: #cba6f7;
+            --code-bg: #11131e;
+            --mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Source Code Pro', Consolas, monospace;
+            --sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        html { scroll-behavior: smooth; }
+
+        body {
+            font-family: var(--sans);
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.7;
+            font-size: 16px;
+        }
+
+        a { color: var(--accent); text-decoration: none; transition: color 0.2s; }
+        a:hover { color: var(--accent2); }
+
+        /* Nav */
+        nav {
+            position: fixed;
+            top: 0;
+            width: 100%;
+            background: rgba(15, 17, 23, 0.85);
+            backdrop-filter: blur(16px);
+            border-bottom: 1px solid var(--border);
+            z-index: 100;
+            padding: 0 2rem;
+        }
+        nav .inner {
+            max-width: 1100px;
+            margin: 0 auto;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            height: 56px;
+        }
+        nav .logo {
+            font-family: var(--mono);
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: var(--accent);
+        }
+        nav .logo span { color: var(--text-dim); font-weight: 400; }
+        nav ul { list-style: none; display: flex; gap: 1.5rem; }
+        nav ul a { color: var(--text-dim); font-size: 0.9rem; }
+        nav ul a:hover { color: var(--text); }
+
+        /* Hero */
+        .hero {
+            padding: 10rem 2rem 5rem;
+            text-align: center;
+            background: radial-gradient(ellipse at 50% 0%, rgba(137,180,250,0.08) 0%, transparent 60%);
+        }
+        .hero h1 {
+            font-family: var(--mono);
+            font-size: clamp(2.5rem, 6vw, 4rem);
+            font-weight: 800;
+            letter-spacing: -0.03em;
+            margin-bottom: 1rem;
+        }
+        .hero h1 .kw { color: var(--accent5); }
+        .hero h1 .field { color: var(--accent); }
+        .hero h1 .str { color: var(--accent2); }
+        .hero .tagline {
+            font-size: 1.25rem;
+            color: var(--text-dim);
+            max-width: 600px;
+            margin: 0 auto 2.5rem;
+        }
+        .hero .cta {
+            display: inline-flex;
+            gap: 1rem;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        .hero .cta a {
+            padding: 0.75rem 1.5rem;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 0.95rem;
+            transition: transform 0.15s, box-shadow 0.15s;
+        }
+        .hero .cta a:hover { transform: translateY(-2px); }
+        .btn-primary {
+            background: var(--accent);
+            color: var(--bg) !important;
+        }
+        .btn-secondary {
+            border: 1px solid var(--border);
+            color: var(--text) !important;
+            background: var(--surface);
+        }
+
+        /* Sections */
+        section {
+            max-width: 1100px;
+            margin: 0 auto;
+            padding: 4rem 2rem;
+        }
+        section h2 {
+            font-size: 1.8rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+            color: var(--text);
+        }
+        section h2 .accent { color: var(--accent); }
+        section .subtitle {
+            color: var(--text-dim);
+            margin-bottom: 2.5rem;
+            font-size: 1.05rem;
+        }
+        section h3 {
+            font-size: 1.2rem;
+            margin: 2.5rem 0 1rem;
+            color: var(--accent3);
+        }
+
+        /* Feature grid */
+        .features {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1.25rem;
+        }
+        .feature {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1.5rem;
+            transition: border-color 0.2s;
+        }
+        .feature:hover { border-color: var(--accent); }
+        .feature .icon { font-size: 1.5rem; margin-bottom: 0.75rem; }
+        .feature h4 {
+            font-size: 1rem;
+            margin-bottom: 0.4rem;
+            color: var(--text);
+        }
+        .feature p {
+            font-size: 0.9rem;
+            color: var(--text-dim);
+            line-height: 1.6;
+        }
+
+        /* Code blocks */
+        pre {
+            background: var(--code-bg);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 1.25rem 1.5rem;
+            overflow-x: auto;
+            font-family: var(--mono);
+            font-size: 0.88rem;
+            line-height: 1.8;
+            margin: 1rem 0;
+            position: relative;
+        }
+        pre .prompt { color: var(--text-dim); user-select: none; }
+        pre .kw { color: var(--accent5); }
+        pre .field { color: var(--accent); }
+        pre .func { color: var(--accent3); }
+        pre .str { color: var(--accent2); }
+        pre .op { color: var(--accent4); }
+        pre .num { color: #fab387; }
+        pre .comment { color: var(--text-dim); font-style: italic; }
+
+        code {
+            font-family: var(--mono);
+            font-size: 0.88em;
+            background: var(--surface2);
+            padding: 0.15em 0.4em;
+            border-radius: 4px;
+        }
+
+        /* Example sections */
+        .example-group {
+            margin-bottom: 3rem;
+        }
+        .example-group p {
+            color: var(--text-dim);
+            margin-bottom: 0.5rem;
+        }
+
+        /* Install */
+        .install-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            gap: 1rem;
+        }
+        .install-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 1.25rem;
+        }
+        .install-card h4 {
+            font-size: 0.95rem;
+            margin-bottom: 0.6rem;
+            color: var(--accent3);
+        }
+        .install-card pre {
+            margin: 0;
+            font-size: 0.85rem;
+            padding: 0.75rem 1rem;
+        }
+
+        /* Tables */
+        .ref-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1rem 0;
+            font-size: 0.9rem;
+        }
+        .ref-table th {
+            text-align: left;
+            padding: 0.75rem 1rem;
+            background: var(--surface2);
+            color: var(--accent);
+            font-weight: 600;
+            border-bottom: 2px solid var(--border);
+        }
+        .ref-table td {
+            padding: 0.6rem 1rem;
+            border-bottom: 1px solid var(--border);
+            color: var(--text-dim);
+        }
+        .ref-table td:first-child {
+            font-family: var(--mono);
+            color: var(--text);
+            font-size: 0.85rem;
+            white-space: nowrap;
+        }
+        .ref-table tr:hover td { background: var(--surface); }
+
+        /* Columns reference - compact grid */
+        .columns-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 1.5rem;
+        }
+        .col-group h4 {
+            color: var(--accent);
+            font-size: 0.95rem;
+            margin-bottom: 0.5rem;
+            padding-bottom: 0.4rem;
+            border-bottom: 1px solid var(--border);
+        }
+        .col-group ul {
+            list-style: none;
+            font-size: 0.85rem;
+        }
+        .col-group li {
+            padding: 0.2rem 0;
+            color: var(--text-dim);
+        }
+        .col-group li code {
+            color: var(--text);
+            font-size: 0.82rem;
+        }
+
+        /* Footer */
+        footer {
+            border-top: 1px solid var(--border);
+            padding: 3rem 2rem;
+            text-align: center;
+            color: var(--text-dim);
+            font-size: 0.9rem;
+        }
+        footer a { color: var(--accent); }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: var(--bg); }
+        ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+        /* Mobile */
+        @media (max-width: 640px) {
+            nav ul { gap: 0.8rem; }
+            nav ul a { font-size: 0.8rem; }
+            section { padding: 3rem 1.25rem; }
+            .hero { padding: 8rem 1.25rem 3rem; }
+        }
+
+        /* Separator */
+        .sep {
+            height: 1px;
+            background: var(--border);
+            max-width: 1100px;
+            margin: 0 auto;
+        }
+
+        /* Toc link style for heading anchors */
+        h2 a, h3 a { color: inherit; }
+        h2 a:hover, h3 a:hover { color: var(--accent); }
+
+        /* Badge */
+        .badge {
+            display: inline-block;
+            padding: 0.15em 0.5em;
+            font-size: 0.75rem;
+            border-radius: 4px;
+            font-weight: 600;
+            vertical-align: middle;
+        }
+        .badge-easy { background: #a6e3a133; color: var(--accent2); }
+        .badge-medium { background: #f9e2af33; color: var(--accent3); }
+        .badge-advanced { background: #f38ba833; color: var(--accent4); }
+
+        /* Terminology SVG */
+        .terminology-wrapper {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin: 1.5rem 0;
+            overflow-x: auto;
+        }
+        .terminology-wrapper img {
+            max-width: 100%;
+            height: auto;
+        }
+    </style>
+</head>
+<body>
+
+<nav>
+    <div class="inner">
+        <div class="logo">fselect <span>v0.9.3</span></div>
+        <ul>
+            <li><a href="#features">Features</a></li>
+            <li><a href="#install">Install</a></li>
+            <li><a href="#examples">Examples</a></li>
+            <li><a href="#reference">Reference</a></li>
+            <li><a href="https://github.com/jhspetersson/fselect">GitHub</a></li>
+        </ul>
+    </div>
+</nav>
+
+<!-- ============ HERO ============ -->
+<div class="hero">
+    <h1><span class="kw">select</span> <span class="field">name</span>, <span class="field">size</span> <span class="kw">where</span> <span class="field">name</span> = <span class="str">'*.rs'</span></h1>
+    <p class="tagline">
+        Tired of wrestling with <code>find</code> flags? <strong>fselect</strong> lets you search for files using a familiar SQL-like syntax. It's fast, it's fun, and it actually makes sense.
+    </p>
+    <div class="cta">
+        <a href="#install" class="btn-primary">Get Started</a>
+        <a href="https://github.com/jhspetersson/fselect" class="btn-secondary">View on GitHub</a>
+    </div>
+</div>
+
+<!-- ============ FEATURES ============ -->
+<section id="features">
+    <h2>Why <span class="accent">fselect</span>?</h2>
+    <p class="subtitle">All the things <code>find</code> can do, but with a query language you'll actually remember tomorrow.</p>
+
+    <div class="features">
+        <div class="feature">
+            <div class="icon">&#x1F50D;</div>
+            <h4>SQL-like Queries</h4>
+            <p>Write queries that read like English. No more memorizing cryptic flags. <code>select name where size > 1g</code> &mdash; done.</p>
+        </div>
+        <div class="feature">
+            <div class="icon">&#x1F4CA;</div>
+            <h4>Aggregate Functions</h4>
+            <p>COUNT, SUM, AVG, MIN, MAX, STDDEV &mdash; get statistics about your files without piping through five different commands.</p>
+        </div>
+        <div class="feature">
+            <div class="icon">&#x1F4E6;</div>
+            <h4>Search Inside Archives</h4>
+            <p>Look inside ZIP archives as if they were regular directories. Because sometimes the file you need is buried three zips deep.</p>
+        </div>
+        <div class="feature">
+            <div class="icon">&#x1F3B5;</div>
+            <h4>MP3 &amp; Media Metadata</h4>
+            <p>Search by bitrate, duration, genre, artist, album. Find that one 320kbps rap track from the 90s in seconds.</p>
+        </div>
+        <div class="feature">
+            <div class="icon">&#x1F5BC;</div>
+            <h4>Image &amp; EXIF Data</h4>
+            <p>Filter images by width, height, camera model, GPS coordinates, aperture, ISO &mdash; over 40 EXIF fields supported.</p>
+        </div>
+        <div class="feature">
+            <div class="icon">&#x1F512;</div>
+            <h4>Permissions &amp; ACLs</h4>
+            <p>Check file modes, ownership, SUID bits, extended attributes, POSIX ACLs, and even Linux capabilities.</p>
+        </div>
+        <div class="feature">
+            <div class="icon">&#x1F500;</div>
+            <h4>Subqueries</h4>
+            <p>Correlated subqueries with IN, NOT IN, EXISTS, NOT EXISTS. Compare files across directories like a boss.</p>
+        </div>
+        <div class="feature">
+            <div class="icon">&#x1F4C4;</div>
+            <h4>Multiple Output Formats</h4>
+            <p>Tabs, lines, CSV, JSON, HTML &mdash; pick whatever your downstream tool or eyeballs prefer.</p>
+        </div>
+        <div class="feature">
+            <div class="icon">&#x1F6E1;</div>
+            <h4>Gitignore Support</h4>
+            <p>Respects <code>.gitignore</code>, <code>.hgignore</code>, and <code>.dockerignore</code> so you don't waste time on files you don't care about.</p>
+        </div>
+    </div>
+</section>
+
+<div class="sep"></div>
+
+<!-- ============ INSTALL ============ -->
+<section id="install">
+    <h2>Installation</h2>
+    <p class="subtitle">Pick your poison. fselect is available pretty much everywhere.</p>
+
+    <div class="install-grid">
+        <div class="install-card">
+            <h4>Cargo (from source)</h4>
+            <pre><span class="prompt">$ </span>cargo install fselect</pre>
+        </div>
+        <div class="install-card">
+            <h4>Homebrew (macOS)</h4>
+            <pre><span class="prompt">$ </span>brew install fselect</pre>
+        </div>
+        <div class="install-card">
+            <h4>MacPorts (macOS)</h4>
+            <pre><span class="prompt">$ </span>sudo port install fselect</pre>
+        </div>
+        <div class="install-card">
+            <h4>Arch Linux (AUR)</h4>
+            <pre><span class="prompt">$ </span>yay -S fselect</pre>
+        </div>
+        <div class="install-card">
+            <h4>Debian / Ubuntu</h4>
+            <pre><span class="prompt">$ </span>dpkg -i fselect_0.9.3-1_amd64.deb</pre>
+            <p style="font-size:0.8rem;color:var(--text-dim);margin-top:0.5rem;">
+                <a href="https://github.com/jhspetersson/fselect/releases/download/0.9.3/fselect_0.9.3-1_amd64.deb">Download .deb</a>
+            </p>
+        </div>
+        <div class="install-card">
+            <h4>Windows (winget)</h4>
+            <pre><span class="prompt">&gt; </span>winget install -e --id fselect.fselect</pre>
+        </div>
+        <div class="install-card">
+            <h4>Windows (Chocolatey)</h4>
+            <pre><span class="prompt">&gt; </span>choco install fselect</pre>
+        </div>
+        <div class="install-card">
+            <h4>Windows (Scoop)</h4>
+            <pre><span class="prompt">&gt; </span>scoop install fselect</pre>
+        </div>
+        <div class="install-card">
+            <h4>Linux (static musl binary)</h4>
+            <pre><span class="prompt">$ </span>curl -LO https://github.com/jhspetersson/fselect/releases/download/0.9.3/fselect-x86_64-linux-musl.gz
+<span class="prompt">$ </span>gunzip fselect-x86_64-linux-musl.gz
+<span class="prompt">$ </span>chmod +x fselect-x86_64-linux-musl</pre>
+        </div>
+    </div>
+</section>
+
+<div class="sep"></div>
+
+<!-- ============ EXAMPLES ============ -->
+<section id="examples">
+    <h2>Usage Examples</h2>
+    <p class="subtitle">From "just find my files" to "give me a statistical breakdown by file type across three directories."</p>
+
+    <!-- BASICS -->
+    <h3><a id="basics"></a>The Basics <span class="badge badge-easy">easy</span></h3>
+
+    <div class="example-group">
+        <p>The general shape of a query. The <code>select</code> keyword is implied &mdash; fselect <em>is</em> the select.</p>
+<pre>fselect [COLUMN, ...] [<span class="kw">from</span> PATH] [<span class="kw">where</span> CONDITION] [<span class="kw">order by</span> COLUMN] [<span class="kw">limit</span> N]</pre>
+    </div>
+
+    <div class="example-group">
+        <p>Find all JPEG files in your home directory. Dead simple.</p>
+<pre><span class="prompt">$ </span>fselect <span class="field">name</span> <span class="kw">from</span> /home/user <span class="kw">where</span> <span class="field">name</span> <span class="op">=</span> <span class="str">'*.jpg'</span></pre>
+    </div>
+
+    <div class="example-group">
+        <p>Want to see the size too? Just add another column. Commas between columns are optional, by the way.</p>
+<pre><span class="prompt">$ </span>fselect <span class="field">size</span> <span class="field">path</span> <span class="kw">from</span> /home/user <span class="kw">where</span> <span class="field">name</span> <span class="op">=</span> <span class="str">'*.cfg'</span> <span class="kw">or</span> <span class="field">name</span> <span class="op">=</span> <span class="str">'*.tmp'</span></pre>
+    </div>
+
+    <div class="example-group">
+        <p>No <code>from</code>? It searches the current directory.</p>
+<pre><span class="prompt">$ </span>fselect <span class="field">path</span>, <span class="field">size</span> <span class="kw">where</span> <span class="field">name</span> <span class="op">=</span> <span class="str">'*.jpg'</span></pre>
+    </div>
+
+    <div class="example-group">
+        <p>Human-readable file sizes with <code>fsize</code> (or <code>hsize</code>):</p>
+<pre><span class="prompt">$ </span>fselect <span class="field">fsize</span>, <span class="field">path</span> <span class="kw">from</span> /home/user <span class="kw">where</span> <span class="field">size</span> <span class="op">gt</span> <span class="num">2g</span>
+<span class="prompt">$ </span>fselect <span class="field">hsize</span>, <span class="field">path</span> <span class="kw">from</span> /home/user <span class="kw">where</span> <span class="field">size</span> <span class="op">lt</span> <span class="num">8k</span></pre>
+    </div>
+
+    <div class="example-group">
+        <p>Size ranges with <code>between</code>:</p>
+<pre><span class="prompt">$ </span>fselect <span class="field">name</span>, <span class="field">size</span> <span class="kw">from</span> ./tmp <span class="kw">where</span> <span class="field">size</span> <span class="op">between</span> <span class="num">5mb</span> <span class="kw">and</span> <span class="num">6mb</span></pre>
+    </div>
+
+    <!-- FILTERING -->
+    <h3><a id="filtering"></a>Filtering &amp; Dates <span class="badge badge-easy">easy</span></h3>
+
+    <div class="example-group">
+        <p>Find files by modification date. Supports natural language &mdash; <code>today</code>, <code>yesterday</code>, <code>last fri</code>, <code>apr 1</code>, you name it.</p>
+<pre><span class="prompt">$ </span>fselect <span class="field">path</span> <span class="kw">from</span> /home/user <span class="kw">where</span> <span class="field">modified</span> <span class="op">=</span> <span class="str">today</span>
+<span class="prompt">$ </span>fselect <span class="field">path</span> <span class="kw">from</span> /home/user <span class="kw">where</span> <span class="field">accessed</span> <span class="op">=</span> <span class="str">yesterday</span>
+<span class="prompt">$ </span>fselect <span class="field">path</span> <span class="kw">from</span> /home/user <span class="kw">where</span> <span class="field">modified</span> <span class="op">=</span> <span class="str">'last fri'</span>
+<span class="prompt">$ </span>fselect <span class="field">path</span> <span class="kw">from</span> /home/user <span class="kw">where</span> <span class="field">modified</span> <span class="op">gte</span> <span class="str">2024-01-01</span></pre>
+    </div>
+
+    <div class="example-group">
+        <p>Get more specific with time intervals:</p>
+<pre><span class="comment"># everything created between 3PM and 4PM on May 1st</span>
+<span class="prompt">$ </span>fselect <span class="field">path</span> <span class="kw">from</span> /home/user <span class="kw">where</span> <span class="field">created</span> <span class="op">=</span> <span class="str">'2024-05-01 15'</span>
+
+<span class="comment"># down to the minute</span>
+<span class="prompt">$ </span>fselect <span class="field">path</span> <span class="kw">from</span> /home/user <span class="kw">where</span> <span class="field">created</span> <span class="op">=</span> <span class="str">'2024-05-01 15:10'</span></pre>
+    </div>
+
+    <div class="example-group">
+        <p>Complex conditions with parentheses:</p>
+<pre><span class="prompt">$ </span>fselect <span class="str">"name from /tmp where (name = '*.tmp' and size = 0) or (name = '*.cfg' and size > 1000000)"</span></pre>
+    </div>
+
+    <!-- FILE TYPES -->
+    <h3><a id="file-types"></a>File Type Shortcuts <span class="badge badge-easy">easy</span></h3>
+
+    <div class="example-group">
+        <p>Boolean columns for common file types. No need to remember extensions &mdash; just ask!</p>
+<pre><span class="prompt">$ </span>fselect <span class="field">path</span> <span class="kw">from</span> /home/user <span class="kw">where</span> <span class="field">is_image</span>
+<span class="prompt">$ </span>fselect <span class="field">path</span> <span class="kw">from</span> /home/user <span class="kw">where</span> <span class="field">is_video</span>
+<span class="prompt">$ </span>fselect <span class="field">path</span> <span class="kw">from</span> /home/user <span class="kw">where</span> <span class="field">is_doc</span>
+<span class="prompt">$ </span>fselect <span class="field">path</span>, <span class="field">mime</span> <span class="kw">from</span> /home/user <span class="kw">where</span> <span class="field">is_audio</span>
+<span class="prompt">$ </span>fselect <span class="field">path</span> <span class="kw">from</span> /home/user <span class="kw">where</span> <span class="field">is_archive</span>
+<span class="prompt">$ </span>fselect <span class="field">path</span> <span class="kw">from</span> /home/user <span class="kw">where</span> <span class="field">is_source</span></pre>
+    </div>
+
+    <!-- PATTERN MATCHING -->
+    <h3><a id="pattern-matching"></a>Pattern Matching &amp; Regex <span class="badge badge-medium">medium</span></h3>
+
+    <div class="example-group">
+        <p>Simple globs just work with <code>=</code> and <code>!=</code>:</p>
+<pre><span class="prompt">$ </span>fselect <span class="field">name</span> <span class="kw">from</span> /home/user <span class="kw">where</span> <span class="field">path</span> <span class="op">=</span> <span class="str">'*Rust*'</span></pre>
+    </div>
+
+    <div class="example-group">
+        <p>Full regex support (Rust flavor) with the <code>=~</code> operator:</p>
+<pre><span class="prompt">$ </span>fselect <span class="field">name</span> <span class="kw">from</span> /home/user <span class="kw">where</span> <span class="field">path</span> <span class="op">=~</span> <span class="str">'.*Rust.*'</span>
+<span class="prompt">$ </span>fselect <span class="str">"name from . where path !=~ '^\./config'"</span></pre>
+    </div>
+
+    <div class="example-group">
+        <p>SQL-style <code>LIKE</code> patterns (% = any chars, _ = single char, ? = optional char):</p>
+<pre><span class="prompt">$ </span>fselect <span class="str">"path from /home/user where name like '%report-2024-__-__???'"</span></pre>
+    </div>
+
+    <div class="example-group">
+        <p>When you want <em>exact</em> matching (no glob expansion), use <code>===</code>:</p>
+<pre><span class="prompt">$ </span>fselect <span class="str">"path from /home/user where name === 'some_*_literal_*_name'"</span></pre>
+    </div>
+
+    <!-- SEARCH OPTIONS -->
+    <h3><a id="search-options"></a>Search Options <span class="badge badge-medium">medium</span></h3>
+
+    <div class="example-group">
+        <p>Search multiple directories, control depth, follow symlinks, and look inside archives:</p>
+<pre><span class="comment"># multiple search roots</span>
+<span class="prompt">$ </span>fselect <span class="field">path</span> <span class="kw">from</span> /home/user/old, /home/user/new <span class="kw">where</span> <span class="field">name</span> <span class="op">=</span> <span class="str">'*.jpg'</span>
+
+<span class="comment"># limit depth per root</span>
+<span class="prompt">$ </span>fselect <span class="field">path</span> <span class="kw">from</span> /home/user depth 3, /tmp depth 1 <span class="kw">where</span> <span class="field">is_image</span>
+
+<span class="comment"># min and max depth</span>
+<span class="prompt">$ </span>fselect <span class="field">path</span> <span class="kw">from</span> /home/user mindepth 2 maxdepth 5 <span class="kw">where</span> <span class="field">name</span> <span class="op">=</span> <span class="str">'*.jpg'</span>
+
+<span class="comment"># follow symbolic links</span>
+<span class="prompt">$ </span>fselect <span class="field">path</span>, <span class="field">size</span> <span class="kw">from</span> /home/user symlinks <span class="kw">where</span> <span class="field">name</span> <span class="op">=</span> <span class="str">'*.jpg'</span>
+
+<span class="comment"># search inside zip archives</span>
+<span class="prompt">$ </span>fselect <span class="field">path</span>, <span class="field">size</span> <span class="kw">from</span> /home/user archives <span class="kw">where</span> <span class="field">name</span> <span class="op">=</span> <span class="str">'*.jpg'</span>
+
+<span class="comment"># combine everything</span>
+<span class="prompt">$ </span>fselect <span class="field">size</span>, <span class="field">path</span> <span class="kw">from</span> /home/user depth 5 archives symlinks <span class="kw">where</span> <span class="field">name</span> <span class="op">=</span> <span class="str">'*.jpg'</span> <span class="kw">limit</span> <span class="num">100</span>
+
+<span class="comment"># respect .gitignore</span>
+<span class="prompt">$ </span>fselect <span class="field">size</span>, <span class="field">path</span> <span class="kw">from</span> /home/user/projects gitignore <span class="kw">where</span> <span class="field">name</span> <span class="op">=</span> <span class="str">'*.cpp'</span></pre>
+    </div>
+
+    <!-- FUNCTIONS -->
+    <h3><a id="functions"></a>Functions <span class="badge badge-medium">medium</span></h3>
+
+    <div class="example-group">
+        <p>Aggregate functions &mdash; get stats about your files. Curly braces work too, if that's your thing.</p>
+<pre><span class="prompt">$ </span>fselect <span class="str">"<span class="func">MIN</span>(size), <span class="func">MAX</span>{size}, <span class="func">AVG</span>(size), <span class="func">SUM</span>{size}, <span class="func">COUNT</span>(*) from /home/user/Downloads"</span></pre>
+    </div>
+
+    <div class="example-group">
+        <p>String and formatting functions:</p>
+<pre><span class="prompt">$ </span>fselect <span class="str">"<span class="func">LOWER</span>(name), <span class="func">UPPER</span>(name), <span class="func">LENGTH</span>(name), <span class="func">YEAR</span>(modified) from /home/user/Downloads"</span></pre>
+    </div>
+
+    <div class="example-group">
+        <p>Year of the oldest file on your system? One-liner:</p>
+<pre><span class="prompt">$ </span>fselect <span class="str">"<span class="func">MIN</span>(<span class="func">YEAR</span>(modified)) from /home/user"</span></pre>
+    </div>
+
+    <div class="example-group">
+        <p>Include arbitrary text in your output:</p>
+<pre><span class="prompt">$ </span>fselect <span class="str">"name, ' has size of ', size, ' bytes'"</span></pre>
+    </div>
+
+    <!-- GROUPING, ORDERING, LIMITING -->
+    <h3><a id="group-order"></a>Group, Order &amp; Limit <span class="badge badge-medium">medium</span></h3>
+
+    <div class="example-group">
+        <p>Group files by extension and count them:</p>
+<pre><span class="prompt">$ </span>fselect <span class="str">"ext, <span class="func">count</span>(*) from /tmp group by ext"</span></pre>
+    </div>
+
+    <div class="example-group">
+        <p>Order results by size (descending), then by name:</p>
+<pre><span class="prompt">$ </span>fselect <span class="field">path</span> <span class="kw">from</span> /tmp <span class="kw">order by</span> <span class="field">size</span> desc, <span class="field">name</span></pre>
+    </div>
+
+    <div class="example-group">
+        <p>You can also order by column position:</p>
+<pre><span class="prompt">$ </span>fselect <span class="field">modified</span>, <span class="field">fsize</span>, <span class="field">path</span> <span class="kw">from</span> ~ <span class="kw">order by</span> <span class="num">1</span> desc, <span class="num">3</span></pre>
+    </div>
+
+    <div class="example-group">
+        <p>Limit and offset &mdash; pagination for your filesystem:</p>
+<pre><span class="prompt">$ </span>fselect <span class="field">name</span> <span class="kw">from</span> /home/user <span class="kw">limit</span> <span class="num">10</span>
+<span class="prompt">$ </span>fselect <span class="field">name</span> <span class="kw">from</span> /home/user <span class="kw">limit</span> <span class="num">10</span> <span class="kw">offset</span> <span class="num">20</span></pre>
+    </div>
+
+    <!-- IMAGES & MEDIA -->
+    <h3><a id="images-media"></a>Images &amp; Media <span class="badge badge-medium">medium</span></h3>
+
+    <div class="example-group">
+        <p>Search by image dimensions &mdash; find those wallpaper-quality photos:</p>
+<pre><span class="prompt">$ </span>fselect <span class="func">CONCAT</span>(<span class="field">width</span>, <span class="str">'x'</span>, <span class="field">height</span>), <span class="field">path</span> <span class="kw">from</span> /home/user/photos <span class="kw">where</span> <span class="field">width</span> <span class="op">gte</span> <span class="num">2000</span> <span class="kw">or</span> <span class="field">height</span> <span class="op">gte</span> <span class="num">2000</span></pre>
+    </div>
+
+    <div class="example-group">
+        <p>Find perfectly square images:</p>
+<pre><span class="prompt">$ </span>fselect <span class="field">path</span> <span class="kw">from</span> /home/user/Photos <span class="kw">where</span> <span class="field">width</span> <span class="op">=</span> <span class="field">height</span></pre>
+    </div>
+
+    <div class="example-group">
+        <p>Old-school rap at 320kbps? Say no more:</p>
+<pre><span class="prompt">$ </span>fselect <span class="field">duration</span>, <span class="field">path</span> <span class="kw">from</span> /home/user/music <span class="kw">where</span> <span class="field">genre</span> <span class="op">=</span> <span class="str">Rap</span> <span class="kw">and</span> <span class="field">bitrate</span> <span class="op">=</span> <span class="num">320</span> <span class="kw">and</span> <span class="field">mp3_year</span> <span class="op">lt</span> <span class="num">2000</span></pre>
+    </div>
+
+    <div class="example-group">
+        <p>EXIF data &mdash; find photos from a specific camera:</p>
+<pre><span class="prompt">$ </span>fselect <span class="field">path</span>, <span class="field">exif_make</span>, <span class="field">exif_model</span> <span class="kw">from</span> /home/user/photos <span class="kw">where</span> <span class="field">exif_make</span> <span class="op">=</span> <span class="str">'Canon'</span></pre>
+    </div>
+
+    <!-- PERMISSIONS -->
+    <h3><a id="permissions"></a>Permissions &amp; Ownership <span class="badge badge-medium">medium</span></h3>
+
+    <div class="example-group">
+        <p>Find files with dangerous permissions:</p>
+<pre><span class="prompt">$ </span>fselect <span class="field">mode</span>, <span class="field">path</span> <span class="kw">from</span> /home/user <span class="kw">where</span> <span class="field">other_write</span> <span class="kw">or</span> <span class="field">other_exec</span>
+<span class="prompt">$ </span>fselect <span class="field">mode</span>, <span class="field">path</span> <span class="kw">from</span> /home/user <span class="kw">where</span> <span class="field">other_all</span></pre>
+    </div>
+
+    <div class="example-group">
+        <p>Glob or regex on permission strings:</p>
+<pre><span class="prompt">$ </span>fselect <span class="field">mode</span>, <span class="field">path</span> <span class="kw">from</span> /home/user <span class="kw">where</span> <span class="field">mode</span> <span class="op">=</span> <span class="str">'*rwx'</span>
+<span class="prompt">$ </span>fselect <span class="field">mode</span>, <span class="field">path</span> <span class="kw">from</span> /home/user <span class="kw">where</span> <span class="field">mode</span> <span class="op">=~</span> <span class="str">'.*rwx$'</span></pre>
+    </div>
+
+    <div class="example-group">
+        <p>Find files by owner, SUID, sticky bits:</p>
+<pre><span class="prompt">$ </span>fselect <span class="field">user</span>, <span class="field">group</span>, <span class="field">path</span> <span class="kw">from</span> /home <span class="kw">where</span> <span class="field">user</span> <span class="op">=</span> <span class="str">mike</span>
+<span class="prompt">$ </span>fselect <span class="field">name</span> <span class="kw">from</span> /usr/bin <span class="kw">where</span> <span class="field">suid</span>
+<span class="prompt">$ </span>fselect <span class="field">path</span> <span class="kw">from</span> /tmp <span class="kw">where</span> <span class="field">is_sticky</span></pre>
+    </div>
+
+    <!-- HASHING -->
+    <h3><a id="hashing"></a>File Hashes &amp; Content <span class="badge badge-medium">medium</span></h3>
+
+    <div class="example-group">
+        <p>Need to find files by their hash or check for duplicates?</p>
+<pre><span class="prompt">$ </span>fselect <span class="field">sha256</span>, <span class="field">path</span> <span class="kw">from</span> /home/user/downloads <span class="kw">where</span> <span class="field">name</span> <span class="op">=</span> <span class="str">'*.iso'</span></pre>
+    </div>
+
+    <div class="example-group">
+        <p>Search files by content:</p>
+<pre><span class="prompt">$ </span>fselect <span class="field">path</span> <span class="kw">from</span> /home/user/src <span class="kw">where</span> <span class="func">contains</span>(<span class="str">'TODO'</span>) <span class="kw">and</span> <span class="field">name</span> <span class="op">=</span> <span class="str">'*.rs'</span></pre>
+    </div>
+
+    <!-- SUBQUERIES -->
+    <h3><a id="subqueries"></a>Subqueries <span class="badge badge-advanced">advanced</span></h3>
+
+    <div class="example-group">
+        <p>This is where it gets powerful. Find files with sizes that match files in another directory:</p>
+<pre><span class="prompt">$ </span>fselect <span class="str">"name from /test1 where size in (select size from /test2)"</span></pre>
+    </div>
+
+    <div class="example-group">
+        <p>Find files that exist in production but NOT in backup:</p>
+<pre><span class="prompt">$ </span>fselect <span class="str">"name from /production where name not in (select name from /backup)"</span></pre>
+    </div>
+
+    <div class="example-group">
+        <p>Correlated subqueries with table aliases &mdash; check if directories have children:</p>
+<pre><span class="prompt">$ </span>fselect <span class="str">"path from /home/user as parent
+  where is_dir and exists (
+    select * from /home/user as child
+    where child.dir = parent.path
+  )"</span></pre>
+    </div>
+
+    <div class="example-group">
+        <p>Nested subqueries &mdash; go as deep as you need:</p>
+<pre><span class="prompt">$ </span>fselect <span class="str">"name from /dir1 where size > 100
+  and size in (
+    select size from /dir2 where name in (
+      select name from /dir3 where modified in (
+        select modified from /dir4 where size < 200
+      )
+    )
+  )"</span></pre>
+    </div>
+
+    <!-- OUTPUT FORMATS -->
+    <h3><a id="output-formats"></a>Output Formats <span class="badge badge-medium">medium</span></h3>
+
+    <div class="example-group">
+        <p>Pipe it, process it, display it &mdash; pick your format with <code>into</code>:</p>
+<pre><span class="prompt">$ </span>fselect <span class="field">size</span>, <span class="field">path</span> <span class="kw">from</span> /home/user <span class="kw">limit</span> <span class="num">5</span> <span class="kw">into</span> json
+<span class="prompt">$ </span>fselect <span class="field">size</span>, <span class="field">path</span> <span class="kw">from</span> /home/user <span class="kw">limit</span> <span class="num">5</span> <span class="kw">into</span> csv
+<span class="prompt">$ </span>fselect <span class="field">size</span>, <span class="field">path</span> <span class="kw">from</span> /home/user <span class="kw">limit</span> <span class="num">5</span> <span class="kw">into</span> html</pre>
+    </div>
+
+    <!-- XATTRS -->
+    <h3><a id="extended-attrs"></a>Extended Attributes &amp; ACLs <span class="badge badge-advanced">advanced</span></h3>
+
+    <div class="example-group">
+        <p>Check extended attributes, ACLs, and Linux capabilities:</p>
+<pre><span class="prompt">$ </span>fselect <span class="str">"path, has_xattrs, has_xattr(user.test), xattr(user.test) from /home/user"</span>
+
+<span class="comment"># find files with specific ACL entries</span>
+<span class="prompt">$ </span>fselect <span class="field">path</span>, <span class="field">acl</span> <span class="kw">from</span> /shared <span class="kw">where</span> <span class="field">has_acl</span>
+
+<span class="comment"># find binaries with Linux capabilities</span>
+<span class="prompt">$ </span>fselect <span class="field">path</span>, <span class="field">caps</span> <span class="kw">from</span> /usr/bin <span class="kw">where</span> <span class="field">has_caps</span></pre>
+    </div>
+
+    <!-- INTERACTIVE MODE -->
+    <h3><a id="interactive-mode"></a>Interactive Mode <span class="badge badge-easy">easy</span></h3>
+
+    <div class="example-group">
+        <p>Fire up the REPL and explore interactively. No shell escaping headaches, command history, the works:</p>
+<pre><span class="prompt">$ </span>fselect -i
+<span class="comment"># now you're in interactive mode!</span>
+
+<span class="prompt">fselect> </span><span class="field">name</span>, <span class="field">size</span> <span class="kw">from</span> . <span class="kw">where</span> <span class="field">is_image</span>
+<span class="prompt">fselect> </span>cd /home/user/photos
+<span class="prompt">fselect> </span><span class="field">path</span> <span class="kw">where</span> <span class="field">width</span> <span class="op">></span> <span class="num">1920</span>
+<span class="prompt">fselect> </span>exit</pre>
+    </div>
+
+    <!-- PUTTING IT ALL TOGETHER -->
+    <h3><a id="real-world"></a>Real-World Combos <span class="badge badge-advanced">advanced</span></h3>
+
+    <div class="example-group">
+        <p>Find the top 10 biggest source files, sorted by size:</p>
+<pre><span class="prompt">$ </span>fselect <span class="field">fsize</span>, <span class="field">path</span> <span class="kw">from</span> ~/projects <span class="kw">where</span> <span class="field">is_source</span> <span class="kw">order by</span> <span class="field">size</span> desc <span class="kw">limit</span> <span class="num">10</span></pre>
+    </div>
+
+    <div class="example-group">
+        <p>Get a breakdown of file types in a directory:</p>
+<pre><span class="prompt">$ </span>fselect <span class="str">"ext, count(*), sum(size) from ~/Downloads group by ext order by 3 desc limit 20"</span></pre>
+    </div>
+
+    <div class="example-group">
+        <p>Find empty directories:</p>
+<pre><span class="prompt">$ </span>fselect <span class="field">path</span> <span class="kw">from</span> /home/user <span class="kw">where</span> <span class="field">is_dir</span> <span class="kw">and</span> <span class="field">is_empty</span></pre>
+    </div>
+
+    <div class="example-group">
+        <p>Find all files NOT in your backup by comparing two directories:</p>
+<pre><span class="prompt">$ </span>fselect <span class="str">"name, path, size from /data as data
+  where not exists (
+    select * from /backup as backup
+    where backup.name = data.name
+  )"</span></pre>
+    </div>
+
+    <div class="example-group">
+        <p>Disk usage stats for your downloads folder, as JSON:</p>
+<pre><span class="prompt">$ </span>fselect <span class="str">"ext, count(*), format_size(sum(size), '%.1 ds') from ~/Downloads group by ext order by sum(size) desc limit 10 into json"</span></pre>
+    </div>
+
+    <div class="example-group">
+        <p>Find scripts (files starting with a shebang) that aren't executable:</p>
+<pre><span class="prompt">$ </span>fselect <span class="field">mode</span>, <span class="field">path</span> <span class="kw">from</span> /home/user/scripts <span class="kw">where</span> <span class="field">is_shebang</span> <span class="kw">and not</span> <span class="field">user_exec</span></pre>
+    </div>
+
+    <div class="example-group">
+        <p>Photos taken with a Canon at ISO 100 with wide aperture, sorted by date:</p>
+<pre><span class="prompt">$ </span>fselect <span class="str">"exif_dto, exif_f_num, exif_iso, path from ~/photos
+  where exif_make = 'Canon' and exif_iso = 100 and exif_f_num < 2.8
+  order by exif_dto desc"</span></pre>
+    </div>
+</section>
+
+<div class="sep"></div>
+
+<!-- ============ TERMINOLOGY ============ -->
+<section id="terminology">
+    <h2>Path <span class="accent">Terminology</span></h2>
+    <p class="subtitle">A visual cheat sheet for the path-related columns.</p>
+    <div class="terminology-wrapper">
+        <img src="terminology.svg" alt="File naming terminology diagram showing how abspath, absdir, path, dir, name, filename, and ext relate to a file path">
+    </div>
+</section>
+
+<div class="sep"></div>
+
+<!-- ============ REFERENCE ============ -->
+<section id="reference">
+    <h2>Quick <span class="accent">Reference</span></h2>
+    <p class="subtitle">The cheat sheet you'll actually keep open in another tab.</p>
+
+    <h3><a id="ref-columns"></a>Columns</h3>
+
+    <div class="columns-grid">
+        <div class="col-group">
+            <h4>Path &amp; Name</h4>
+            <ul>
+                <li><code>name</code> &mdash; file name (with extension)</li>
+                <li><code>filename</code> &mdash; name without extension</li>
+                <li><code>ext</code> &mdash; extension</li>
+                <li><code>path</code> &mdash; relative path</li>
+                <li><code>abspath</code> &mdash; absolute path</li>
+                <li><code>dir</code> &mdash; relative directory</li>
+                <li><code>absdir</code> &mdash; absolute directory</li>
+            </ul>
+        </div>
+        <div class="col-group">
+            <h4>Size</h4>
+            <ul>
+                <li><code>size</code> &mdash; size in bytes</li>
+                <li><code>fsize</code> / <code>hsize</code> &mdash; human-readable size</li>
+            </ul>
+        </div>
+        <div class="col-group">
+            <h4>Timestamps</h4>
+            <ul>
+                <li><code>accessed</code> &mdash; last access time</li>
+                <li><code>created</code> &mdash; creation time</li>
+                <li><code>modified</code> &mdash; last modification</li>
+                <li><code>atime</code> / <code>mtime</code> / <code>ctime</code> &mdash; Unix timestamps</li>
+            </ul>
+        </div>
+        <div class="col-group">
+            <h4>File Type Booleans</h4>
+            <ul>
+                <li><code>is_dir</code> <code>is_file</code> <code>is_symlink</code></li>
+                <li><code>is_pipe</code> <code>is_char</code> <code>is_block</code> <code>is_socket</code></li>
+                <li><code>is_hidden</code> <code>is_empty</code> <code>is_shebang</code></li>
+                <li><code>is_binary</code> <code>is_text</code></li>
+            </ul>
+        </div>
+        <div class="col-group">
+            <h4>Type Shortcuts</h4>
+            <ul>
+                <li><code>is_archive</code> <code>is_audio</code> <code>is_book</code></li>
+                <li><code>is_doc</code> <code>is_font</code> <code>is_image</code></li>
+                <li><code>is_source</code> <code>is_video</code></li>
+            </ul>
+        </div>
+        <div class="col-group">
+            <h4>Permissions (Unix)</h4>
+            <ul>
+                <li><code>mode</code> &mdash; permission string</li>
+                <li><code>user_read</code> / <code>write</code> / <code>exec</code> / <code>all</code></li>
+                <li><code>group_read</code> / <code>write</code> / <code>exec</code> / <code>all</code></li>
+                <li><code>other_read</code> / <code>write</code> / <code>exec</code> / <code>all</code></li>
+                <li><code>suid</code> <code>sgid</code> <code>sticky</code></li>
+            </ul>
+        </div>
+        <div class="col-group">
+            <h4>Ownership</h4>
+            <ul>
+                <li><code>uid</code> / <code>gid</code> &mdash; numeric IDs</li>
+                <li><code>user</code> / <code>group</code> &mdash; names</li>
+            </ul>
+        </div>
+        <div class="col-group">
+            <h4>Content &amp; Hashes</h4>
+            <ul>
+                <li><code>mime</code> &mdash; MIME type</li>
+                <li><code>line_count</code> &mdash; number of lines</li>
+                <li><code>sha1</code> <code>sha256</code> <code>sha512</code> <code>sha3</code></li>
+            </ul>
+        </div>
+        <div class="col-group">
+            <h4>Image &amp; Media</h4>
+            <ul>
+                <li><code>width</code> / <code>height</code> &mdash; dimensions</li>
+                <li><code>title</code> <code>album</code> <code>artist</code> <code>genre</code></li>
+                <li><code>bitrate</code> <code>freq</code> <code>duration</code></li>
+                <li><code>exif_*</code> &mdash; 40+ EXIF fields</li>
+            </ul>
+        </div>
+        <div class="col-group">
+            <h4>Extended Attributes</h4>
+            <ul>
+                <li><code>has_xattrs</code> / <code>xattr_count</code></li>
+                <li><code>acl</code> / <code>has_acl</code></li>
+                <li><code>caps</code> / <code>has_caps</code></li>
+                <li><code>extattrs</code> / <code>has_extattrs</code></li>
+            </ul>
+        </div>
+    </div>
+
+    <h3><a id="ref-operators"></a>Operators</h3>
+    <table class="ref-table">
+        <thead>
+            <tr><th>Operator</th><th>Aliases</th><th>Description</th></tr>
+        </thead>
+        <tbody>
+            <tr><td>=</td><td>==, eq</td><td>Equal (with glob expansion)</td></tr>
+            <tr><td>!=</td><td>&lt;&gt;, ne</td><td>Not equal</td></tr>
+            <tr><td>===</td><td>eeq</td><td>Strict equal (no glob/regex)</td></tr>
+            <tr><td>=~</td><td>~=, regexp, rx</td><td>Regex match</td></tr>
+            <tr><td>&gt;</td><td>gt</td><td>Greater than</td></tr>
+            <tr><td>&gt;=</td><td>gte, ge</td><td>Greater than or equal</td></tr>
+            <tr><td>&lt;</td><td>lt</td><td>Less than</td></tr>
+            <tr><td>&lt;=</td><td>lte, le</td><td>Less than or equal</td></tr>
+            <tr><td>like</td><td></td><td>SQL LIKE pattern match</td></tr>
+            <tr><td>between</td><td></td><td>Range check</td></tr>
+            <tr><td>in</td><td></td><td>Subquery IN</td></tr>
+            <tr><td>exists</td><td></td><td>Subquery EXISTS</td></tr>
+            <tr><td>and</td><td>AND</td><td>Logical AND</td></tr>
+            <tr><td>or</td><td>OR</td><td>Logical OR</td></tr>
+            <tr><td>not</td><td>NOT</td><td>Logical NOT</td></tr>
+        </tbody>
+    </table>
+
+    <h3><a id="ref-functions"></a>Functions</h3>
+    <table class="ref-table">
+        <thead>
+            <tr><th>Function</th><th>Description</th></tr>
+        </thead>
+        <tbody>
+            <tr><td>COUNT, MIN, MAX, AVG, SUM</td><td>Aggregate functions</td></tr>
+            <tr><td>STDDEV, VARIANCE</td><td>Statistical functions</td></tr>
+            <tr><td>LOWER, UPPER, INITCAP</td><td>Case conversion</td></tr>
+            <tr><td>LENGTH, CONCAT, CONCAT_WS</td><td>String operations</td></tr>
+            <tr><td>SUBSTRING, REPLACE, TRIM</td><td>String manipulation</td></tr>
+            <tr><td>LOCATE / POSITION</td><td>Find substring position</td></tr>
+            <tr><td>YEAR, MONTH, DAY, DOW, DOY</td><td>Date part extraction</td></tr>
+            <tr><td>CURRENT_DATE, NOW</td><td>Current date/time</td></tr>
+            <tr><td>DATE_ADD, DATE_SUB, DATE_DIFF</td><td>Date arithmetic</td></tr>
+            <tr><td>CONTAINS</td><td>File content search</td></tr>
+            <tr><td>FORMAT_SIZE</td><td>Human-readable file size</td></tr>
+            <tr><td>FORMAT_TIME</td><td>Human-readable duration</td></tr>
+            <tr><td>ABS, POWER, SQRT, LOG, LN</td><td>Math functions</td></tr>
+            <tr><td>FLOOR, CEIL, ROUND</td><td>Rounding functions</td></tr>
+            <tr><td>RANDOM</td><td>Random number generation</td></tr>
+            <tr><td>BIN, HEX, OCT</td><td>Number base conversion</td></tr>
+            <tr><td>TO_BASE64, FROM_BASE64</td><td>Base64 encoding/decoding</td></tr>
+            <tr><td>HAS_XATTR, XATTR</td><td>Extended attribute access</td></tr>
+            <tr><td>HAS_CAP</td><td>Linux capabilities check</td></tr>
+            <tr><td>COALESCE</td><td>First non-empty value</td></tr>
+        </tbody>
+    </table>
+
+    <h3><a id="ref-size-units"></a>Size Units</h3>
+    <table class="ref-table">
+        <thead>
+            <tr><th>Unit</th><th>Meaning</th><th>Size</th></tr>
+        </thead>
+        <tbody>
+            <tr><td>k, kib</td><td>Kibibyte</td><td>1,024 bytes</td></tr>
+            <tr><td>kb</td><td>Kilobyte</td><td>1,000 bytes</td></tr>
+            <tr><td>m, mib</td><td>Mebibyte</td><td>1,048,576 bytes</td></tr>
+            <tr><td>mb</td><td>Megabyte</td><td>1,000,000 bytes</td></tr>
+            <tr><td>g, gib</td><td>Gibibyte</td><td>1,073,741,824 bytes</td></tr>
+            <tr><td>gb</td><td>Gigabyte</td><td>1,000,000,000 bytes</td></tr>
+            <tr><td>t, tib</td><td>Tebibyte</td><td>1,099,511,627,776 bytes</td></tr>
+            <tr><td>tb</td><td>Terabyte</td><td>1,000,000,000,000 bytes</td></tr>
+        </tbody>
+    </table>
+
+    <h3><a id="ref-output"></a>Output Formats</h3>
+    <table class="ref-table">
+        <thead>
+            <tr><th>Format</th><th>Description</th></tr>
+        </thead>
+        <tbody>
+            <tr><td>tabs</td><td>Tab-separated columns (default)</td></tr>
+            <tr><td>lines</td><td>Each column on a separate line</td></tr>
+            <tr><td>list</td><td>NULL-separated (like find -print0)</td></tr>
+            <tr><td>csv</td><td>Comma-separated values with header</td></tr>
+            <tr><td>json</td><td>Array of JSON objects</td></tr>
+            <tr><td>html</td><td>HTML document with a table</td></tr>
+        </tbody>
+    </table>
+</section>
+
+<div class="sep"></div>
+
+<!-- ============ FOOTER ============ -->
+<footer>
+    <p>
+        <strong>fselect</strong> is made by <a href="https://github.com/jhspetersson">jhspetersson</a>
+        &nbsp;&bull;&nbsp;
+        Licensed under MIT / Apache-2.0
+        &nbsp;&bull;&nbsp;
+        <a href="https://github.com/jhspetersson/fselect">Source on GitHub</a>
+        &nbsp;&bull;&nbsp;
+        <a href="https://crates.io/crates/fselect">crates.io</a>
+    </p>
+    <p style="margin-top:0.75rem;font-size:0.8rem;">
+        Supported by <a href="https://jb.gg/OpenSourceSupport">JetBrains</a> open source license
+    </p>
+</footer>
+
+</body>
+</html>

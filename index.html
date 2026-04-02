@@ -318,6 +318,7 @@
         /* Mobile */
         @media (max-width: 640px) {
             nav .hamburger { display: flex; }
+            nav { background: var(--bg); }
             nav .inner { flex-wrap: wrap; }
             nav ul {
                 display: none;
@@ -326,7 +327,7 @@
                 gap: 0;
                 padding: 0.5rem 0 1rem;
             }
-            nav ul.open { display: flex; }
+            nav ul.open { display: flex; background: var(--bg); }
             nav ul li { padding: 0.5rem 0; }
             nav ul a { font-size: 0.95rem; }
             section { padding: 3rem 1.25rem; }

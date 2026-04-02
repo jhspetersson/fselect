@@ -947,6 +947,16 @@
             </ul>
         </div>
         <div class="col-group">
+            <h4>Device &amp; Inode (Unix)</h4>
+            <ul>
+                <li><code>device</code> &mdash; device code</li>
+                <li><code>rdev</code> &mdash; device ID for special files</li>
+                <li><code>inode</code> &mdash; inode number</li>
+                <li><code>blocks</code> &mdash; 256-byte blocks</li>
+                <li><code>hardlinks</code> &mdash; number of hard links</li>
+            </ul>
+        </div>
+        <div class="col-group">
             <h4>Content &amp; Hashes</h4>
             <ul>
                 <li><code>mime</code> &mdash; MIME type</li>
@@ -959,7 +969,7 @@
             <ul>
                 <li><code>width</code> / <code>height</code> &mdash; dimensions</li>
                 <li><code>title</code> <code>album</code> <code>artist</code> <code>genre</code></li>
-                <li><code>bitrate</code> <code>freq</code> <code>duration</code></li>
+                <li><code>bitrate</code> <code>freq</code> <code>duration</code> <code>mp3_year</code></li>
                 <li><code>exif_*</code> &mdash; 40+ EXIF fields</li>
             </ul>
         </div>
@@ -968,6 +978,7 @@
             <ul>
                 <li><code>has_xattrs</code> / <code>xattr_count</code></li>
                 <li><code>acl</code> / <code>has_acl</code></li>
+                <li><code>default_acl</code> / <code>has_default_acl</code></li>
                 <li><code>caps</code> / <code>has_caps</code></li>
                 <li><code>extattrs</code> / <code>has_extattrs</code></li>
             </ul>
@@ -983,18 +994,29 @@
             <tr><td>=</td><td>==, eq</td><td>Equal (with glob expansion)</td></tr>
             <tr><td>!=</td><td>&lt;&gt;, ne</td><td>Not equal</td></tr>
             <tr><td>===</td><td>eeq</td><td>Strict equal (no glob/regex)</td></tr>
+            <tr><td>!==</td><td>ene</td><td>Strict not equal (no glob/regex)</td></tr>
             <tr><td>=~</td><td>~=, regexp, rx</td><td>Regex match</td></tr>
+            <tr><td>!=~</td><td>!~=, notrx</td><td>Regex not match</td></tr>
             <tr><td>&gt;</td><td>gt</td><td>Greater than</td></tr>
             <tr><td>&gt;=</td><td>gte, ge</td><td>Greater than or equal</td></tr>
             <tr><td>&lt;</td><td>lt</td><td>Less than</td></tr>
             <tr><td>&lt;=</td><td>lte, le</td><td>Less than or equal</td></tr>
             <tr><td>like</td><td></td><td>SQL LIKE pattern match</td></tr>
+            <tr><td>notlike</td><td></td><td>SQL LIKE pattern not match</td></tr>
             <tr><td>between</td><td></td><td>Range check</td></tr>
+            <tr><td>not between</td><td>notbetween</td><td>Not in range</td></tr>
             <tr><td>in</td><td></td><td>Subquery IN</td></tr>
+            <tr><td>not in</td><td>notin</td><td>Subquery NOT IN</td></tr>
             <tr><td>exists</td><td></td><td>Subquery EXISTS</td></tr>
+            <tr><td>not exists</td><td>notexists</td><td>Subquery NOT EXISTS</td></tr>
             <tr><td>and</td><td>AND</td><td>Logical AND</td></tr>
             <tr><td>or</td><td>OR</td><td>Logical OR</td></tr>
             <tr><td>not</td><td>NOT</td><td>Logical NOT</td></tr>
+            <tr><td>+</td><td>plus</td><td>Addition</td></tr>
+            <tr><td>-</td><td>minus</td><td>Subtraction</td></tr>
+            <tr><td>*</td><td>mul</td><td>Multiplication</td></tr>
+            <tr><td>/</td><td>div</td><td>Division</td></tr>
+            <tr><td>%</td><td>mod</td><td>Modulo / remainder</td></tr>
         </tbody>
     </table>
 
@@ -1005,23 +1027,40 @@
         </thead>
         <tbody>
             <tr><td>COUNT, MIN, MAX, AVG, SUM</td><td>Aggregate functions</td></tr>
-            <tr><td>STDDEV, VARIANCE</td><td>Statistical functions</td></tr>
+            <tr><td>STDDEV, STDDEV_SAMP</td><td>Population / sample standard deviation</td></tr>
+            <tr><td>VARIANCE, VAR_SAMP</td><td>Population / sample variance</td></tr>
             <tr><td>LOWER, UPPER, INITCAP</td><td>Case conversion</td></tr>
             <tr><td>LENGTH, CONCAT, CONCAT_WS</td><td>String operations</td></tr>
             <tr><td>SUBSTRING, REPLACE, TRIM</td><td>String manipulation</td></tr>
+            <tr><td>LTRIM, RTRIM</td><td>Trim leading / trailing whitespace</td></tr>
             <tr><td>LOCATE / POSITION</td><td>Find substring position</td></tr>
             <tr><td>YEAR, MONTH, DAY, DOW, DOY</td><td>Date part extraction</td></tr>
-            <tr><td>CURRENT_DATE, NOW</td><td>Current date/time</td></tr>
+            <tr><td>DAYNAME</td><td>Day of week name (Monday, Tuesday, ...)</td></tr>
+            <tr><td>CURRENT_DATE, CURRENT_TIME</td><td>Current date / time</td></tr>
+            <tr><td>CURRENT_TIMESTAMP, NOW</td><td>Current date and time</td></tr>
             <tr><td>DATE_ADD, DATE_SUB, DATE_DIFF</td><td>Date arithmetic</td></tr>
+            <tr><td>FROM_UNIXTIME</td><td>Unix timestamp to datetime string</td></tr>
+            <tr><td>LAST_DAY</td><td>Last day of the month for a date</td></tr>
+            <tr><td>CURRENT_UID, CURRENT_USER</td><td>Current user ID / username (Unix)</td></tr>
+            <tr><td>CURRENT_GID, CURRENT_GROUP</td><td>Current group ID / name (Unix)</td></tr>
             <tr><td>CONTAINS</td><td>File content search</td></tr>
             <tr><td>FORMAT_SIZE</td><td>Human-readable file size</td></tr>
             <tr><td>FORMAT_TIME</td><td>Human-readable duration</td></tr>
-            <tr><td>ABS, POWER, SQRT, LOG, LN</td><td>Math functions</td></tr>
+            <tr><td>ABS, POWER, SQRT, LOG, LN, EXP</td><td>Math functions</td></tr>
             <tr><td>FLOOR, CEIL, ROUND</td><td>Rounding functions</td></tr>
+            <tr><td>LEAST, GREATEST</td><td>Min / max of multiple values</td></tr>
+            <tr><td>PI</td><td>Pi constant (3.14159...)</td></tr>
             <tr><td>RANDOM</td><td>Random number generation</td></tr>
             <tr><td>BIN, HEX, OCT</td><td>Number base conversion</td></tr>
-            <tr><td>TO_BASE64, FROM_BASE64</td><td>Base64 encoding/decoding</td></tr>
+            <tr><td>TO_BASE64, FROM_BASE64</td><td>Base64 encoding / decoding</td></tr>
+            <tr><td>CONTAINS_JAPANESE, CONTAINS_KANA</td><td>Japanese character detection</td></tr>
+            <tr><td>CONTAINS_HIRAGANA, CONTAINS_KATAKANA</td><td>Hiragana / katakana detection</td></tr>
+            <tr><td>CONTAINS_KANJI</td><td>Kanji character detection</td></tr>
+            <tr><td>CONTAINS_GREEK</td><td>Greek character detection</td></tr>
             <tr><td>HAS_XATTR, XATTR</td><td>Extended attribute access</td></tr>
+            <tr><td>HAS_EXTATTR</td><td>Extended file attribute flag check (Linux)</td></tr>
+            <tr><td>HAS_ACL_ENTRY, ACL_ENTRY</td><td>POSIX ACL entry check / read (Linux)</td></tr>
+            <tr><td>HAS_DEFAULT_ACL_ENTRY, DEFAULT_ACL_ENTRY</td><td>Default POSIX ACL entry check / read (Linux)</td></tr>
             <tr><td>HAS_CAP</td><td>Linux capabilities check</td></tr>
             <tr><td>COALESCE</td><td>First non-empty value</td></tr>
         </tbody>

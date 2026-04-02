@@ -33,6 +33,7 @@
             color: var(--text);
             line-height: 1.7;
             font-size: 16px;
+            overflow-x: hidden;
         }
 
         a { color: var(--accent); text-decoration: none; transition: color 0.2s; }
@@ -161,7 +162,7 @@
         /* Feature grid */
         .features {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr));
             gap: 1.25rem;
         }
         .feature {
@@ -226,7 +227,7 @@
         /* Install */
         .install-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr));
             gap: 1rem;
         }
         .install-card {
@@ -247,6 +248,10 @@
         }
 
         /* Tables */
+        .ref-table-wrap {
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
         .ref-table {
             width: 100%;
             border-collapse: collapse;
@@ -277,7 +282,7 @@
         /* Columns reference - compact grid */
         .columns-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr));
             gap: 1.5rem;
         }
         .col-group h4 {
@@ -502,6 +507,12 @@
         <div class="install-card">
             <h4>Windows (Scoop)</h4>
             <pre><span class="prompt">&gt; </span>scoop install fselect</pre>
+        </div>
+        <div class="install-card">
+            <h4>Windows (binary)</h4>
+            <p style="font-size:0.8rem;color:var(--text-dim);margin-top:0.5rem;">
+                <a href="https://github.com/jhspetersson/fselect/releases/download/0.9.3/fselect-x86_64-win.zip">Download .zip</a>
+            </p>
         </div>
         <div class="install-card">
             <h4>Linux (static musl binary)</h4>
@@ -987,7 +998,7 @@
     </div>
 
     <h3><a id="ref-operators"></a>Operators</h3>
-    <table class="ref-table">
+    <div class="ref-table-wrap"><table class="ref-table">
         <thead>
             <tr><th>Operator</th><th>Aliases</th><th>Description</th></tr>
         </thead>
@@ -1019,10 +1030,10 @@
             <tr><td>/</td><td>div</td><td>Division</td></tr>
             <tr><td>%</td><td>mod</td><td>Modulo / remainder</td></tr>
         </tbody>
-    </table>
+    </table></div>
 
     <h3><a id="ref-functions"></a>Functions</h3>
-    <table class="ref-table">
+    <div class="ref-table-wrap"><table class="ref-table">
         <thead>
             <tr><th>Function</th><th>Description</th></tr>
         </thead>
@@ -1065,10 +1076,10 @@
             <tr><td>HAS_CAP</td><td>Linux capabilities check</td></tr>
             <tr><td>COALESCE</td><td>First non-empty value</td></tr>
         </tbody>
-    </table>
+    </table></div>
 
     <h3><a id="ref-size-units"></a>Size Units</h3>
-    <table class="ref-table">
+    <div class="ref-table-wrap"><table class="ref-table">
         <thead>
             <tr><th>Unit</th><th>Meaning</th><th>Size</th></tr>
         </thead>
@@ -1082,10 +1093,10 @@
             <tr><td>t, tib</td><td>Tebibyte</td><td>1,099,511,627,776 bytes</td></tr>
             <tr><td>tb</td><td>Terabyte</td><td>1,000,000,000,000 bytes</td></tr>
         </tbody>
-    </table>
+    </table></div>
 
     <h3><a id="ref-output"></a>Output Formats</h3>
-    <table class="ref-table">
+    <div class="ref-table-wrap"><table class="ref-table">
         <thead>
             <tr><th>Format</th><th>Description</th></tr>
         </thead>
@@ -1097,7 +1108,7 @@
             <tr><td>json</td><td>Array of JSON objects</td></tr>
             <tr><td>html</td><td>HTML document with a table</td></tr>
         </tbody>
-    </table>
+    </table></div>
 </section>
 
 <div class="sep"></div>

@@ -67,6 +67,26 @@
         nav ul { list-style: none; display: flex; gap: 1.5rem; }
         nav ul a { color: var(--text-dim); font-size: 0.9rem; }
         nav ul a:hover { color: var(--text); }
+        nav .hamburger {
+            display: none;
+            background: none;
+            border: none;
+            cursor: pointer;
+            padding: 0.5rem;
+            flex-direction: column;
+            gap: 5px;
+        }
+        nav .hamburger span {
+            display: block;
+            width: 22px;
+            height: 2px;
+            background: var(--text-dim);
+            border-radius: 2px;
+            transition: transform 0.3s, opacity 0.3s;
+        }
+        nav .hamburger.open span:nth-child(1) { transform: translateY(7px) rotate(45deg); }
+        nav .hamburger.open span:nth-child(2) { opacity: 0; }
+        nav .hamburger.open span:nth-child(3) { transform: translateY(-7px) rotate(-45deg); }
 
         /* Hero */
         .hero {
@@ -297,10 +317,22 @@
 
         /* Mobile */
         @media (max-width: 640px) {
-            nav ul { gap: 0.8rem; }
-            nav ul a { font-size: 0.8rem; }
+            nav .hamburger { display: flex; }
+            nav .inner { flex-wrap: wrap; }
+            nav ul {
+                display: none;
+                flex-direction: column;
+                width: 100%;
+                gap: 0;
+                padding: 0.5rem 0 1rem;
+            }
+            nav ul.open { display: flex; }
+            nav ul li { padding: 0.5rem 0; }
+            nav ul a { font-size: 0.95rem; }
             section { padding: 3rem 1.25rem; }
             .hero { padding: 8rem 1.25rem 3rem; }
+            .hero h1 { font-size: clamp(1.5rem, 5vw, 2.5rem); }
+            .hero .tagline { font-size: 1.05rem; }
         }
 
         /* Separator */
@@ -348,6 +380,9 @@
 <nav>
     <div class="inner">
         <div class="logo">fselect <span>v0.9.3</span></div>
+        <button class="hamburger" aria-label="Toggle menu" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('open')">
+            <span></span><span></span><span></span>
+        </button>
         <ul>
             <li><a href="#features">Features</a></li>
             <li><a href="#install">Install</a></li>
@@ -1043,5 +1078,11 @@
     </p>
 </footer>
 
+<script>
+document.querySelectorAll('nav ul a').forEach(a => a.addEventListener('click', () => {
+    document.querySelector('.hamburger').classList.remove('open');
+    document.querySelector('nav ul').classList.remove('open');
+}));
+</script>
 </body>
 </html>

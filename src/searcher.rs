@@ -69,6 +69,7 @@ pub struct Searcher<'a> {
     current_root_dir: PathBuf,
 
     fms: FileMetadataState,
+    file_map: HashMap<String, String>,
     conforms_map: HashMap<String, String>,
     subquery_cache: HashMap<String, Vec<String>>,
     silent_mode: bool,
@@ -149,6 +150,7 @@ impl<'a> Searcher<'a> {
             current_root_dir: PathBuf::new(),
 
             fms: FileMetadataState::new(),
+            file_map: HashMap::new(),
             conforms_map: HashMap::new(),
             subquery_cache: HashMap::new(),
             silent_mode: false,
@@ -930,8 +932,14 @@ impl<'a> Searcher<'a> {
     fn check_file(&mut self, entry: &DirEntry, root_path: &Path, file_info: &Option<FileInfo>) -> Result<(), SearchError> {
         self.fms.clear();
 
-        let mut file_map = HashMap::new();
+        let mut file_map = std::mem::take(&mut self.file_map);
+        file_map.clear();
+        let result = self.check_file_inner(entry, root_path, file_info, &mut file_map);
+        self.file_map = file_map;
+        result
+    }
 
+    fn check_file_inner(&mut self, entry: &DirEntry, root_path: &Path, file_info: &Option<FileInfo>, file_map: &mut HashMap<String, String>) -> Result<(), SearchError> {
         if let Some(ref current_alias) = self.current_alias.clone() {
             {
                 let mut context = self.record_context.borrow_mut();
@@ -991,11 +999,11 @@ impl<'a> Searcher<'a> {
                 })
                 .collect();
             for left in &aggregate_inner_exprs {
-                self.get_column_expr_value(Some(entry), file_info, root_path, &mut file_map, None, left)?;
+                self.get_column_expr_value(Some(entry), file_info, root_path, file_map, None, left)?;
             }
             for field in self.query.grouping_fields.iter() {
                 if file_map.get(&field.to_string()).is_none() {
-                    self.get_column_expr_value(Some(entry), file_info, root_path, &mut file_map, None, field)?;
+                    self.get_column_expr_value(Some(entry), file_info, root_path, file_map, None, field)?;
                 }
             }
             let group_key: Vec<String> = self.query.grouping_fields.iter()
@@ -1003,7 +1011,7 @@ impl<'a> Searcher<'a> {
                 .collect();
             let accumulator = self.accumulators.entry(group_key).or_default();
             accumulator.increment_count();
-            for (key, value) in &file_map {
+            for (key, value) in file_map.iter() {
                 accumulator.push(key, value);
             }
             return Ok(());
@@ -1023,7 +1031,7 @@ impl<'a> Searcher<'a> {
 
         for field in self.query.fields.iter() {
             let record =
-                self.get_column_expr_value(Some(entry), file_info, root_path, &mut file_map, None, field)?;
+                self.get_column_expr_value(Some(entry), file_info, root_path, file_map, None, field)?;
 
             let value = match self.use_colors && field.contains_colorized() {
                 true => self.colorize(&record.to_string()),
@@ -1042,7 +1050,7 @@ impl<'a> Searcher<'a> {
             criteria[idx] = match file_map.get(&field.to_string()) {
                 Some(record) => record.clone(),
                 None => self
-                    .get_column_expr_value(Some(entry), file_info, root_path, &mut file_map, None, field)?
+                    .get_column_expr_value(Some(entry), file_info, root_path, file_map, None, field)?
                     .to_string(),
             }
         }

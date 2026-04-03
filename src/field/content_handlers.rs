@@ -52,7 +52,7 @@ pub fn handle_is_type(ctx: &mut FieldContext, field: &Field) -> Result<Variant, 
         Field::IsImage => check_extension(name, &ctx.config.is_image, &ctx.default_config.is_image),
         Field::IsSource => check_extension(name, &ctx.config.is_source, &ctx.default_config.is_source),
         Field::IsVideo => check_extension(name, &ctx.config.is_video, &ctx.default_config.is_video),
-        _ => unreachable!(),
+        _ => return Err(SearchError::fatal(format!("Unexpected field in handle_is_type: {:?}", field))),
     };
     Ok(Variant::from_bool(result))
 }

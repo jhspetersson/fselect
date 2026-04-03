@@ -9,7 +9,7 @@ pub fn handle_exif_datetime(ctx: &mut FieldContext, field: &Field) -> Result<Var
     let key = match field {
         Field::ExifDateTime => "DateTime",
         Field::ExifDateTimeOriginal => "DateTimeOriginal",
-        _ => unreachable!(),
+        _ => return Err(SearchError::fatal(format!("Unexpected field in handle_exif_datetime: {:?}", field))),
     };
 
     if let Some(exif_info) = ctx.fms.get_exif_metadata() {
@@ -88,7 +88,7 @@ pub fn handle_exif_string(ctx: &mut FieldContext, field: &Field) -> Result<Varia
         Field::ExifImageHeight => "PixelYDimension",
         Field::ExifMaxAperture => "MaxApertureValue",
         Field::ExifDigitalZoom => "DigitalZoomRatio",
-        _ => unreachable!(),
+        _ => return Err(SearchError::fatal(format!("Unexpected field in handle_exif_string: {:?}", field))),
     };
     if let Some(val) = ctx.fms.get_exif_string(ctx.entry, key) {
         return Ok(val);

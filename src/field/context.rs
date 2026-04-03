@@ -19,6 +19,7 @@ pub struct FileMetadataState {
     pub(crate) duration: Option<Option<Duration>>,
     pub(crate) mp3_metadata: Option<Option<MP3Metadata>>,
     pub(crate) exif_metadata: Option<Option<HashMap<String, String>>>,
+    pub(crate) mime_type: Option<Option<String>>,
 }
 
 impl FileMetadataState {
@@ -30,6 +31,7 @@ impl FileMetadataState {
             duration: None,
             mp3_metadata: None,
             exif_metadata: None,
+            mime_type: None,
         }
     }
 
@@ -89,6 +91,18 @@ impl FileMetadataState {
             .map(|v| Variant::from_string(v))
     }
 
+    pub fn update_mime_type(&mut self, entry: &DirEntry) {
+        if self.mime_type.is_none() {
+            self.mime_type = Some(
+                tree_magic_mini::from_filepath(&entry.path()).map(String::from)
+            );
+        }
+    }
+
+    pub fn get_mime_type(&self) -> Option<&str> {
+        self.mime_type.as_ref().and_then(|o| o.as_deref())
+    }
+
     pub fn update_dimensions(&mut self, entry: &DirEntry) {
         if self.dimensions.is_none() {
             self.dimensions = Some(get_dimensions(entry.path()));
@@ -138,6 +152,7 @@ mod tests {
         assert!(state.duration.is_none());
         assert!(state.mp3_metadata.is_none());
         assert!(state.exif_metadata.is_none());
+        assert!(state.mime_type.is_none());
     }
 
     #[test]
@@ -150,6 +165,7 @@ mod tests {
         state.duration = Some(None);
         state.mp3_metadata = Some(None);
         state.exif_metadata = Some(None);
+        state.mime_type = Some(None);
 
         state.clear();
 
@@ -159,5 +175,6 @@ mod tests {
         assert!(state.duration.is_none());
         assert!(state.mp3_metadata.is_none());
         assert!(state.exif_metadata.is_none());
+        assert!(state.mime_type.is_none());
     }
 }

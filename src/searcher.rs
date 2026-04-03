@@ -382,22 +382,24 @@ impl<'a> Searcher<'a> {
                 }
 
                 let mut first = true;
+                let mut stdout = std::io::stdout().lock();
                 for items in grouped_results.iter_values().skip(self.query.offset as usize) {
                     let mut buf = WritableBuffer::new();
                     self.results_writer.write_row(&mut buf, items.clone())?;
                     let rendered = String::from(buf);
                     if !self.silent_mode {
                         if !first {
-                            try_output!(self.results_writer.write_row_separator(&mut std::io::stdout()), Ok(()));
+                            try_output!(self.results_writer.write_row_separator(&mut stdout), Ok(()));
                         }
                         first = false;
-                        try_output!(write!(std::io::stdout(), "{}", &rendered), Ok(()));
+                        try_output!(write!(stdout, "{}", &rendered), Ok(()));
                     }
                     self.output_buffer.insert(
                         Criteria::new(Rc::new(vec![]), vec![], Rc::new(vec![])),
                         rendered,
                     );
                 }
+                drop(stdout);
             } else {
                 let mut buf = WritableBuffer::new();
                 let mut items: Vec<(String, String)> = Vec::new();
@@ -431,19 +433,22 @@ impl<'a> Searcher<'a> {
                 }
             }
         } else if self.is_buffered() && !self.silent_mode {
+            let mut stdout = std::io::stdout().lock();
             let mut first = true;
             for piece in self.output_buffer.iter_values().skip(self.query.offset as usize) {
                 if first {
                     first = false;
                 } else {
-                    try_output!(self.results_writer.write_row_separator(&mut std::io::stdout()), Ok(()));
+                    try_output!(self.results_writer.write_row_separator(&mut stdout), Ok(()));
                 }
-                try_output!(write!(std::io::stdout(), "{}", piece), Ok(()));
+                try_output!(write!(stdout, "{}", piece), Ok(()));
             }
+            drop(stdout);
         }
 
         if !self.silent_mode {
-            self.results_writer.write_footer(&mut std::io::stdout())?;
+            let mut stdout = std::io::stdout().lock();
+            self.results_writer.write_footer(&mut stdout)?;
         }
 
         let completion_time = std::time::Instant::now();

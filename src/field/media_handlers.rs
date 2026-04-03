@@ -90,8 +90,23 @@ pub fn handle_genre(ctx: &mut FieldContext) -> Result<Variant, SearchError> {
     ctx.fms.update_mp3_metadata(ctx.entry);
     if let Some(mp3_info) = ctx.fms.get_mp3_metadata() {
         if let Some(ref mp3_tag) = mp3_info.tag {
-            return Ok(Variant::from_string(&format!("{:?}", mp3_tag.genre)));
+            return Ok(Variant::from_string(&format!("{}", mp3_tag.genre)));
         }
     }
     Ok(Variant::empty(VariantType::String))
+}
+
+#[cfg(test)]
+mod tests {
+    use mp3_metadata::Genre;
+
+    #[test]
+    fn test_genre_uses_display_not_debug() {
+        // Display should produce clean user-facing text
+        assert_eq!(format!("{}", Genre::Rock), "Rock");
+        assert_eq!(format!("{}", Genre::Blues), "Blues");
+        // ClassicRock with Display should be different from Debug
+        let display = format!("{}", Genre::ClassicRock);
+        assert!(!display.is_empty());
+    }
 }

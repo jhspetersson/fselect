@@ -132,3 +132,45 @@ fn check_capability(perm: u32, inh: u32, cap: u32) -> Option<String> {
         None
     }
 }
+
+/// Check if a capabilities string contains a specific capability by exact name match.
+/// The capabilities string is space-separated entries like "cap_net_bind_service=ep cap_net_admin=ep".
+pub fn has_capability(caps_string: &str, cap_name: &str) -> bool {
+    caps_string.split_whitespace().any(|entry| {
+        match entry.find('=') {
+            Some(idx) => &entry[..idx] == cap_name,
+            None => entry == cap_name,
+        }
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_has_capability_exact_match() {
+        let caps = "cap_net_bind_service=ep cap_net_admin=ep";
+        assert!(has_capability(caps, "cap_net_bind_service"));
+        assert!(has_capability(caps, "cap_net_admin"));
+    }
+
+    #[test]
+    fn test_has_capability_no_substring_match() {
+        let caps = "cap_net_bind_service=ep cap_net_admin=ep";
+        // Should NOT match via substring
+        assert!(!has_capability(caps, "cap_net"));
+        assert!(!has_capability(caps, "cap_net_bind"));
+    }
+
+    #[test]
+    fn test_has_capability_empty() {
+        assert!(!has_capability("", "cap_net_admin"));
+    }
+
+    #[test]
+    fn test_has_capability_single() {
+        assert!(has_capability("cap_sys_admin=ep", "cap_sys_admin"));
+        assert!(!has_capability("cap_sys_admin=ep", "cap_sys"));
+    }
+}

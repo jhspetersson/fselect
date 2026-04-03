@@ -802,7 +802,7 @@ pub fn get_value(
                 if let Ok(file) = File::open(entry.path()) {
                     if let Ok(Some(caps_xattr)) = file.get_xattr("security.capability") {
                         let caps_string = crate::util::capabilities::parse_capabilities(caps_xattr);
-                        return Ok(Variant::from_bool(caps_string.contains(&function_arg)));
+                        return Ok(Variant::from_bool(crate::util::capabilities::has_capability(&caps_string, &function_arg)));
                     }
                 }
             }

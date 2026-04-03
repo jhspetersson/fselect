@@ -1255,7 +1255,6 @@ impl<'a> Searcher<'a> {
                     return Err(e);
                 }
             };
-            temp_map.clear();
             let value = match op {
                 Op::In | Op::NotIn => Variant::empty(VariantType::String),
                 _ => {
@@ -1267,10 +1266,7 @@ impl<'a> Searcher<'a> {
                         None,
                         expr.right.as_ref().unwrap(),
                     ) {
-                        Ok(v) => {
-                            temp_map.clear();
-                            v
-                        }
+                        Ok(v) => v,
                         Err(e) => {
                             self.conforms_map = temp_map;
                             return Err(e);

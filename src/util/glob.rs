@@ -45,7 +45,7 @@ pub fn convert_like_to_pattern(s: &str) -> Result<String, String> {
         match c.index(0) {
             "%" => ".*",
             "_" => ".",
-            "?" => ".?",
+            "?" => "\\?",
             "." => "\\.",
             "*" => "\\*",
             "[" => "\\[",
@@ -141,7 +141,17 @@ mod tests {
     #[test]
     fn test_convert_like_to_pattern_question_mark() {
         let pattern = convert_like_to_pattern("file?.txt").unwrap();
-        assert_eq!(pattern, "^(?i)file.?\\.txt$");
+        assert_eq!(pattern, "^(?i)file\\?\\.txt$");
+    }
+
+    #[test]
+    fn test_convert_like_question_mark_is_literal() {
+        // In SQL LIKE, '?' has no special meaning and should be treated as literal
+        let pattern = convert_like_to_pattern("file?.txt").unwrap();
+        let re = regex::Regex::new(&pattern).unwrap();
+        assert!(re.is_match("file?.txt"));
+        assert!(!re.is_match("filex.txt"));
+        assert!(!re.is_match("file.txt"));
     }
 
     #[test]

@@ -973,18 +973,25 @@ impl<'a> Searcher<'a> {
                 );
             }
             // Evaluate inner expressions of aggregate functions so computed values
-            // (e.g. "size * 2") are stored in file_map under the correct key
-            for column_expr in &self.query.fields.clone() {
-                if let Some(ref func) = column_expr.function {
-                    if func.is_aggregate_function() {
-                        if let Some(ref left) = column_expr.left {
-                            let left_key = left.to_string();
-                            if !file_map.contains_key(&left_key) {
-                                self.get_column_expr_value(Some(entry), file_info, root_path, &mut file_map, None, left)?;
+            // (e.g. "size * 2") are stored in file_map under the correct key.
+            // Collect keys first to avoid cloning query.fields on every file.
+            let aggregate_inner_exprs: Vec<_> = self.query.fields.iter()
+                .filter_map(|column_expr| {
+                    if let Some(ref func) = column_expr.function {
+                        if func.is_aggregate_function() {
+                            if let Some(ref left) = column_expr.left {
+                                let left_key = left.to_string();
+                                if !file_map.contains_key(&left_key) {
+                                    return Some(left.clone());
+                                }
                             }
                         }
                     }
-                }
+                    None
+                })
+                .collect();
+            for left in &aggregate_inner_exprs {
+                self.get_column_expr_value(Some(entry), file_info, root_path, &mut file_map, None, left)?;
             }
             for field in self.query.grouping_fields.iter() {
                 if file_map.get(&field.to_string()).is_none() {

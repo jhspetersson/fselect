@@ -5,7 +5,7 @@ use chrono_english::{parse_date_string, Dialect};
 use regex::Regex;
 
 static DATE_REGEX: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new("(\\d{4})(-|:)(\\d{1,2})(-|:)(\\d{1,2}) ?(\\d{1,2})?:?(\\d{1,2})?:?(\\d{1,2})?").unwrap()
+    Regex::new("^(\\d{4})(-|:)(\\d{1,2})(-|:)(\\d{1,2})(?: (\\d{1,2})(?::(\\d{1,2})(?::(\\d{1,2}))?)?)?$").unwrap()
 });
 
 static US_DATES: Mutex<bool> = Mutex::new(false);
@@ -33,6 +33,10 @@ pub fn parse_datetime(s: &str) -> Result<(NaiveDateTime, NaiveDateTime), String>
 
     match DATE_REGEX.captures(s) {
         Some(cap) => {
+            // Ensure consistent separator (both dashes or both colons)
+            if cap[2] != cap[4] {
+                return Err("Error parsing date/time value: ".to_string() + s);
+            }
             let year: i32 = cap[1].parse().unwrap();
             let month: u32 = cap[3].parse().unwrap();
             let day: u32 = cap[5].parse().unwrap();
@@ -272,8 +276,27 @@ mod tests {
         let date = NaiveDate::from_ymd_opt(2023, 12, 11).unwrap();
         let start = date.and_hms_opt(14, 30, 0).unwrap();
         let finish = date.and_hms_opt(14, 30, 59).unwrap();
-        
+
         assert_eq!(result.0, start);
         assert_eq!(result.1, finish);
+    }
+
+    #[test]
+    fn test_substring_date_should_not_match() {
+        // Date regex should not match dates embedded in other text
+        assert!(parse_datetime("abc2024-01-15xyz").is_err());
+    }
+
+    #[test]
+    fn test_mixed_separators_should_not_match() {
+        // Mixed dash and colon separators should not be accepted
+        assert!(parse_datetime("2024-01:15").is_err());
+    }
+
+    #[test]
+    fn test_colon_separator_date_accepted() {
+        // EXIF-style colon-separated dates should work
+        let result = parse_datetime("2024:01:15");
+        assert!(result.is_ok());
     }
 }

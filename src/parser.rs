@@ -933,6 +933,9 @@ impl <'a> Parser<'a> {
         }
 
         match lexeme {
+            Some(Lexeme::Error(ref msg)) => {
+                return Err(msg.clone());
+            }
             Some(Lexeme::String(ref s)) => {
                 if let Ok((field, root_alias)) = Field::parse_field(s) {
                     let mut expr = Expr::field_with_root_alias(field, root_alias);
@@ -1247,6 +1250,14 @@ impl <'a> Parser<'a> {
                 }
             }
         }
+    }
+
+    fn next_lexeme_or_err(&mut self) -> Result<Option<Lexeme>, String> {
+        let lexeme = self.next_lexeme();
+        if let Some(Lexeme::Error(ref msg)) = lexeme {
+            return Err(msg.clone());
+        }
+        Ok(lexeme)
     }
 
     fn push_lexeme(&mut self, lexeme: Lexeme) {
@@ -2847,6 +2858,16 @@ mod tests {
         assert!(!p2.there_are_remaining_lexemes());
 
         assert_eq!(query.fields, query2.fields);
+    }
+
+    #[test]
+    fn unterminated_quote_returns_parse_error() {
+        let query = "select name from . where name = 'unterminated";
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
+        let result = p.parse(false);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Unterminated quoted string"));
     }
 
 }

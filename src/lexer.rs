@@ -32,6 +32,7 @@ pub enum Lexeme {
     Limit,
     Offset,
     Into,
+    Error(String),
 }
 
 #[derive(Debug, PartialEq)]
@@ -269,6 +270,8 @@ impl Lexer {
             LexingMode::SingleQuotedString if quote_closed => Some(Lexeme::String(s)),
             LexingMode::DoubleQuotedString if quote_closed => Some(Lexeme::String(s)),
             LexingMode::BackticksQuotedString if quote_closed => Some(Lexeme::String(s)),
+            LexingMode::SingleQuotedString | LexingMode::DoubleQuotedString | LexingMode::BackticksQuotedString
+                => Some(Lexeme::Error(format!("Unterminated quoted string: {}", s))),
             LexingMode::Operator => Some(Lexeme::Operator(s)),
             LexingMode::ArithmeticOperator => Some(Lexeme::ArithmeticOperator(s)),
             LexingMode::Comma => Some(Lexeme::Comma),
@@ -1404,11 +1407,8 @@ mod tests {
         assert_eq!(lexer.next_lexeme(), Some(Lexeme::Operator(String::from("="))));
 
         let lexeme = lexer.next_lexeme();
-        assert_ne!(
-            lexeme,
-            Some(Lexeme::String(String::from("unterminated"))),
-            "Unterminated single-quoted string should not silently produce a valid String lexeme"
-        );
+        assert!(matches!(lexeme, Some(Lexeme::Error(_))),
+            "Unterminated single-quoted string should produce an Error lexeme");
     }
 
     #[test]
@@ -1421,11 +1421,8 @@ mod tests {
         assert_eq!(lexer.next_lexeme(), Some(Lexeme::Operator(String::from("="))));
 
         let lexeme = lexer.next_lexeme();
-        assert_ne!(
-            lexeme,
-            Some(Lexeme::String(String::from("unterminated"))),
-            "Unterminated double-quoted string should not silently produce a valid String lexeme"
-        );
+        assert!(matches!(lexeme, Some(Lexeme::Error(_))),
+            "Unterminated double-quoted string should produce an Error lexeme");
     }
 
     #[test]
@@ -1438,11 +1435,8 @@ mod tests {
         assert_eq!(lexer.next_lexeme(), Some(Lexeme::Operator(String::from("="))));
 
         let lexeme = lexer.next_lexeme();
-        assert_ne!(
-            lexeme,
-            Some(Lexeme::String(String::from("unterminated"))),
-            "Unterminated backtick-quoted string should not silently produce a valid String lexeme"
-        );
+        assert!(matches!(lexeme, Some(Lexeme::Error(_))),
+            "Unterminated backtick-quoted string should produce an Error lexeme");
     }
 
     #[test]
@@ -3048,6 +3042,27 @@ mod tests {
             if matches!(l, Lexeme::And) { break; }
         }
         assert_eq!(lexer.next_lexeme(), Some(Lexeme::Operator(String::from("notexists"))));
+    }
+
+    #[test]
+    fn test_unclosed_single_quote_returns_error() {
+        let mut lexer = lexer!("select", "name", "from", ".", "where", "name", "=", "'unterminated");
+        while let Some(l) = lexer.next_lexeme() {
+            if matches!(l, Lexeme::Operator(_)) { break; }
+        }
+        // Unclosed quote should return an Error lexeme, not silently drop the content
+        let lexeme = lexer.next_lexeme();
+        assert!(matches!(lexeme, Some(Lexeme::Error(_))));
+    }
+
+    #[test]
+    fn test_unclosed_double_quote_returns_error() {
+        let mut lexer = lexer!("select", "name", "from", ".", "where", "name", "=", "\"unterminated");
+        while let Some(l) = lexer.next_lexeme() {
+            if matches!(l, Lexeme::Operator(_)) { break; }
+        }
+        let lexeme = lexer.next_lexeme();
+        assert!(matches!(lexeme, Some(Lexeme::Error(_))));
     }
 
 }

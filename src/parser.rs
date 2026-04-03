@@ -477,11 +477,10 @@ impl <'a> Parser<'a> {
                 Some(Lexeme::Or) => {
                     let expr = self.parse_and()?;
                     right = match right {
-                        Some(right) => Some(Expr::logical_op(
-                            right,
-                            LogicalOp::Or,
-                            expr.clone().unwrap(),
-                        )),
+                        Some(right) => {
+                            let expr = expr.ok_or_else(|| "Expected expression after OR".to_string())?;
+                            Some(Expr::logical_op(right, LogicalOp::Or, expr))
+                        }
                         None => expr,
                     };
                 }
@@ -490,17 +489,11 @@ impl <'a> Parser<'a> {
 
                     let mut result = match right {
                         Some(right) => {
-                            match left.as_ref().unwrap().weight <= right.weight {
-                                true => Ok(Some(Expr::logical_op(
-                                    left.unwrap(),
-                                    LogicalOp::Or,
-                                    right,
-                                ))),
-                                false => Ok(Some(Expr::logical_op(
-                                    right,
-                                    LogicalOp::Or,
-                                    left.unwrap(),
-                                ))),
+                            let left = left.ok_or_else(|| "Expected expression before OR".to_string())?;
+                            if left.weight <= right.weight {
+                                Ok(Some(Expr::logical_op(left, LogicalOp::Or, right)))
+                            } else {
+                                Ok(Some(Expr::logical_op(right, LogicalOp::Or, left)))
                             }
                         }
                         None => Ok(left),
@@ -542,7 +535,10 @@ impl <'a> Parser<'a> {
                 Some(Lexeme::And) => {
                     let expr = self.parse_cond()?;
                     right = match right {
-                        Some(right) => Some(Expr::logical_op(right, LogicalOp::And, expr.unwrap())),
+                        Some(right) => {
+                            let expr = expr.ok_or_else(|| "Expected expression after AND".to_string())?;
+                            Some(Expr::logical_op(right, LogicalOp::And, expr))
+                        }
                         None => expr,
                     };
                 }
@@ -551,17 +547,11 @@ impl <'a> Parser<'a> {
 
                     return match right {
                         Some(right) => {
-                            match left.as_ref().unwrap().weight <= right.weight {
-                                true => Ok(Some(Expr::logical_op(
-                                    left.unwrap(),
-                                    LogicalOp::And,
-                                    right,
-                                ))),
-                                false => Ok(Some(Expr::logical_op(
-                                    right,
-                                    LogicalOp::And,
-                                    left.unwrap(),
-                                ))),
+                            let left = left.ok_or_else(|| "Expected expression before AND".to_string())?;
+                            if left.weight <= right.weight {
+                                Ok(Some(Expr::logical_op(left, LogicalOp::And, right)))
+                            } else {
+                                Ok(Some(Expr::logical_op(right, LogicalOp::And, left)))
                             }
                         }
                         None => Ok(left),
@@ -632,21 +622,24 @@ impl <'a> Parser<'a> {
 
                 let right_between = self.parse_add_sub()?;
 
+                let left_val = left.ok_or_else(|| "Expected expression before BETWEEN".to_string())?;
+                let left_between = left_between.ok_or_else(|| "Expected expression in BETWEEN range".to_string())?;
+                let right_between = right_between.ok_or_else(|| "Expected expression in BETWEEN range".to_string())?;
                 let left_expr = Expr::op(
-                    left.clone().unwrap(),
+                    left_val.clone(),
                     match is_negated {
                         false => Op::Gte,
                         true => Op::Lt,
                     },
-                    left_between.unwrap(),
+                    left_between,
                 );
                 let right_expr = Expr::op(
-                    left.unwrap(),
+                    left_val,
                     match is_negated {
                         false => Op::Lte,
                         true => Op::Gt,
                     },
-                    right_between.unwrap(),
+                    right_between,
                 );
 
                 Ok(Some(Expr::logical_op(
@@ -661,8 +654,9 @@ impl <'a> Parser<'a> {
             Some(Lexeme::Operator(s)) if s.as_str() == "in" || s.as_str() == "exists" || s.as_str() == "notin" || s.as_str() == "notexists" => {
                 let list = self.parse_list()?;
                 let op = Op::from_with_not(s, not);
+                let left = left.ok_or_else(|| "Expected expression before operator".to_string())?;
                 Ok(Some(Expr::op(
-                    left.unwrap(),
+                    left,
                     op.unwrap(),
                     list,
                 )))
@@ -671,7 +665,11 @@ impl <'a> Parser<'a> {
                 let right = self.parse_add_sub()?;
                 let op = Op::from_with_not(s.clone(), not);
                 match op {
-                    Some(op) => Ok(Some(Expr::op(left.unwrap(), op, right.unwrap()))),
+                    Some(op) => {
+                        let left = left.ok_or_else(|| "Expected expression before operator".to_string())?;
+                        let right = right.ok_or_else(|| "Expected expression after operator".to_string())?;
+                        Ok(Some(Expr::op(left, op, right)))
+                    }
                     None => Err(format!("Unknown operator: {}", s)),
                 }
             }
@@ -681,34 +679,36 @@ impl <'a> Parser<'a> {
             }
         };
 
-        if let Ok(Some(expr)) = result.clone() {
-            if let Some(field) = expr.field {
-                if expr.left.is_none()
+        if let Ok(Some(ref expr)) = result {
+            let should_wrap = if let Some(ref field) = expr.field {
+                expr.left.is_none()
                     && expr.right.is_none()
                     && field.is_boolean_field()
                     && self.roots_parsed
                     && !self.where_parsed
-                {
-                    result = Ok(Some(Expr::op(
-                        Expr::field(field),
-                        Op::Eq,
-                        Expr::value(String::from("true")),
-                    )));
-                }
-            } else if let Some(function) = expr.function {
-                if expr.right.is_none()
-                    && (expr.args.is_none() || expr.args.unwrap().is_empty())
+            } else { false };
+            let should_wrap_func = if let Some(ref function) = expr.function {
+                expr.right.is_none()
+                    && (expr.args.is_none() || expr.args.as_ref().is_some_and(|a| a.is_empty()))
                     && function.is_boolean_function()
                     && self.roots_parsed
                     && !self.where_parsed
-                {
-                    let func_expr = Expr::function_left(function, expr.left);
-                    result = Ok(Some(Expr::op(
-                        func_expr,
-                        Op::Eq,
-                        Expr::value(String::from("true")),
-                    )));
-                }
+            } else { false };
+            if should_wrap {
+                let expr = result.unwrap().unwrap();
+                result = Ok(Some(Expr::op(
+                    Expr::field(expr.field.unwrap()),
+                    Op::Eq,
+                    Expr::value(String::from("true")),
+                )));
+            } else if should_wrap_func {
+                let expr = result.unwrap().unwrap();
+                let func_expr = Expr::function_left(expr.function.unwrap(), expr.left);
+                result = Ok(Some(Expr::op(
+                    func_expr,
+                    Op::Eq,
+                    Expr::value(String::from("true")),
+                )));
             }
         }
 
@@ -738,7 +738,8 @@ impl <'a> Parser<'a> {
 
                         left = match left {
                             Some(left) => {
-                                Some(Expr::arithmetic_op(left, new_op.unwrap(), expr.unwrap()))
+                                let expr = expr.ok_or_else(|| "Expected expression after arithmetic operator".to_string())?;
+                                Some(Expr::arithmetic_op(left, new_op.unwrap(), expr))
                             }
                             None => expr,
                         };
@@ -772,7 +773,8 @@ impl <'a> Parser<'a> {
 
                         left = match left {
                             Some(left) => {
-                                Some(Expr::arithmetic_op(left, new_op.unwrap(), expr.unwrap()))
+                                let expr = expr.ok_or_else(|| "Expected expression after arithmetic operator".to_string())?;
+                                Some(Expr::arithmetic_op(left, new_op.unwrap(), expr))
                             }
                             None => expr,
                         };
@@ -2858,6 +2860,37 @@ mod tests {
         assert!(!p2.there_are_remaining_lexemes());
 
         assert_eq!(query.fields, query2.fields);
+    }
+
+    #[test]
+    fn malformed_or_missing_rhs_no_panic() {
+        // parse_expr: right side of OR has no expression
+        let query = "select name from . where name = test or ";
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
+        // Should return Err, not panic
+        let result = p.parse(false);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn malformed_and_missing_rhs_no_panic() {
+        // parse_and: right side of AND has no expression
+        let query = "select name from . where name = test and ";
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
+        let result = p.parse(false);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn malformed_comparison_missing_rhs_no_panic() {
+        // parse_cond: operator with no right side
+        let query = "select name from . where name = ";
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
+        let result = p.parse(false);
+        assert!(result.is_err());
     }
 
     #[test]

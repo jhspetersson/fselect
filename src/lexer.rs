@@ -95,7 +95,8 @@ impl LexerState {
 pub struct Lexer {
     input: Vec<String>,
     input_index: usize,
-    char_index: isize,
+    char_index: usize,
+    between_parts: bool,
     state: LexerState,
     state_history: Vec<LexerState>,
 }
@@ -106,6 +107,7 @@ impl Lexer {
             input,
             input_index: 0,
             char_index: 0,
+            between_parts: false,
             state: LexerState::new(),
             state_history: vec![],
         }
@@ -147,30 +149,35 @@ impl Lexer {
             }
 
             let c;
-            if self.char_index == -1 {
+            if self.between_parts {
                 match mode {
                     LexingMode::QuotedString(_) => {
+                        self.between_parts = false;
                         self.char_index = 0;
                         continue;
                     }
                     LexingMode::RawString if s.ends_with('-') && looks_like_date(&s[..s.len() - 1]) => {
+                        self.between_parts = false;
                         self.char_index = 0;
                         continue;
                     }
                     LexingMode::Operator => {
+                        self.between_parts = false;
                         self.char_index = 0;
                         continue;
                     }
                     _ => {
+                        self.between_parts = false;
                         c = ' ';
                     }
                 }
             } else {
-                match chars_buf.get(self.char_index as usize) {
+                match chars_buf.get(self.char_index) {
                     Some(&ch) => c = ch,
                     None => {
                         self.input_index += 1;
-                        self.char_index = -1;
+                        self.between_parts = true;
+                        self.char_index = 0;
                         self.state.possible_search_root = false;
                         continue;
                     }
@@ -200,7 +207,7 @@ impl Lexer {
                 }
                 LexingMode::RawString => {
                     let is_date = c == '-' && !self.state.after_arithmetic && looks_like_date(&s) && {
-                        let next_char = chars_buf.get((self.char_index + 1) as usize).copied()
+                        let next_char = chars_buf.get(self.char_index + 1).copied()
                             .or_else(|| self.input.get(self.input_index + 1)
                                 .and_then(|p| p.chars().next()));
                         matches!(next_char, Some('0'..='9'))

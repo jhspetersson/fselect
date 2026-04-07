@@ -42,9 +42,7 @@ enum LexingMode {
     Comma,
     Operator,
     ArithmeticOperator,
-    SingleQuotedString,
-    DoubleQuotedString,
-    BackticksQuotedString,
+    QuotedString(char),
     Open,
     Close,
 }
@@ -141,9 +139,7 @@ impl Lexer {
             let c;
             if self.char_index == -1 {
                 match mode {
-                    LexingMode::SingleQuotedString
-                    | LexingMode::DoubleQuotedString
-                    | LexingMode::BackticksQuotedString => {
+                    LexingMode::QuotedString(_) => {
                         self.char_index = 0;
                         continue;
                     }
@@ -172,25 +168,9 @@ impl Lexer {
             
             match mode {
                 LexingMode::Comma | LexingMode::Open | LexingMode::Close => break,
-                LexingMode::SingleQuotedString => {
+                LexingMode::QuotedString(quote_char) => {
                     self.char_index += 1;
-                    if c == '\'' {
-                        quote_closed = true;
-                        break;
-                    }
-                    s.push(c);
-                }
-                LexingMode::DoubleQuotedString => {
-                    self.char_index += 1;
-                    if c == '"' {
-                        quote_closed = true;
-                        break;
-                    }
-                    s.push(c);
-                }
-                LexingMode::BackticksQuotedString => {
-                    self.char_index += 1;
-                    if c == '`' {
+                    if c == quote_char {
                         quote_closed = true;
                         break;
                     }
@@ -235,9 +215,7 @@ impl Lexer {
                     self.char_index += 1;
                     match c {
                         ' ' => {}
-                        '\'' => mode = LexingMode::SingleQuotedString,
-                        '"' => mode = LexingMode::DoubleQuotedString,
-                        '`' => mode = LexingMode::BackticksQuotedString,
+                        '\'' | '"' | '`' => mode = LexingMode::QuotedString(c),
                         ',' => mode = LexingMode::Comma,
                         '(' | '{' => {
                             s.push(c);
@@ -267,11 +245,8 @@ impl Lexer {
         }
 
         let lexeme = match mode {
-            LexingMode::SingleQuotedString if quote_closed => Some(Lexeme::String(s)),
-            LexingMode::DoubleQuotedString if quote_closed => Some(Lexeme::String(s)),
-            LexingMode::BackticksQuotedString if quote_closed => Some(Lexeme::String(s)),
-            LexingMode::SingleQuotedString | LexingMode::DoubleQuotedString | LexingMode::BackticksQuotedString
-                => Some(Lexeme::Error(format!("Unterminated quoted string: {}", s))),
+            LexingMode::QuotedString(_) if quote_closed => Some(Lexeme::String(s)),
+            LexingMode::QuotedString(_) => Some(Lexeme::Error(format!("Unterminated quoted string: {}", s))),
             LexingMode::Operator => Some(Lexeme::Operator(s)),
             LexingMode::ArithmeticOperator => Some(Lexeme::ArithmeticOperator(s)),
             LexingMode::Comma => Some(Lexeme::Comma),

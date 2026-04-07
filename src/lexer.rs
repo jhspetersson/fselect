@@ -84,6 +84,11 @@ impl LexerState {
             roots_finished: false,
         }
     }
+
+    /// Common guard for clause-level keywords (from, where, group, order, by, limit, offset, into)
+    fn is_keyword_position(&self, search_root_ctx: bool) -> bool {
+        !self.after_operator && !self.after_logical && !self.after_not && !search_root_ctx
+    }
 }
 
 #[derive(Clone)]
@@ -270,14 +275,14 @@ impl Lexer {
                 "select" if !self.state.after_operator && !self.state.after_value_start && !search_root_ctx => {
                     Some(Lexeme::Select)
                 }
-                "from" if !self.state.after_operator && !self.state.after_logical && !self.state.after_not && !search_root_ctx => {
+                "from" if self.state.is_keyword_position(search_root_ctx) => {
                     self.state.before_from = false;
                     self.state.after_where = false;
                     self.state.in_group_by = false;
                     self.state.in_order_by = false;
                     Some(Lexeme::From)
                 }
-                "where" if !self.state.after_operator && !self.state.after_logical && !self.state.after_not && !search_root_ctx => {
+                "where" if self.state.is_keyword_position(search_root_ctx) => {
                     self.state.before_from = false;
                     self.state.after_where = true;
                     self.state.in_group_by = false;
@@ -287,34 +292,34 @@ impl Lexer {
                 "or" if self.state.after_where && !self.state.after_operator && !self.state.after_logical && !self.state.after_not => Some(Lexeme::Or),
                 "and" if self.state.after_where && !self.state.after_operator && !self.state.after_logical && !self.state.after_not => Some(Lexeme::And),
                 "not" if self.state.after_where && !self.state.after_operator && !self.state.after_value_start => Some(Lexeme::Not),
-                "group" if !self.state.after_operator && !self.state.after_logical && !self.state.after_not && !search_root_ctx => {
+                "group" if self.state.is_keyword_position(search_root_ctx) => {
                     self.state.after_where = false;
                     self.state.in_group_by = true;
                     self.state.in_order_by = false;
                     Some(Lexeme::Group)
                 }
-                "order" if !self.state.after_operator && !self.state.after_logical && !self.state.after_not && !search_root_ctx => {
+                "order" if self.state.is_keyword_position(search_root_ctx) => {
                     self.state.after_where = false;
                     self.state.in_group_by = false;
                     self.state.in_order_by = true;
                     Some(Lexeme::Order)
                 }
-                "by" if !self.state.after_operator && !self.state.after_logical && !self.state.after_not && !search_root_ctx => Some(Lexeme::By),
-                "asc" if !self.state.after_operator && !self.state.before_from && !self.state.after_where && !self.state.after_logical && !self.state.after_not && !search_root_ctx && self.state.in_order_by => self.next_lexeme(),
-                "desc" if !self.state.after_operator && !self.state.before_from && !self.state.after_where && !self.state.after_logical && !self.state.after_not && !search_root_ctx && self.state.in_order_by => Some(Lexeme::DescendingOrder),
-                "limit" if !self.state.after_operator && !self.state.after_logical && !self.state.after_not && !search_root_ctx => {
+                "by" if self.state.is_keyword_position(search_root_ctx) => Some(Lexeme::By),
+                "asc" if self.state.is_keyword_position(search_root_ctx) && !self.state.before_from && !self.state.after_where && self.state.in_order_by => self.next_lexeme(),
+                "desc" if self.state.is_keyword_position(search_root_ctx) && !self.state.before_from && !self.state.after_where && self.state.in_order_by => Some(Lexeme::DescendingOrder),
+                "limit" if self.state.is_keyword_position(search_root_ctx) => {
                     self.state.after_where = false;
                     self.state.in_group_by = false;
                     self.state.in_order_by = false;
                     Some(Lexeme::Limit)
                 }
-                "offset" if !self.state.after_operator && !self.state.after_logical && !self.state.after_not && !search_root_ctx => {
+                "offset" if self.state.is_keyword_position(search_root_ctx) => {
                     self.state.after_where = false;
                     self.state.in_group_by = false;
                     self.state.in_order_by = false;
                     Some(Lexeme::Offset)
                 }
-                "into" if !self.state.after_operator && !self.state.after_logical && !self.state.after_not && !search_root_ctx => {
+                "into" if self.state.is_keyword_position(search_root_ctx) => {
                     self.state.after_where = false;
                     self.state.in_group_by = false;
                     self.state.in_order_by = false;
@@ -324,7 +329,7 @@ impl Lexer {
                 "eq" | "ne" | "gt" | "lt" | "ge" | "le" | "gte" | "lte" | "eeq" | "ene"
                 | "regexp" | "rx" | "like" | "notlike" | "notrx"
                 | "between" | "notbetween" | "in" | "notin" if self.state.after_where && !self.state.after_operator && !self.state.after_logical => Some(Lexeme::Operator(s.to_lowercase())),
-                "mul" | "div" | "mod" | "plus" | "minus" if (self.state.before_from || self.state.after_where || self.state.in_group_by || self.state.in_order_by) && !self.state.after_operator && !self.state.after_logical && !self.state.after_not => Some(Lexeme::ArithmeticOperator(s)),
+                "mul" | "div" | "mod" | "plus" | "minus" if (self.state.before_from || self.state.after_where || self.state.in_group_by || self.state.in_order_by) && self.state.is_keyword_position(false) => Some(Lexeme::ArithmeticOperator(s)),
                 _ => Some(Lexeme::RawString(s)),
             },
             _ => None,

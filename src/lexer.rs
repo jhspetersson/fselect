@@ -43,8 +43,8 @@ enum LexingMode {
     Operator,
     ArithmeticOperator,
     QuotedString(char),
-    Open,
-    Close,
+    Open(char),
+    Close(char),
 }
 
 #[derive(Clone)]
@@ -178,7 +178,7 @@ impl Lexer {
             }
             
             match mode {
-                LexingMode::Comma | LexingMode::Open | LexingMode::Close => break,
+                LexingMode::Comma | LexingMode::Open(_) | LexingMode::Close(_) => break,
                 LexingMode::QuotedString(quote_char) => {
                     self.char_index += 1;
                     if c == quote_char {
@@ -228,14 +228,8 @@ impl Lexer {
                         ' ' => {}
                         '\'' | '"' | '`' => mode = LexingMode::QuotedString(c),
                         ',' => mode = LexingMode::Comma,
-                        '(' | '{' => {
-                            s.push(c);
-                            mode = LexingMode::Open
-                        }
-                        ')' | '}' => {
-                            s.push(c);
-                            mode = LexingMode::Close
-                        }
+                        '(' | '{' => mode = LexingMode::Open(c),
+                        ')' | '}' => mode = LexingMode::Close(c),
                         _ => {
                             mode = if self.is_op_char(c) {
                                 LexingMode::Operator
@@ -249,7 +243,7 @@ impl Lexer {
                     }
 
                     if c != ' ' {
-                        self.state.after_open = mode == LexingMode::Open;
+                        self.state.after_open = matches!(mode, LexingMode::Open(_));
                     }
                 }
             }
@@ -261,22 +255,10 @@ impl Lexer {
             LexingMode::Operator => Some(Lexeme::Operator(s)),
             LexingMode::ArithmeticOperator => Some(Lexeme::ArithmeticOperator(s)),
             LexingMode::Comma => Some(Lexeme::Comma),
-            LexingMode::Open if &s == "(" => {
-                s.clear();
-                Some(Lexeme::Open)
-            }
-            LexingMode::Open if &s == "{" => {
-                s.clear();
-                Some(Lexeme::CurlyOpen)
-            }
-            LexingMode::Close if &s == ")" => {
-                s.clear();
-                Some(Lexeme::Close)
-            }
-            LexingMode::Close if &s == "}" => {
-                s.clear();
-                Some(Lexeme::CurlyClose)
-            }
+            LexingMode::Open('(') => Some(Lexeme::Open),
+            LexingMode::Open(_) => Some(Lexeme::CurlyOpen),
+            LexingMode::Close(')') => Some(Lexeme::Close),
+            LexingMode::Close(_) => Some(Lexeme::CurlyClose),
             LexingMode::RawString => match s.to_lowercase().as_str() {
                 "select" if !self.state.after_operator && !self.state.after_value_start && !search_root_ctx => {
                     Some(Lexeme::Select)

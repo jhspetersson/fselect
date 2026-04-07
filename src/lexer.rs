@@ -133,14 +133,19 @@ impl Lexer {
         let mut mode = LexingMode::Undefined;
         let mut quote_closed = false;
         let search_root_ctx = self.state.possible_search_root;
+        let mut chars_buf: Vec<char> = Vec::new();
+        let mut chars_input_index: usize = usize::MAX;
 
         loop {
-            let input_part = self.input.get(self.input_index);
-            if input_part.is_none() {
-                break;
+            if self.input_index != chars_input_index {
+                if let Some(input_part) = self.input.get(self.input_index) {
+                    chars_buf = input_part.chars().collect();
+                    chars_input_index = self.input_index;
+                } else {
+                    break;
+                }
             }
-            let input_part = input_part.unwrap();
-            
+
             let c;
             if self.char_index == -1 {
                 match mode {
@@ -161,14 +166,15 @@ impl Lexer {
                     }
                 }
             } else {
-                let input_char = input_part.chars().nth(self.char_index as usize);
-                if input_char.is_none() {
-                    self.input_index += 1;
-                    self.char_index = -1;
-                    self.state.possible_search_root = false;
-                    continue;
+                match chars_buf.get(self.char_index as usize) {
+                    Some(&ch) => c = ch,
+                    None => {
+                        self.input_index += 1;
+                        self.char_index = -1;
+                        self.state.possible_search_root = false;
+                        continue;
+                    }
                 }
-                c = input_char.unwrap();
             }
             
             match mode {
@@ -194,7 +200,7 @@ impl Lexer {
                 }
                 LexingMode::RawString => {
                     let is_date = c == '-' && !self.state.after_arithmetic && looks_like_date(&s) && {
-                        let next_char = input_part.chars().nth((self.char_index + 1) as usize)
+                        let next_char = chars_buf.get((self.char_index + 1) as usize).copied()
                             .or_else(|| self.input.get(self.input_index + 1)
                                 .and_then(|p| p.chars().next()));
                         matches!(next_char, Some('0'..='9'))

@@ -91,8 +91,8 @@ pub struct Lexer {
     input: Vec<String>,
     input_index: usize,
     char_index: isize,
-    state: Box<LexerState>,
-    state_history: Vec<Box<LexerState>>,
+    state: LexerState,
+    state_history: Vec<LexerState>,
 }
 
 impl Lexer {
@@ -101,7 +101,7 @@ impl Lexer {
             input,
             input_index: 0,
             char_index: 0,
-            state: Box::new(LexerState::new()),
+            state: LexerState::new(),
             state_history: vec![],
         }
     }
@@ -112,14 +112,14 @@ impl Lexer {
 
     pub fn push_state(&mut self) {
         self.state_history.push(self.state.clone());
-        self.state = Box::new(LexerState::new());
+        self.state = LexerState::new();
     }
 
     pub fn pop_state(&mut self) {
         if let Some(state) = self.state_history.pop() {
             self.state = state;
         } else {
-            self.state = Box::new(LexerState::new());
+            self.state = LexerState::new();
         }
     }
 

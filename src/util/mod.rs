@@ -571,30 +571,26 @@ pub fn get_exif_metadata(entry: &DirEntry) -> Option<HashMap<String, String>> {
                 }
             }
 
-            if exif_info.contains_key("GPSLongitude") && exif_info.contains_key("GPSLongitudeRef") {
-                let location = exif_info.get("GPSLongitude").unwrap().to_string();
-                let location_ref = exif_info.get("GPSLongitudeRef").unwrap().to_string();
+            if let (Some(location), Some(location_ref)) =
+                (exif_info.get("GPSLongitude").cloned(), exif_info.get("GPSLongitudeRef").cloned())
+            {
                 if let Ok(coord) = parse_location_string(location, location_ref, "W") {
                     exif_info.insert(String::from("__Lng"), coord.to_string());
                 }
             }
 
-            if exif_info.contains_key("GPSLatitude") && exif_info.contains_key("GPSLatitudeRef") {
-                let location = exif_info.get("GPSLatitude").unwrap().to_string();
-                let location_ref = exif_info.get("GPSLatitudeRef").unwrap().to_string();
+            if let (Some(location), Some(location_ref)) =
+                (exif_info.get("GPSLatitude").cloned(), exif_info.get("GPSLatitudeRef").cloned())
+            {
                 if let Ok(coord) = parse_location_string(location, location_ref, "S") {
                     exif_info.insert(String::from("__Lat"), coord.to_string());
                 }
             }
 
-            if exif_info.contains_key("GPSAltitude") && exif_info.contains_key("GPSAltitudeRef") {
-                let mut altitude = exif_info
-                    .get("GPSAltitude")
-                    .unwrap()
-                    .to_string()
-                    .parse::<f32>()
-                    .unwrap_or(0.0);
-                let altitude_ref = exif_info.get("GPSAltitudeRef").unwrap().to_string();
+            if let (Some(altitude_str), Some(altitude_ref)) =
+                (exif_info.get("GPSAltitude").cloned(), exif_info.get("GPSAltitudeRef").cloned())
+            {
+                let mut altitude = altitude_str.parse::<f32>().unwrap_or(0.0);
                 if altitude_ref.eq("1") {
                     altitude = -altitude;
                 }

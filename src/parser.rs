@@ -653,11 +653,12 @@ impl <'a> Parser<'a> {
             }
             Some(Lexeme::Operator(s)) if s.as_str() == "in" || s.as_str() == "exists" || s.as_str() == "notin" || s.as_str() == "notexists" => {
                 let list = self.parse_list()?;
-                let op = Op::from_with_not(s, not);
+                let op = Op::from_with_not(s.clone(), not)
+                    .ok_or_else(|| format!("Unknown operator: {}", s))?;
                 let left = left.ok_or_else(|| "Expected expression before operator".to_string())?;
                 Ok(Some(Expr::op(
                     left,
-                    op.unwrap(),
+                    op,
                     list,
                 )))
             }

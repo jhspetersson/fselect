@@ -477,10 +477,10 @@ impl Display for Expr {
         if let Some(ref subquery) = self.subquery {
             if let Some(ref alias) = self.alias {
                 if let Some(ref root_alias) = self.root_alias {
-                    fmt.write_str(&root_alias.to_string())?;
+                    fmt.write_str(root_alias)?;
                     fmt.write_char('.')?;
                 }
-                fmt.write_str(&alias.to_string())?;
+                fmt.write_str(alias)?;
             } else {
                 let subquery_str = format!("{:?}", subquery);
                 let mut s = DefaultHasher::new();
@@ -496,7 +496,7 @@ impl Display for Expr {
 
         if let Some(ref function) = self.function {
             if let Some(ref alias) = self.alias {
-                fmt.write_str(&alias.to_string())?;
+                fmt.write_str(alias)?;
             } else {
                 fmt.write_str(&function.to_string())?;
                 fmt.write_char('(')?;
@@ -531,11 +531,11 @@ impl Display for Expr {
 
         if let Some(ref field) = self.field {
             if let Some(ref root_alias) = self.root_alias {
-                fmt.write_str(&root_alias.to_string())?;
+                fmt.write_str(root_alias)?;
                 fmt.write_char('.')?;
             }
             if let Some(ref alias) = self.alias {
-                fmt.write_str(&alias.to_string())?;
+                fmt.write_str(alias)?;
             } else {
                 fmt.write_str(&field.to_string())?;
             }

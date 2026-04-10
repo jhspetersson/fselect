@@ -36,9 +36,7 @@ impl<K: Ord, V> TopN<K, V> {
             if limit < self.count {
                 self.count -= 1;
 
-                let last_key = self.echelons.iter().next_back().unwrap().0.clone();
-
-                let mut last_echelon = self.echelons.remove(&last_key).unwrap();
+                let (last_key, mut last_echelon) = self.echelons.pop_last().unwrap();
                 let popped = last_echelon.pop().unwrap();
                 if !last_echelon.is_empty() {
                     self.echelons.insert(last_key, last_echelon);

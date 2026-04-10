@@ -108,17 +108,16 @@ fn parse_hgignore(file_path: &Path, dir_path: &Path) -> Result<Vec<HgignoreFilte
                 if err.is_empty() {
                     match line {
                         Ok(line) => {
-                            if line.starts_with("syntax:") {
-                                let line = line.replace("syntax:", "");
-                                let syntax_directive = line.trim();
+                            if let Some(rest) = line.strip_prefix("syntax:") {
+                                let syntax_directive = rest.trim();
                                 match Syntax::from(syntax_directive) {
                                     Ok(parsed_syntax) => syntax = parsed_syntax,
                                     Err(parse_err) => err = parse_err,
                                 }
-                            } else if line.starts_with("subinclude:") {
-                                let include = line.replace("subinclude:", "");
+                            } else if let Some(rest) = line.strip_prefix("subinclude:") {
+                                let include = rest.trim();
                                 let mut parse_result =
-                                    parse_hgignore(&Path::new(&include), dir_path);
+                                    parse_hgignore(&Path::new(include), dir_path);
                                 match parse_result {
                                     Ok(ref mut filters) => {
                                         result.append(filters);

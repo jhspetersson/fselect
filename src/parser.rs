@@ -1123,10 +1123,10 @@ impl <'a> Parser<'a> {
                 let lexeme = self.next_lexeme();
                 return match lexeme {
                     Some(Lexeme::RawString(s)) | Some(Lexeme::String(s)) => {
-                        // Parse the first number (could be offset or limit)
+                        // Parse the first number (could be limit alone or offset in offset,limit format)
                         if let Ok(first_number) = s.parse::<u32>() {
                             if let Some(Lexeme::Comma) = self.next_lexeme() {
-                                // This is offset,limit format
+                                // This is offset,limit format (first_number=offset, second_number=limit)
                                 let second_lexeme = self.next_lexeme();
                                 match second_lexeme {
                                     Some(Lexeme::RawString(s2)) | Some(Lexeme::String(s2)) => {

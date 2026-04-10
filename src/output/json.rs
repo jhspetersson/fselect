@@ -24,7 +24,7 @@ impl ResultsFormatter for JsonFormatter {
     }
 
     fn row_ended(&mut self) -> Option<String> {
-        let result = serde_json::to_string(&self.file_map).unwrap();
+        let result = serde_json::to_string(&self.file_map).unwrap_or_default();
         self.file_map.clear();
         Some(result)
     }

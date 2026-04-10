@@ -342,7 +342,7 @@ pub fn get_value(
                     if val <= 0.0 {
                         return Err(format!("LOG of a non-positive number: {}", val));
                     }
-                    if base <= 0.0 || base == 1.0 {
+                    if !base.is_finite() || base <= 0.0 || base == 1.0 {
                         return Err(format!("LOG with invalid base: {}", base));
                     }
 
@@ -2505,6 +2505,30 @@ mod tests {
             &Function::Log,
             String::from("100"),
             vec![String::from("1")],
+            None,
+            &None,
+        );
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn log_nan_base_returns_error() {
+        let result = get_value(
+            &Function::Log,
+            String::from("100"),
+            vec![String::from("NaN")],
+            None,
+            &None,
+        );
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn log_infinity_base_returns_error() {
+        let result = get_value(
+            &Function::Log,
+            String::from("100"),
+            vec![String::from("inf")],
             None,
             &None,
         );

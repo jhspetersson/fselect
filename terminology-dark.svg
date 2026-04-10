@@ -1,0 +1,147 @@
+<svg viewBox="0 0 1050 860" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+        <style>
+            .title { font: bold 24px 'Inter', -apple-system, sans-serif; fill: #cdd6f4; }
+            .subtitle { font: 14px 'Inter', -apple-system, sans-serif; fill: #8891b0; }
+            .label { font: bold 14px 'JetBrains Mono', 'Fira Code', monospace; }
+            .value { font: 14px 'JetBrains Mono', 'Fira Code', monospace; fill: #8891b0; }
+            .comment { font: 12px 'Inter', -apple-system, sans-serif; fill: #8891b0; }
+            .segment-text { font: bold 15px 'JetBrains Mono', 'Fira Code', monospace; fill: #0f1117; }
+            .separator-text { font: bold 15px 'JetBrains Mono', 'Fira Code', monospace; fill: #8891b0; }
+
+            .bracket { stroke-width: 2; fill: none; }
+            .bracket-abspath { stroke: #f38ba8; }
+            .bracket-absdir { stroke: #fab387; }
+            .bracket-path { stroke: #a6e3a1; }
+            .bracket-dir { stroke: #94e2d5; }
+            .bracket-name { stroke: #f5c2e7; }
+            .bracket-filename { stroke: #89b4fa; }
+            .bracket-ext { stroke: #cba6f7; }
+        </style>
+    </defs>
+
+    <!-- Background -->
+    <rect width="1050" height="860" fill="#0f1117" rx="12"/>
+
+    <!-- Title -->
+    <text x="500" y="44" text-anchor="middle" class="title">File Naming Terminology</text>
+    <text x="500" y="68" text-anchor="middle" class="subtitle">Visual breakdown of path components used by fselect columns</text>
+
+    <!-- Search Root Info -->
+    <rect x="50" y="92" width="950" height="40" fill="#161822" rx="6"/>
+    <rect x="50" y="92" width="4" height="40" fill="#89b4fa" rx="2 0 0 2"/>
+    <text x="70" y="117" class="value">
+        <tspan fill="#89b4fa" font-weight="bold">Search Root:</tspan>
+        <tspan fill="#cdd6f4"> /home/user/projects</tspan>
+    </text>
+
+    <!-- File Path Segments -->
+    <g id="path-segments">
+        <!-- Root -->
+        <rect x="50" y="162" width="250" height="48" fill="#f38ba8" rx="8 0 0 8"/>
+        <text x="175" y="191" text-anchor="middle" class="segment-text">/home/user/projects</text>
+
+        <!-- Separator 1 -->
+        <rect x="300" y="162" width="20" height="48" fill="#2a2d3e"/>
+        <text x="310" y="191" text-anchor="middle" class="separator-text">/</text>
+
+        <!-- Dir 1 -->
+        <rect x="320" y="162" width="100" height="48" fill="#fab387"/>
+        <text x="370" y="191" text-anchor="middle" class="segment-text">foobar</text>
+
+        <!-- Separator 2 -->
+        <rect x="420" y="162" width="20" height="48" fill="#2a2d3e"/>
+        <text x="430" y="191" text-anchor="middle" class="separator-text">/</text>
+
+        <!-- Dir 2 -->
+        <rect x="440" y="162" width="110" height="48" fill="#a6e3a1"/>
+        <text x="495" y="191" text-anchor="middle" class="segment-text">content</text>
+
+        <!-- Separator 3 -->
+        <rect x="550" y="162" width="20" height="48" fill="#2a2d3e"/>
+        <text x="560" y="191" text-anchor="middle" class="separator-text">/</text>
+
+        <!-- Filename -->
+        <rect x="570" y="162" width="110" height="48" fill="#89b4fa"/>
+        <text x="625" y="191" text-anchor="middle" class="segment-text">readme</text>
+
+        <!-- Extension -->
+        <rect x="680" y="162" width="60" height="48" fill="#cba6f7" rx="0 8 8 0"/>
+        <text x="710" y="191" text-anchor="middle" class="segment-text">.md</text>
+    </g>
+
+    <!-- Legend -->
+    <g id="legend">
+        <text x="800" y="180" class="label" fill="#cdd6f4">Legend</text>
+
+        <rect x="800" y="196" width="24" height="16" fill="#f38ba8" rx="3"/>
+        <text x="832" y="209" class="comment">Root directory</text>
+
+        <rect x="800" y="220" width="24" height="16" fill="#fab387" rx="3"/>
+        <text x="832" y="233" class="comment">Subdirectory 1</text>
+
+        <rect x="800" y="244" width="24" height="16" fill="#a6e3a1" rx="3"/>
+        <text x="832" y="257" class="comment">Subdirectory 2</text>
+
+        <rect x="800" y="268" width="24" height="16" fill="#89b4fa" rx="3"/>
+        <text x="832" y="281" class="comment">Filename</text>
+
+        <rect x="800" y="292" width="24" height="16" fill="#cba6f7" rx="3"/>
+        <text x="832" y="305" class="comment">Extension</text>
+    </g>
+
+    <!-- Brackets and Labels -->
+
+    <!-- abspath -->
+    <path d="M 50 238 L 50 248 L 740 248 L 740 238" class="bracket bracket-abspath"/>
+    <line x1="395" y1="248" x2="395" y2="274" stroke="#f38ba8" stroke-width="2"/>
+    <rect x="50" y="274" width="690" height="34" fill="#f38ba815" stroke="#f38ba8" stroke-width="1.5" rx="6"/>
+    <text x="62" y="296" class="label" fill="#f38ba8">abspath</text>
+    <text x="200" y="296" class="value">/home/user/projects/foobar/content/readme.md</text>
+
+    <!-- absdir -->
+    <path d="M 50 338 L 50 348 L 550 348 L 550 338" class="bracket bracket-absdir"/>
+    <line x1="300" y1="348" x2="300" y2="374" stroke="#fab387" stroke-width="2"/>
+    <rect x="50" y="374" width="500" height="34" fill="#fab38715" stroke="#fab387" stroke-width="1.5" rx="6"/>
+    <text x="62" y="396" class="label" fill="#fab387">absdir</text>
+    <text x="200" y="396" class="value">/home/user/projects/foobar/content</text>
+
+    <!-- path -->
+    <path d="M 320 438 L 320 448 L 740 448 L 740 438" class="bracket bracket-path"/>
+    <line x1="530" y1="448" x2="530" y2="474" stroke="#a6e3a1" stroke-width="2"/>
+    <rect x="320" y="474" width="420" height="34" fill="#a6e3a115" stroke="#a6e3a1" stroke-width="1.5" rx="6"/>
+    <text x="332" y="496" class="label" fill="#a6e3a1">path</text>
+    <text x="430" y="496" class="value">foobar/content/readme.md</text>
+
+    <!-- dir -->
+    <path d="M 320 538 L 320 548 L 550 548 L 550 538" class="bracket bracket-dir"/>
+    <line x1="435" y1="548" x2="435" y2="574" stroke="#94e2d5" stroke-width="2"/>
+    <rect x="320" y="574" width="230" height="34" fill="#94e2d515" stroke="#94e2d5" stroke-width="1.5" rx="6"/>
+    <text x="332" y="596" class="label" fill="#94e2d5">dir</text>
+    <text x="430" y="596" class="value">foobar/content</text>
+
+    <!-- name -->
+    <path d="M 570 638 L 570 648 L 740 648 L 740 638" class="bracket bracket-name"/>
+    <line x1="655" y1="648" x2="655" y2="674" stroke="#f5c2e7" stroke-width="2"/>
+    <rect x="570" y="674" width="170" height="34" fill="#f5c2e715" stroke="#f5c2e7" stroke-width="1.5" rx="6"/>
+    <text x="582" y="696" class="label" fill="#f5c2e7">name</text>
+    <text x="660" y="696" class="value">readme.md</text>
+
+    <!-- filename -->
+    <path d="M 570 738 L 570 748 L 680 748 L 680 738" class="bracket bracket-filename"/>
+    <line x1="625" y1="748" x2="625" y2="774" stroke="#89b4fa" stroke-width="2"/>
+    <rect x="570" y="774" width="110" height="34" fill="#89b4fa15" stroke="#89b4fa" stroke-width="1.5" rx="6"/>
+    <text x="582" y="796" class="label" fill="#89b4fa">filename</text>
+
+    <!-- ext -->
+    <path d="M 680 738 L 680 748 L 740 748 L 740 738" class="bracket bracket-ext"/>
+    <line x1="710" y1="748" x2="710" y2="774" stroke="#cba6f7" stroke-width="2"/>
+    <rect x="680" y="774" width="60" height="34" fill="#cba6f715" stroke="#cba6f7" stroke-width="1.5" rx="6"/>
+    <text x="692" y="796" class="label" fill="#cba6f7">ext</text>
+
+    <!-- Right-side comments -->
+    <text x="800" y="396" class="comment">Absolute directory (no filename)</text>
+    <text x="800" y="496" class="comment">Path relative to search root</text>
+    <text x="800" y="596" class="comment">Relative directory</text>
+    <text x="800" y="696" class="comment">filename + ext</text>
+</svg>

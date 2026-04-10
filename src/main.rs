@@ -477,7 +477,11 @@ fn format_root_options() -> String {
 
 fn format_field_usage() -> String {
     Field::get_names_and_descriptions().iter()
-        .map(|(names, description)| names.join(" | ").to_string() + " ".repeat(if 32 > names.join(" | ").to_string().len() { 32 - names.join(" | ").to_string().len() } else { 1 }).as_str() + description)
+        .map(|(names, description)| {
+            let joined = names.join(" | ");
+            let pad = if 32 > joined.len() { 32 - joined.len() } else { 1 };
+            joined + &" ".repeat(pad) + description
+        })
         .collect::<Vec<_>>().join("\n    ")
 }
 
@@ -493,7 +497,9 @@ fn format_function_usage() -> String {
                 funcs_in_group
                     .iter()
                     .map(|(names, description)| {
-                        names.join(" | ").to_string().to_uppercase() + " ".repeat(if 28 > names.join(" | ").to_string().len() { 28 - names.join(" | ").to_string().len() } else { 1 }).as_str() + description
+                        let joined = names.join(" | ");
+                        let pad = if 28 > joined.len() { 28 - joined.len() } else { 1 };
+                        joined.to_uppercase() + &" ".repeat(pad) + description
                     })
                     .collect::<Vec<_>>()
                     .join("\n        ")

@@ -1255,14 +1255,6 @@ impl <'a> Parser<'a> {
         }
     }
 
-    fn next_lexeme_or_err(&mut self) -> Result<Option<Lexeme>, String> {
-        let lexeme = self.next_lexeme();
-        if let Some(Lexeme::Error(ref msg)) = lexeme {
-            return Err(msg.clone());
-        }
-        Ok(lexeme)
-    }
-
     fn push_lexeme(&mut self, lexeme: Lexeme) {
         self.lexemes.push(lexeme);
     }

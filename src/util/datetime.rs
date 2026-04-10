@@ -1,6 +1,6 @@
 use std::sync::{LazyLock, Mutex};
 
-use chrono::{Datelike, Duration, Local, LocalResult, NaiveDate, NaiveDateTime, NaiveTime, TimeZone, Timelike};
+use chrono::{Duration, Local, LocalResult, NaiveDate, NaiveDateTime, NaiveTime, TimeZone, Timelike};
 use chrono_english::{parse_date_string, Dialect};
 use regex::Regex;
 

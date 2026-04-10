@@ -170,7 +170,7 @@ pub fn format_time(time: &NaiveTime) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::{Local, NaiveDate};
+    use chrono::{Datelike, Local, NaiveDate};
 
     #[test]
     fn test_parse_today() {

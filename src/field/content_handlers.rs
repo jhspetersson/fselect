@@ -62,10 +62,10 @@ fn check_extension(
     config_ext: &Option<Vec<String>>,
     default_ext: &Option<Vec<String>>,
 ) -> bool {
-    has_extension(
-        file_name,
-        config_ext.as_ref().unwrap_or(default_ext.as_ref().unwrap()),
-    )
+    match config_ext.as_ref().or(default_ext.as_ref()) {
+        Some(extensions) => has_extension(file_name, extensions),
+        None => false,
+    }
 }
 
 #[cfg(test)]
@@ -209,6 +209,11 @@ mod tests {
         assert!(!is_source(&config, &default_config, "test.txt"));
         assert!(!is_source(&config, &default_config, "test.jpg"));
         assert!(!is_source(&config, &default_config, "test"));
+    }
+
+    #[test]
+    fn test_check_extension_both_none() {
+        assert!(!check_extension("test.zip", &None, &None));
     }
 
     #[test]

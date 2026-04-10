@@ -60,7 +60,7 @@ const FLAG_LETTERS: &[(libc::c_long, char)] = &[
 pub fn get_ext_attrs(file: &File) -> Option<libc::c_long> {
     let fd = file.as_raw_fd();
     let mut flags: libc::c_long = 0;
-    let ret = unsafe { libc::ioctl(fd, fs_ioc_getflags(), &mut flags) };
+    let ret = unsafe { libc::ioctl(fd, fs_ioc_getflags().try_into().unwrap(), &mut flags) };
     if ret == 0 {
         Some(flags)
     } else {

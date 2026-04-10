@@ -1,6 +1,6 @@
 use std::fs::File;
 use std::io;
-use std::io::Read;
+use std::io::BufReader;
 use std::path::Path;
 
 use crate::util::dimensions::DimensionsExtractor;
@@ -14,11 +14,9 @@ impl DimensionsExtractor for Mp4DimensionsExtractor {
     }
 
     fn try_read_dimensions(&self, path: &Path) -> io::Result<Option<Dimensions>> {
-        let mut fd = File::open(path)?;
-        let mut buf = Vec::new();
-        let _ = fd.read_to_end(&mut buf)?;
-        let mut c = io::Cursor::new(&buf);
-        let context = mp4parse::read_mp4(&mut c)?;
+        let fd = File::open(path)?;
+        let mut reader = BufReader::new(fd);
+        let context = mp4parse::read_mp4(&mut reader)?;
         Ok(context
             .tracks
             .iter()

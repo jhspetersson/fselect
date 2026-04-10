@@ -1,6 +1,6 @@
 use std::fs::File;
 use std::io;
-use std::io::Read;
+use std::io::BufReader;
 use std::path::Path;
 
 use mp3_metadata::MP3Metadata;
@@ -20,11 +20,9 @@ impl DurationExtractor for Mp4DurationExtractor {
         path: &Path,
         _: &Option<MP3Metadata>,
     ) -> io::Result<Option<Duration>> {
-        let mut fd = File::open(path)?;
-        let mut buf = Vec::new();
-        let _ = fd.read_to_end(&mut buf)?;
-        let mut c = io::Cursor::new(&buf);
-        let context = mp4parse::read_mp4(&mut c)?;
+        let fd = File::open(path)?;
+        let mut reader = BufReader::new(fd);
+        let context = mp4parse::read_mp4(&mut reader)?;
         Ok(context
             .tracks
             .iter()

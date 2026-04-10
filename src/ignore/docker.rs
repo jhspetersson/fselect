@@ -168,8 +168,9 @@ fn convert_dockerignore_glob(glob: &str, file_path: &Path) -> Result<Regex, Stri
         return Err("Error parsing .dockerignore pattern: ".to_string() + glob);
     }
 
-    while pattern.starts_with("/") || pattern.starts_with("\\") {
-        pattern.remove(0);
+    let trimmed = pattern.trim_start_matches(|c| c == '/' || c == '\\');
+    if trimmed.len() != pattern.len() {
+        pattern = trimmed.to_string();
     }
 
     if pattern.is_empty() {

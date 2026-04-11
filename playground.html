@@ -1,0 +1,848 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>fselect Playground &mdash; Try fselect live in your browser</title>
+    <meta name="description" content="Try fselect live in your browser. Run SQL-like file queries against a virtual filesystem — no installation required.">
+    <link rel="stylesheet" href="vendor/xterm/xterm.min.css">
+    <style>
+        :root {
+            --bg: #0f1117;
+            --surface: #161822;
+            --surface2: #1e2030;
+            --border: #2a2d3e;
+            --text: #cdd6f4;
+            --text-dim: #8891b0;
+            --accent: #89b4fa;
+            --accent2: #a6e3a1;
+            --accent3: #f9e2af;
+            --accent4: #f38ba8;
+            --accent5: #cba6f7;
+            --code-bg: #11131e;
+            --mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Source Code Pro', Consolas, monospace;
+            --sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html { scroll-behavior: smooth; }
+
+        body {
+            font-family: var(--sans);
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.7;
+            font-size: 16px;
+            overflow-x: hidden;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        a { color: var(--accent); text-decoration: none; transition: color 0.2s; }
+        a:hover { color: var(--accent2); }
+
+        nav {
+            position: fixed;
+            top: 0;
+            width: 100%;
+            background: rgba(15, 17, 23, 0.85);
+            backdrop-filter: blur(16px);
+            border-bottom: 1px solid var(--border);
+            z-index: 100;
+            padding: 0 2rem;
+        }
+        nav .inner {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            height: 56px;
+        }
+        nav .logo {
+            font-family: var(--mono);
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: var(--accent);
+        }
+        nav .logo span { color: var(--text-dim); font-weight: 400; }
+        nav ul { list-style: none; display: flex; gap: 1.5rem; }
+        nav ul a { color: var(--text-dim); font-size: 0.9rem; }
+        nav ul a:hover { color: var(--text); }
+        nav ul a.active { color: var(--accent); }
+        nav .hamburger {
+            display: none;
+            background: none;
+            border: none;
+            cursor: pointer;
+            padding: 0.5rem;
+            flex-direction: column;
+            gap: 5px;
+        }
+        nav .hamburger span {
+            display: block;
+            width: 22px;
+            height: 2px;
+            background: var(--text-dim);
+            border-radius: 2px;
+            transition: transform 0.3s, opacity 0.3s;
+        }
+        nav .hamburger.open span:nth-child(1) { transform: translateY(7px) rotate(45deg); }
+        nav .hamburger.open span:nth-child(2) { opacity: 0; }
+        nav .hamburger.open span:nth-child(3) { transform: translateY(-7px) rotate(-45deg); }
+
+        .playground-container {
+            margin-top: 56px;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .playground-header {
+            padding: 2rem 2rem 1rem;
+            max-width: 1200px;
+            margin: 0 auto;
+            width: 100%;
+        }
+        .playground-header h1 {
+            font-family: var(--mono);
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+        }
+        .playground-header p {
+            color: var(--text-dim);
+            font-size: 0.95rem;
+        }
+        .playground-header .note {
+            display: inline-block;
+            margin-top: 0.5rem;
+            font-size: 0.82rem;
+            color: var(--accent5);
+            background: rgba(203, 166, 247, 0.08);
+            border: 1px solid rgba(203, 166, 247, 0.2);
+            border-radius: 6px;
+            padding: 0.3rem 0.7rem;
+        }
+
+        .playground-body {
+            flex: 1;
+            display: flex;
+            gap: 0;
+            max-width: 1200px;
+            margin: 0 auto;
+            width: 100%;
+            padding: 1rem 2rem 2rem;
+            min-height: 500px;
+        }
+
+        .sidebar {
+            width: 280px;
+            flex-shrink: 0;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px 0 0 12px;
+            overflow-y: auto;
+            padding: 1rem;
+        }
+        .sidebar h3 {
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--text-dim);
+            margin-bottom: 0.75rem;
+        }
+        .sidebar .tree-item {
+            font-family: var(--mono);
+            font-size: 0.82rem;
+            line-height: 1.6;
+            color: var(--text);
+            white-space: nowrap;
+            cursor: default;
+        }
+        .sidebar .tree-item.dir { color: var(--accent); font-weight: 600; }
+        .sidebar .tree-item.file { color: var(--text-dim); }
+        .sidebar .tree-item .size {
+            color: var(--text-dim);
+            font-size: 0.75rem;
+            opacity: 0.6;
+        }
+
+        .sidebar .examples-section { margin-top: 1.5rem; }
+        .sidebar .example-query {
+            font-family: var(--mono);
+            font-size: 0.78rem;
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 0.5rem 0.7rem;
+            margin-bottom: 0.5rem;
+            cursor: pointer;
+            transition: border-color 0.2s;
+            color: var(--text);
+            line-height: 1.5;
+        }
+        .sidebar .example-query:hover { border-color: var(--accent); }
+        .sidebar .example-query .kw { color: var(--accent5); }
+        .sidebar .example-query .field { color: var(--accent); }
+        .sidebar .example-query .str { color: var(--accent2); }
+        .sidebar .example-query .op { color: var(--accent3); }
+
+        .terminal-panel {
+            flex: 1;
+            background: var(--code-bg);
+            border: 1px solid var(--border);
+            border-left: none;
+            border-radius: 0 12px 12px 0;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+        .terminal-panel .xterm {
+            padding: 0.5rem;
+            flex: 1;
+        }
+
+        footer {
+            text-align: center;
+            padding: 2rem;
+            color: var(--text-dim);
+            font-size: 0.85rem;
+            border-top: 1px solid var(--border);
+        }
+        footer a { color: var(--accent); }
+
+        @media (max-width: 768px) {
+            nav .hamburger { display: flex; }
+            nav { background: var(--bg); }
+            nav .inner { position: relative; }
+            nav ul {
+                display: none;
+                position: absolute;
+                top: 56px;
+                left: -2rem;
+                right: -2rem;
+                background: var(--bg);
+                flex-direction: column;
+                padding: 1rem 2rem;
+                border-bottom: 1px solid var(--border);
+            }
+            nav ul.open { display: flex; }
+            nav ul li { padding: 0.5rem 0; }
+            nav ul a { font-size: 0.95rem; }
+
+            .playground-body {
+                flex-direction: column;
+                padding: 0.5rem;
+            }
+            .sidebar {
+                width: 100%;
+                border-radius: 12px 12px 0 0;
+                max-height: 200px;
+            }
+            .terminal-panel {
+                border-left: 1px solid var(--border);
+                border-top: none;
+                border-radius: 0 0 12px 12px;
+                min-height: 400px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+<nav>
+    <div class="inner">
+        <a href="/" class="logo">fselect <span>v0.10.0</span></a>
+        <button class="hamburger" aria-label="Toggle menu" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('open')">
+            <span></span><span></span><span></span>
+        </button>
+        <ul>
+            <li><a href="/">Home</a></li>
+            <li><a href="playground.html" class="active">Playground</a></li>
+            <li><a href="https://github.com/jhspetersson/fselect">GitHub</a></li>
+        </ul>
+    </div>
+</nav>
+
+<div class="playground-container">
+    <div class="playground-header">
+        <h1>Playground</h1>
+        <p>Try fselect queries against a virtual filesystem right in your browser. Click an example or type your own query.</p>
+        <div class="note">Running real fselect compiled to WebAssembly (WASI) &mdash; same engine, same query language</div>
+    </div>
+
+    <div class="playground-body">
+        <div class="sidebar">
+            <h3>Virtual Filesystem</h3>
+            <div id="file-tree"></div>
+
+            <div class="examples-section">
+                <h3>Example Queries</h3>
+                <div class="example-query" data-query="select name, size from /sandbox">
+                    <span class="kw">select</span> <span class="field">name</span>, <span class="field">size</span> <span class="kw">from</span> /sandbox
+                </div>
+                <div class="example-query" data-query="select name, size from /sandbox where ext = rs">
+                    <span class="kw">select</span> <span class="field">name</span>, <span class="field">size</span> <span class="kw">where</span> <span class="field">ext</span> <span class="op">=</span> <span class="str">rs</span>
+                </div>
+                <div class="example-query" data-query="select path, size from /sandbox where size > 10000 order by size desc">
+                    <span class="kw">select</span> <span class="field">path</span>, <span class="field">size</span> <span class="kw">where</span> <span class="field">size</span> <span class="op">&gt;</span> 10k <span class="kw">order by</span> <span class="field">size</span> <span class="kw">desc</span>
+                </div>
+                <div class="example-query" data-query="select name from /sandbox where name like '%.md'">
+                    <span class="kw">select</span> <span class="field">name</span> <span class="kw">where</span> <span class="field">name</span> <span class="op">like</span> <span class="str">'%.md'</span>
+                </div>
+                <div class="example-query" data-query="select name, ext, is_dir from /sandbox where is_dir = true">
+                    <span class="kw">select</span> <span class="field">name</span>, <span class="field">is_dir</span> <span class="kw">where</span> <span class="field">is_dir</span> <span class="op">=</span> true
+                </div>
+                <div class="example-query" data-query="select count(*) from /sandbox where is_file = true">
+                    <span class="kw">select</span> <span class="field">count(*)</span> <span class="kw">where</span> <span class="field">is_file</span> <span class="op">=</span> true
+                </div>
+                <div class="example-query" data-query="select name, modified from /sandbox order by modified desc limit 5">
+                    <span class="kw">select</span> <span class="field">name</span>, <span class="field">modified</span> <span class="kw">order by</span> <span class="field">modified</span> <span class="kw">desc</span> <span class="kw">limit</span> 5
+                </div>
+                <div class="example-query" data-query="select name, size from /sandbox where name = '*.rs' or name = '*.py' order by size">
+                    <span class="kw">select</span> <span class="field">name</span>, <span class="field">size</span> <span class="kw">where</span> <span class="field">name</span> <span class="op">=</span> <span class="str">'*.rs'</span> <span class="kw">or</span> <span class="field">name</span> <span class="op">=</span> <span class="str">'*.py'</span>
+                </div>
+                <div class="example-query" data-query="select name from /sandbox as parent where is_dir = true and exists (select name from /sandbox as child where child.dir = parent.path and is_source = true)">
+                    <span class="kw">select</span> <span class="field">name</span> <span class="kw">from</span> ... <span class="kw">as</span> parent <span class="kw">where</span> <span class="field">is_dir</span> <span class="kw">and</span> <span class="kw">exists</span> (<span class="kw">select</span> ... <span class="kw">where</span> child.<span class="field">dir</span> <span class="op">=</span> parent.<span class="field">path</span> <span class="kw">and</span> <span class="field">is_source</span>)
+                </div>
+                <div class="example-query" data-query="select name from /sandbox/projects where name in (select name from /sandbox/home)">
+                    <span class="kw">select</span> <span class="field">name</span> <span class="kw">from</span> .../projects <span class="kw">where</span> <span class="field">name</span> <span class="kw">in</span> (<span class="kw">select</span> <span class="field">name</span> <span class="kw">from</span> .../home)
+                </div>
+                <div class="example-query" data-query="select name, (select count(*) from /sandbox/projects as inner where inner.dir = outer.path) from /sandbox/projects as outer where is_dir = true">
+                    <span class="kw">select</span> <span class="field">name</span>, (<span class="kw">select</span> <span class="field">count(*)</span> ... <span class="kw">where</span> inner.<span class="field">dir</span> <span class="op">=</span> outer.<span class="field">path</span>) <span class="kw">where</span> <span class="field">is_dir</span>
+                </div>
+                <div class="example-query" data-query="select name, ext from /sandbox/projects where ext in (select ext from /sandbox/documents)">
+                    <span class="kw">select</span> <span class="field">name</span>, <span class="field">ext</span> <span class="kw">from</span> .../projects <span class="kw">where</span> <span class="field">ext</span> <span class="op">in</span> (<span class="kw">select</span> <span class="field">ext</span> <span class="kw">from</span> .../documents)
+                </div>
+            </div>
+        </div>
+
+        <div class="terminal-panel">
+            <div id="terminal"></div>
+        </div>
+    </div>
+</div>
+
+<footer>
+    <p>
+        <strong>fselect</strong> is made by <a href="https://github.com/jhspetersson">jhspetersson</a>
+        &bull;
+        Licensed under MIT / Apache-2.0
+        &bull;
+        <a href="https://github.com/jhspetersson/fselect">Source on GitHub</a>
+    </p>
+</footer>
+
+<script src="vendor/xterm/xterm.min.js"></script>
+<script src="vendor/xterm-addon-fit/xterm-addon-fit.min.js"></script>
+
+<script type="module">
+// =========================================================================
+//  Import WASI shim
+// =========================================================================
+import {
+    WASI, WASIProcExit, File, Directory, PreopenDirectory, OpenFile, ConsoleStdout
+} from './vendor/wasi-shim/index.js';
+
+// =========================================================================
+//  Fix browser_wasi_shim Filestat.write_bytes (wrong offsets for timestamps)
+// =========================================================================
+{
+    const probe = new File(new Uint8Array()).stat();
+    probe.constructor.prototype.write_bytes = function(view, ptr) {
+        view.setBigUint64(ptr, this.dev, true);
+        view.setBigUint64(ptr + 8, this.ino, true);
+        view.setUint8(ptr + 16, this.filetype);
+        view.setBigUint64(ptr + 24, this.nlink, true);
+        view.setBigUint64(ptr + 32, this.size, true);
+        view.setBigUint64(ptr + 40, this.atim, true);
+        view.setBigUint64(ptr + 48, this.mtim, true);
+        view.setBigUint64(ptr + 56, this.ctim, true);
+    };
+}
+
+// =========================================================================
+//  Virtual Filesystem Definition
+// =========================================================================
+const encoder = new TextEncoder();
+
+function setTimestamp(inode, dateStr) {
+    const ts = BigInt(new Date(dateStr).getTime()) * 1000000n;
+    const origStat = inode.stat.bind(inode);
+    inode.stat = function() {
+        const s = origStat();
+        s.atim = ts;
+        s.mtim = ts;
+        s.ctim = ts;
+        return s;
+    };
+    return inode;
+}
+
+function mkfile(content, date) {
+    const f = new File(encoder.encode(content));
+    return date ? setTimestamp(f, date) : f;
+}
+
+function mkbin(size, date) {
+    const buf = new Uint8Array(size);
+    for (let i = 0; i < size; i++) buf[i] = (i * 31 + 7) & 0xff;
+    const f = new File(buf);
+    return date ? setTimestamp(f, date) : f;
+}
+
+function mkdir(entries, date) {
+    const d = new Directory(entries);
+    return date ? setTimestamp(d, date) : d;
+}
+
+// Build the sandbox directory tree
+const sandbox = mkdir([
+    // /sandbox/projects/webapp
+    ["projects", mkdir([
+        ["webapp", mkdir([
+            ["index.html", mkfile('<!DOCTYPE html>\n<html>\n<head><title>My App</title></head>\n<body>\n<h1>Hello World</h1>\n<script src="app.js"><\/script>\n</body>\n</html>', '2024-09-10T14:22:00Z')],
+            ["style.css", mkfile('body { margin: 0; font-family: sans-serif; }\nh1 { color: #333; padding: 2rem; }\n.container { max-width: 1200px; margin: 0 auto; }\n.nav { display: flex; gap: 1rem; padding: 1rem; background: #f0f0f0; }\n.footer { padding: 2rem; text-align: center; color: #666; }', '2024-10-05T09:15:00Z')],
+            ["app.js", mkfile('// Main application\nconst app = {\n  init() {\n    console.log("App initialized");\n    this.setupRoutes();\n    this.loadData();\n  },\n  setupRoutes() {\n    // Route handling\n  },\n  loadData() {\n    fetch("/api/data").then(r => r.json()).then(data => {\n      this.render(data);\n    });\n  },\n  render(data) {\n    document.getElementById("app").innerHTML = JSON.stringify(data);\n  }\n};\napp.init();', '2024-11-20T16:45:00Z')],
+            ["logo.svg", mkfile('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="40" fill="#4A90D9"/></svg>', '2024-08-03T11:30:00Z')],
+            ["screenshot.png", mkbin(12400, '2024-12-01T10:00:00Z')],
+            ["README.md", mkfile('# WebApp\n\nA simple web application.\n\n## Getting Started\n\n```\nnpm install\nnpm start\n```\n\n## Features\n\n- Fast rendering\n- API integration\n- Responsive design', '2024-11-28T13:10:00Z')],
+            ["package.json", mkfile('{\n  "name": "webapp",\n  "version": "1.0.0",\n  "scripts": {\n    "start": "serve .",\n    "build": "esbuild app.js --bundle"\n  }\n}', '2024-09-10T14:20:00Z')],
+        ], '2024-12-01T10:00:00Z')],
+        ["cli-tool", mkdir([
+            ["main.rs", mkfile('use std::env;\nuse std::fs;\nuse std::path::PathBuf;\n\nmod parser;\nmod utils;\n\nfn main() {\n    let args: Vec<String> = env::args().collect();\n    if args.len() < 2 {\n        eprintln!("Usage: cli-tool <command>");\n        std::process::exit(1);\n    }\n    match args[1].as_str() {\n        "run" => run_command(&args[2..]),\n        "build" => build_project(),\n        "test" => run_tests(),\n        _ => eprintln!("Unknown command: {}", args[1]),\n    }\n}\n\nfn run_command(args: &[String]) {\n    println!("Running with args: {:?}", args);\n}\n\nfn build_project() {\n    println!("Building project...");\n}\n\nfn run_tests() {\n    println!("Running tests...");\n}', '2024-10-18T08:30:00Z')],
+            ["lib.rs", mkfile('pub mod parser;\npub mod utils;\n\npub struct Config {\n    pub verbose: bool,\n    pub output_dir: PathBuf,\n}\n\nimpl Config {\n    pub fn new() -> Self {\n        Config {\n            verbose: false,\n            output_dir: PathBuf::from("./output"),\n        }\n    }\n}\n\nuse std::path::PathBuf;', '2024-10-15T17:00:00Z')],
+            ["parser.rs", mkfile('pub fn parse_input(input: &str) -> Result<Vec<Token>, ParseError> {\n    let mut tokens = Vec::new();\n    let mut chars = input.chars().peekable();\n    while let Some(&c) = chars.peek() {\n        match c {\n            \'a\'..=\'z\' | \'A\'..=\'Z\' => {\n                let word: String = chars.by_ref()\n                    .take_while(|c| c.is_alphanumeric())\n                    .collect();\n                tokens.push(Token::Word(word));\n            }\n            _ => { chars.next(); }\n        }\n    }\n    Ok(tokens)\n}\n\n#[derive(Debug)]\npub enum Token { Word(String), Number(i64) }\n\n#[derive(Debug)]\npub struct ParseError(pub String);', '2024-10-22T11:45:00Z')],
+            ["utils.rs", mkfile('use std::path::Path;\n\npub fn file_exists(path: &str) -> bool {\n    Path::new(path).exists()\n}\n\npub fn read_file(path: &str) -> Result<String, std::io::Error> {\n    std::fs::read_to_string(path)\n}', '2024-10-12T14:20:00Z')],
+            ["Cargo.toml", mkfile('[package]\nname = "cli-tool"\nversion = "0.1.0"\nedition = "2021"\n\n[dependencies]\nclap = "4"', '2024-10-10T09:00:00Z')],
+            ["README.md", mkfile('# CLI Tool\n\nA command-line tool written in Rust.\n\n## Build\n\n```\ncargo build --release\n```', '2024-10-25T16:30:00Z')],
+            ["tests.rs", mkfile('#[cfg(test)]\nmod tests {\n    use super::*;\n\n    #[test]\n    fn test_parse_simple() {\n        let result = parser::parse_input("hello world");\n        assert!(result.is_ok());\n    }\n\n    #[test]\n    fn test_file_exists() {\n        assert!(utils::file_exists("Cargo.toml"));\n        assert!(!utils::file_exists("nonexistent.txt"));\n    }\n}', '2024-10-23T10:15:00Z')],
+        ], '2024-10-25T16:30:00Z')],
+        ["data-analysis", mkdir([
+            ["analyze.py", mkfile('import pandas as pd\nimport numpy as np\nfrom pathlib import Path\n\ndef load_data(filepath):\n    """Load and validate dataset."""\n    df = pd.read_csv(filepath)\n    print(f"Loaded {len(df)} rows, {len(df.columns)} columns")\n    return df\n\ndef compute_stats(df, column):\n    """Compute descriptive statistics."""\n    return {\n        "mean": df[column].mean(),\n        "median": df[column].median(),\n        "std": df[column].std(),\n        "min": df[column].min(),\n        "max": df[column].max(),\n    }\n\ndef main():\n    df = load_data("dataset.csv")\n    stats = compute_stats(df, "value")\n    print(stats)\n\nif __name__ == "__main__":\n    main()', '2024-11-05T15:30:00Z')],
+            ["clean.py", mkfile('import pandas as pd\n\ndef clean_data(df):\n    df = df.dropna()\n    df = df.drop_duplicates()\n    return df\n\ndef normalize(df, columns):\n    for col in columns:\n        df[col] = (df[col] - df[col].min()) / (df[col].max() - df[col].min())\n    return df', '2024-11-02T12:00:00Z')],
+            ["requirements.txt", mkfile('pandas>=2.0\nnumpy>=1.24\nmatplotlib>=3.7\nscikit-learn>=1.3', '2024-11-01T09:00:00Z')],
+            ["output.csv", mkfile('id,name,value,category\n1,alpha,42.5,A\n2,beta,18.3,B\n3,gamma,91.7,A\n4,delta,7.2,C\n5,epsilon,55.0,B\n6,zeta,33.8,A\n7,eta,72.1,C\n8,theta,15.9,B\n9,iota,88.4,A\n10,kappa,29.6,C', '2024-12-10T18:45:00Z')],
+            ["dataset.json", mkfile('{"records": [{"id": 1, "value": 42}, {"id": 2, "value": 18}, {"id": 3, "value": 91}]}', '2024-11-03T14:20:00Z')],
+        ], '2024-12-10T18:45:00Z')],
+    ], '2024-12-10T18:45:00Z')],
+
+    // /sandbox/documents
+    ["documents", mkdir([
+        ["resume.pdf", mkbin(980, '2024-06-15T10:00:00Z')],
+        ["contract.pdf", mkbin(2450, '2024-03-22T14:30:00Z')],
+        ["notes.txt", mkfile('Meeting notes from 2024-01-15:\n- Discussed project timeline\n- Budget approved\n- Next review in 2 weeks', '2024-01-15T16:00:00Z')],
+        ["letter.txt", mkfile('Dear Team,\n\nThank you for your hard work on the recent release.\n\nBest regards,\nManagement', '2024-07-30T09:45:00Z')],
+        ["spreadsheet.csv", mkfile('Month,Revenue,Expenses,Profit\nJan,50000,35000,15000\nFeb,52000,34000,18000\nMar,48000,36000,12000\nApr,55000,33000,22000', '2024-05-01T11:20:00Z')],
+    ], '2024-07-30T09:45:00Z')],
+
+    // /sandbox/home
+    ["home", mkdir([
+        ["notes.txt", mkfile('Remember to:\n- Update dependencies\n- Write documentation\n- Review PRs', '2024-12-20T08:00:00Z')],
+        ["todo.md", mkfile('# TODO\n\n- [x] Set up CI/CD\n- [ ] Fix bug #42\n- [ ] Write integration tests\n- [ ] Update README', '2024-12-18T19:30:00Z')],
+        ["photo.jpg", mkbin(24580, '2024-08-14T17:22:00Z')],
+        ["screenshot.png", mkbin(8450, '2024-11-10T13:05:00Z')],
+        ["budget.csv", mkfile('Category,Amount\nRent,1500\nFood,400\nTransport,150\nUtilities,200', '2024-04-01T10:00:00Z')],
+    ], '2024-12-20T08:00:00Z')],
+
+    // /sandbox/tmp
+    ["tmp", mkdir([
+        ["cache.tmp", mkfile('', '2025-01-10T07:30:00Z')],
+        ["debug.log", mkfile('2024-01-15 08:00:01 INFO  Starting application\n2024-01-15 08:00:02 DEBUG Loading configuration\n2024-01-15 08:00:03 INFO  Server listening on :8080\n2024-01-15 08:01:15 WARN  High memory usage: 85%\n2024-01-15 08:05:30 ERROR Connection timeout to database\n2024-01-15 08:05:31 INFO  Retrying database connection\n2024-01-15 08:05:32 INFO  Database connection restored', '2025-01-15T08:05:32Z')],
+        ["session.lock", mkfile('pid=12345\nstarted=2024-01-15T08:00:00Z', '2025-01-15T08:00:00Z')],
+    ], '2025-01-15T08:05:32Z')],
+], '2025-01-15T08:05:32Z');
+
+// =========================================================================
+//  File Tree Rendering (sidebar)
+// =========================================================================
+
+function renderTree() {
+    const container = document.getElementById('file-tree');
+    const lines = [];
+
+    function walk(dir, prefix, name) {
+        const entries = [...dir.contents.entries()].sort((a, b) => {
+            const aDir = a[1] instanceof Directory;
+            const bDir = b[1] instanceof Directory;
+            if (aDir !== bDir) return aDir ? -1 : 1;
+            return a[0].localeCompare(b[0]);
+        });
+
+        entries.forEach(([childName, node], i) => {
+            const last = i === entries.length - 1;
+            const connector = last ? '\u2514\u2500 ' : '\u251C\u2500 ';
+            const isDir = node instanceof Directory;
+            const cls = isDir ? 'dir' : 'file';
+            let sizeStr = '';
+            if (!isDir && node.data) {
+                const sz = node.data.byteLength;
+                if (sz < 1024) sizeStr = ` <span class="size">${sz}</span>`;
+                else if (sz < 1024*1024) sizeStr = ` <span class="size">${(sz/1024).toFixed(1)}K</span>`;
+                else sizeStr = ` <span class="size">${(sz/1024/1024).toFixed(1)}M</span>`;
+            }
+            lines.push(`<div class="tree-item ${cls}">${prefix}${connector}${childName}${sizeStr}</div>`);
+            if (isDir) {
+                walk(node, prefix + (last ? '   ' : '\u2502  '), childName);
+            }
+        });
+    }
+
+    lines.push('<div class="tree-item dir">/sandbox</div>');
+    walk(sandbox, '', 'sandbox');
+    container.innerHTML = lines.join('');
+}
+
+// =========================================================================
+//  Terminal Setup
+// =========================================================================
+
+const term = new Terminal({
+    theme: {
+        background: '#11131e',
+        foreground: '#cdd6f4',
+        cursor: '#89b4fa',
+        cursorAccent: '#11131e',
+        selectionBackground: 'rgba(137, 180, 250, 0.25)',
+        black: '#0f1117',
+        red: '#f38ba8',
+        green: '#a6e3a1',
+        yellow: '#f9e2af',
+        blue: '#89b4fa',
+        magenta: '#cba6f7',
+        cyan: '#94e2d5',
+        white: '#cdd6f4',
+        brightBlack: '#585b70',
+        brightRed: '#f38ba8',
+        brightGreen: '#a6e3a1',
+        brightYellow: '#f9e2af',
+        brightBlue: '#89b4fa',
+        brightMagenta: '#cba6f7',
+        brightCyan: '#94e2d5',
+        brightWhite: '#cdd6f4',
+    },
+    fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Source Code Pro', Consolas, monospace",
+    fontSize: 14,
+    lineHeight: 1.4,
+    cursorBlink: true,
+    cursorStyle: 'bar',
+    scrollback: 1000,
+    convertEol: true,
+});
+
+const fitAddon = new FitAddon.FitAddon();
+term.loadAddon(fitAddon);
+term.open(document.getElementById('terminal'));
+fitAddon.fit();
+window.addEventListener('resize', () => fitAddon.fit());
+
+const PROMPT = '\x1b[38;2;137;180;250mfselect\x1b[38;2;88;91;112m>\x1b[0m ';
+let currentLine = '';
+let historyStack = [];
+let historyIndex = -1;
+let cursorPos = 0;
+let wasmModule = null;
+let isRunning = false;
+
+function writePrompt() {
+    term.write('\r\n' + PROMPT);
+    currentLine = '';
+    cursorPos = 0;
+}
+
+function redrawLine() {
+    term.write('\r' + PROMPT + currentLine + '\x1b[K');
+    const back = currentLine.length - cursorPos;
+    if (back > 0) term.write('\x1b[' + back + 'D');
+}
+
+// =========================================================================
+//  WASM/WASI Execution
+// =========================================================================
+
+async function loadWasm() {
+    term.writeln('\x1b[38;2;88;91;112mLoading fselect WebAssembly module...\x1b[0m');
+    try {
+        const response = await fetch('fselect.wasm');
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        wasmModule = WebAssembly.compileStreaming
+            ? await WebAssembly.compileStreaming(response)
+            : await WebAssembly.compile(await response.arrayBuffer());
+        term.writeln('\x1b[38;2;166;227;161mReady.\x1b[0m');
+    } catch (e) {
+        term.writeln(`\x1b[38;2;243;139;168mFailed to load WASM: ${e.message}\x1b[0m`);
+        term.writeln('\x1b[38;2;88;91;112mMake sure fselect.wasm is served alongside this page.\x1b[0m');
+    }
+}
+
+function concatBytes(chunks) {
+    const total = chunks.reduce((s, c) => s + c.byteLength, 0);
+    const result = new Uint8Array(total);
+    let offset = 0;
+    for (const chunk of chunks) {
+        result.set(chunk, offset);
+        offset += chunk.byteLength;
+    }
+    return result;
+}
+
+async function runQuery(queryStr) {
+    if (!wasmModule) {
+        term.writeln('\r\n\x1b[38;2;243;139;168mWASM module not loaded.\x1b[0m');
+        return;
+    }
+
+    isRunning = true;
+
+    // Capture stdout/stderr as raw bytes, decode after execution
+    const decoder = new TextDecoder();
+    let stdoutChunks = [];
+    let stderrChunks = [];
+
+    const stdoutFd = new ConsoleStdout((data) => {
+        stdoutChunks.push(new Uint8Array(data));
+    });
+    const stderrFd = new ConsoleStdout((data) => {
+        stderrChunks.push(new Uint8Array(data));
+    });
+    // stdin: empty
+    const stdinFile = new OpenFile(new File(new Uint8Array()));
+
+    // WASI fds array: 0=stdin, 1=stdout, 2=stderr, 3+=preopened dirs
+    const fds = [
+        stdinFile,
+        stdoutFd,
+        stderrFd,
+        new PreopenDirectory(".", sandbox.contents),
+        new PreopenDirectory("/sandbox", sandbox.contents),
+    ];
+
+    // Build args: fselect <query tokens>
+    const args = ["fselect", "--no-color", ...tokenizeShell(queryStr)];
+
+    const wasi = new WASI(args, [], fds);
+
+    try {
+        const instance = await WebAssembly.instantiate(wasmModule, {
+            wasi_snapshot_preview1: wasi.wasiImport,
+        });
+        wasi.start(instance);
+    } catch (e) {
+        if (e instanceof WASIProcExit && e.code === 0) {
+            // Normal exit
+        } else if (e instanceof WASIProcExit) {
+            // Non-zero exit (e.g., query error — stderr already has the message)
+        } else {
+            stderrChunks.push(encoder.encode(`Runtime error: ${e.message}\n`));
+        }
+    }
+
+    // Decode captured output
+    const stdoutBuf = decoder.decode(concatBytes(stdoutChunks));
+    const stderrBuf = decoder.decode(concatBytes(stderrChunks));
+
+    // Display output
+    if (stdoutBuf.trim()) {
+        term.writeln('');
+        for (const line of stdoutBuf.trimEnd().split('\n')) {
+            term.writeln(line);
+        }
+    }
+    if (stderrBuf.trim()) {
+        for (const line of stderrBuf.trimEnd().split('\n')) {
+            term.writeln(`\x1b[38;2;243;139;168m${line}\x1b[0m`);
+        }
+    }
+    if (!stdoutBuf.trim() && !stderrBuf.trim()) {
+        term.writeln('\r\n\x1b[38;2;88;91;112m(no output)\x1b[0m');
+    }
+
+    isRunning = false;
+}
+
+// Simple shell-like tokenizer: split on whitespace, respecting quotes
+// Parentheses are emitted as separate tokens (fselect expects them for subqueries)
+function tokenizeShell(input) {
+    const tokens = [];
+    let current = '';
+    let inQuote = null;
+
+    for (let i = 0; i < input.length; i++) {
+        const ch = input[i];
+
+        if (inQuote) {
+            if (ch === inQuote) {
+                inQuote = null;
+            } else {
+                current += ch;
+            }
+        } else if (ch === "'" || ch === '"') {
+            inQuote = ch;
+        } else if (ch === ' ' || ch === '\t') {
+            if (current) {
+                tokens.push(current);
+                current = '';
+            }
+        } else if (ch === '(' || ch === ')') {
+            if (current) {
+                tokens.push(current);
+                current = '';
+            }
+            tokens.push(ch);
+        } else {
+            current += ch;
+        }
+    }
+    if (current) tokens.push(current);
+    return tokens;
+}
+
+// =========================================================================
+//  Input handling
+// =========================================================================
+
+async function processInput(input) {
+    const trimmed = input.trim();
+    if (!trimmed) return;
+
+    historyStack.unshift(trimmed);
+    if (historyStack.length > 50) historyStack.pop();
+    historyIndex = -1;
+
+    if (trimmed === 'clear') {
+        term.clear();
+        return;
+    }
+
+    if (trimmed === 'help') {
+        term.writeln('');
+        term.writeln('\x1b[38;2;137;180;250;1mfselect Playground\x1b[0m');
+        term.writeln('');
+        term.writeln('Type any fselect query. The sandbox filesystem is mounted at \x1b[38;2;166;227;161m/sandbox\x1b[0m.');
+        term.writeln('');
+        term.writeln('\x1b[38;2;137;180;250mSyntax:\x1b[0m');
+        term.writeln('  \x1b[38;2;203;166;247mselect\x1b[0m FIELDS \x1b[38;2;203;166;247mfrom\x1b[0m PATH \x1b[38;2;203;166;247mwhere\x1b[0m EXPR \x1b[38;2;203;166;247morder by\x1b[0m FIELD \x1b[38;2;203;166;247mlimit\x1b[0m N');
+        term.writeln('');
+        term.writeln('\x1b[38;2;137;180;250mFields:\x1b[0m  name, path, size, ext, modified, is_dir, is_file, mime, ...');
+        term.writeln('\x1b[38;2;137;180;250mOps:\x1b[0m     =  !=  >  >=  <  <=  like  regexp');
+        term.writeln('\x1b[38;2;137;180;250mLogic:\x1b[0m   and  or  not');
+        term.writeln('\x1b[38;2;137;180;250mFuncs:\x1b[0m   count  min  max  sum  avg  upper  lower  length');
+        term.writeln('');
+        term.writeln('\x1b[38;2;137;180;250mCommands:\x1b[0m clear, help');
+        term.writeln('');
+        term.writeln('See \x1b[38;2;137;180;250mhttps://github.com/jhspetersson/fselect\x1b[0m for full documentation.');
+        return;
+    }
+
+    await runQuery(trimmed);
+}
+
+term.onKey(({ key, domEvent }) => {
+    if (isRunning) return;
+    const code = domEvent.keyCode;
+
+    if (code === 13) { // Enter
+        processInput(currentLine).then(() => writePrompt());
+    } else if (code === 8) { // Backspace
+        if (cursorPos > 0) {
+            currentLine = currentLine.slice(0, cursorPos - 1) + currentLine.slice(cursorPos);
+            cursorPos--;
+            redrawLine();
+        }
+    } else if (code === 46) { // Delete
+        if (cursorPos < currentLine.length) {
+            currentLine = currentLine.slice(0, cursorPos) + currentLine.slice(cursorPos + 1);
+            redrawLine();
+        }
+    } else if (code === 37) { // Left
+        if (cursorPos > 0) { cursorPos--; term.write('\x1b[D'); }
+    } else if (code === 39) { // Right
+        if (cursorPos < currentLine.length) { cursorPos++; term.write('\x1b[C'); }
+    } else if (code === 38) { // Up - history
+        if (historyStack.length > 0 && historyIndex < historyStack.length - 1) {
+            historyIndex++;
+            currentLine = historyStack[historyIndex];
+            cursorPos = currentLine.length;
+            redrawLine();
+        }
+    } else if (code === 40) { // Down - history
+        if (historyIndex > 0) {
+            historyIndex--;
+            currentLine = historyStack[historyIndex];
+            cursorPos = currentLine.length;
+            redrawLine();
+        } else if (historyIndex === 0) {
+            historyIndex = -1;
+            currentLine = '';
+            cursorPos = 0;
+            redrawLine();
+        }
+    } else if (code === 36) { cursorPos = 0; redrawLine(); } // Home
+    else if (code === 35) { cursorPos = currentLine.length; redrawLine(); } // End
+    else if (domEvent.ctrlKey && code === 67) { term.writeln('^C'); writePrompt(); } // Ctrl+C
+    else if (domEvent.ctrlKey && code === 76) { term.clear(); term.write(PROMPT + currentLine); } // Ctrl+L
+    else if (domEvent.ctrlKey && code === 65) { cursorPos = 0; redrawLine(); } // Ctrl+A
+    else if (domEvent.ctrlKey && code === 69) { cursorPos = currentLine.length; redrawLine(); } // Ctrl+E
+    else if (domEvent.ctrlKey && code === 85) { currentLine = currentLine.slice(cursorPos); cursorPos = 0; redrawLine(); }
+    else if (domEvent.ctrlKey && code === 75) { currentLine = currentLine.slice(0, cursorPos); redrawLine(); }
+    else if (!domEvent.ctrlKey && !domEvent.altKey && !domEvent.metaKey && key.length === 1) {
+        currentLine = currentLine.slice(0, cursorPos) + key + currentLine.slice(cursorPos);
+        cursorPos++;
+        redrawLine();
+    }
+});
+
+// Paste handling
+term.onData(data => {
+    if (isRunning) return;
+    if (data.length > 1 && data[0] !== '\x1b') {
+        const clean = data.replace(/[\r\n]+/g, '');
+        currentLine = currentLine.slice(0, cursorPos) + clean + currentLine.slice(cursorPos);
+        cursorPos += clean.length;
+        redrawLine();
+    }
+});
+
+// Example query click handlers
+document.querySelectorAll('.example-query').forEach(el => {
+    el.addEventListener('click', () => {
+        if (isRunning) return;
+        const query = el.dataset.query;
+        currentLine = query;
+        cursorPos = query.length;
+        redrawLine();
+        processInput(currentLine).then(() => { writePrompt(); term.focus(); });
+    });
+});
+
+// Nav hamburger
+document.querySelectorAll('nav ul a').forEach(a => a.addEventListener('click', () => {
+    document.querySelector('.hamburger').classList.remove('open');
+    document.querySelector('nav ul').classList.remove('open');
+}));
+
+// =========================================================================
+//  Boot
+// =========================================================================
+
+term.writeln('\x1b[38;2;137;180;250;1m  __         _           _   ');
+term.writeln(' / _|___  ___| | ___  ___| |_ ');
+term.writeln('|  _/ __|/ _ \\ |/ _ \\/ __| __|');
+term.writeln('| | \\__ \\  __/ |  __/ (__| |_ ');
+term.writeln('|_| |___/\\___|_|\\___|\\___|\\__|  \x1b[38;2;88;91;112mv0.10.0\x1b[0m');
+term.writeln('');
+term.writeln('\x1b[38;2;88;91;112mFind files with SQL-like queries. Type a query or click an example.\x1b[0m');
+term.writeln('\x1b[38;2;88;91;112mType \x1b[38;2;166;227;161mhelp\x1b[38;2;88;91;112m for available fields, \x1b[38;2;166;227;161mclear\x1b[38;2;88;91;112m to reset.\x1b[0m');
+term.writeln('');
+
+renderTree();
+
+loadWasm().then(() => {
+    writePrompt();
+    term.focus();
+});
+</script>
+</body>
+</html>

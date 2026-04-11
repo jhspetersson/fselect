@@ -16,6 +16,12 @@ pub fn get_mode(meta: &Metadata) -> String {
     {
         format_mode(meta.file_attributes())
     }
+
+    #[cfg(not(any(unix, windows)))]
+    {
+        let _ = meta;
+        String::new()
+    }
 }
 
 pub fn format_mode(mode: u32) -> String {
@@ -27,6 +33,12 @@ pub fn format_mode(mode: u32) -> String {
     #[cfg(windows)]
     {
         get_mode_windows(mode)
+    }
+
+    #[cfg(not(any(unix, windows)))]
+    {
+        let _ = mode;
+        String::new()
     }
 }
 

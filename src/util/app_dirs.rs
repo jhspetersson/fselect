@@ -1,18 +1,26 @@
 use std::path::PathBuf;
+#[cfg(feature = "interactive")]
 use directories::ProjectDirs;
 
+#[cfg(feature = "interactive")]
 const ORGANIZATION: &str = "jhspetersson";
+#[cfg(feature = "interactive")]
 const APPLICATION: &str = "fselect";
 
-#[cfg(not(windows))]
+#[cfg(all(not(windows), feature = "interactive"))]
 pub(crate) fn get_project_dir() -> Option<PathBuf> {
     ProjectDirs::from("", ORGANIZATION, APPLICATION).map(|pd| pd.config_dir().to_path_buf())
 }
 
-#[cfg(windows)]
+#[cfg(all(windows, feature = "interactive"))]
 pub(crate) fn get_project_dir() -> Option<PathBuf> {
     ProjectDirs::from("", ORGANIZATION, APPLICATION)
         .and_then(|pd| pd.config_dir().parent().map(|p| p.to_path_buf()))
+}
+
+#[cfg(not(feature = "interactive"))]
+pub(crate) fn get_project_dir() -> Option<PathBuf> {
+    None
 }
 
 #[cfg(test)]

@@ -16,7 +16,9 @@ use std::process::ExitCode;
 use std::time::Duration;
 
 use nu_ansi_term::Color::*;
+#[cfg(feature = "interactive")]
 use rustyline::error::ReadlineError;
+#[cfg(feature = "interactive")]
 use rustyline::DefaultEditor;
 #[cfg(feature = "update-notifications")]
 use update_informer::{registry, Check};
@@ -119,6 +121,7 @@ fn main() -> ExitCode {
         return ExitCode::SUCCESS;
     }
 
+    #[allow(unused_mut)]
     let mut interactive = false;
 
     loop {
@@ -128,7 +131,8 @@ fn main() -> ExitCode {
             || first_arg.starts_with("--i")
             || first_arg.starts_with("/i")
         {
-            interactive = true;
+            #[cfg(feature = "interactive")]
+            { interactive = true; }
         } else if first_arg.starts_with("-c")
             || first_arg.starts_with("--config")
             || first_arg.starts_with("/c")
@@ -176,6 +180,7 @@ fn main() -> ExitCode {
 
     let mut exit_value = None::<u8>;
 
+    #[cfg(feature = "interactive")]
     if interactive {
         match DefaultEditor::new() {
             Ok(mut rl) => {
@@ -267,6 +272,11 @@ fn main() -> ExitCode {
             }
         }
     } else {
+        exit_value = Some(exec_search(args, &mut config, &default_config, no_color));
+    }
+
+    #[cfg(not(feature = "interactive"))]
+    {
         exit_value = Some(exec_search(args, &mut config, &default_config, no_color));
     }
 

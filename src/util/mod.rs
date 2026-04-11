@@ -500,9 +500,14 @@ pub fn is_text_mime(mime: &str) -> bool {
 pub fn canonical_path(path_buf: &PathBuf) -> Result<String, String> {
     match canonicalize(path_buf) {
         Ok(path) => Ok(format_absolute_path(&path)),
-        Err(err) => match err.to_string().starts_with("Incorrect function.") {
-            true => Ok(format_absolute_path(path_buf)),
-            _ => Err(err.to_string()),
+        Err(err) => {
+            // WASI and some other platforms don't support canonicalize;
+            // fall back to the path as-is
+            if err.raw_os_error() == Some(58) || err.to_string().starts_with("Incorrect function.") {
+                Ok(format_absolute_path(path_buf))
+            } else {
+                Err(err.to_string())
+            }
         },
     }
 }

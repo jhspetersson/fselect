@@ -3,6 +3,7 @@
 use std::path::PathBuf;
 use std::str::FromStr;
 
+#[cfg(feature = "interactive")]
 use directories::UserDirs;
 use crate::expr::Expr;
 use crate::field::Field;
@@ -17,7 +18,7 @@ use crate::query::Root;
 use crate::query::TraversalMode::{Bfs, Dfs};
 use crate::query::{OutputFormat, RootOptions};
 #[cfg(not(feature = "git"))]
-use crate::util::error_message;
+use crate::util::error::error_message;
 
 pub struct Parser<'a> {
     lexer: &'a mut Lexer,
@@ -206,6 +207,7 @@ impl <'a> Parser<'a> {
                         Lexeme::String(s) | Lexeme::RawString(s) => match mode {
                             RootParsingMode::From | RootParsingMode::Comma => {
                                 path = s.to_string();
+                                #[cfg(feature = "interactive")]
                                 if path.starts_with("~") {
                                     if let Some(ud) = UserDirs::new() {
                                         let mut pb = PathBuf::from(path.clone());

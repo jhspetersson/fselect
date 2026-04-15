@@ -65,6 +65,7 @@ windows-sys = { version = "0.61", features = ["Win32_Security_Authorization", "W
 
 [profile.release]
 lto = true
+codegen-units = 1
 
 [package.metadata.deb]
 section = "utility"

@@ -199,6 +199,8 @@
             overflow: hidden;
             display: flex;
             flex-direction: column;
+            /* keep the panel top clear of the fixed nav when scrolled into view */
+            scroll-margin-top: 70px;
         }
         .terminal-panel .xterm {
             padding: 0.5rem;
@@ -820,7 +822,7 @@ document.querySelectorAll('.example-query').forEach(el => {
         currentLine = query;
         cursorPos = query.length;
         redrawLine();
-        document.querySelector('.terminal-panel').scrollIntoView({ behavior: 'smooth', block: 'end' });
+        document.querySelector('.terminal-panel').scrollIntoView({ behavior: 'smooth', block: 'start' });
         processInput(currentLine).then(() => {
             writePrompt();
             term.scrollToBottom();

@@ -820,7 +820,12 @@ document.querySelectorAll('.example-query').forEach(el => {
         currentLine = query;
         cursorPos = query.length;
         redrawLine();
-        processInput(currentLine).then(() => { writePrompt(); term.focus(); });
+        document.querySelector('.terminal-panel').scrollIntoView({ behavior: 'smooth', block: 'end' });
+        processInput(currentLine).then(() => {
+            writePrompt();
+            term.scrollToBottom();
+            term.focus();
+        });
     });
 });
 

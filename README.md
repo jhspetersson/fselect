@@ -133,6 +133,10 @@ You can use subqueries:
 
     fselect "name from /test1 where size > 100 and size in (select size from /test2 where name in (select name from /test3 where modified in (select modified from /test4 where size < 200)))"
     fselect "name, path, size from /data as data where exists (select * from /backup as backup where backup.name = data.name)"
+
+A subquery can also be used in the `FROM` clause as the source of the outer query:
+
+    fselect "src.name, src.size from (select path from /projects depth 2 where size > 100) as src where src.name like '%.rs'"
     
 Aggregate functions (you can use curly braces if you want and even combine them with the regular parentheses):
 

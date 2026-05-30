@@ -695,6 +695,11 @@
     </div>
 
     <div class="example-group">
+        <p>Group by multiple columns &mdash; refer to them by position with <code>group by 1, 2</code>:</p>
+<pre><span class="prompt">$ </span>fselect <span class="str">"ext, mime, <span class="func">count</span>(*) from /home/user/Downloads group by 1, 2"</span></pre>
+    </div>
+
+    <div class="example-group">
         <p>Order results by size (descending), then by name:</p>
 <pre><span class="prompt">$ </span>fselect <span class="field">path</span> <span class="kw">from</span> /tmp <span class="kw">order by</span> <span class="field">size</span> desc, <span class="field">name</span></pre>
     </div>
@@ -800,6 +805,11 @@
       )
     )
   )"</span></pre>
+    </div>
+
+    <div class="example-group">
+        <p>Subqueries also work in the <code>from</code> clause &mdash; feed one query's paths straight into another:</p>
+<pre><span class="prompt">$ </span>fselect <span class="str">"name, size from (select path from /home/user where name = '*.log')"</span></pre>
     </div>
 
     <!-- OUTPUT FORMATS -->

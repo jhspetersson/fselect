@@ -317,6 +317,12 @@
                 <div class="example-query" data-query="select name, ext from /sandbox/projects where ext in (select ext from /sandbox/documents)">
                     <span class="kw">select</span> <span class="field">name</span>, <span class="field">ext</span> <span class="kw">from</span> .../projects <span class="kw">where</span> <span class="field">ext</span> <span class="op">in</span> (<span class="kw">select</span> <span class="field">ext</span> <span class="kw">from</span> .../documents)
                 </div>
+                <div class="example-query" data-query="select ext, mime, count(*) from /sandbox group by 1, 2">
+                    <span class="kw">select</span> <span class="field">ext</span>, <span class="field">mime</span>, <span class="field">count(*)</span> <span class="kw">group by</span> <span class="num">1</span>, <span class="num">2</span>
+                </div>
+                <div class="example-query" data-query="select name, size from (select path from /sandbox where name = '*.md')">
+                    <span class="kw">select</span> <span class="field">name</span>, <span class="field">size</span> <span class="kw">from</span> (<span class="kw">select</span> <span class="field">path</span> <span class="kw">where</span> <span class="field">name</span> <span class="op">=</span> <span class="str">'*.md'</span>)
+                </div>
             </div>
         </div>
 

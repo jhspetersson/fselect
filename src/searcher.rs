@@ -57,7 +57,7 @@ pub struct Searcher<'a> {
     dockerignore_filters: Vec<DockerignoreFilter>,
     visited_dirs: HashSet<PathBuf>,
     lscolors: LsColors,
-    dir_queue: VecDeque<PathBuf>,
+    dir_queue: VecDeque<(PathBuf, u32)>,
     current_follow_symlinks: bool,
     current_min_depth: u32,
     current_max_depth: u32,
@@ -600,7 +600,7 @@ impl<'a> Searcher<'a> {
                         }
                     }
                     if let Some(entry) = matched_entry {
-                        match self.check_file(&entry, &parent, &None) {
+                        match self.check_file(&entry, &parent, &None, None) {
                             Err(err) => {
                                 if err.is_fatal() {
                                     return Err(err);
@@ -664,35 +664,61 @@ impl<'a> Searcher<'a> {
         git_repository: Option<&Repository>,
         process_queue: bool,
     ) -> Result<(), SearchError> {
-        let canonical_path = match canonical_path(&dir.to_path_buf()) {
-            Ok(path) => path,
-            Err(e) => {
-                self.error_count += 1;
-                error_message(
-                    &dir.to_string_lossy(),
-                    &format!("could not canonicalize path: {}", e),
-                );
-                return Ok(());
+        // Canonicalization is comparatively expensive: it resolves every path
+        // component, opening a handle per directory on Windows. It is only
+        // needed to detect symlink loops while following symlinks, and to
+        // resolve entry paths against ignore filters. When neither applies we
+        // skip it entirely, saving one syscall per directory traversed.
+        let needs_canonical = self.current_follow_symlinks
+            || self.current_apply_gitignore
+            || self.current_apply_hgignore
+            || self.current_apply_dockerignore;
+
+        let canonical_path = if needs_canonical {
+            match canonical_path(&dir.to_path_buf()) {
+                Ok(path) => Some(path),
+                Err(e) => {
+                    self.error_count += 1;
+                    error_message(
+                        &dir.to_string_lossy(),
+                        &format!("could not canonicalize path: {}", e),
+                    );
+                    return Ok(());
+                }
             }
+        } else {
+            None
         };
 
         // Prevents infinite loops when following symlinks
         if self.current_follow_symlinks {
-            let canonical_pathbuf = PathBuf::from(&canonical_path);
+            let canonical_pathbuf = PathBuf::from(canonical_path.as_ref().unwrap());
             if self.visited_dirs.contains(&canonical_pathbuf) {
                 return Ok(());
             } else {
                 self.visited_dirs.insert(canonical_pathbuf);
             }
         }
-        let canonical_depth = calc_depth(&canonical_path);
 
-        let base_depth = match root_depth {
-            0 => canonical_depth,
-            _ => root_depth,
+        // `depth` is this directory's level (root == 1); `child_root_depth` is
+        // passed to children/queued dirs so they can derive their own depth.
+        // With a canonical path we keep the original separator-counting scheme
+        // to preserve behavior; otherwise traversal descends exactly one real
+        // directory per level, so an explicit counter is equivalent.
+        let (depth, child_root_depth) = match &canonical_path {
+            Some(canonical_path) => {
+                let canonical_depth = calc_depth(canonical_path);
+                let base_depth = match root_depth {
+                    0 => canonical_depth,
+                    _ => root_depth,
+                };
+                (canonical_depth.saturating_sub(base_depth) + 1, base_depth)
+            }
+            None => {
+                let depth = root_depth + 1;
+                (depth, depth)
+            }
         };
-
-        let depth = canonical_depth.saturating_sub(base_depth) + 1;
 
         // Read the directory and process each entry
         let root_dir = self.current_root_dir.clone();
@@ -708,7 +734,7 @@ impl<'a> Searcher<'a> {
                         Ok(entry) => {
                             let mut path = entry.path();
                             let pass_ignores = if self.current_apply_gitignore || self.current_apply_hgignore || self.current_apply_dockerignore {
-                                let canonical_entry_path = PathBuf::from(&canonical_path).join(entry.file_name());
+                                let canonical_entry_path = PathBuf::from(canonical_path.as_ref().unwrap()).join(entry.file_name());
 
                                 // Check the path against the filters
                                 #[cfg(feature = "git")]
@@ -737,8 +763,25 @@ impl<'a> Searcher<'a> {
 
                             // If the path passes the filters, process it
                             if pass_ignores {
+                                // Compute the entry's file type once, but only
+                                // when the descent step below needs it anyway,
+                                // and hand it to check_file so type predicates
+                                // can reuse it instead of issuing their own
+                                // stat. On filesystems that don't report
+                                // d_type this avoids a duplicate lstat per
+                                // entry; at max depth (no descent) we leave it
+                                // unset so predicates only pay for it on demand.
+                                let within_max_depth = self.current_max_depth == 0
+                                    || depth < self.current_max_depth;
+                                let descent_file_type =
+                                    if within_max_depth { Some(entry.file_type()) } else { None };
+                                let file_type_hint = match &descent_file_type {
+                                    Some(Ok(file_type)) => Some(*file_type),
+                                    _ => None,
+                                };
+
                                 if self.current_min_depth == 0 || depth >= self.current_min_depth {
-                                    let checked = self.check_file(&entry, &root_dir, &None);
+                                    let checked = self.check_file(&entry, &root_dir, &None, file_type_hint);
                                     match checked {
                                         Err(err) => {
                                             if err.is_fatal() {
@@ -764,7 +807,7 @@ impl<'a> Searcher<'a> {
 
                                                     if let Ok(afile) = archive.by_index(i) {
                                                         let file_info = to_file_info(&afile);
-                                                        match self.check_file(&entry, &root_dir, &Some(file_info)) {
+                                                        match self.check_file(&entry, &root_dir, &Some(file_info), None) {
                                                             Err(err) => {
                                                                 if err.is_fatal() {
                                                                     return Err(err);
@@ -782,8 +825,8 @@ impl<'a> Searcher<'a> {
                                 }
 
                                 // Recursively visit subdirectories if we're not too deep
-                                if self.current_max_depth == 0 || depth < self.current_max_depth {
-                                    match entry.file_type() {
+                                if within_max_depth {
+                                    match descent_file_type.unwrap() {
                                         Ok(file_type) => {
                                             let mut ok = false;
 
@@ -822,7 +865,7 @@ impl<'a> Searcher<'a> {
                                                     };
                                                     let result = self.visit_dir(
                                                         &path,
-                                                        base_depth,
+                                                        child_root_depth,
                                                         #[cfg(feature = "git")]
                                                         git_repository,
                                                         false,
@@ -835,7 +878,7 @@ impl<'a> Searcher<'a> {
                                                         self.handle_nonfatal_error(err, &path);
                                                     }
                                                 } else {
-                                                    self.dir_queue.push_back(path);
+                                                    self.dir_queue.push_back((path, child_root_depth));
                                                 }
                                             }
                                         }
@@ -862,7 +905,7 @@ impl<'a> Searcher<'a> {
 
         if self.current_traversal_mode == Bfs && process_queue {
             while !self.dir_queue.is_empty() {
-                let path = self.dir_queue.pop_front().unwrap();
+                let (path, queued_root_depth) = self.dir_queue.pop_front().unwrap();
                 #[cfg(feature = "git")]
                 let repo;
                 #[cfg(feature = "git")]
@@ -876,7 +919,7 @@ impl<'a> Searcher<'a> {
                 };
                 let result = self.visit_dir(
                     &path,
-                    base_depth,
+                    queued_root_depth,
                     #[cfg(feature = "git")]
                     git_repository,
                     false,
@@ -1092,8 +1135,11 @@ impl<'a> Searcher<'a> {
         dispatch::get_field_value(&mut ctx, field)
     }
 
-    fn check_file(&mut self, entry: &DirEntry, root_path: &Path, file_info: &Option<FileInfo>) -> Result<(), SearchError> {
+    fn check_file(&mut self, entry: &DirEntry, root_path: &Path, file_info: &Option<FileInfo>, file_type_hint: Option<FileType>) -> Result<(), SearchError> {
         self.fms.clear();
+        // Reuse the file type the traversal already resolved, so is_dir /
+        // is_file / is_symlink don't issue a redundant stat for this entry.
+        self.fms.seed_file_type(file_type_hint);
 
         let mut file_map = std::mem::take(&mut self.file_map);
         file_map.clear();

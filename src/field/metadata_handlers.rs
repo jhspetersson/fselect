@@ -61,13 +61,7 @@ pub fn handle_is_dir(ctx: &mut FieldContext) -> Result<Variant, SearchError> {
                 file_info.name.ends_with('/') || file_info.name.ends_with('\\'),
             ))
         }
-        _ => {
-            ctx.fms.update_file_metadata(ctx.entry, ctx.follow_symlinks);
-            if let Some(attrs) = ctx.fms.get_file_metadata() {
-                return Ok(Variant::from_bool(attrs.is_dir()));
-            }
-            Ok(Variant::empty(VariantType::String))
-        }
+        _ => Ok(file_type_predicate(ctx, |m| m.is_dir(), |ft| ft.is_dir())),
     }
 }
 
@@ -76,13 +70,7 @@ pub fn handle_is_file(ctx: &mut FieldContext) -> Result<Variant, SearchError> {
         Some(file_info) => {
             Ok(Variant::from_bool(!file_info.name.ends_with('/') && !file_info.name.ends_with('\\')))
         }
-        _ => {
-            ctx.fms.update_file_metadata(ctx.entry, ctx.follow_symlinks);
-            if let Some(attrs) = ctx.fms.get_file_metadata() {
-                return Ok(Variant::from_bool(attrs.is_file()));
-            }
-            Ok(Variant::empty(VariantType::String))
-        }
+        _ => Ok(file_type_predicate(ctx, |m| m.is_file(), |ft| ft.is_file())),
     }
 }
 
@@ -92,11 +80,47 @@ pub fn handle_is_symlink(ctx: &mut FieldContext) -> Result<Variant, SearchError>
             Ok(Variant::from_bool(false))
         }
         _ => {
+            // `is_symlink` never follows the link, so the entry's own file
+            // type answers it directly — reusing the type resolved during
+            // traversal when available, and typically needing no syscall even
+            // when computed here, unlike the symlink_metadata() fallback.
+            if let Some(file_type) = ctx.fms.get_or_compute_file_type(ctx.entry) {
+                return Ok(Variant::from_bool(file_type.is_symlink()));
+            }
             if let Some(meta) = get_metadata(ctx.entry, false) {
                 return Ok(Variant::from_bool(meta.file_type().is_symlink()));
             }
             Ok(Variant::empty(VariantType::String))
         }
+    }
+}
+
+/// Resolve a file-type predicate (is_dir/is_file) with the fewest syscalls:
+/// reuse already-loaded metadata, otherwise use the directory entry's file
+/// type (carried over from reading the directory, so usually free) when not
+/// following symlinks, and only stat as a last resort. The entry's file type
+/// reflects the symlink itself, so it is only valid when we are not following
+/// symlinks; otherwise we must follow the link via full metadata.
+fn file_type_predicate(
+    ctx: &mut FieldContext,
+    from_metadata: impl Fn(&fs::Metadata) -> bool,
+    from_file_type: impl Fn(fs::FileType) -> bool,
+) -> Variant {
+    if ctx.fms.file_metadata_loaded() {
+        return match ctx.fms.get_file_metadata() {
+            Some(attrs) => Variant::from_bool(from_metadata(attrs)),
+            None => Variant::empty(VariantType::String),
+        };
+    }
+    if !ctx.follow_symlinks {
+        if let Some(file_type) = ctx.fms.get_or_compute_file_type(ctx.entry) {
+            return Variant::from_bool(from_file_type(file_type));
+        }
+    }
+    ctx.fms.update_file_metadata(ctx.entry, ctx.follow_symlinks);
+    match ctx.fms.get_file_metadata() {
+        Some(attrs) => Variant::from_bool(from_metadata(attrs)),
+        None => Variant::empty(VariantType::String),
     }
 }
 

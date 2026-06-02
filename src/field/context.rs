@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::fs::{DirEntry, Metadata};
+use std::fs::{DirEntry, FileType, Metadata};
 use std::path::Path;
 
 use mp3_metadata::MP3Metadata;
@@ -14,6 +14,7 @@ use crate::util::duration::get_duration;
 
 pub struct FileMetadataState {
     pub(crate) file_metadata: Option<Option<Metadata>>,
+    pub(crate) entry_file_type: Option<Option<FileType>>,
     pub(crate) line_count: Option<Option<usize>>,
     pub(crate) dimensions: Option<Option<Dimensions>>,
     pub(crate) duration: Option<Option<Duration>>,
@@ -30,6 +31,7 @@ impl FileMetadataState {
     pub fn new() -> FileMetadataState {
         FileMetadataState {
             file_metadata: None,
+            entry_file_type: None,
             line_count: None,
             dimensions: None,
             duration: None,
@@ -60,6 +62,33 @@ impl FileMetadataState {
     pub fn get_file_metadata_as_option(&self) -> &Option<Metadata> {
         static NONE: Option<Metadata> = None;
         self.file_metadata.as_ref().unwrap_or(&NONE)
+    }
+
+    /// Whether a metadata load has already been attempted for the current file
+    /// (regardless of whether it succeeded). Lets type predicates reuse it
+    /// instead of issuing a fresh stat.
+    pub fn file_metadata_loaded(&self) -> bool {
+        self.file_metadata.is_some()
+    }
+
+    /// Seed the entry's file type from a value the caller already resolved
+    /// (e.g. the directory traversal's descent check), so type predicates can
+    /// reuse it. A `None` hint is ignored, leaving the slot to be filled lazily
+    /// on first use.
+    pub fn seed_file_type(&mut self, file_type: Option<FileType>) {
+        if file_type.is_some() {
+            self.entry_file_type = Some(file_type);
+        }
+    }
+
+    /// The entry's file type, computed once and memoised. Reflects the entry
+    /// itself (symlinks are not followed), so it answers is_symlink directly
+    /// and is_dir/is_file only when not following symlinks.
+    pub fn get_or_compute_file_type(&mut self, entry: &DirEntry) -> Option<FileType> {
+        if self.entry_file_type.is_none() {
+            self.entry_file_type = Some(entry.file_type().ok());
+        }
+        self.entry_file_type.flatten()
     }
 
     pub fn update_line_count(&mut self, entry: &DirEntry) {
@@ -183,6 +212,7 @@ mod tests {
         let state = FileMetadataState::new();
 
         assert!(state.file_metadata.is_none());
+        assert!(state.entry_file_type.is_none());
         assert!(state.line_count.is_none());
         assert!(state.dimensions.is_none());
         assert!(state.duration.is_none());
@@ -200,6 +230,7 @@ mod tests {
         let mut state = FileMetadataState::new();
 
         state.file_metadata = Some(None);
+        state.entry_file_type = Some(None);
         state.line_count = Some(None);
         state.dimensions = Some(None);
         state.duration = Some(None);
@@ -214,6 +245,7 @@ mod tests {
         state.clear();
 
         assert!(state.file_metadata.is_none());
+        assert!(state.entry_file_type.is_none());
         assert!(state.line_count.is_none());
         assert!(state.dimensions.is_none());
         assert!(state.duration.is_none());

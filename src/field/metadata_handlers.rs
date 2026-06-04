@@ -12,6 +12,51 @@ use crate::mode;
 use crate::util::*;
 use crate::util::error::SearchError;
 
+/// Defines a handler that reads a single integer value from the entry's Unix
+/// metadata. The accessor (e.g. `ino`, `dev`) is only referenced on Unix, so the
+/// whole metadata read is gated and other platforms fall back to an empty value.
+macro_rules! unix_int_handler {
+    ($name:ident, $accessor:ident, $empty:expr) => {
+        pub fn $name(ctx: &mut FieldContext) -> Result<Variant, SearchError> {
+            #[cfg(unix)]
+            {
+                ctx.fms.update_file_metadata(ctx.entry, ctx.follow_symlinks);
+                if let Some(attrs) = ctx.fms.get_file_metadata() {
+                    return Ok(Variant::from_int(attrs.$accessor() as i64));
+                }
+            }
+            Ok(Variant::empty($empty))
+        }
+    };
+}
+
+/// Defines a handler that reads a `SystemTime` from the entry's metadata
+/// (`created`/`accessed`) and converts it to a local datetime variant.
+macro_rules! datetime_handler {
+    ($name:ident, $accessor:ident) => {
+        pub fn $name(ctx: &mut FieldContext) -> Result<Variant, SearchError> {
+            ctx.fms.update_file_metadata(ctx.entry, ctx.follow_symlinks);
+            if let Some(attrs) = ctx.fms.get_file_metadata() {
+                if let Ok(sdt) = attrs.$accessor() {
+                    if let Some(naive) = system_time_to_naive_local(sdt) {
+                        return Ok(Variant::from_datetime(naive));
+                    }
+                }
+            }
+            Ok(Variant::empty(VariantType::String))
+        }
+    };
+}
+
+/// Opens the entry and reads the named extended attribute, flattening an absent
+/// attribute and any I/O error into `None`. Linux-only.
+#[cfg(target_os = "linux")]
+fn read_xattr(entry: &fs::DirEntry, name: &str) -> Option<Vec<u8>> {
+    fs::File::open(entry.path())
+        .ok()
+        .and_then(|file| file.get_xattr(name).ok().flatten())
+}
+
 pub fn handle_size(ctx: &mut FieldContext) -> Result<Variant, SearchError> {
     match ctx.file_info {
         Some(file_info) => {
@@ -140,117 +185,17 @@ pub fn handle_is_socket(ctx: &mut FieldContext) -> Result<Variant, SearchError> 
     Ok(check_file_mode(ctx, &mode::is_socket, &mode::mode_is_socket))
 }
 
-pub fn handle_device(ctx: &mut FieldContext) -> Result<Variant, SearchError> {
-    #[cfg(unix)]
-    {
-        ctx.fms.update_file_metadata(ctx.entry, ctx.follow_symlinks);
-        if let Some(attrs) = ctx.fms.get_file_metadata() {
-            return Ok(Variant::from_int(attrs.dev() as i64));
-        }
-    }
-    Ok(Variant::empty(VariantType::String))
-}
+unix_int_handler!(handle_device, dev, VariantType::String);
+unix_int_handler!(handle_rdev, rdev, VariantType::String);
+unix_int_handler!(handle_inode, ino, VariantType::String);
+unix_int_handler!(handle_blocks, blocks, VariantType::String);
+unix_int_handler!(handle_hardlinks, nlink, VariantType::String);
+unix_int_handler!(handle_atime, atime, VariantType::Int);
+unix_int_handler!(handle_mtime, mtime, VariantType::Int);
+unix_int_handler!(handle_ctime, ctime, VariantType::Int);
 
-pub fn handle_rdev(ctx: &mut FieldContext) -> Result<Variant, SearchError> {
-    #[cfg(unix)]
-    {
-        ctx.fms.update_file_metadata(ctx.entry, ctx.follow_symlinks);
-        if let Some(attrs) = ctx.fms.get_file_metadata() {
-            return Ok(Variant::from_int(attrs.rdev() as i64));
-        }
-    }
-    Ok(Variant::empty(VariantType::String))
-}
-
-pub fn handle_inode(ctx: &mut FieldContext) -> Result<Variant, SearchError> {
-    #[cfg(unix)]
-    {
-        ctx.fms.update_file_metadata(ctx.entry, ctx.follow_symlinks);
-        if let Some(attrs) = ctx.fms.get_file_metadata() {
-            return Ok(Variant::from_int(attrs.ino() as i64));
-        }
-    }
-    Ok(Variant::empty(VariantType::String))
-}
-
-pub fn handle_blocks(ctx: &mut FieldContext) -> Result<Variant, SearchError> {
-    #[cfg(unix)]
-    {
-        ctx.fms.update_file_metadata(ctx.entry, ctx.follow_symlinks);
-        if let Some(attrs) = ctx.fms.get_file_metadata() {
-            return Ok(Variant::from_int(attrs.blocks() as i64));
-        }
-    }
-    Ok(Variant::empty(VariantType::String))
-}
-
-pub fn handle_hardlinks(ctx: &mut FieldContext) -> Result<Variant, SearchError> {
-    #[cfg(unix)]
-    {
-        ctx.fms.update_file_metadata(ctx.entry, ctx.follow_symlinks);
-        if let Some(attrs) = ctx.fms.get_file_metadata() {
-            return Ok(Variant::from_int(attrs.nlink() as i64));
-        }
-    }
-    Ok(Variant::empty(VariantType::String))
-}
-
-pub fn handle_atime(ctx: &mut FieldContext) -> Result<Variant, SearchError> {
-    #[cfg(unix)]
-    {
-        ctx.fms.update_file_metadata(ctx.entry, ctx.follow_symlinks);
-        if let Some(attrs) = ctx.fms.get_file_metadata() {
-            return Ok(Variant::from_int(attrs.atime()));
-        }
-    }
-    Ok(Variant::empty(VariantType::Int))
-}
-
-pub fn handle_mtime(ctx: &mut FieldContext) -> Result<Variant, SearchError> {
-    #[cfg(unix)]
-    {
-        ctx.fms.update_file_metadata(ctx.entry, ctx.follow_symlinks);
-        if let Some(attrs) = ctx.fms.get_file_metadata() {
-            return Ok(Variant::from_int(attrs.mtime()));
-        }
-    }
-    Ok(Variant::empty(VariantType::Int))
-}
-
-pub fn handle_ctime(ctx: &mut FieldContext) -> Result<Variant, SearchError> {
-    #[cfg(unix)]
-    {
-        ctx.fms.update_file_metadata(ctx.entry, ctx.follow_symlinks);
-        if let Some(attrs) = ctx.fms.get_file_metadata() {
-            return Ok(Variant::from_int(attrs.ctime()));
-        }
-    }
-    Ok(Variant::empty(VariantType::Int))
-}
-
-pub fn handle_created(ctx: &mut FieldContext) -> Result<Variant, SearchError> {
-    ctx.fms.update_file_metadata(ctx.entry, ctx.follow_symlinks);
-    if let Some(attrs) = ctx.fms.get_file_metadata() {
-        if let Ok(sdt) = attrs.created() {
-            if let Some(naive) = system_time_to_naive_local(sdt) {
-                return Ok(Variant::from_datetime(naive));
-            }
-        }
-    }
-    Ok(Variant::empty(VariantType::String))
-}
-
-pub fn handle_accessed(ctx: &mut FieldContext) -> Result<Variant, SearchError> {
-    ctx.fms.update_file_metadata(ctx.entry, ctx.follow_symlinks);
-    if let Some(attrs) = ctx.fms.get_file_metadata() {
-        if let Ok(sdt) = attrs.accessed() {
-            if let Some(naive) = system_time_to_naive_local(sdt) {
-                return Ok(Variant::from_datetime(naive));
-            }
-        }
-    }
-    Ok(Variant::empty(VariantType::String))
-}
+datetime_handler!(handle_created, created);
+datetime_handler!(handle_accessed, accessed);
 
 pub fn handle_modified(ctx: &mut FieldContext) -> Result<Variant, SearchError> {
     match ctx.file_info {
@@ -386,11 +331,9 @@ pub fn handle_has_extattrs(ctx: &mut FieldContext) -> Result<Variant, SearchErro
 pub fn handle_acl(ctx: &mut FieldContext) -> Result<Variant, SearchError> {
     #[cfg(target_os = "linux")]
     {
-        if let Ok(file) = fs::File::open(ctx.entry.path()) {
-            if let Ok(Some(acl_data)) = file.get_xattr("system.posix_acl_access") {
-                if let Some(entries) = crate::util::acl::parse_acl(&acl_data) {
-                    return Ok(Variant::from_string(&crate::util::acl::format_acl(&entries)));
-                }
+        if let Some(acl_data) = read_xattr(ctx.entry, "system.posix_acl_access") {
+            if let Some(entries) = crate::util::acl::parse_acl(&acl_data) {
+                return Ok(Variant::from_string(&crate::util::acl::format_acl(&entries)));
             }
         }
     }
@@ -408,11 +351,9 @@ pub fn handle_acl(ctx: &mut FieldContext) -> Result<Variant, SearchError> {
 pub fn handle_has_acl(ctx: &mut FieldContext) -> Result<Variant, SearchError> {
     #[cfg(target_os = "linux")]
     {
-        if let Ok(file) = fs::File::open(ctx.entry.path()) {
-            if let Ok(Some(acl_data)) = file.get_xattr("system.posix_acl_access") {
-                if let Some(entries) = crate::util::acl::parse_acl(&acl_data) {
-                    return Ok(Variant::from_bool(!entries.is_empty()));
-                }
+        if let Some(acl_data) = read_xattr(ctx.entry, "system.posix_acl_access") {
+            if let Some(entries) = crate::util::acl::parse_acl(&acl_data) {
+                return Ok(Variant::from_bool(!entries.is_empty()));
             }
         }
     }
@@ -432,11 +373,9 @@ pub fn handle_default_acl(ctx: &mut FieldContext) -> Result<Variant, SearchError
     #[cfg(target_os = "linux")]
     {
         if ctx.entry.path().is_dir() {
-            if let Ok(file) = fs::File::open(ctx.entry.path()) {
-                if let Ok(Some(acl_data)) = file.get_xattr("system.posix_acl_default") {
-                    if let Some(entries) = crate::util::acl::parse_acl(&acl_data) {
-                        return Ok(Variant::from_string(&crate::util::acl::format_acl(&entries)));
-                    }
+            if let Some(acl_data) = read_xattr(ctx.entry, "system.posix_acl_default") {
+                if let Some(entries) = crate::util::acl::parse_acl(&acl_data) {
+                    return Ok(Variant::from_string(&crate::util::acl::format_acl(&entries)));
                 }
             }
         }
@@ -449,11 +388,9 @@ pub fn handle_has_default_acl(ctx: &mut FieldContext) -> Result<Variant, SearchE
     #[cfg(target_os = "linux")]
     {
         if ctx.entry.path().is_dir() {
-            if let Ok(file) = fs::File::open(ctx.entry.path()) {
-                if let Ok(Some(acl_data)) = file.get_xattr("system.posix_acl_default") {
-                    if let Some(entries) = crate::util::acl::parse_acl(&acl_data) {
-                        return Ok(Variant::from_bool(!entries.is_empty()));
-                    }
+            if let Some(acl_data) = read_xattr(ctx.entry, "system.posix_acl_default") {
+                if let Some(entries) = crate::util::acl::parse_acl(&acl_data) {
+                    return Ok(Variant::from_bool(!entries.is_empty()));
                 }
             }
         }
@@ -478,12 +415,9 @@ pub fn handle_has_capabilities(ctx: &mut FieldContext) -> Result<Variant, Search
 pub fn handle_capabilities(ctx: &mut FieldContext) -> Result<Variant, SearchError> {
     #[cfg(target_os = "linux")]
     {
-        if let Ok(file) = fs::File::open(ctx.entry.path()) {
-            if let Ok(Some(caps_xattr)) = file.get_xattr("security.capability") {
-                let caps_string =
-                    crate::util::capabilities::parse_capabilities(caps_xattr);
-                return Ok(Variant::from_string(&caps_string));
-            }
+        if let Some(caps_xattr) = read_xattr(ctx.entry, "security.capability") {
+            let caps_string = crate::util::capabilities::parse_capabilities(caps_xattr);
+            return Ok(Variant::from_string(&caps_string));
         }
     }
 

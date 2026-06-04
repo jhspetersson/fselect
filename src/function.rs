@@ -198,6 +198,16 @@ fn memmem(haystack: &[u8], needle: &[u8]) -> bool {
     haystack.windows(needle.len()).any(|w| w == needle)
 }
 
+/// Parses `arg` as an `f64` and applies `f` to it. A value that does not parse
+/// as a number yields an empty string variant, matching the behavior shared by
+/// all the numeric functions.
+fn unary_float(arg: &str, f: impl FnOnce(f64) -> Result<Variant, String>) -> Result<Variant, String> {
+    match arg.parse::<f64>() {
+        Ok(val) => f(val),
+        Err(_) => Ok(Variant::empty(VariantType::String)),
+    }
+}
+
 /// Applies a function to a value and returns the result.
 /// If no function is provided, the original value is returned.
 ///
@@ -342,147 +352,116 @@ pub fn get_value(
             Ok(val) => Ok(Variant::from_string(&format!("{:o}", val))),
             _ => Ok(Variant::empty(VariantType::String)),
         },
-        Function::Abs => match function_arg.parse::<f64>() {
-            Ok(val) => Ok(Variant::from_float(val.abs())),
-            _ => Ok(Variant::empty(VariantType::String)),
-        }
-        Function::Power => {
-            match function_arg.parse::<f64>() {
-                Ok(val) => {
-                    let power = match function_args.first() {
-                        Some(power) => match power.parse::<f64>() {
-                            Ok(p) => p,
-                            Err(_) => return Err(format!("Could not parse exponent argument of POWER function: {}", power)),
-                        },
-                        _ => 0.0,
-                    };
+        Function::Abs => unary_float(&function_arg, |val| Ok(Variant::from_float(val.abs()))),
+        Function::Power => unary_float(&function_arg, |val| {
+            let power = match function_args.first() {
+                Some(power) => match power.parse::<f64>() {
+                    Ok(p) => p,
+                    Err(_) => return Err(format!("Could not parse exponent argument of POWER function: {}", power)),
+                },
+                _ => 0.0,
+            };
 
-                    let result = val.powf(power);
-                    if result.is_nan() || result.is_infinite() {
-                        return Err(format!("POWER({}, {}) produces a non-finite result", val, power));
-                    }
-                    Ok(Variant::from_float(result))
-                }
-                _ => Ok(Variant::empty(VariantType::String)),
+            let result = val.powf(power);
+            if result.is_nan() || result.is_infinite() {
+                return Err(format!("POWER({}, {}) produces a non-finite result", val, power));
             }
-        }
-        Function::Sqrt => match function_arg.parse::<f64>() {
-            Ok(val) if val < 0.0 => Err(format!("SQRT of a negative number: {}", val)),
-            Ok(val) => Ok(Variant::from_float(val.sqrt())),
-            _ => Ok(Variant::empty(VariantType::String)),
-        },
-        Function::Log => {
-            match function_arg.parse::<f64>() {
-                Ok(val) => {
-                    let base = match function_args.first() {
-                        Some(base) => match base.parse::<f64>() {
-                            Ok(b) => b,
-                            Err(_) => return Err(format!("Could not parse base argument of LOG function: {}", base)),
-                        },
-                        _ => 10.0,
-                    };
-
-                    if val <= 0.0 {
-                        return Err(format!("LOG of a non-positive number: {}", val));
-                    }
-                    if !base.is_finite() || base <= 0.0 || base == 1.0 {
-                        return Err(format!("LOG with invalid base: {}", base));
-                    }
-
-                    Ok(Variant::from_float(val.log(base)))
-                }
-                _ => Ok(Variant::empty(VariantType::String)),
+            Ok(Variant::from_float(result))
+        }),
+        Function::Sqrt => unary_float(&function_arg, |val| {
+            if val < 0.0 {
+                Err(format!("SQRT of a negative number: {}", val))
+            } else {
+                Ok(Variant::from_float(val.sqrt()))
             }
-        }
-        Function::Ln => match function_arg.parse::<f64>() {
-            Ok(val) if val <= 0.0 => Err(format!("LN of a non-positive number: {}", val)),
-            Ok(val) => Ok(Variant::from_float(val.ln())),
-            _ => Ok(Variant::empty(VariantType::String)),
-        }
-        Function::Exp => match function_arg.parse::<f64>() {
-            Ok(val) => {
-                let result = val.exp();
-                if result.is_infinite() {
-                    return Err(format!("EXP({}) overflows to infinity", val));
-                }
-                Ok(Variant::from_float(result))
-            }
-            _ => Ok(Variant::empty(VariantType::String)),
-        }
-        Function::Least => {
-            match function_arg.parse::<f64>() {
-                Ok(val) => {
-                    let mut least = if val.is_finite() { val } else { f64::INFINITY };
-                    for arg in function_args {
-                        if let Ok(val) = arg.parse::<f64>() {
-                            if val.is_finite() {
-                                least = least.min(val);
-                            }
-                        }
-                    }
+        }),
+        Function::Log => unary_float(&function_arg, |val| {
+            let base = match function_args.first() {
+                Some(base) => match base.parse::<f64>() {
+                    Ok(b) => b,
+                    Err(_) => return Err(format!("Could not parse base argument of LOG function: {}", base)),
+                },
+                _ => 10.0,
+            };
 
-                    if least.is_finite() {
-                        Ok(Variant::from_float(least))
-                    } else {
-                        Ok(Variant::empty(VariantType::String))
+            if val <= 0.0 {
+                return Err(format!("LOG of a non-positive number: {}", val));
+            }
+            if !base.is_finite() || base <= 0.0 || base == 1.0 {
+                return Err(format!("LOG with invalid base: {}", base));
+            }
+
+            Ok(Variant::from_float(val.log(base)))
+        }),
+        Function::Ln => unary_float(&function_arg, |val| {
+            if val <= 0.0 {
+                Err(format!("LN of a non-positive number: {}", val))
+            } else {
+                Ok(Variant::from_float(val.ln()))
+            }
+        }),
+        Function::Exp => unary_float(&function_arg, |val| {
+            let result = val.exp();
+            if result.is_infinite() {
+                return Err(format!("EXP({}) overflows to infinity", val));
+            }
+            Ok(Variant::from_float(result))
+        }),
+        Function::Least => unary_float(&function_arg, |val| {
+            let mut least = if val.is_finite() { val } else { f64::INFINITY };
+            for arg in function_args {
+                if let Ok(val) = arg.parse::<f64>() {
+                    if val.is_finite() {
+                        least = least.min(val);
                     }
                 }
-                _ => Ok(Variant::empty(VariantType::String)),
             }
-        }
-        Function::Greatest => {
-            match function_arg.parse::<f64>() {
-                Ok(val) => {
-                    let mut greatest = if val.is_finite() { val } else { f64::NEG_INFINITY };
-                    for arg in function_args {
-                        if let Ok(val) = arg.parse::<f64>() {
-                            if val.is_finite() {
-                                greatest = greatest.max(val);
-                            }
-                        }
-                    }
 
-                    if greatest.is_finite() {
-                        Ok(Variant::from_float(greatest))
-                    } else {
-                        Ok(Variant::empty(VariantType::String))
+            if least.is_finite() {
+                Ok(Variant::from_float(least))
+            } else {
+                Ok(Variant::empty(VariantType::String))
+            }
+        }),
+        Function::Greatest => unary_float(&function_arg, |val| {
+            let mut greatest = if val.is_finite() { val } else { f64::NEG_INFINITY };
+            for arg in function_args {
+                if let Ok(val) = arg.parse::<f64>() {
+                    if val.is_finite() {
+                        greatest = greatest.max(val);
                     }
                 }
-                _ => Ok(Variant::empty(VariantType::String)),
             }
-        }
+
+            if greatest.is_finite() {
+                Ok(Variant::from_float(greatest))
+            } else {
+                Ok(Variant::empty(VariantType::String))
+            }
+        }),
         Function::Pi => {
             Ok(Variant::from_float(std::f64::consts::PI))
         }
-        Function::Floor => match function_arg.parse::<f64>() {
-            Ok(val) => Ok(Variant::from_float(val.floor())),
-            _ => Ok(Variant::empty(VariantType::String)),
-        },
-        Function::Ceil => match function_arg.parse::<f64>() {
-            Ok(val) => Ok(Variant::from_float(val.ceil())),
-            _ => Ok(Variant::empty(VariantType::String)),
-        },
-        Function::Round => match function_arg.parse::<f64>() {
-            Ok(val) => {
-                let precision: i32 = match function_args.first() {
-                    Some(p) => match p.parse::<i32>() {
-                        Ok(p) => p,
-                        Err(_) => return Err(format!("Could not parse precision argument of ROUND function: {}", p)),
-                    },
-                    _ => 0,
-                };
-                let factor = 10_f64.powi(precision);
-                let result = (val * factor).round() / factor;
-                if result.is_finite() {
-                    Ok(Variant::from_float(result))
-                } else if precision >= 0 {
-                    Ok(Variant::from_float(val))
-                } else {
-                    Ok(Variant::from_float(0.0))
-                }
+        Function::Floor => unary_float(&function_arg, |val| Ok(Variant::from_float(val.floor()))),
+        Function::Ceil => unary_float(&function_arg, |val| Ok(Variant::from_float(val.ceil()))),
+        Function::Round => unary_float(&function_arg, |val| {
+            let precision: i32 = match function_args.first() {
+                Some(p) => match p.parse::<i32>() {
+                    Ok(p) => p,
+                    Err(_) => return Err(format!("Could not parse precision argument of ROUND function: {}", p)),
+                },
+                _ => 0,
+            };
+            let factor = 10_f64.powi(precision);
+            let result = (val * factor).round() / factor;
+            if result.is_finite() {
+                Ok(Variant::from_float(result))
+            } else if precision >= 0 {
+                Ok(Variant::from_float(val))
+            } else {
+                Ok(Variant::from_float(0.0))
             }
-            _ => Ok(Variant::empty(VariantType::String)),
-        },
+        }),
 
         // ===== Japanese string functions =====
         Function::ContainsJapanese => {

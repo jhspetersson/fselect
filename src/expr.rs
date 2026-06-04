@@ -263,23 +263,20 @@ impl Expr {
     }
 
     pub fn has_aggregate_function(&self) -> bool {
-        if let Some(ref left) = self.left {
-            if left.has_aggregate_function() {
+        if let Some(ref left) = self.left
+            && left.has_aggregate_function() {
                 return true;
             }
-        }
 
-        if let Some(ref right) = self.right {
-            if right.has_aggregate_function() {
+        if let Some(ref right) = self.right
+            && right.has_aggregate_function() {
                 return true;
             }
-        }
 
-        if let Some(ref function) = self.function {
-            if function.is_aggregate_function() {
+        if let Some(ref function) = self.function
+            && function.is_aggregate_function() {
                 return true;
             }
-        }
 
         if let Some(ref args) = self.args {
             for arg in args {
@@ -319,11 +316,10 @@ impl Expr {
     pub fn get_fields_required_in_subqueries(&self, alias: &str, parent_subquery: bool) -> HashMap<Field, String> {
         let mut result = HashMap::new();
 
-        if let Some(ref subquery) = self.subquery {
-            if let Some(ref expr) = subquery.expr {
+        if let Some(ref subquery) = self.subquery
+            && let Some(ref expr) = subquery.expr {
                 result.extend(expr.get_fields_required_in_subqueries(alias, true));
             }
-        }
         
         if let Some(ref left) = self.left {
             result.extend(left.get_fields_required_in_subqueries(alias, parent_subquery));
@@ -339,16 +335,13 @@ impl Expr {
             }
         }
 
-        if let Some(ref expr_alias) = self.root_alias {
-            if expr_alias == alias {
-                if let Some(field) = self.field {
-                    if parent_subquery {
+        if let Some(ref expr_alias) = self.root_alias
+            && expr_alias == alias
+                && let Some(field) = self.field
+                    && parent_subquery {
                         let alias = if let Some(ref alias) = self.alias { alias } else { &field.to_string() };
                         result.insert(field, alias.clone());
                     }
-                }
-            }
-        }
         
         result
     }
@@ -376,17 +369,15 @@ impl Expr {
             return true;
         }
 
-        if let Some(ref left) = expr.left {
-            if Self::contains_numeric_field(left) {
+        if let Some(ref left) = expr.left
+            && Self::contains_numeric_field(left) {
                 return true;
             }
-        }
 
-        if let Some(ref right) = expr.right {
-            if Self::contains_numeric_field(right) {
+        if let Some(ref right) = expr.right
+            && Self::contains_numeric_field(right) {
                 return true;
             }
-        }
 
         if let Some(ref args) = expr.args {
             for arg in args {
@@ -413,17 +404,15 @@ impl Expr {
             return true;
         }
 
-        if let Some(ref left) = expr.left {
-            if Self::contains_datetime_field(left) {
+        if let Some(ref left) = expr.left
+            && Self::contains_datetime_field(left) {
                 return true;
             }
-        }
 
-        if let Some(ref right) = expr.right {
-            if Self::contains_datetime_field(right) {
+        if let Some(ref right) = expr.right
+            && Self::contains_datetime_field(right) {
                 return true;
             }
-        }
 
         if let Some(ref args) = expr.args {
             for arg in args {
@@ -462,16 +451,14 @@ impl Expr {
                 .and_then(|r| r.field.as_ref())
                 .is_some_and(Field::is_datetime_field);
 
-            if left_is_dt {
-                if let Some(ref right) = expr.right {
+            if left_is_dt
+                && let Some(ref right) = expr.right {
                     Self::check_dt_value_side(right)?;
                 }
-            }
-            if right_is_dt {
-                if let Some(ref left) = expr.left {
+            if right_is_dt
+                && let Some(ref left) = expr.left {
                     Self::check_dt_value_side(left)?;
                 }
-            }
         }
 
         if let Some(ref left) = expr.left {
@@ -485,11 +472,10 @@ impl Expr {
                 Self::validate_dt_node(arg)?;
             }
         }
-        if let Some(ref subquery) = expr.subquery {
-            if let Some(ref inner) = subquery.expr {
+        if let Some(ref subquery) = expr.subquery
+            && let Some(ref inner) = subquery.expr {
                 Self::validate_dt_node(inner)?;
             }
-        }
 
         Ok(())
     }
@@ -502,13 +488,11 @@ impl Expr {
                 Self::check_dt_value_side(arg)?;
             }
         }
-        if let Some(ref val) = expr.val {
-            if expr.field.is_none() && expr.function.is_none() && expr.subquery.is_none() {
-                if crate::util::parse_datetime(val).is_err() {
+        if let Some(ref val) = expr.val
+            && expr.field.is_none() && expr.function.is_none() && expr.subquery.is_none()
+                && crate::util::parse_datetime(val).is_err() {
                     return Err(format!("Can't parse datetime: {}", val));
                 }
-            }
-        }
         Ok(())
     }
 
@@ -530,17 +514,15 @@ impl Expr {
             return true;
         }
 
-        if let Some(ref left) = expr.left {
-            if Self::contains_colorized_field(left) {
+        if let Some(ref left) = expr.left
+            && Self::contains_colorized_field(left) {
                 return true;
             }
-        }
 
-        if let Some(ref right) = expr.right {
-            if Self::contains_colorized_field(right) {
+        if let Some(ref right) = expr.right
+            && Self::contains_colorized_field(right) {
                 return true;
             }
-        }
 
         false
     }

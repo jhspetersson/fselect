@@ -32,8 +32,8 @@ impl<K: Ord, V> TopN<K, V> {
         self.count += 1;
         self.echelons.entry(k).or_default().push(v);
 
-        if let Some(limit) = self.limit {
-            if limit < self.count {
+        if let Some(limit) = self.limit
+            && limit < self.count {
                 self.count -= 1;
 
                 let (last_key, mut last_echelon) = self.echelons.pop_last().unwrap();
@@ -43,12 +43,11 @@ impl<K: Ord, V> TopN<K, V> {
                 }
                 return Some(popped);
             }
-        }
         None
     }
 
     pub fn iter_values(&self) -> impl Iterator<Item = &V> {
-        self.echelons.values().flat_map(|v| v)
+        self.echelons.values().flatten()
     }
 
     #[cfg(test)]

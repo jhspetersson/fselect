@@ -125,7 +125,7 @@ impl FileMetadataState {
         self.update_exif_metadata(entry);
         self.get_exif_metadata()
             .and_then(|info| info.get(key))
-            .map(|v| Variant::from_string(v))
+            .map(Variant::from_string)
     }
 
     pub fn update_mime_type(&mut self, entry: &DirEntry) {

@@ -410,11 +410,10 @@ pub fn get_value(
         Function::Least => unary_float(&function_arg, |val| {
             let mut least = if val.is_finite() { val } else { f64::INFINITY };
             for arg in function_args {
-                if let Ok(val) = arg.parse::<f64>() {
-                    if val.is_finite() {
+                if let Ok(val) = arg.parse::<f64>()
+                    && val.is_finite() {
                         least = least.min(val);
                     }
-                }
             }
 
             if least.is_finite() {
@@ -426,11 +425,10 @@ pub fn get_value(
         Function::Greatest => unary_float(&function_arg, |val| {
             let mut greatest = if val.is_finite() { val } else { f64::NEG_INFINITY };
             for arg in function_args {
-                if let Ok(val) = arg.parse::<f64>() {
-                    if val.is_finite() {
+                if let Ok(val) = arg.parse::<f64>()
+                    && val.is_finite() {
                         greatest = greatest.max(val);
                     }
-                }
             }
 
             if greatest.is_finite() {
@@ -496,7 +494,7 @@ pub fn get_value(
                     Some(modifier) => modifier,
                     _ => "",
                 };
-                let file_size = crate::util::format_filesize(size, modifier).unwrap_or(String::new());
+                let file_size = crate::util::format_filesize(size, modifier).unwrap_or_default();
                 return Ok(Variant::from_string(&file_size));
             }
 
@@ -735,11 +733,10 @@ pub fn get_value(
                 return Ok(Variant::empty(VariantType::Bool));
             }
 
-            if let Some(entry) = entry {
-                if let Ok(file) = File::open(entry.path()) {
+            if let Some(entry) = entry
+                && let Ok(file) = File::open(entry.path()) {
                     return Ok(Variant::from_bool(file_contains(file, function_arg.as_bytes())));
                 }
-            }
 
             Ok(Variant::empty(VariantType::Bool))
         }
@@ -781,13 +778,12 @@ pub fn get_value(
         }
         #[cfg(windows)]
         Function::Xattr => {
-            if let Some(entry) = entry {
-                if let Some(value) =
+            if let Some(entry) = entry
+                && let Some(value) =
                     crate::util::win_xattr::read_named_ads(&entry.path(), &function_arg)
                 {
                     return Ok(Variant::from_string(&value));
                 }
-            }
 
             Ok(Variant::empty(VariantType::String))
         }
@@ -1461,8 +1457,8 @@ pub struct FieldAccumulator {
 
 impl FieldAccumulator {
     pub fn push(&mut self, value: &str) {
-        if let Ok(v) = value.parse::<f64>() {
-            if v.is_finite() {
+        if let Ok(v) = value.parse::<f64>()
+            && v.is_finite() {
                 if self.count == 0 {
                     self.min = v;
                     self.max = v;
@@ -1478,7 +1474,6 @@ impl FieldAccumulator {
                     self.m2 += (v - old_mean) * (v - new_mean);
                 }
             }
-        }
     }
 }
 
@@ -1499,6 +1494,8 @@ impl GroupAccumulator {
 }
 
 #[cfg(test)]
+// 3.14 appears as arbitrary float test input, not as an approximation of PI.
+#[allow(clippy::approx_constant)]
 mod tests {
     use super::*;
     
@@ -1823,7 +1820,7 @@ mod tests {
         let file_info = None;
 
         let result = get_value(&function, function_arg, function_args, entry, &file_info);
-        assert_eq!(result.unwrap().to_bool(), true);
+        assert!(result.unwrap().to_bool());
     }
     
     #[test]
@@ -1835,7 +1832,7 @@ mod tests {
         let file_info = None;
 
         let result = get_value(&function, function_arg, function_args, entry, &file_info);
-        assert_eq!(result.unwrap().to_bool(), true);
+        assert!(result.unwrap().to_bool());
     }
     
     #[test]
@@ -1847,7 +1844,7 @@ mod tests {
         let file_info = None;
 
         let result = get_value(&function, function_arg, function_args, entry, &file_info);
-        assert_eq!(result.unwrap().to_bool(), true);
+        assert!(result.unwrap().to_bool());
     }
     
     #[test]
@@ -1859,7 +1856,7 @@ mod tests {
         let file_info = None;
 
         let result = get_value(&function, function_arg, function_args, entry, &file_info);
-        assert_eq!(result.unwrap().to_bool(), true);
+        assert!(result.unwrap().to_bool());
     }
     
     #[test]
@@ -1871,7 +1868,7 @@ mod tests {
         let file_info = None;
 
         let result = get_value(&function, function_arg, function_args, entry, &file_info);
-        assert_eq!(result.unwrap().to_bool(), true);
+        assert!(result.unwrap().to_bool());
     }
     
     #[test]
@@ -1883,7 +1880,7 @@ mod tests {
         let file_info = None;
 
         let result = get_value(&function, function_arg, function_args, entry, &file_info);
-        assert_eq!(result.unwrap().to_bool(), true);
+        assert!(result.unwrap().to_bool());
     }
     
     #[test]
@@ -2786,7 +2783,7 @@ mod tests {
             &None,
         );
         let val = result.unwrap().to_int();
-        assert!(val >= 3 && val <= 5, "RANDOM(5,3) should return value in [3,5], got {}", val);
+        assert!((3..=5).contains(&val), "RANDOM(5,3) should return value in [3,5], got {}", val);
     }
 
     #[test]
@@ -3335,7 +3332,7 @@ mod tests {
                 &None,
             );
             let val = result.unwrap().to_int();
-            assert!(val >= 0 && val <= 1);
+            assert!((0..=1).contains(&val));
             if val == 1 {
                 saw_max = true;
             }
@@ -3355,7 +3352,7 @@ mod tests {
                 &None,
             );
             let val = result.unwrap().to_int();
-            assert!(val >= 5 && val <= 6);
+            assert!((5..=6).contains(&val));
             if val == 6 {
                 saw_max = true;
             }
@@ -3666,7 +3663,7 @@ mod tests {
             &None,
         )
         .unwrap();
-        assert_eq!(result.to_bool(), true, "Contains should find substring even in non-UTF8 files");
+        assert!(result.to_bool(), "Contains should find substring even in non-UTF8 files");
 
         let _ = std::fs::remove_file(&path);
     }
@@ -3681,7 +3678,7 @@ mod tests {
         let prefix = chunk_size - 5;
         let mut bytes = vec![b'a'; prefix];
         bytes.extend_from_slice(needle);
-        bytes.extend(std::iter::repeat(b'b').take(100));
+        bytes.extend(std::iter::repeat_n(b'b', 100));
         let path = write_temp_file("boundary.bin", &bytes);
         let entry = dir_entry_for(&path);
 
@@ -3693,7 +3690,7 @@ mod tests {
             &None,
         )
         .unwrap();
-        assert_eq!(result.to_bool(), true, "Contains must find substrings that span chunks");
+        assert!(result.to_bool(), "Contains must find substrings that span chunks");
 
         let _ = std::fs::remove_file(&path);
     }

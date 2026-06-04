@@ -67,11 +67,7 @@ fn main() -> ExitCode {
     {
         if !no_color {
             let res = nu_ansi_term::enable_ansi_support();
-            let win_init_ok = match res {
-                Ok(()) => true,
-                Err(203) => true,
-                _ => false,
-            };
+            let win_init_ok = matches!(res, Ok(()) | Err(203));
             no_color = !win_init_ok;
         }
     }
@@ -217,9 +213,9 @@ fn main() -> ExitCode {
                                 }
                             } else if trimmed == "errors" || trimmed.starts_with("errors ") {
                                 let _ = rl.add_history_entry(&cmd);
-                                let parts: Vec<&str> = cmd.trim().split_whitespace().collect();
+                                let parts: Vec<&str> = cmd.split_whitespace().collect();
                                 if parts.len() == 2 {
-                                    let no_errors = !str_to_bool(&parts[1]).unwrap_or(true);
+                                    let no_errors = !str_to_bool(parts[1]).unwrap_or(true);
                                     set_no_errors(no_errors);
                                 }
                                 println!("Errors are {}", if no_color {
@@ -229,9 +225,9 @@ fn main() -> ExitCode {
                                 });
                             } else if trimmed == "debug" || trimmed.starts_with("debug ") {
                                 let _ = rl.add_history_entry(&cmd);
-                                let parts: Vec<&str> = cmd.trim().split_whitespace().collect();
+                                let parts: Vec<&str> = cmd.split_whitespace().collect();
                                 if parts.len() == 2 {
-                                    config.debug = str_to_bool(&parts[1]).unwrap_or(false);
+                                    config.debug = str_to_bool(parts[1]).unwrap_or(false);
                                 }
                                 if no_color {
                                     println!("DEBUG IS {}", (if config.debug { "ON" } else { "OFF" }));
@@ -497,7 +493,7 @@ fn format_field_usage() -> String {
 fn format_function_usage() -> String {
     let funcs = Function::get_names_and_descriptions();
     Function::get_groups().iter()
-        .filter(|group| funcs.get(*group).is_some())
+        .filter(|group| funcs.contains_key(*group))
         .map(|group| {
             let funcs_in_group = funcs.get(*group).unwrap();
             format!(

@@ -168,9 +168,9 @@ pub fn system_time_to_naive_local(sdt: SystemTime) -> Option<NaiveDateTime> {
 pub fn to_local_datetime(dt: &zip::DateTime) -> NaiveDateTime {
     let date = NaiveDate::from_ymd_opt(dt.year() as i32, dt.month() as u32, dt.day() as u32)
         .or_else(|| NaiveDate::from_ymd_opt(dt.year() as i32, 1, 1))
-        .unwrap_or(NaiveDate::default());
+        .unwrap_or_default();
     let time = NaiveTime::from_hms_opt(dt.hour() as u32, dt.minute() as u32, dt.second() as u32)
-        .unwrap_or(NaiveTime::default());
+        .unwrap_or_default();
     NaiveDateTime::new(date, time)
 }
 

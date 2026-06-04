@@ -21,7 +21,7 @@ impl DimensionsExtractor for Mp4DimensionsExtractor {
             .tracks
             .iter()
             .find(|track| track.track_type == mp4parse::TrackType::Video)
-            .and_then(|ref track| {
+            .and_then(|track| {
                 track.tkhd.as_ref().map(|tkhd| Dimensions {
                     width: (tkhd.width / 65536) as usize,
                     height: (tkhd.height / 65536) as usize,

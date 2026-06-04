@@ -62,7 +62,7 @@ mod test {
     #[test]
     fn test_list() {
         let result = write_test_items(&mut LIST_FORMATTER);
-        assert_eq!("foo_value\0BAR value\0123\0\0", result);
+        assert_eq!("foo_value\x00BAR value\x00123\x00\x00", result);
     }
 
     #[test]

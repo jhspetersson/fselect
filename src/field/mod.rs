@@ -836,46 +836,46 @@ mod tests {
     #[test]
     fn test_colorized() {
         let field = Field::Name;
-        assert_eq!(field.is_colorized_field(), true);
+        assert!(field.is_colorized_field());
 
         let field = Field::Size;
-        assert_eq!(field.is_colorized_field(), false);
+        assert!(!field.is_colorized_field());
     }
 
     #[test]
     fn test_is_numeric_field() {
         let field = Field::Size;
-        assert_eq!(field.is_numeric_field(), true);
+        assert!(field.is_numeric_field());
 
         let field = Field::Name;
-        assert_eq!(field.is_numeric_field(), false);
+        assert!(!field.is_numeric_field());
     }
     
     #[test]
     fn test_is_datetime_field() {
         let field = Field::Created;
-        assert_eq!(field.is_datetime_field(), true);
+        assert!(field.is_datetime_field());
 
         let field = Field::Name;
-        assert_eq!(field.is_datetime_field(), false);
+        assert!(!field.is_datetime_field());
     }
     
     #[test]
     fn test_is_boolean_field() {
         let field = Field::IsDir;
-        assert_eq!(field.is_boolean_field(), true);
+        assert!(field.is_boolean_field());
 
         let field = Field::Name;
-        assert_eq!(field.is_boolean_field(), false);
+        assert!(!field.is_boolean_field());
     }
     
     #[test]
     fn test_is_available_for_archived_files() {
         let field = Field::Name;
-        assert_eq!(field.is_available_for_archived_files(), true);
+        assert!(field.is_available_for_archived_files());
 
         let field = Field::LineCount;
-        assert_eq!(field.is_available_for_archived_files(), false);
+        assert!(!field.is_available_for_archived_files());
     }
 
     #[test]

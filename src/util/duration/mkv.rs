@@ -29,11 +29,11 @@ impl DurationExtractor for MkvDurationExtractor {
 
         match matroska.info.duration {
             Some(duration) => {
-                return Ok(Some(Duration {
+                Ok(Some(Duration {
                     length: duration.as_secs() as usize,
                 }))
             }
-            None => return Ok(None),
+            None => Ok(None),
         }
     }
 }

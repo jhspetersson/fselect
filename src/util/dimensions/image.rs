@@ -17,9 +17,7 @@ impl ImageDimensionsExtractor {
 
 impl DimensionsExtractor for ImageDimensionsExtractor {
     fn supports_ext(&self, ext_lowercase: &str) -> bool {
-        ImageDimensionsExtractor::EXTENSIONS
-            .iter()
-            .any(|&supported| supported == ext_lowercase)
+        ImageDimensionsExtractor::EXTENSIONS.contains(&ext_lowercase)
     }
 
     fn try_read_dimensions(&self, path: &Path) -> io::Result<Option<Dimensions>> {

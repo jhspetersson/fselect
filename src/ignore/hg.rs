@@ -31,7 +31,7 @@ pub fn search_upstream_hgignore(hgignore_filters: &mut Vec<HgignoreFilter>, dir:
             let hg_directory = path.join(".hg");
 
             if hgignore_file.is_file() && hg_directory.is_dir() {
-                update_hgignore_filters(hgignore_filters, &mut path);
+                update_hgignore_filters(hgignore_filters, &path);
                 return;
             }
 
@@ -47,7 +47,7 @@ pub fn search_upstream_hgignore(hgignore_filters: &mut Vec<HgignoreFilter>, dir:
 fn update_hgignore_filters(hgignore_filters: &mut Vec<HgignoreFilter>, path: &Path) {
     let hgignore_file = path.join(".hgignore");
     if hgignore_file.is_file() {
-        let mut regexes = parse_hgignore(&hgignore_file, &path);
+        let mut regexes = parse_hgignore(&hgignore_file, path);
         match regexes {
             Ok(ref mut regexes) => {
                 hgignore_filters.append(regexes);
@@ -59,7 +59,7 @@ fn update_hgignore_filters(hgignore_filters: &mut Vec<HgignoreFilter>, path: &Pa
     }
 }
 
-pub fn matches_hgignore_filter(hgignore_filters: &Vec<HgignoreFilter>, file_name: &str) -> bool {
+pub fn matches_hgignore_filter(hgignore_filters: &[HgignoreFilter], file_name: &str) -> bool {
     hgignore_filters
         .iter()
         .any(|filter| filter.regex.is_match(file_name))
@@ -73,11 +73,11 @@ enum Syntax {
 impl Syntax {
     fn from(s: &str) -> Result<Syntax, String> {
         if s == "regexp" {
-            return Ok(Syntax::Regexp);
+            Ok(Syntax::Regexp)
         } else if s == "glob" {
-            return Ok(Syntax::Glob);
+            Ok(Syntax::Glob)
         } else {
-            return Err("Error parsing syntax directive".to_string());
+            Err("Error parsing syntax directive".to_string())
         }
     }
 }
@@ -100,38 +100,34 @@ fn parse_hgignore(file_path: &Path, dir_path: &Path) -> Result<Vec<HgignoreFilte
                 _ => false,
             })
             .for_each(|line| {
-                if err.is_empty() {
-                    match line {
-                        Ok(line) => {
-                            if let Some(rest) = line.strip_prefix("syntax:") {
-                                let syntax_directive = rest.trim();
-                                match Syntax::from(syntax_directive) {
-                                    Ok(parsed_syntax) => syntax = parsed_syntax,
-                                    Err(parse_err) => err = parse_err,
+                if err.is_empty()
+                    && let Ok(line) = line {
+                        if let Some(rest) = line.strip_prefix("syntax:") {
+                            let syntax_directive = rest.trim();
+                            match Syntax::from(syntax_directive) {
+                                Ok(parsed_syntax) => syntax = parsed_syntax,
+                                Err(parse_err) => err = parse_err,
+                            }
+                        } else if let Some(rest) = line.strip_prefix("subinclude:") {
+                            let include = rest.trim();
+                            let mut parse_result =
+                                parse_hgignore(Path::new(include), dir_path);
+                            match parse_result {
+                                Ok(ref mut filters) => {
+                                    result.append(filters);
                                 }
-                            } else if let Some(rest) = line.strip_prefix("subinclude:") {
-                                let include = rest.trim();
-                                let mut parse_result =
-                                    parse_hgignore(&Path::new(include), dir_path);
-                                match parse_result {
-                                    Ok(ref mut filters) => {
-                                        result.append(filters);
-                                    }
-                                    Err(parse_err) => {
-                                        err = parse_err;
-                                    }
-                                };
-                            } else {
-                                let pattern = convert_hgignore_pattern(&line, dir_path, &syntax);
-                                match pattern {
-                                    Ok(pattern) => result.push(pattern),
-                                    Err(parse_err) => err = parse_err,
+                                Err(parse_err) => {
+                                    err = parse_err;
                                 }
+                            };
+                        } else {
+                            let pattern = convert_hgignore_pattern(&line, dir_path, &syntax);
+                            match pattern {
+                                Ok(pattern) => result.push(pattern),
+                                Err(parse_err) => err = parse_err,
                             }
                         }
-                        _ => {}
                     }
-                }
             });
     };
 
@@ -198,7 +194,7 @@ fn convert_hgignore_glob(glob: &str, file_path: &Path) -> Result<Regex, String> 
     #[cfg(windows)]
     {
         let mut pattern = HG_CONVERT_REPLACE_REGEX
-            .replace_all(&glob, |c: &Captures| {
+            .replace_all(glob, |c: &Captures| {
                 match c.index(0) {
                     "**" => ".*",
                     "." => "\\.",
@@ -254,7 +250,7 @@ fn convert_hgignore_regexp(regexp: &str, file_path: &Path) -> Result<Regex, Stri
             pattern = pattern.add("\\\\");
         }
 
-        pattern = pattern.add(&regexp.trim_start_matches("^"));
+        pattern = pattern.add(regexp.trim_start_matches("^"));
 
         Regex::new(&pattern).map_err(|_| "Error creating regex pattern: ".to_string() + pattern.as_str())
     }

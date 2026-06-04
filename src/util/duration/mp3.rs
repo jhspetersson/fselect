@@ -42,12 +42,7 @@ mod test {
             std::env::var("CARGO_MANIFEST_DIR")? + "/resources/test/" + "audio/silent-35s.mp3";
         let path = PathBuf::from(path_string);
 
-        let mp3_metadata = |path: PathBuf| -> Option<MP3Metadata> {
-            match mp3_metadata::read_from_file(path) {
-                Ok(mp3_meta) => Some(mp3_meta),
-                _ => None,
-            }
-        }(path.clone());
+        let mp3_metadata: Option<MP3Metadata> = mp3_metadata::read_from_file(path.clone()).ok();
 
         assert_eq!(
             Mp3DurationExtractor.try_read_duration(&path, &mp3_metadata)?,

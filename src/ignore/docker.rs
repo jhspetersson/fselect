@@ -34,7 +34,7 @@ pub fn search_upstream_dockerignore(
             let dockerignore_file = path.join(".dockerignore");
 
             if dockerignore_file.is_file() {
-                update_dockerignore_filters(dockerignore_filters, &mut path);
+                update_dockerignore_filters(dockerignore_filters, &path);
                 return;
             }
 
@@ -50,7 +50,7 @@ pub fn search_upstream_dockerignore(
 fn update_dockerignore_filters(dockerignore_filters: &mut Vec<DockerignoreFilter>, path: &Path) {
     let dockerignore_file = path.join(".dockerignore");
     if dockerignore_file.is_file() {
-        let regexes = parse_dockerignore(&dockerignore_file, &path);
+        let regexes = parse_dockerignore(&dockerignore_file, path);
         match regexes {
             Ok(ref regexes) => {
                 dockerignore_filters.append(&mut regexes.clone());
@@ -100,15 +100,14 @@ fn parse_dockerignore(
                 _ => false,
             })
             .for_each(|line| {
-                if err.is_empty() {
-                    if let Ok(line) = line {
+                if err.is_empty()
+                    && let Ok(line) = line {
                         let pattern = convert_dockerignore_pattern(&line, dir_path);
                         match pattern {
                             Ok(pattern) => result.push(pattern),
                             Err(parse_err) => err = parse_err,
                         }
                     }
-                }
             });
     };
 
@@ -171,7 +170,7 @@ fn convert_dockerignore_glob(glob: &str, file_path: &Path) -> Result<Regex, Stri
         return Err("Error parsing .dockerignore pattern: ".to_string() + glob);
     }
 
-    let trimmed = pattern.trim_start_matches(|c| c == '/' || c == '\\');
+    let trimmed = pattern.trim_start_matches(['/', '\\']);
     if trimmed.len() != pattern.len() {
         pattern = trimmed.to_string();
     }

@@ -25,7 +25,7 @@ impl DimensionsExtractor for MkvDimensionsExtractor {
             .tracks
             .iter()
             .find(|&track| track.tracktype == matroska::Tracktype::Video)
-            .and_then(|ref track| {
+            .and_then(|track| {
                 if let matroska::Settings::Video(settings) = &track.settings {
                     Some(Dimensions {
                         width: settings.pixel_width as usize,

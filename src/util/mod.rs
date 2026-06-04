@@ -263,7 +263,7 @@ pub fn parse_filesize(s: &str) -> Option<u64> {
 
     if length > 1 && string.ends_with("b") {
         return match &string[..(length - 1)].parse::<u64>() {
-            Ok(size) => Some(size * 1),
+            Ok(size) => Some(*size),
             _ => None,
         };
     }
@@ -285,7 +285,7 @@ pub fn format_filesize(size: u64, modifier: &str) -> Result<String, String> {
         zeroes = cap
             .name("zeroes")
             .map_or(-1, |m| m.as_str().parse::<i32>().unwrap_or(20));
-        space = cap.name("space").map_or(false, |m| m.as_str() == " ");
+        space = cap.name("space").is_some_and(|m| m.as_str() == " ");
         modifier = cap
             .name("units")
             .map_or(String::from(""), |m| m.as_str().to_string());
@@ -529,15 +529,12 @@ pub fn get_metadata(entry: &DirEntry, follow_symlinks: bool) -> Option<Metadata>
 }
 
 pub fn get_mp3_metadata(entry: &DirEntry) -> Option<MP3Metadata> {
-    match mp3_metadata::read_from_file(entry.path()) {
-        Ok(mp3_meta) => Some(mp3_meta),
-        _ => None,
-    }
+    mp3_metadata::read_from_file(entry.path()).ok()
 }
 
 pub fn get_exif_metadata(entry: &DirEntry) -> Option<HashMap<String, String>> {
-    if let Ok(file) = File::open(entry.path()) {
-        if let Ok(reader) = exif::Reader::new().read_from_container(&mut BufReader::new(&file)) {
+    if let Ok(file) = File::open(entry.path())
+        && let Ok(reader) = exif::Reader::new().read_from_container(&mut BufReader::new(&file)) {
             let mut exif_info = HashMap::new();
 
             for field in reader.fields() {
@@ -570,19 +567,15 @@ pub fn get_exif_metadata(entry: &DirEntry) -> Option<HashMap<String, String>> {
 
             if let (Some(location), Some(location_ref)) =
                 (exif_info.get("GPSLongitude").cloned(), exif_info.get("GPSLongitudeRef").cloned())
-            {
-                if let Ok(coord) = parse_location_string(location, location_ref, "W") {
+                && let Ok(coord) = parse_location_string(location, location_ref, "W") {
                     exif_info.insert(String::from("__Lng"), coord.to_string());
                 }
-            }
 
             if let (Some(location), Some(location_ref)) =
                 (exif_info.get("GPSLatitude").cloned(), exif_info.get("GPSLatitudeRef").cloned())
-            {
-                if let Ok(coord) = parse_location_string(location, location_ref, "S") {
+                && let Ok(coord) = parse_location_string(location, location_ref, "S") {
                     exif_info.insert(String::from("__Lat"), coord.to_string());
                 }
-            }
 
             if let (Some(altitude_str), Some(altitude_ref)) =
                 (exif_info.get("GPSAltitude").cloned(), exif_info.get("GPSAltitudeRef").cloned())
@@ -596,7 +589,6 @@ pub fn get_exif_metadata(entry: &DirEntry) -> Option<HashMap<String, String>> {
 
             return Some(exif_info);
         }
-    }
 
     None
 }

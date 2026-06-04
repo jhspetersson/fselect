@@ -1,8 +1,8 @@
-/// Windows ACL detection and formatting via the Win32 Security API.
-///
-/// Uses `GetNamedSecurityInfoW` to retrieve the DACL, then inspects
-/// its ACEs. A file "has ACL" if its DACL contains at least one
-/// explicit (non-inherited) Access Control Entry.
+//! Windows ACL detection and formatting via the Win32 Security API.
+//!
+//! Uses `GetNamedSecurityInfoW` to retrieve the DACL, then inspects
+//! its ACEs. A file "has ACL" if its DACL contains at least one
+//! explicit (non-inherited) Access Control Entry.
 
 use std::os::windows::ffi::OsStrExt;
 use std::path::Path;
@@ -85,9 +85,7 @@ pub fn has_explicit_acl(path: &Path) -> bool {
 /// Format: `allow:DOMAIN\User:full,deny:Guest:read,...`
 /// Returns `None` if the DACL cannot be read or has no explicit ACEs.
 pub fn format_acl(path: &Path) -> Option<String> {
-    let Some((p_sd, p_dacl)) = get_dacl(path) else {
-        return None;
-    };
+    let (p_sd, p_dacl) = get_dacl(path)?;
 
     let result = format_explicit_aces(p_dacl);
 
@@ -135,11 +133,10 @@ fn format_explicit_aces(dacl: *const WIN_ACL) -> String {
     for _ in 0..ace_count {
         let header = unsafe { &*(ace_ptr as *const ACE_HEADER) };
 
-        if header.AceFlags & (INHERITED_ACE as u8) == 0 {
-            if let Some(entry) = format_ace(ace_ptr, header.AceType) {
+        if header.AceFlags & (INHERITED_ACE as u8) == 0
+            && let Some(entry) = format_ace(ace_ptr, header.AceType) {
                 entries.push(entry);
             }
-        }
 
         ace_ptr = unsafe { ace_ptr.add(header.AceSize as usize) };
     }

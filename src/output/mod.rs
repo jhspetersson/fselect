@@ -106,35 +106,26 @@ mod test {
 
     pub(crate) fn write_test_items<T: ResultsFormatter>(under_test: &mut T) -> String {
         let mut result = String::from("");
-        under_test.header("select key, value", 2).and_then(|s| Some(result.push_str(&s)));
-        under_test
-            .row_started()
-            .and_then(|s| Some(result.push_str(&s)));
-        under_test
-            .format_element("foo", "foo_value", false)
-            .and_then(|s| Some(result.push_str(&s)));
-        under_test
-            .format_element("bar", "BAR value", true)
-            .and_then(|s| Some(result.push_str(&s)));
-        under_test
-            .row_ended()
-            .and_then(|s| Some(result.push_str(&s)));
-        under_test
-            .row_separator()
-            .and_then(|s| Some(result.push_str(&s)));
-        under_test
-            .row_started()
-            .and_then(|s| Some(result.push_str(&s)));
-        under_test
-            .format_element("foo", "123", false)
-            .and_then(|s| Some(result.push_str(&s)));
-        under_test
-            .format_element("bar", "", true)
-            .and_then(|s| Some(result.push_str(&s)));
-        under_test
-            .row_ended()
-            .and_then(|s| Some(result.push_str(&s)));
-        under_test.footer().and_then(|s| Some(result.push_str(&s)));
+        if let Some(s) = under_test.header("select key, value", 2) { let _: () = result.push_str(&s); }
+        if let Some(s) = under_test
+            .row_started() { let _: () = result.push_str(&s); }
+        if let Some(s) = under_test
+            .format_element("foo", "foo_value", false) { let _: () = result.push_str(&s); }
+        if let Some(s) = under_test
+            .format_element("bar", "BAR value", true) { let _: () = result.push_str(&s); }
+        if let Some(s) = under_test
+            .row_ended() { let _: () = result.push_str(&s); }
+        if let Some(s) = under_test
+            .row_separator() { let _: () = result.push_str(&s); }
+        if let Some(s) = under_test
+            .row_started() { let _: () = result.push_str(&s); }
+        if let Some(s) = under_test
+            .format_element("foo", "123", false) { let _: () = result.push_str(&s); }
+        if let Some(s) = under_test
+            .format_element("bar", "", true) { let _: () = result.push_str(&s); }
+        if let Some(s) = under_test
+            .row_ended() { let _: () = result.push_str(&s); }
+        if let Some(s) = under_test.footer() { let _: () = result.push_str(&s); }
         result
     }
 }

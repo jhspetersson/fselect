@@ -1,8 +1,8 @@
-/// Windows extended attribute detection via NTFS Alternate Data Streams.
-///
-/// On Windows, the closest equivalent to Unix extended attributes are
-/// NTFS Alternate Data Streams (ADS). This module uses `FindFirstStreamW`
-/// / `FindNextStreamW` to enumerate them.
+//! Windows extended attribute detection via NTFS Alternate Data Streams.
+//!
+//! On Windows, the closest equivalent to Unix extended attributes are
+//! NTFS Alternate Data Streams (ADS). This module uses `FindFirstStreamW`
+//! / `FindNextStreamW` to enumerate them.
 
 use std::path::Path;
 

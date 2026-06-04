@@ -19,8 +19,8 @@ impl DimensionsExtractor for SvgDimensionsExtractor {
     fn try_read_dimensions(&self, path: &Path) -> io::Result<Option<Dimensions>> {
         let mut content = String::new();
         for event in svg::open(path, &mut content)? {
-            if let Event::Tag(SVG, _, attributes) = event {
-                if let (Some(width_value), Some(height_value)) =
+            if let Event::Tag(SVG, _, attributes) = event
+                && let (Some(width_value), Some(height_value)) =
                     (attributes.get("width"), attributes.get("height"))
                 {
                     let width = width_value
@@ -31,7 +31,6 @@ impl DimensionsExtractor for SvgDimensionsExtractor {
                         .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))?;
                     return Ok(Some(Dimensions { width, height }));
                 }
-            }
         }
 
         Ok(None)

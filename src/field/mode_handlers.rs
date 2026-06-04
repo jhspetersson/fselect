@@ -84,21 +84,19 @@ pub fn handle_is_sticky(ctx: &mut FieldContext) -> Result<Variant, SearchError> 
 
 pub fn handle_uid(ctx: &mut FieldContext) -> Result<Variant, SearchError> {
     ctx.fms.update_file_metadata(ctx.entry, ctx.follow_symlinks);
-    if let Some(attrs) = ctx.fms.get_file_metadata() {
-        if let Some(uid) = mode::get_uid(attrs) {
+    if let Some(attrs) = ctx.fms.get_file_metadata()
+        && let Some(uid) = mode::get_uid(attrs) {
             return Ok(Variant::from_int(uid as i64));
         }
-    }
     Ok(Variant::empty(VariantType::String))
 }
 
 pub fn handle_gid(ctx: &mut FieldContext) -> Result<Variant, SearchError> {
     ctx.fms.update_file_metadata(ctx.entry, ctx.follow_symlinks);
-    if let Some(attrs) = ctx.fms.get_file_metadata() {
-        if let Some(gid) = mode::get_gid(attrs) {
+    if let Some(attrs) = ctx.fms.get_file_metadata()
+        && let Some(gid) = mode::get_gid(attrs) {
             return Ok(Variant::from_int(gid as i64));
         }
-    }
     Ok(Variant::empty(VariantType::String))
 }
 

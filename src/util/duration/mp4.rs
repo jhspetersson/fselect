@@ -27,7 +27,7 @@ impl DurationExtractor for Mp4DurationExtractor {
             .tracks
             .iter()
             .find(|track| track.track_type == mp4parse::TrackType::Video)
-            .and_then(|ref track| {
+            .and_then(|track| {
                 track.tkhd.as_ref().map(|tkhd| Duration {
                     length: (tkhd.duration / 1000) as usize,
                 })

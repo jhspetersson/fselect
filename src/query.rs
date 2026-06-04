@@ -47,7 +47,7 @@ impl Query {
     }
 
     pub fn has_aggregate_column(&self) -> bool {
-        self.fields.iter().any(|ref f| f.has_aggregate_function())
+        self.fields.iter().any(|f| f.has_aggregate_function())
     }
 }
 
@@ -154,6 +154,7 @@ impl RootOptions {
     }
 
     #[cfg(test)]
+    #[allow(clippy::too_many_arguments)]
     pub fn from(
         min_depth: u32,
         max_depth: u32,

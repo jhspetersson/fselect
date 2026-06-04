@@ -21,11 +21,10 @@ pub fn handle_mime(ctx: &mut FieldContext) -> Result<Variant, SearchError> {
 
 pub fn handle_is_binary_or_text(ctx: &mut FieldContext, field: &Field) -> Result<Variant, SearchError> {
     ctx.fms.update_file_metadata(ctx.entry, ctx.follow_symlinks);
-    if let Some(meta) = ctx.fms.get_file_metadata() {
-        if meta.is_dir() {
+    if let Some(meta) = ctx.fms.get_file_metadata()
+        && meta.is_dir() {
             return Ok(Variant::from_bool(false));
         }
-    }
 
     ctx.fms.update_mime_type(ctx.entry);
     if let Some(mime) = ctx.fms.get_mime_type() {

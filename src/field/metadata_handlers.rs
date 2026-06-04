@@ -157,11 +157,10 @@ fn file_type_predicate(
             None => Variant::empty(VariantType::String),
         };
     }
-    if !ctx.follow_symlinks {
-        if let Some(file_type) = ctx.fms.get_or_compute_file_type(ctx.entry) {
+    if !ctx.follow_symlinks
+        && let Some(file_type) = ctx.fms.get_or_compute_file_type(ctx.entry) {
             return Variant::from_bool(from_file_type(file_type));
         }
-    }
     ctx.fms.update_file_metadata(ctx.entry, ctx.follow_symlinks);
     match ctx.fms.get_file_metadata() {
         Some(attrs) => Variant::from_bool(from_metadata(attrs)),
@@ -208,13 +207,11 @@ pub fn handle_modified(ctx: &mut FieldContext) -> Result<Variant, SearchError> {
         }
         _ => {
             ctx.fms.update_file_metadata(ctx.entry, ctx.follow_symlinks);
-            if let Some(attrs) = ctx.fms.get_file_metadata() {
-                if let Ok(sdt) = attrs.modified() {
-                    if let Some(naive) = system_time_to_naive_local(sdt) {
+            if let Some(attrs) = ctx.fms.get_file_metadata()
+                && let Ok(sdt) = attrs.modified()
+                    && let Some(naive) = system_time_to_naive_local(sdt) {
                         return Ok(Variant::from_datetime(naive));
                     }
-                }
-            }
             Ok(Variant::empty(VariantType::String))
         }
     }
@@ -270,9 +267,9 @@ pub fn handle_has_xattrs(ctx: &mut FieldContext) -> Result<Variant, SearchError>
 
     #[cfg(windows)]
     {
-        return Ok(Variant::from_bool(
+        Ok(Variant::from_bool(
             crate::util::win_xattr::has_any_ads(&ctx.entry.path()),
-        ));
+        ))
     }
 
     #[cfg(not(windows))]
@@ -291,9 +288,9 @@ pub fn handle_xattr_count(ctx: &mut FieldContext) -> Result<Variant, SearchError
 
     #[cfg(windows)]
     {
-        return Ok(Variant::from_int(
+        Ok(Variant::from_int(
             crate::util::win_xattr::count_ads(&ctx.entry.path()) as i64,
-        ));
+        ))
     }
 
     #[cfg(not(windows))]
@@ -360,9 +357,9 @@ pub fn handle_has_acl(ctx: &mut FieldContext) -> Result<Variant, SearchError> {
 
     #[cfg(windows)]
     {
-        return Ok(Variant::from_bool(
+        Ok(Variant::from_bool(
             crate::util::win_acl::has_explicit_acl(&ctx.entry.path()),
-        ));
+        ))
     }
 
     #[cfg(not(windows))]

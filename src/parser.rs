@@ -215,7 +215,7 @@ impl <'a> Parser<'a> {
                             match self.next_lexeme() {
                                 Some(Lexeme::Select) => {
                                     self.lexer.push_state();
-                                    let mut sub_parser = Parser::new(&mut self.lexer);
+                                    let mut sub_parser = Parser::new(self.lexer);
                                     let sub_query = sub_parser.parse(self.debug)?;
                                     self.lexer.pop_state();
                                     if curly {
@@ -242,19 +242,18 @@ impl <'a> Parser<'a> {
                             RootParsingMode::From | RootParsingMode::Comma => {
                                 path = s.to_string();
                                 #[cfg(feature = "interactive")]
-                                if path.starts_with("~") {
-                                    if let Some(ud) = UserDirs::new() {
+                                if path.starts_with("~")
+                                    && let Some(ud) = UserDirs::new() {
                                         let mut pb = PathBuf::from(path.clone());
                                         pb = pb.components().skip(1).collect();
                                         pb = ud.home_dir().to_path_buf().join(pb);
                                         path = pb.to_string_lossy().to_string();
                                     }
-                                }
                                 mode = RootParsingMode::Root;
                             }
                             RootParsingMode::Root => {
-                                if s.to_lowercase() == "group" {
-                                    if let Some(Lexeme::By) = self.next_lexeme() {
+                                if s.to_lowercase() == "group"
+                                    && let Some(Lexeme::By) = self.next_lexeme() {
                                         self.drop_lexeme();
                                         self.drop_lexeme();
 
@@ -265,7 +264,6 @@ impl <'a> Parser<'a> {
                                         }
                                         break;
                                     }
-                                }
 
                                 self.drop_lexeme();
                                 match self.parse_root_options()? {
@@ -643,13 +641,11 @@ impl <'a> Parser<'a> {
 
         let lexeme = self.next_lexeme();
 
-        if left.is_err() {
-            if let Some(Lexeme::Operator(s)) = lexeme {
-                if s.to_lowercase() == "exists" {
+        if left.is_err()
+            && let Some(Lexeme::Operator(s)) = lexeme
+                && s.to_lowercase() == "exists" {
                     exists_present = true;
                 }
-            }
-        }
         self.drop_lexeme();
         let left = match exists_present {
             true => {
@@ -765,11 +761,10 @@ impl <'a> Parser<'a> {
             }
         }
 
-        if negate {
-            if let Ok(Some(expr)) = result {
+        if negate
+            && let Ok(Some(expr)) = result {
                 return Ok(Some(Self::negate_expr_op(&expr)));
             }
-        }
 
         result
     }
@@ -897,7 +892,7 @@ impl <'a> Parser<'a> {
                 let result = {
                     if let Some(Lexeme::Select) = self.next_lexeme() {
                         self.lexer.push_state();
-                        let mut parser = Parser::new(&mut self.lexer);
+                        let mut parser = Parser::new(self.lexer);
                         let query = parser.parse(self.debug)?;
                         self.lexer.pop_state();
                         self.push_lexeme(Lexeme::Close);
@@ -922,7 +917,7 @@ impl <'a> Parser<'a> {
                 let result = {
                     if let Some(Lexeme::Select) = self.next_lexeme() {
                         self.lexer.push_state();
-                        let mut parser = Parser::new(&mut self.lexer);
+                        let mut parser = Parser::new(self.lexer);
                         let query = parser.parse(self.debug)?;
                         self.lexer.pop_state();
                         self.push_lexeme(Lexeme::CurlyClose);
@@ -989,7 +984,7 @@ impl <'a> Parser<'a> {
 
         match lexeme {
             Some(Lexeme::Error(ref msg)) => {
-                return Err(msg.clone());
+                Err(msg.clone())
             }
             Some(Lexeme::String(ref s)) => {
                 if let Ok((field, root_alias)) = Field::parse_field(s) {
@@ -1010,16 +1005,12 @@ impl <'a> Parser<'a> {
                     return Ok(Some(expr));
                 }
 
-                if let Ok(function) = Function::from_str(s) {
-                    match self.parse_function(function) {
-                        Ok(expr) => {
-                            let mut expr = expr;
-                            expr.minus = minus;
-                            return Ok(Some(expr));
-                        }
-                        Err(_) => {}
+                if let Ok(function) = Function::from_str(s)
+                    && let Ok(expr) = self.parse_function(function) {
+                        let mut expr = expr;
+                        expr.minus = minus;
+                        return Ok(Some(expr));
                     }
-                }
 
                 let mut expr = Expr::value(s.to_string());
                 expr.minus = minus;
@@ -1983,12 +1974,11 @@ mod tests {
             if expr.subquery.is_some() {
                 *count += 1;
                 // Check if the subquery has an expression
-                if let Some(subquery) = &expr.subquery {
-                    if let Some(subquery_expr) = &subquery.expr {
+                if let Some(subquery) = &expr.subquery
+                    && let Some(subquery_expr) = &subquery.expr {
                         // Continue searching in the subquery's expression
                         find_subqueries(subquery_expr, count);
                     }
-                }
             }
 
             // Check the left branch
@@ -2200,11 +2190,10 @@ mod tests {
         fn walk(e: &Expr, c: &mut usize) {
             if e.subquery.is_some() {
                 *c += 1;
-                if let Some(subq) = &e.subquery {
-                    if let Some(subexpr) = &subq.expr {
+                if let Some(subq) = &e.subquery
+                    && let Some(subexpr) = &subq.expr {
                         walk(subexpr, c);
                     }
-                }
             }
             if let Some(left) = &e.left { walk(left, c); }
             if let Some(right) = &e.right { walk(right, c); }
@@ -2293,23 +2282,19 @@ mod tests {
             let mut found = false;
             fn walk(e: &Expr, field: Field, alias: &str, found: &mut bool) {
                 if *found { return; }
-                if let Some(f) = &e.field {
-                    if *f == field {
-                        if let Some(a) = &e.root_alias {
-                            if a == alias { *found = true; }
-                        }
-                    }
-                }
+                if let Some(f) = &e.field
+                    && *f == field
+                        && let Some(a) = &e.root_alias
+                            && a == alias { *found = true; }
                 if let Some(left) = &e.left { walk(left, field, alias, found); }
                 if let Some(right) = &e.right { walk(right, field, alias, found); }
                 if let Some(args) = &e.args {
                     for a in args { walk(a, field, alias, found); }
                 }
-                if let Some(subq) = &e.subquery {
-                    if let Some(subexpr) = &subq.expr {
+                if let Some(subq) = &e.subquery
+                    && let Some(subexpr) = &subq.expr {
                         walk(subexpr, field, alias, found);
                     }
-                }
             }
             walk(expr, field, alias, &mut found);
             found
@@ -2330,8 +2315,8 @@ mod tests {
 
         fn find_first_subquery(e: &Expr) -> Option<&Expr> {
             if e.subquery.is_some() { return Some(e); }
-            if let Some(left) = &e.left { if let Some(f) = find_first_subquery(left) { return Some(f); } }
-            if let Some(right) = &e.right { if let Some(f) = find_first_subquery(right) { return Some(f); } }
+            if let Some(left) = &e.left && let Some(f) = find_first_subquery(left) { return Some(f); }
+            if let Some(right) = &e.right && let Some(f) = find_first_subquery(right) { return Some(f); }
             if let Some(args) = &e.args { for a in args { if let Some(f) = find_first_subquery(a) { return Some(f); } } }
             None
         }

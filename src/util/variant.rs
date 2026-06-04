@@ -133,16 +133,12 @@ impl Variant {
         }
     }
 
-    pub fn to_string(&self) -> String {
-        self.string_value.to_owned()
-    }
-
     pub fn to_int(&self) -> i64 {
         match self.int_value {
             Some(i) => i,
             None => {
-                if self.float_value.is_some() {
-                    return self.float_value.unwrap() as i64;
+                if let Some(f) = self.float_value {
+                    return f as i64;
                 }
 
                 let int_value = self.string_value.parse::<i64>();
@@ -161,8 +157,8 @@ impl Variant {
     }
 
     pub fn to_float(&self) -> f64 {
-        if self.float_value.is_some() {
-            return self.float_value.unwrap();
+        if let Some(f) = self.float_value {
+            return f;
         }
 
         match self.int_value {
@@ -184,11 +180,10 @@ impl Variant {
         if let Some(value) = self.bool_value {
             return value;
         }
-        if !self.string_value.is_empty() {
-            if let Some(value) = str_to_bool(&self.string_value) {
+        if !self.string_value.is_empty()
+            && let Some(value) = str_to_bool(&self.string_value) {
                 return value;
             }
-        }
         if let Some(int_value) = self.int_value {
             int_value != 0
         } else if let Some(float_value) = self.float_value {
@@ -199,26 +194,29 @@ impl Variant {
     }
 
     pub fn to_datetime(&self) -> Result<(NaiveDateTime, NaiveDateTime), String> {
-        if self.dt_from.is_none() {
+        if let Some(dt_from) = self.dt_from {
+            Ok((dt_from, self.dt_to.unwrap()))
+        } else {
             match parse_datetime(&self.string_value) {
                 Ok((dt_from, dt_to)) => {
                     Ok((dt_from, dt_to))
                 }
                 _ => Err(String::from("Can't parse datetime: ") + &self.string_value),
             }
-        } else {
-            Ok((self.dt_from.unwrap(), self.dt_to.unwrap()))
         }
     }
 }
 
 impl Display for Variant {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
-        write!(f, "{}", self.to_string())
+        write!(f, "{}", self.string_value)
     }
 }
 
 #[cfg(test)]
+// 3.14 is used throughout as an arbitrary float test value, not as an
+// approximation of PI, so the approx_constant lint does not apply here.
+#[allow(clippy::approx_constant)]
 mod tests {
     use super::*;
     use chrono::{NaiveDate, Timelike};
@@ -332,7 +330,7 @@ mod tests {
     #[test]
     fn from_bool_true() {
         let v = Variant::from_bool(true);
-        assert_eq!(v.to_bool(), true);
+        assert!(v.to_bool());
         assert_eq!(v.to_string(), "true");
         assert_eq!(v.to_int(), 1);
         assert!(matches!(v.get_type(), VariantType::Bool));
@@ -341,7 +339,7 @@ mod tests {
     #[test]
     fn from_bool_false() {
         let v = Variant::from_bool(false);
-        assert_eq!(v.to_bool(), false);
+        assert!(!v.to_bool());
         assert_eq!(v.to_string(), "false");
         assert_eq!(v.to_int(), 0);
     }
@@ -386,7 +384,7 @@ mod tests {
     fn to_bool_from_string_true_variants() {
         for val in &["true", "1", "yes", "y", "on"] {
             let v = Variant::from_string(&String::from(*val));
-            assert_eq!(v.to_bool(), true, "expected true for '{}'", val);
+            assert!(v.to_bool(), "expected true for '{}'", val);
         }
     }
 
@@ -394,52 +392,52 @@ mod tests {
     fn to_bool_from_string_false_variants() {
         for val in &["false", "0", "no", "n", "off"] {
             let v = Variant::from_string(&String::from(*val));
-            assert_eq!(v.to_bool(), false, "expected false for '{}'", val);
+            assert!(!v.to_bool(), "expected false for '{}'", val);
         }
     }
 
     #[test]
     fn to_bool_from_string_unknown() {
         let v = Variant::from_string(&String::from("maybe"));
-        assert_eq!(v.to_bool(), false);
+        assert!(!v.to_bool());
     }
 
     #[test]
     fn to_bool_from_int_one() {
         let v = Variant::from_int(1);
-        assert_eq!(v.to_bool(), true);
+        assert!(v.to_bool());
     }
 
     #[test]
     fn to_bool_from_int_zero() {
         let v = Variant::from_int(0);
-        assert_eq!(v.to_bool(), false);
+        assert!(!v.to_bool());
     }
 
     #[test]
     fn to_bool_from_int_other() {
         let v = Variant::from_int(42);
-        assert_eq!(v.to_bool(), true, "non-zero int should be truthy");
+        assert!(v.to_bool(), "non-zero int should be truthy");
         let v = Variant::from_int(-1);
-        assert_eq!(v.to_bool(), true, "negative int should be truthy");
+        assert!(v.to_bool(), "negative int should be truthy");
     }
 
     #[test]
     fn to_bool_from_float_one() {
         let v = Variant::from_float(1.0);
-        assert_eq!(v.to_bool(), true);
+        assert!(v.to_bool());
     }
 
     #[test]
     fn to_bool_from_float_zero() {
         let v = Variant::from_float(0.0);
-        assert_eq!(v.to_bool(), false);
+        assert!(!v.to_bool());
     }
 
     #[test]
     fn to_bool_from_float_nonzero() {
         let v = Variant::from_float(3.14);
-        assert_eq!(v.to_bool(), true, "non-zero float should be truthy");
+        assert!(v.to_bool(), "non-zero float should be truthy");
     }
 
     #[test]
@@ -458,7 +456,7 @@ mod tests {
     #[test]
     fn empty_variant_to_bool() {
         let v = Variant::empty(VariantType::Bool);
-        assert_eq!(v.to_bool(), false);
+        assert!(!v.to_bool());
     }
 
     #[test]

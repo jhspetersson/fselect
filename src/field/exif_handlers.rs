@@ -12,43 +12,38 @@ pub fn handle_exif_datetime(ctx: &mut FieldContext, field: &Field) -> Result<Var
         _ => return Err(SearchError::fatal(format!("Unexpected field in handle_exif_datetime: {:?}", field))),
     };
 
-    if let Some(exif_info) = ctx.fms.get_exif_metadata() {
-        if let Some(exif_value) = exif_info.get(key) {
-            if let Ok(exif_datetime) = parse_datetime(exif_value) {
+    if let Some(exif_info) = ctx.fms.get_exif_metadata()
+        && let Some(exif_value) = exif_info.get(key)
+            && let Ok(exif_datetime) = parse_datetime(exif_value) {
                 return Ok(Variant::from_datetime(exif_datetime.0));
             }
-        }
-    }
     Ok(Variant::empty(VariantType::String))
 }
 
 pub fn handle_exif_gps_altitude(ctx: &mut FieldContext) -> Result<Variant, SearchError> {
     ctx.fms.update_exif_metadata(ctx.entry);
-    if let Some(exif_info) = ctx.fms.get_exif_metadata() {
-        if let Some(exif_value) = exif_info.get("__Alt") {
+    if let Some(exif_info) = ctx.fms.get_exif_metadata()
+        && let Some(exif_value) = exif_info.get("__Alt") {
             return Ok(Variant::from_float(exif_value.parse().unwrap_or(0.0)));
         }
-    }
     Ok(Variant::empty(VariantType::String))
 }
 
 pub fn handle_exif_gps_latitude(ctx: &mut FieldContext) -> Result<Variant, SearchError> {
     ctx.fms.update_exif_metadata(ctx.entry);
-    if let Some(exif_info) = ctx.fms.get_exif_metadata() {
-        if let Some(exif_value) = exif_info.get("__Lat") {
+    if let Some(exif_info) = ctx.fms.get_exif_metadata()
+        && let Some(exif_value) = exif_info.get("__Lat") {
             return Ok(Variant::from_float(exif_value.parse().unwrap_or(0.0)));
         }
-    }
     Ok(Variant::empty(VariantType::String))
 }
 
 pub fn handle_exif_gps_longitude(ctx: &mut FieldContext) -> Result<Variant, SearchError> {
     ctx.fms.update_exif_metadata(ctx.entry);
-    if let Some(exif_info) = ctx.fms.get_exif_metadata() {
-        if let Some(exif_value) = exif_info.get("__Lng") {
+    if let Some(exif_info) = ctx.fms.get_exif_metadata()
+        && let Some(exif_value) = exif_info.get("__Lng") {
             return Ok(Variant::from_float(exif_value.parse().unwrap_or(0.0)));
         }
-    }
     Ok(Variant::empty(VariantType::String))
 }
 

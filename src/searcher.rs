@@ -114,20 +114,16 @@ fn expr_references_external_alias(expr: &Option<Expr>, own: &HashSet<String>) ->
 }
 
 fn expr_walk_external_alias(expr: &Expr, own: &HashSet<String>) -> bool {
-    if let Some(ref alias) = expr.root_alias {
-        if !own.contains(alias) {
+    if let Some(ref alias) = expr.root_alias
+        && !own.contains(alias) {
             return true;
         }
-    }
-    if let Some(ref left) = expr.left {
-        if expr_walk_external_alias(left, own) { return true; }
-    }
-    if let Some(ref right) = expr.right {
-        if expr_walk_external_alias(right, own) { return true; }
-    }
-    if let Some(ref args) = expr.args {
-        if args.iter().any(|a| expr_walk_external_alias(a, own)) { return true; }
-    }
+    if let Some(ref left) = expr.left
+        && expr_walk_external_alias(left, own) { return true; }
+    if let Some(ref right) = expr.right
+        && expr_walk_external_alias(right, own) { return true; }
+    if let Some(ref args) = expr.args
+        && args.iter().any(|a| expr_walk_external_alias(a, own)) { return true; }
     // Nested subqueries: descend so a doubly-nested correlated reference is
     // also detected.
     if let Some(ref sub) = expr.subquery {
@@ -137,9 +133,8 @@ fn expr_walk_external_alias(expr: &Expr, own: &HashSet<String>) -> bool {
             .filter_map(|r| r.options.alias.clone())
             .chain(own.iter().cloned())
             .collect();
-        if let Some(ref sub_expr) = sub.expr {
-            if expr_walk_external_alias(sub_expr, &nested_own) { return true; }
-        }
+        if let Some(ref sub_expr) = sub.expr
+            && expr_walk_external_alias(sub_expr, &nested_own) { return true; }
     }
     false
 }
@@ -221,11 +216,10 @@ impl<'a> Searcher<'a> {
         // Pre-flight: catch unparseable date/datetime literals once, up front,
         // so a typo like `where modified = 'not-a-date'` fails immediately
         // with a single fatal error instead of degrading per file scanned.
-        if let Some(ref where_expr) = self.query.expr {
-            if let Err(msg) = where_expr.validate_datetime_literals() {
+        if let Some(ref where_expr) = self.query.expr
+            && let Err(msg) = where_expr.validate_datetime_literals() {
                 return Err(SearchError::fatal(msg).with_source("where"));
             }
-        }
 
         let current_dir = std::env::current_dir()?;
 
@@ -279,8 +273,8 @@ impl<'a> Searcher<'a> {
                             match path.read_dir() {
                                 Ok(read_result) => {
                                     for entry in read_result.flatten() {
-                                        if let Ok(file_type) = entry.file_type() {
-                                            if file_type.is_dir()
+                                        if let Ok(file_type) = entry.file_type()
+                                            && file_type.is_dir()
                                                 && rx.is_match(
                                                     entry.file_name().to_string_lossy().as_ref(),
                                                 )
@@ -298,7 +292,6 @@ impl<'a> Searcher<'a> {
                                                     );
                                                 }
                                             }
-                                        }
                                     }
                                 }
                                 Err(e) => {
@@ -365,11 +358,10 @@ impl<'a> Searcher<'a> {
                 self.current_traversal_mode = root.options.traversal;
 
                 let result = self.visit_subquery_paths(paths);
-                if let Err(err) = result {
-                    if err.is_fatal() {
+                if let Err(err) = result
+                    && err.is_fatal() {
                         return Err(err);
                     }
-                }
                 continue;
             }
 
@@ -413,11 +405,10 @@ impl<'a> Searcher<'a> {
                 true,
             );
 
-            if let Err(err) = result {
-                if err.is_fatal() {
+            if let Err(err) = result
+                && err.is_fatal() {
                     return Err(err);
                 }
-            }
         }
 
         let compute_time = std::time::Instant::now();
@@ -460,7 +451,7 @@ impl<'a> Searcher<'a> {
                     }
                     for column_expr in &self.query.fields {
                         if let Ok(value) = self.get_column_expr_value(
-                            None, &None, &Path::new(""), &mut file_map, Some(group_acc), column_expr,
+                            None, &None, Path::new(""), &mut file_map, Some(group_acc), column_expr,
                         ) {
                             let field_name = column_expr.to_string().to_lowercase();
                             items.push((field_name, value.to_string()));
@@ -505,7 +496,7 @@ impl<'a> Searcher<'a> {
                     if let Ok(value) = self.get_column_expr_value(
                         None,
                         &None,
-                        &Path::new(""),
+                        Path::new(""),
                         &mut HashMap::new(),
                         Some(ungrouped_acc),
                         column_expr
@@ -599,17 +590,13 @@ impl<'a> Searcher<'a> {
                             break;
                         }
                     }
-                    if let Some(entry) = matched_entry {
-                        match self.check_file(&entry, &parent, &None, None) {
-                            Err(err) => {
-                                if err.is_fatal() {
-                                    return Err(err);
-                                }
-                                self.handle_nonfatal_error(err, &path);
+                    if let Some(entry) = matched_entry
+                        && let Err(err) = self.check_file(&entry, &parent, &None, None) {
+                            if err.is_fatal() {
+                                return Err(err);
                             }
-                            Ok(()) => {}
+                            self.handle_nonfatal_error(err, &path);
                         }
-                    }
                 }
                 Err(err) => {
                     self.error_count += 1;
@@ -624,11 +611,10 @@ impl<'a> Searcher<'a> {
         let query_str = format!("{:?}", query);
 
         let ok_to_cache = is_subquery_cacheable(&query);
-        if ok_to_cache {
-            if let Some(cached) = self.subquery_cache.get(&query_str) {
+        if ok_to_cache
+            && let Some(cached) = self.subquery_cache.get(&query_str) {
                 return cached.clone();
             }
-        }
 
         let mut sub_searcher = Searcher::new_with_context(
             &query,
@@ -782,22 +768,18 @@ impl<'a> Searcher<'a> {
 
                                 if self.current_min_depth == 0 || depth >= self.current_min_depth {
                                     let checked = self.check_file(&entry, &root_dir, &None, file_type_hint);
-                                    match checked {
-                                        Err(err) => {
-                                            if err.is_fatal() {
-                                                return Err(err);
-                                            }
-                                            self.handle_nonfatal_error(err, &path);
-                                            continue;
+                                    if let Err(err) = checked {
+                                        if err.is_fatal() {
+                                            return Err(err);
                                         }
-                                        Ok(()) => {}
+                                        self.handle_nonfatal_error(err, &path);
+                                        continue;
                                     }
 
                                     if self.current_search_archives
                                         && self.is_zip_archive(&path.to_string_lossy())
-                                    {
-                                        if let Ok(file) = fs::File::open(&path) {
-                                            if let Ok(mut archive) = zip::ZipArchive::new(file) {
+                                        && let Ok(file) = fs::File::open(&path)
+                                            && let Ok(mut archive) = zip::ZipArchive::new(file) {
                                                 for i in 0..archive.len() {
                                                     if !self.is_buffered() && self.query.limit > 0
                                                         && self.query.limit <= self.found
@@ -807,21 +789,16 @@ impl<'a> Searcher<'a> {
 
                                                     if let Ok(afile) = archive.by_index(i) {
                                                         let file_info = to_file_info(&afile);
-                                                        match self.check_file(&entry, &root_dir, &Some(file_info), None) {
-                                                            Err(err) => {
-                                                                if err.is_fatal() {
-                                                                    return Err(err);
-                                                                }
-                                                                self.handle_nonfatal_error(err, &path);
-                                                                continue;
+                                                        if let Err(err) = self.check_file(&entry, &root_dir, &Some(file_info), None) {
+                                                            if err.is_fatal() {
+                                                                return Err(err);
                                                             }
-                                                            Ok(()) => {}
+                                                            self.handle_nonfatal_error(err, &path);
+                                                            continue;
                                                         }
                                                     }
                                                 }
                                             }
-                                        }
-                                    }
                                 }
 
                                 // Recursively visit subdirectories if we're not too deep
@@ -987,7 +964,7 @@ impl<'a> Searcher<'a> {
             if should_update_context {
                 let mut context = self.record_context.borrow_mut();
                 let context_key = self.current_alias.clone().unwrap_or_else(|| String::from(""));
-                let context_entry = context.entry(context_key).or_insert(HashMap::new());
+                let context_entry = context.entry(context_key).or_default();
                 let entry_key = column_expr_str.split('.').nth(1).unwrap().to_string();
                 context_entry.insert(entry_key, file_map[&column_expr_str].clone());
             }
@@ -1014,12 +991,12 @@ impl<'a> Searcher<'a> {
         }
 
         if let Some(ref field) = column_expr.field {
-            if entry.is_some() {
-                let result = self.get_field_value(entry.unwrap(), file_info, root_path, field).unwrap_or(Variant::empty(VariantType::String));
+            if let Some(entry) = entry {
+                let result = self.get_field_value(entry, file_info, root_path, field).unwrap_or(Variant::empty(VariantType::String));
                 file_map.insert(column_expr_str, result.to_string());
                 let mut context = self.record_context.borrow_mut();
                 let context_key = self.current_alias.clone().unwrap_or_else(|| String::from(""));
-                let context_entry = context.entry(context_key).or_insert(HashMap::new());
+                let context_entry = context.entry(context_key).or_default();
                 let entry_key = if let Some(alias) = column_expr.alias.clone() { alias } else { field.to_string() };
                 context_entry.insert(entry_key, result.to_string());
                 return Ok(result);
@@ -1031,7 +1008,7 @@ impl<'a> Searcher<'a> {
         }
 
         if let Some(ref value) = column_expr.val {
-            return Ok(Variant::from_signed_string(&value, column_expr.minus));
+            return Ok(Variant::from_signed_string(value, column_expr.minus));
         }
 
         let result;
@@ -1166,7 +1143,7 @@ impl<'a> Searcher<'a> {
                 self.subquery_required_fields = Some(required_fields);
 
                 let mut context = self.record_context.borrow_mut();
-                let context_entry = context.entry(current_alias.to_string()).or_insert(HashMap::new());
+                let context_entry = context.entry(current_alias.to_string()).or_default();
                 for (field, field_value) in field_values {
                     context_entry.insert(field, field_value.to_string());
                 }
@@ -1194,16 +1171,14 @@ impl<'a> Searcher<'a> {
             // Collect keys first to avoid cloning query.fields on every file.
             let aggregate_inner_exprs: Vec<_> = self.query.fields.iter()
                 .filter_map(|column_expr| {
-                    if let Some(ref func) = column_expr.function {
-                        if func.is_aggregate_function() {
-                            if let Some(ref left) = column_expr.left {
+                    if let Some(ref func) = column_expr.function
+                        && func.is_aggregate_function()
+                            && let Some(ref left) = column_expr.left {
                                 let left_key = left.to_string();
                                 if !file_map.contains_key(&left_key) {
                                     return Some(left.clone());
                                 }
                             }
-                        }
-                    }
                     None
                 })
                 .collect();
@@ -1314,6 +1289,7 @@ impl<'a> Searcher<'a> {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn check_in_list(
         &mut self,
         expr: &Expr,
@@ -1564,9 +1540,9 @@ impl<'a> Searcher<'a> {
                     match op {
                         Op::Eq | Op::Eeq => field_value.to_bool() == val,
                         Op::Ne | Op::Ene => field_value.to_bool() != val,
-                        Op::Gt => field_value.to_bool() > val,
+                        Op::Gt => field_value.to_bool() & !val,
                         Op::Gte => field_value.to_bool() >= val,
-                        Op::Lt => field_value.to_bool() < val,
+                        Op::Lt => !field_value.to_bool() & val,
                         Op::Lte => field_value.to_bool() <= val,
                         Op::In => self.check_in_list(expr, entry, file_info, root_path, &mut arg_map, &field_value, false)?,
                         Op::NotIn => self.check_in_list(expr, entry, file_info, root_path, &mut arg_map, &field_value, true)?,

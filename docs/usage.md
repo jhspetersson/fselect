@@ -294,8 +294,8 @@ Supported platforms are Linux, macOS, FreeBSD, and NetBSD.
 | HAS_XATTR                    | Check if xattr exists                                                | `select "name, has_xattr(user.test) from /home/user"`               |
 | XATTR                        | Get value of xattr                                                   | `select "name, xattr(user.test) from /home/user"`                   |
 | HAS_EXTATTR                  | Check if a specific extended file attribute flag is set (Linux and Windows) | `select "name from / where has_extattr('i')"`                |
-| HAS_ACL_ENTRY                | Check if a specific POSIX ACL entry exists (Linux only)              | `select "name from /data where has_acl_entry('user:john')"`         |
-| ACL_ENTRY                    | Get permissions of a specific POSIX ACL entry (Linux only)           | `select "name, acl_entry('group:staff') from /data"`                |
+| HAS_ACL_ENTRY                | Check if a specific ACL entry exists (Linux and Windows)             | `select "name from /data where has_acl_entry('user:john')"`         |
+| ACL_ENTRY                    | Get permissions of a specific ACL entry (Linux and Windows)         | `select "name, acl_entry('group:staff') from /data"`                |
 | HAS_DEFAULT_ACL_ENTRY        | Check if a specific default POSIX ACL entry exists (Linux only)      | `select "name from /data where has_default_acl_entry('user:john')"` |
 | DEFAULT_ACL_ENTRY            | Get permissions of a specific default POSIX ACL entry (Linux only)   | `select "name, default_acl_entry('group:staff') from /data"`        |
 | HAS_CAPABILITY or HAS_CAP    | Check if given Linux capability exists for the file                  | `select "name, has_cap('cap_bpf') from /home/user"`                 |
@@ -343,8 +343,13 @@ The `acl` field returns all explicit ACEs as comma-separated entries in the form
 
 Example output: `allow:BUILTIN\Administrators:full,allow:NT AUTHORITY\SYSTEM:full,allow:BUILTIN\Users:rx`
 
+Use `has_acl_entry` and `acl_entry` to query a single trustee. The argument is matched against the
+trustee either as a full `DOMAIN\Name` or as a bare account name, case-insensitively:
+
     fselect name from C:\ where has_acl = true
     fselect "name, acl from C:\Users where has_acl = true"
+    fselect "name from C:\data where has_acl_entry('Administrators')"
+    fselect "name, acl_entry('BUILTIN\Users') from C:\data"
 
 #### Extended file attributes
 

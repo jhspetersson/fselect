@@ -31,9 +31,10 @@ More is under way!
 * Install [Rust with Cargo](https://www.rust-lang.org/en-US/install.html) and its dependencies to build a binary
 * Run `cargo install fselect`
 
-On Windows you can optionally build with [voidtools *Everything*](https://www.voidtools.com/)
-integration for fast, index-backed searches: `cargo install fselect --features everything`
-(then pass `--everything`). See the [usage guide](docs/usage.md#everything-integration-windows) for details.
+You can optionally build with fast, index-backed search support: [voidtools *Everything*](https://www.voidtools.com/)
+on Windows (`--features everything`, then pass `--everything`) or [*plocate*](https://plocate.sesse.net/)
+on Linux (`--features plocate`, then pass `--plocate`). See the
+[usage guide](docs/usage.md#index-backed-search-everything--plocate) for details.
 
 #### Debian/Ubuntu
 

@@ -139,17 +139,22 @@ fn expr_walk_external_alias(expr: &Expr, own: &HashSet<String>) -> bool {
     false
 }
 
-#[cfg(all(windows, feature = "everything"))]
-fn everything_depth(path: &Path, root_prefix: &str) -> Option<u32> {
+#[cfg(any(all(windows, feature = "everything"), all(unix, feature = "plocate")))]
+fn external_index_depth(path: &Path, root_prefix: &str) -> Option<u32> {
     let s = path.to_string_lossy();
-    if s.len() < root_prefix.len() || !s[..root_prefix.len()].eq_ignore_ascii_case(root_prefix) {
+    let under = if cfg!(windows) {
+        s.len() >= root_prefix.len() && s[..root_prefix.len()].eq_ignore_ascii_case(root_prefix)
+    } else {
+        s.starts_with(root_prefix)
+    };
+    if !under {
         return None;
     }
     let rel = &s[root_prefix.len()..];
     if rel.is_empty() {
         return None;
     }
-    Some(rel.matches('\\').count() as u32 + 1)
+    Some(rel.matches(std::path::MAIN_SEPARATOR).count() as u32 + 1)
 }
 
 impl<'a> Searcher<'a> {
@@ -423,6 +428,19 @@ impl<'a> Searcher<'a> {
                 }
             }
 
+            #[cfg(all(unix, feature = "plocate"))]
+            {
+                if self.config.plocate.unwrap_or(false)
+                    && !self.current_search_archives
+                    && !self.current_apply_gitignore
+                    && !self.current_apply_hgignore
+                    && !self.current_apply_dockerignore
+                    && self.try_visit_with_plocate(&self.current_root_dir.clone())?
+                {
+                    continue;
+                }
+            }
+
             let result = self.visit_dir(
                 &self.current_root_dir.clone(),
                 0,
@@ -675,7 +693,6 @@ impl<'a> Searcher<'a> {
 
         let paths = match crate::util::everything::query_descendants(&abs) {
             Ok(paths) => paths,
-            // DLL missing or service not running: fall back to traversal.
             Err(err) => {
                 if self.config.debug {
                     use crate::util::everything::EverythingError;
@@ -689,30 +706,68 @@ impl<'a> Searcher<'a> {
             }
         };
 
+        self.visit_external_index_results(root_dir, abs, paths)?;
+        Ok(true)
+    }
+
+    #[cfg(all(unix, feature = "plocate"))]
+    fn try_visit_with_plocate(&mut self, root_dir: &Path) -> Result<bool, SearchError> {
+        let abs = match canonical_path(&root_dir.to_path_buf()) {
+            Ok(p) => p,
+            Err(_) => return Ok(false),
+        };
+
+        let paths = match crate::util::plocate::query_descendants(&abs) {
+            Ok(paths) => paths,
+            Err(err) => {
+                if self.config.debug {
+                    use crate::util::plocate::PlocateError;
+                    let reason = match err {
+                        PlocateError::Spawn => String::from("plocate not found"),
+                        PlocateError::Failed(code) => match code {
+                            Some(code) => format!("exited with code {}", code),
+                            None => String::from("terminated by signal"),
+                        },
+                    };
+                    eprintln!("plocate unavailable: {}; falling back to traversal", reason);
+                }
+                return Ok(false);
+            }
+        };
+
+        self.visit_external_index_results(root_dir, abs, paths)?;
+        Ok(true)
+    }
+
+    #[cfg(any(all(windows, feature = "everything"), all(unix, feature = "plocate")))]
+    fn visit_external_index_results(
+        &mut self,
+        root_dir: &Path,
+        abs: String,
+        paths: Vec<PathBuf>,
+    ) -> Result<(), SearchError> {
         let mut prefix = abs;
-        if !prefix.ends_with('\\') {
-            prefix.push('\\');
+        if !prefix.ends_with(std::path::MAIN_SEPARATOR) {
+            prefix.push(std::path::MAIN_SEPARATOR);
         }
 
         let min_depth = self.current_min_depth;
         let max_depth = self.current_max_depth;
-        let kept: Vec<PathBuf> = paths
+        let kept = paths
             .into_iter()
-            .filter(|path| match everything_depth(path, &prefix) {
+            .filter(|path| match external_index_depth(path, &prefix) {
                 Some(depth) => {
                     (min_depth == 0 || depth >= min_depth)
                         && (max_depth == 0 || depth <= max_depth)
                 }
                 None => false,
-            })
-            .collect();
+            });
 
-        self.visit_everything_entries(root_dir, kept.into_iter())?;
-        Ok(true)
+        self.visit_external_index_entries(root_dir, kept)
     }
 
-    #[cfg(all(windows, feature = "everything"))]
-    fn visit_everything_entries(
+    #[cfg(any(all(windows, feature = "everything"), all(unix, feature = "plocate")))]
+    fn visit_external_index_entries(
         &mut self,
         root_dir: &Path,
         paths: impl Iterator<Item = PathBuf>,

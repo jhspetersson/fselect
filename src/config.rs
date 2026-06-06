@@ -32,10 +32,10 @@ pub struct Config {
     pub default_file_size_format: Option<String>,
     pub us_dates: Option<bool>,
     pub check_for_updates: Option<bool>,
-    /// Use the voidtools *Everything* engine as the file-name source on Windows
-    /// (requires the `everything` build feature). Defaults to off.
     #[serde(default)]
     pub everything: Option<bool>,
+    #[serde(default)]
+    pub plocate: Option<bool>,
     #[serde(skip_serializing, default = "get_false")]
     pub debug: bool,
     #[serde(skip)]
@@ -165,6 +165,7 @@ impl Config {
             us_dates: Some(false),
             check_for_updates: Some(false),
             everything: Some(false),
+            plocate: Some(false),
             debug: false,
             save: true,
         }

@@ -990,30 +990,42 @@ source ~/.bashrc
 | `--nocolor` or `--no-color` or `/nocolor` | Disable colors                               |
 | `--no-errors`                             | Suppress error reporting                     |
 | `--everything`                            | Use the *Everything* index as the file source (Windows, requires the `everything` build feature) |
+| `--plocate`                               | Use the *plocate* index as the file source (Linux, requires the `plocate` build feature) |
 | `--help` or `-h` or `/?` or `/h`          | Show help and exit                           |
 
-### Everything integration (Windows)
+### Index-backed search (Everything / plocate)
 
-When built with the optional `everything` Cargo feature, **fselect** can use the
-[voidtools *Everything*](https://www.voidtools.com/) search engine as an alternate, index-backed
-source of file and directory names instead of walking the filesystem. Because *Everything* keeps a
-live index of the NTFS volumes, enumerating a large directory tree is typically much faster.
+**fselect** can optionally use an external file-name index as the source of candidate paths instead
+of walking the filesystem. Because these indexes are prebuilt, enumerating a large directory tree is
+typically much faster. Two backends are supported, each behind an opt-in build feature:
 
-    cargo build --release --features everything
-    fselect --everything "name, size from C:\Users where size gt 100mb"
+- **Everything** (Windows) — the [voidtools *Everything*](https://www.voidtools.com/) engine, via its
+  client DLL. Enable with the `everything` feature and the `--everything` flag.
+- **plocate** (Linux) — the [`plocate`](https://plocate.sesse.net/) `locate` replacement, invoked as a
+  subprocess. Enable with the `plocate` feature and the `--plocate` flag.
 
-Notes and limitations:
+```
+# Windows
+cargo build --release --features everything
+fselect --everything "name, size from C:\Users where size gt 100mb"
 
-- Requires *Everything* to be installed and running. If the SDK DLL (`Everything64.dll`) cannot be
-  loaded or the service is not running, **fselect** transparently falls back to normal traversal.
-- It can also be enabled via the configuration file with `everything = true`.
+# Linux
+cargo build --release --features plocate
+fselect --plocate "name, size from /home where size gt 100mb"
+```
+
+Both backends behave the same way:
+
+- They can also be enabled via the configuration file (`everything = true` / `plocate = true`).
+- If the backend is unavailable — *Everything* not running / DLL missing, or the `plocate` binary or
+  its database missing — **fselect** transparently falls back to normal traversal.
 - `mindepth`/`maxdepth` (and `depth`) constraints are applied to the index results.
 - The `where`/`order by`/`select` logic, functions, and all fields work exactly as with traversal —
-  *Everything* only supplies the candidate paths.
+  the index only supplies the candidate paths.
 - Options that require reading the filesystem structure — searching `archives`, or applying
   `.gitignore`/`.hgignore`/`.dockerignore` filters — automatically use normal traversal instead.
-- Locations that *Everything* does not index (for example, some network drives) will return no
-  results in this mode.
+- Locations the index does not cover (for example, some network drives, or a stale `plocate`
+  database) will return no results in this mode.
 
 ### Interactive mode
 

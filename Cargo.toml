@@ -19,6 +19,7 @@ update-notifications = ["dep:update-informer"]
 users = ["dep:uzers"]
 interactive = ["dep:rustyline", "dep:directories"]
 everything = []
+plocate = []
 
 [dependencies]
 bytecount = "0.6"

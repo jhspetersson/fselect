@@ -151,6 +151,8 @@ fn main() -> ExitCode {
             set_us_dates(true);
         } else if first_arg.starts_with("--everything") {
             config.everything = Some(true);
+        } else if first_arg.starts_with("--plocate") {
+            config.plocate = Some(true);
         } else {
             break;
         }

@@ -14,6 +14,8 @@ pub(crate) mod win_xattr;
 pub(crate) mod datetime;
 #[cfg(all(windows, feature = "everything"))]
 pub(crate) mod everything;
+#[cfg(all(unix, feature = "plocate"))]
+pub(crate) mod plocate;
 pub mod dimensions;
 pub mod duration;
 pub(crate) mod error;

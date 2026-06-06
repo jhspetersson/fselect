@@ -22,6 +22,7 @@ Find files with SQL-like queries.
 [Configuration file](#configuration-file)  
 [Bash completion](#bash-completion)  
 [Command-line arguments](#command-line-arguments)  
+[Index-backed search](#index-backed-search-everything--plocate)
 [Interactive mode](#interactive-mode)  
 [Environment variables](#environment-variables)  
 [Exit values](#exit-values)

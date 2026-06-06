@@ -20,6 +20,7 @@ While it doesn't tend to fully replace traditional `find` and `ls`, **fselect** 
 * search by MIME type
 * shortcuts to common file types
 * [interactive mode](docs/usage.md#interactive-mode)
+* support for `plocate` and `Everything` indexes for lightning-fast search
 * various output formatting (CSV, JSON, and others)
 
 More is under way!

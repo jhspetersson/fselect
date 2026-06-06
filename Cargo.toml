@@ -84,4 +84,5 @@ extended-description = """\
 * search by MIME type
 * shortcuts to common file types
 * interactive mode
+* support for plocate and Everything indexes for lightning-fast search
 * various output formatting (CSV, JSON, and others)"""

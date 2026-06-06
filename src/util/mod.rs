@@ -12,6 +12,8 @@ pub(crate) mod win_attrs;
 #[cfg(windows)]
 pub(crate) mod win_xattr;
 pub(crate) mod datetime;
+#[cfg(all(windows, feature = "everything"))]
+pub(crate) mod everything;
 pub mod dimensions;
 pub mod duration;
 pub(crate) mod error;

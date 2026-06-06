@@ -147,8 +147,10 @@ fn main() -> ExitCode {
             args.remove(0);
         } else if first_arg.starts_with("--no-error") {
             set_no_errors(true);
-        } else if first_arg.starts_with("--us-date") { 
+        } else if first_arg.starts_with("--us-date") {
             set_us_dates(true);
+        } else if first_arg.starts_with("--everything") {
+            config.everything = Some(true);
         } else {
             break;
         }

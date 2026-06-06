@@ -119,8 +119,8 @@ Subqueries have only limited support: in `IN` / `EXISTS` predicates, and as the 
 | `has_extattrs`                               | Returns a boolean signifying whether the file has any extended file attributes set                                            | Available only on Linux and Windows                           |
 | `acl`                                        | Returns all ACL entries in standard form (POSIX on Linux, DACL on Windows)                                                    | Available only on Linux and Windows                           |
 | `has_acl`                                    | Returns a boolean signifying whether the file has POSIX ACL entries beyond standard Unix permissions or Windows explicit ACEs | Available only on Linux and Windows                           |
-| `default_acl`                                | Returns all default POSIX ACL entries in standard form                                                                        | Available only on Linux                                       |
-| `has_default_acl`                            | Returns a boolean signifying whether the directory has default POSIX ACL entries                                              | Available only on Linux                                       |
+| `default_acl`                                | Returns all default ACL entries in standard form (default POSIX ACLs on Linux, inheritable ACEs on Windows)                  | Available only on Linux and Windows                           |
+| `has_default_acl`                            | Returns a boolean signifying whether the directory has default ACL entries (default POSIX ACLs on Linux, inheritable ACEs on Windows) | Available only on Linux and Windows                   |
 | `has_capabilities` or `has_caps`             | Returns a boolean signifying whether the file has capabilities                                                                | Available only on Linux                                       |
 | `capabilities` or `caps`                     | Returns a string describing Linux capabilities assigned to a file                                                             | Available only on Linux                                       |
 | `device`                                     | Returns the code of device the file is stored on                                                                              | Available only on Unix                                        |
@@ -296,8 +296,8 @@ Supported platforms are Linux, macOS, FreeBSD, and NetBSD.
 | HAS_EXTATTR                  | Check if a specific extended file attribute flag is set (Linux and Windows) | `select "name from / where has_extattr('i')"`                |
 | HAS_ACL_ENTRY                | Check if a specific ACL entry exists (Linux and Windows)             | `select "name from /data where has_acl_entry('user:john')"`         |
 | ACL_ENTRY                    | Get permissions of a specific ACL entry (Linux and Windows)         | `select "name, acl_entry('group:staff') from /data"`                |
-| HAS_DEFAULT_ACL_ENTRY        | Check if a specific default POSIX ACL entry exists (Linux only)      | `select "name from /data where has_default_acl_entry('user:john')"` |
-| DEFAULT_ACL_ENTRY            | Get permissions of a specific default POSIX ACL entry (Linux only)   | `select "name, default_acl_entry('group:staff') from /data"`        |
+| HAS_DEFAULT_ACL_ENTRY        | Check if a specific default ACL entry exists (Linux and Windows)    | `select "name from /data where has_default_acl_entry('user:john')"` |
+| DEFAULT_ACL_ENTRY            | Get permissions of a specific default ACL entry (Linux and Windows) | `select "name, default_acl_entry('group:staff') from /data"`        |
 | HAS_CAPABILITY or HAS_CAP    | Check if given Linux capability exists for the file                  | `select "name, has_cap('cap_bpf') from /home/user"`                 |
 
 #### ACLs
@@ -343,11 +343,17 @@ The `acl` field returns all explicit ACEs as comma-separated entries in the form
 
 Example output: `allow:BUILTIN\Administrators:full,allow:NT AUTHORITY\SYSTEM:full,allow:BUILTIN\Users:rx`
 
-Use `has_acl_entry` and `acl_entry` to query a single trustee. The argument is matched against the
-trustee either as a full `DOMAIN\Name` or as a bare account name, case-insensitively:
+The `default_acl` and `has_default_acl` fields report a directory's *inheritable* ACEs (those
+carrying the object- or container-inherit flag), which are the Windows analogue of POSIX default
+ACLs — the entries that propagate to newly created child objects.
+
+Use `has_acl_entry` and `acl_entry` (and their `default_acl_entry` counterparts) to query a
+single trustee. The argument is matched against the trustee either as a full `DOMAIN\Name` or as
+a bare account name, case-insensitively:
 
     fselect name from C:\ where has_acl = true
     fselect "name, acl from C:\Users where has_acl = true"
+    fselect "name, default_acl from C:\Windows where is_dir = true"
     fselect "name from C:\data where has_acl_entry('Administrators')"
     fselect "name, acl_entry('BUILTIN\Users') from C:\data"
 

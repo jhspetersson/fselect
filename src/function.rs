@@ -884,6 +884,18 @@ pub fn get_value(
 
             Ok(Variant::empty(VariantType::Bool))
         }
+        #[cfg(windows)]
+        Function::HasDefaultAclEntry => {
+            if let Some(entry) = entry
+                && entry.path().is_dir() {
+                    return Ok(Variant::from_bool(
+                        crate::util::win_acl::find_default_acl_entry(&entry.path(), &function_arg)
+                            .is_some(),
+                    ));
+                }
+
+            Ok(Variant::empty(VariantType::Bool))
+        }
         #[cfg(target_os = "linux")]
         Function::DefaultAclEntry => {
             if let Some(entry) = entry {
@@ -899,6 +911,18 @@ pub fn get_value(
                     }
                 }
             }
+
+            Ok(Variant::empty(VariantType::String))
+        }
+        #[cfg(windows)]
+        Function::DefaultAclEntry => {
+            if let Some(entry) = entry
+                && entry.path().is_dir()
+                && let Some(acl_entry) =
+                    crate::util::win_acl::find_default_acl_entry(&entry.path(), &function_arg)
+                {
+                    return Ok(Variant::from_string(&acl_entry));
+                }
 
             Ok(Variant::empty(VariantType::String))
         }
@@ -1395,14 +1419,14 @@ functions! {
         @weight = 2
         @group = "Xattr"
         @description = "Check if a specific default POSIX ACL entry exists"
-        #[cfg(target_os = "linux")]
+        #[cfg(any(target_os = "linux", windows))]
         HasDefaultAclEntry,
 
         #[text = ["default_acl_entry"]]
         @weight = 2
         @group = "Xattr"
         @description = "Get permissions of a specific default POSIX ACL entry"
-        #[cfg(target_os = "linux")]
+        #[cfg(any(target_os = "linux", windows))]
         DefaultAclEntry,
 
         #[text = ["has_capability", "has_cap"], data_type = "boolean"]

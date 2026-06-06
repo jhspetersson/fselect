@@ -398,6 +398,14 @@ pub fn handle_default_acl(ctx: &mut FieldContext) -> Result<Variant, SearchError
         }
     }
 
+    #[cfg(windows)]
+    {
+        if ctx.entry.path().is_dir()
+            && let Some(acl_str) = crate::util::win_acl::format_default_acl(&ctx.entry.path()) {
+                return Ok(Variant::from_string(&acl_str));
+            }
+    }
+
     Ok(Variant::empty(VariantType::String))
 }
 
@@ -410,6 +418,15 @@ pub fn handle_has_default_acl(ctx: &mut FieldContext) -> Result<Variant, SearchE
                     return Ok(Variant::from_bool(!entries.is_empty()));
                 }
             }
+        }
+    }
+
+    #[cfg(windows)]
+    {
+        if ctx.entry.path().is_dir() {
+            return Ok(Variant::from_bool(
+                crate::util::win_acl::has_default_acl(&ctx.entry.path()),
+            ));
         }
     }
 

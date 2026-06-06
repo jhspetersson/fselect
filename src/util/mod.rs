@@ -8,6 +8,8 @@ pub(crate) mod extattrs;
 #[cfg(windows)]
 pub(crate) mod win_acl;
 #[cfg(windows)]
+pub(crate) mod win_attrs;
+#[cfg(windows)]
 pub(crate) mod win_xattr;
 pub(crate) mod datetime;
 pub mod dimensions;

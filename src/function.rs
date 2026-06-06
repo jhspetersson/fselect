@@ -801,6 +801,18 @@ pub fn get_value(
 
             Ok(Variant::empty(VariantType::Bool))
         }
+        #[cfg(windows)]
+        Function::HasExtattr => {
+            if let Some(entry) = entry
+                && let Ok(meta) = entry.metadata() {
+                    let attrs = crate::util::win_attrs::get_attrs(&meta);
+                    return Ok(Variant::from_bool(
+                        crate::util::win_attrs::has_attr(attrs, &function_arg),
+                    ));
+                }
+
+            Ok(Variant::empty(VariantType::Bool))
+        }
         #[cfg(target_os = "linux")]
         Function::HasAclEntry => {
             if let Some(entry) = entry {
@@ -1341,7 +1353,7 @@ functions! {
         @weight = 2
         @group = "Xattr"
         @description = "Check if the file has a specific extended file attribute flag"
-        #[cfg(target_os = "linux")]
+        #[cfg(any(target_os = "linux", windows))]
         HasExtattr,
 
         #[text = ["has_acl_entry"], data_type = "boolean"]

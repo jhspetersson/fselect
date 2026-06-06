@@ -309,6 +309,17 @@ pub fn handle_extattrs(ctx: &mut FieldContext) -> Result<Variant, SearchError> {
         }
     }
 
+    #[cfg(windows)]
+    {
+        ctx.fms.update_file_metadata(ctx.entry, ctx.follow_symlinks);
+        if let Some(meta) = ctx.fms.get_file_metadata() {
+            let attrs = crate::util::win_attrs::get_attrs(meta);
+            return Ok(Variant::from_string(
+                &crate::util::win_attrs::format_attrs(attrs),
+            ));
+        }
+    }
+
     Ok(Variant::empty(VariantType::String))
 }
 
@@ -319,6 +330,15 @@ pub fn handle_has_extattrs(ctx: &mut FieldContext) -> Result<Variant, SearchErro
             if let Some(flags) = crate::util::extattrs::get_ext_attrs(&file) {
                 return Ok(Variant::from_bool(flags != 0));
             }
+        }
+    }
+
+    #[cfg(windows)]
+    {
+        ctx.fms.update_file_metadata(ctx.entry, ctx.follow_symlinks);
+        if let Some(meta) = ctx.fms.get_file_metadata() {
+            let attrs = crate::util::win_attrs::get_attrs(meta);
+            return Ok(Variant::from_bool(crate::util::win_attrs::has_any_attr(attrs)));
         }
     }
 

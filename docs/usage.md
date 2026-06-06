@@ -115,8 +115,8 @@ Subqueries have only limited support: in `IN` / `EXISTS` predicates, and as the 
 | `is_hidden`                                  | Returns a boolean signifying whether the file is a hidden file (e.g., files that start with a dot on *nix)                    |                                                               |
 | `has_xattrs`                                 | Returns a boolean signifying whether the file has extended attributes or alternate data streams on Windows                    |                                                               |
 | `xattr_count`                                | Returns the count of extended attributes on the file or alternate data streams on Windows                                     |                                                               |
-| `extattrs`                                   | Returns the extended file attributes as a string of chattr/lsattr flag letters                                                | Available only on Linux                                       |
-| `has_extattrs`                               | Returns a boolean signifying whether the file has any extended file attributes set                                            | Available only on Linux                                       |
+| `extattrs`                                   | Returns the extended file attributes as a string of flag letters (chattr/lsattr flags on Linux, NTFS attribute letters on Windows) | Available only on Linux and Windows                      |
+| `has_extattrs`                               | Returns a boolean signifying whether the file has any extended file attributes set                                            | Available only on Linux and Windows                           |
 | `acl`                                        | Returns all ACL entries in standard form (POSIX on Linux, DACL on Windows)                                                    | Available only on Linux and Windows                           |
 | `has_acl`                                    | Returns a boolean signifying whether the file has POSIX ACL entries beyond standard Unix permissions or Windows explicit ACEs | Available only on Linux and Windows                           |
 | `default_acl`                                | Returns all default POSIX ACL entries in standard form                                                                        | Available only on Linux                                       |
@@ -293,7 +293,7 @@ Supported platforms are Linux, macOS, FreeBSD, and NetBSD.
 |------------------------------|----------------------------------------------------------------------|---------------------------------------------------------------------|
 | HAS_XATTR                    | Check if xattr exists                                                | `select "name, has_xattr(user.test) from /home/user"`               |
 | XATTR                        | Get value of xattr                                                   | `select "name, xattr(user.test) from /home/user"`                   |
-| HAS_EXTATTR                  | Check if a specific extended file attribute flag is set (Linux only) | `select "name from / where has_extattr('i')"`                       |
+| HAS_EXTATTR                  | Check if a specific extended file attribute flag is set (Linux and Windows) | `select "name from / where has_extattr('i')"`                |
 | HAS_ACL_ENTRY                | Check if a specific POSIX ACL entry exists (Linux only)              | `select "name from /data where has_acl_entry('user:john')"`         |
 | ACL_ENTRY                    | Get permissions of a specific POSIX ACL entry (Linux only)           | `select "name, acl_entry('group:staff') from /data"`                |
 | HAS_DEFAULT_ACL_ENTRY        | Check if a specific default POSIX ACL entry exists (Linux only)      | `select "name from /data where has_default_acl_entry('user:john')"` |
@@ -348,12 +348,13 @@ Example output: `allow:BUILTIN\Administrators:full,allow:NT AUTHORITY\SYSTEM:ful
 
 #### Extended file attributes
 
-**fselect** can read and query extended file attributes (also known as file flags) that are managed
-with `chattr` and displayed with `lsattr`. This feature is available only on Linux and works
-on ext2/ext3/ext4, btrfs, and other filesystems that support the `FS_IOC_GETFLAGS` ioctl.
+**fselect** can read and query extended file attributes (also known as file flags). On Linux these
+are the flags managed with `chattr` and displayed with `lsattr`, read via the `FS_IOC_GETFLAGS`
+ioctl on ext2/ext3/ext4, btrfs, and other supporting filesystems. On Windows these are the NTFS
+file attributes.
 
-The `extattrs` field returns a string of flag letters for each set attribute, using the same
-single-letter codes as `lsattr`/`chattr`:
+On Linux the `extattrs` field returns a string of flag letters for each set attribute, using the
+same single-letter codes as `lsattr`/`chattr`:
 `s` (secure deletion), `u` (undelete), `c` (compress), `S` (synchronous updates),
 `i` (immutable), `a` (append only), `d` (no dump), `A` (no atime updates),
 `E` (encrypted), `I` (indexed directory), `j` (journal data), `t` (no tail-merging),
@@ -361,13 +362,20 @@ single-letter codes as `lsattr`/`chattr`:
 `C` (no copy-on-write), `x` (DAX), `N` (inline data), `P` (project hierarchy),
 `F` (case-insensitive directory).
 
+On Windows the `extattrs` field returns a string of letters for each set NTFS attribute
+(letters follow the `attrib` command where applicable):
+`R` (read-only), `H` (hidden), `S` (system), `A` (archive), `T` (temporary),
+`P` (sparse file), `L` (reparse point), `C` (compressed), `O` (offline),
+`I` (not content indexed), `E` (encrypted), `V` (integrity stream).
+Note that the Windows letters are case-sensitive (all upper-case).
+
 The `has_extattrs` field returns true when any of these attributes are set.
 Use the `has_extattr()` function to check for a specific flag:
 
     fselect name from / where has_extattrs = true
     fselect "name, extattrs from /data where has_extattrs = true"
     fselect "name from / where has_extattr('i')"
-    fselect "name, extattrs from /data where has_extattr('a')"
+    fselect "name, extattrs from C:\data where has_extattr('H')"
 
 #### String functions
 

@@ -188,10 +188,14 @@ unix_int_handler!(handle_device, dev, VariantType::String);
 unix_int_handler!(handle_rdev, rdev, VariantType::String);
 unix_int_handler!(handle_inode, ino, VariantType::String);
 unix_int_handler!(handle_blocks, blocks, VariantType::String);
+unix_int_handler!(handle_blksize, blksize, VariantType::String);
 unix_int_handler!(handle_hardlinks, nlink, VariantType::String);
 unix_int_handler!(handle_atime, atime, VariantType::Int);
+unix_int_handler!(handle_atime_nsec, atime_nsec, VariantType::Int);
 unix_int_handler!(handle_mtime, mtime, VariantType::Int);
+unix_int_handler!(handle_mtime_nsec, mtime_nsec, VariantType::Int);
 unix_int_handler!(handle_ctime, ctime, VariantType::Int);
+unix_int_handler!(handle_ctime_nsec, ctime_nsec, VariantType::Int);
 
 datetime_handler!(handle_created, created);
 datetime_handler!(handle_accessed, accessed);

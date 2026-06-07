@@ -316,9 +316,14 @@ fields! {
         
         #[text = ["blocks"]]
         @weight = 1
-        @description = "Returns the number of blocks (256 bytes) the file occupies"
+        @description = "Returns the number of blocks (512 bytes) the file occupies"
         Blocks,
-        
+
+        #[text = ["blksize", "block_size"]]
+        @weight = 1
+        @description = "Returns the preferred block size for filesystem I/O in bytes"
+        BlockSize,
+
         #[text = ["hardlinks"]]
         @weight = 1
         @description = "Returns the number of hardlinks of the file"
@@ -329,15 +334,30 @@ fields! {
         @description = "Returns the last access time as a Unix timestamp (seconds since epoch)"
         Atime,
 
+        #[text = ["atime_nsec"]]
+        @weight = 1
+        @description = "Returns the nanosecond component of the last access time"
+        AtimeNsec,
+
         #[text = ["mtime"]]
         @weight = 1
         @description = "Returns the last modification time as a Unix timestamp (seconds since epoch)"
         Mtime,
 
+        #[text = ["mtime_nsec"]]
+        @weight = 1
+        @description = "Returns the nanosecond component of the last modification time"
+        MtimeNsec,
+
         #[text = ["ctime"]]
         @weight = 1
         @description = "Returns the last status change time as a Unix timestamp (seconds since epoch)"
         Ctime,
+
+        #[text = ["ctime_nsec"]]
+        @weight = 1
+        @description = "Returns the nanosecond component of the last status change time"
+        CtimeNsec,
 
         #[text = ["mode"]]
         @for_archived = true

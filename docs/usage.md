@@ -104,8 +104,11 @@ Subqueries have only limited support: in `IN` / `EXISTS` predicates, and as the 
 | `created`                                    | Returns the file creation date (YYYY-MM-DD HH:MM:SS)                                                                          | Windows, macOS, and Linux (kernel 4.11+ with ext4/btrfs/XFS)  |
 | `modified`                                   | Returns the time the file was last modified (YYYY-MM-DD HH:MM:SS)                                                             |                                                               |
 | `atime`                                      | Returns the last access time as a Unix timestamp (seconds since epoch)                                                        | Available only on Unix                                        |
+| `atime_nsec`                                 | Returns the nanosecond component of the last access time                                                                      | Available only on Unix                                        |
 | `mtime`                                      | Returns the last modification time as a Unix timestamp (seconds since epoch)                                                  | Available only on Unix                                        |
+| `mtime_nsec`                                 | Returns the nanosecond component of the last modification time                                                                | Available only on Unix                                        |
 | `ctime`                                      | Returns the last status change time as a Unix timestamp (seconds since epoch)                                                 | Available only on Unix                                        |
+| `ctime_nsec`                                 | Returns the nanosecond component of the last status change time                                                               | Available only on Unix                                        |
 | `is_dir`                                     | Returns a boolean signifying whether the file path is a directory                                                             |                                                               |
 | `is_file`                                    | Returns a boolean signifying whether the file path is a file                                                                  |                                                               |
 | `is_symlink`                                 | Returns a boolean signifying whether the file path is a symlink                                                               |                                                               |
@@ -127,7 +130,8 @@ Subqueries have only limited support: in `IN` / `EXISTS` predicates, and as the 
 | `device`                                     | Returns the code of device the file is stored on                                                                              | Available only on Unix                                        |
 | `rdev`                                       | Returns the device ID for special files (character and block devices)                                                         | Available only on Unix                                        |
 | `inode`                                      | Returns the number of inode                                                                                                   | Available only on Linux                                       |
-| `blocks`                                     | Returns the number of blocks (256 bytes) the file occupies                                                                    | Available only on Linux                                       |
+| `blocks`                                     | Returns the number of blocks (512 bytes) the file occupies                                                                    | Available only on Linux                                       |
+| `blksize` or `block_size`                    | Returns the preferred block size for filesystem I/O in bytes                                                                  | Available only on Unix                                        |
 | `hardlinks`                                  | Returns the number of hardlinks of the file                                                                                   | Available only on Linux                                       |
 | `mode`                                       | Returns the permissions of the owner, group, and everybody (similar to the first field in `ls -la`)                           |                                                               |
 | `user`                                       | Returns the name of the owner for this file                                                                                   | Available only on *nix platforms with `users` feature enabled |
@@ -756,6 +760,12 @@ or want to pass exact values to external tools.
 
 Unlike `accessed`, `modified`, and `created` which return formatted date/time strings,
 these fields return the raw integer value from the filesystem metadata.
+
+The companion `atime_nsec`, `mtime_nsec`, and `ctime_nsec` fields return the sub-second
+nanosecond component of the respective timestamp, for cases where second-level precision
+is not enough.
+
+    fselect name, mtime, mtime_nsec from /home/user/projects
 
 ### Date and time specifiers
 

@@ -222,7 +222,10 @@ Device ID for special files (character and block devices).
 Inode number.
 .TP
 .B blocks
-Number of 256-byte blocks allocated.
+Number of 512-byte blocks allocated.
+.TP
+.B blksize, block_size
+Preferred block size for filesystem I/O in bytes.
 .TP
 .B hardlinks
 Number of hard links.
@@ -230,11 +233,20 @@ Number of hard links.
 .B atime
 Last access time as a Unix timestamp (seconds since epoch).
 .TP
+.B atime_nsec
+Nanosecond component of the last access time.
+.TP
 .B mtime
 Last modification time as a Unix timestamp (seconds since epoch).
 .TP
+.B mtime_nsec
+Nanosecond component of the last modification time.
+.TP
 .B ctime
 Last status change time as a Unix timestamp (seconds since epoch).
+.TP
+.B ctime_nsec
+Nanosecond component of the last status change time.
 .TP
 .B has_xattrs
 True if the file has extended attributes (xattrs).

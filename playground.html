@@ -748,35 +748,37 @@ async function processInput(input) {
     await runQuery(trimmed);
 }
 
-term.onKey(({ key, domEvent }) => {
+// All input goes through onData: on mobile (IME/virtual keyboards) keydown
+// events carry keyCode 229 / "Unidentified", so onKey never fires for
+// printable characters — onData receives them regardless.
+term.onData(data => {
     if (isRunning) return;
-    const code = domEvent.keyCode;
 
-    if (code === 13) { // Enter
+    if (data === '\r' || data === '\n') { // Enter
         processInput(currentLine).then(() => writePrompt());
-    } else if (code === 8) { // Backspace
+    } else if (data === '\x7f' || data === '\b') { // Backspace
         if (cursorPos > 0) {
             currentLine = currentLine.slice(0, cursorPos - 1) + currentLine.slice(cursorPos);
             cursorPos--;
             redrawLine();
         }
-    } else if (code === 46) { // Delete
+    } else if (data === '\x1b[3~') { // Delete
         if (cursorPos < currentLine.length) {
             currentLine = currentLine.slice(0, cursorPos) + currentLine.slice(cursorPos + 1);
             redrawLine();
         }
-    } else if (code === 37) { // Left
+    } else if (data === '\x1b[D') { // Left
         if (cursorPos > 0) { cursorPos--; term.write('\x1b[D'); }
-    } else if (code === 39) { // Right
+    } else if (data === '\x1b[C') { // Right
         if (cursorPos < currentLine.length) { cursorPos++; term.write('\x1b[C'); }
-    } else if (code === 38) { // Up - history
+    } else if (data === '\x1b[A') { // Up - history
         if (historyStack.length > 0 && historyIndex < historyStack.length - 1) {
             historyIndex++;
             currentLine = historyStack[historyIndex];
             cursorPos = currentLine.length;
             redrawLine();
         }
-    } else if (code === 40) { // Down - history
+    } else if (data === '\x1b[B') { // Down - history
         if (historyIndex > 0) {
             historyIndex--;
             currentLine = historyStack[historyIndex];
@@ -788,29 +790,21 @@ term.onKey(({ key, domEvent }) => {
             cursorPos = 0;
             redrawLine();
         }
-    } else if (code === 36) { cursorPos = 0; redrawLine(); } // Home
-    else if (code === 35) { cursorPos = currentLine.length; redrawLine(); } // End
-    else if (domEvent.ctrlKey && code === 67) { term.writeln('^C'); writePrompt(); } // Ctrl+C
-    else if (domEvent.ctrlKey && code === 76) { term.clear(); term.write(PROMPT + currentLine); } // Ctrl+L
-    else if (domEvent.ctrlKey && code === 65) { cursorPos = 0; redrawLine(); } // Ctrl+A
-    else if (domEvent.ctrlKey && code === 69) { cursorPos = currentLine.length; redrawLine(); } // Ctrl+E
-    else if (domEvent.ctrlKey && code === 85) { currentLine = currentLine.slice(cursorPos); cursorPos = 0; redrawLine(); }
-    else if (domEvent.ctrlKey && code === 75) { currentLine = currentLine.slice(0, cursorPos); redrawLine(); }
-    else if (!domEvent.ctrlKey && !domEvent.altKey && !domEvent.metaKey && key.length === 1) {
-        currentLine = currentLine.slice(0, cursorPos) + key + currentLine.slice(cursorPos);
-        cursorPos++;
-        redrawLine();
-    }
-});
-
-// Paste handling
-term.onData(data => {
-    if (isRunning) return;
-    if (data.length > 1 && data[0] !== '\x1b') {
-        const clean = data.replace(/[\r\n]+/g, '');
-        currentLine = currentLine.slice(0, cursorPos) + clean + currentLine.slice(cursorPos);
-        cursorPos += clean.length;
-        redrawLine();
+    } else if (data === '\x1b[H' || data === '\x1b[1~') { cursorPos = 0; redrawLine(); } // Home
+    else if (data === '\x1b[F' || data === '\x1b[4~') { cursorPos = currentLine.length; redrawLine(); } // End
+    else if (data === '\x03') { term.writeln('^C'); writePrompt(); } // Ctrl+C
+    else if (data === '\x0c') { term.clear(); term.write(PROMPT + currentLine); } // Ctrl+L
+    else if (data === '\x01') { cursorPos = 0; redrawLine(); } // Ctrl+A
+    else if (data === '\x05') { cursorPos = currentLine.length; redrawLine(); } // Ctrl+E
+    else if (data === '\x15') { currentLine = currentLine.slice(cursorPos); cursorPos = 0; redrawLine(); } // Ctrl+U
+    else if (data === '\x0b') { currentLine = currentLine.slice(0, cursorPos); redrawLine(); } // Ctrl+K
+    else if (data[0] !== '\x1b') { // Typed, composed, or pasted text
+        const clean = data.replace(/[\r\n]+/g, ' ').replace(/[\x00-\x1f\x7f]/g, '');
+        if (clean) {
+            currentLine = currentLine.slice(0, cursorPos) + clean + currentLine.slice(cursorPos);
+            cursorPos += clean.length;
+            redrawLine();
+        }
     }
 });
 

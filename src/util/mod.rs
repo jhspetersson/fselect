@@ -130,10 +130,21 @@ where
     where
         T: Ord,
     {
-        let a = parse_filesize(&self.values[i].to_string()).unwrap_or(0);
-        let b = parse_filesize(&other.values[i].to_string()).unwrap_or(0);
+        let a_str = self.values[i].to_string();
+        let b_str = other.values[i].to_string();
 
-        a.cmp(&b)
+        match (numeric_sort_key(&a_str), numeric_sort_key(&b_str)) {
+            (Some(a), Some(b)) => a.partial_cmp(&b).unwrap_or(Ordering::Equal),
+            // Numbers sort before non-numbers, so missing values land last
+            // in ascending order.
+            (Some(_), None) => Ordering::Less,
+            (None, Some(_)) => Ordering::Greater,
+            // Neither side is numeric: fall back to plain string order. This
+            // keeps datetime values produced by numeric expressions (e.g.
+            // `max(modified)`, formatted as fixed-width YYYY-MM-DD HH:MM:SS)
+            // in chronological order instead of collapsing every key to zero.
+            (None, None) => a_str.cmp(&b_str),
+        }
     }
 
     #[inline]
@@ -176,6 +187,16 @@ impl<T: Display + Ord> Ord for Criteria<T> {
 
         self.values.len().cmp(&other.values.len())
     }
+}
+
+/// Numeric sort key for ORDER BY comparisons: a plain integer or float, or a
+/// file size with a unit suffix ("1k", "5mb"). `None` for anything else.
+fn numeric_sort_key(s: &str) -> Option<f64> {
+    if let Ok(num) = s.parse::<f64>()
+        && num.is_finite() {
+            return Some(num);
+        }
+    parse_filesize(s).map(|size| size as f64)
 }
 
 #[cfg(windows)]
@@ -959,6 +980,76 @@ mod tests {
         assert_eq!(is_dir_empty(&dir_entry_for(&non_empty)), Some(false));
 
         let _ = fs::remove_dir_all(&base);
+    }
+
+    fn numeric_criteria(value: &str, asc: bool) -> Criteria<String> {
+        let fields = Rc::new(vec![Expr::field(Field::Size)]);
+        let orderings = Rc::new(vec![asc]);
+        Criteria::new(fields, vec![String::from(value)], orderings)
+    }
+
+    #[test]
+    fn numeric_criteria_compares_fractional_values() {
+        // Regression: fractional sort keys (e.g. `order by size / 1024`) used
+        // to fall through the u64-only parser and collapse to 0.
+        let a = numeric_criteria("5.875", true);
+        let b = numeric_criteria("31.6875", true);
+        assert_eq!(a.cmp(&b), Ordering::Less);
+        assert_eq!(b.cmp(&a), Ordering::Greater);
+    }
+
+    #[test]
+    fn numeric_criteria_compares_negative_values() {
+        let a = numeric_criteria("-5", true);
+        let b = numeric_criteria("3", true);
+        assert_eq!(a.cmp(&b), Ordering::Less);
+    }
+
+    #[test]
+    fn numeric_criteria_still_supports_size_suffixes() {
+        let a = numeric_criteria("512", true);
+        let b = numeric_criteria("1k", true);
+        assert_eq!(a.cmp(&b), Ordering::Less, "1k must compare as 1024");
+    }
+
+    #[test]
+    fn numeric_criteria_sorts_numbers_before_non_numbers() {
+        let number = numeric_criteria("10", true);
+        let empty = numeric_criteria("", true);
+        assert_eq!(number.cmp(&empty), Ordering::Less);
+        assert_eq!(empty.cmp(&number), Ordering::Greater);
+    }
+
+    #[test]
+    fn datetime_values_under_numeric_expr_sort_chronologically() {
+        // `order by max(modified)`: MAX is a numeric function, so the numeric
+        // comparator is chosen, but the values are fixed-width datetimes.
+        // They must sort by string order (== chronological), not tie at 0.
+        use crate::function::Function;
+
+        let max_modified = Expr::function_left(
+            Function::Max,
+            Some(Box::new(Expr::field(Field::Modified))),
+        );
+        let fields = Rc::new(vec![max_modified]);
+
+        let make = |value: &str, asc: bool| {
+            Criteria::new(
+                fields.clone(),
+                vec![String::from(value)],
+                Rc::new(vec![asc]),
+            )
+        };
+
+        let older = make("2024-01-05 09:30:00", true);
+        let newer = make("2026-06-11 10:00:00", true);
+        assert_eq!(older.cmp(&newer), Ordering::Less);
+        assert_eq!(newer.cmp(&older), Ordering::Greater);
+
+        // Descending must invert the comparison instead of being a no-op.
+        let older_desc = make("2024-01-05 09:30:00", false);
+        let newer_desc = make("2026-06-11 10:00:00", false);
+        assert_eq!(older_desc.cmp(&newer_desc), Ordering::Greater);
     }
 
     #[test]

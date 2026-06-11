@@ -83,16 +83,14 @@ fn main() -> ExitCode {
 
     let mut first_arg = args[0].to_ascii_lowercase();
 
-    if first_arg.contains("version") || first_arg.starts_with("-v") {
+    // Flags are matched exactly: a quoted query is a single argument and may
+    // well contain words like "version" or "help" (e.g. "exif_version from .").
+    if matches!(first_arg.as_str(), "version" | "-v" | "--version" | "/version") {
         short_usage_info(no_color);
         return ExitCode::SUCCESS;
     }
 
-    if first_arg.contains("help")
-        || first_arg.starts_with("-h")
-        || first_arg.starts_with("/?")
-        || first_arg.starts_with("/h")
-    {
+    if matches!(first_arg.as_str(), "help" | "-h" | "--help" | "-help" | "/?" | "/h" | "/help") {
         usage_info(config, default_config, no_color);
         return ExitCode::SUCCESS;
     }
@@ -121,18 +119,12 @@ fn main() -> ExitCode {
     let mut interactive = false;
 
     loop {
-        if first_arg.contains("nocolor") || first_arg.contains("no-color") {
+        if matches!(first_arg.as_str(), "--nocolor" | "--no-color" | "-nocolor" | "/nocolor") {
             no_color = true;
-        } else if first_arg.starts_with("-i")
-            || first_arg.starts_with("--i")
-            || first_arg.starts_with("/i")
-        {
+        } else if matches!(first_arg.as_str(), "-i" | "--interactive" | "/i") {
             #[cfg(feature = "interactive")]
             { interactive = true; }
-        } else if first_arg.starts_with("-c")
-            || first_arg.starts_with("--config")
-            || first_arg.starts_with("/c")
-        {
+        } else if matches!(first_arg.as_str(), "-c" | "--config" | "/c" | "/config") {
             if args.len() < 2 {
                 eprintln!("Error: --config requires a path argument");
                 return ExitCode::from(2);
@@ -145,13 +137,13 @@ fn main() -> ExitCode {
             });
 
             args.remove(0);
-        } else if first_arg.starts_with("--no-error") {
+        } else if matches!(first_arg.as_str(), "--no-error" | "--no-errors") {
             set_no_errors(true);
-        } else if first_arg.starts_with("--us-date") {
+        } else if matches!(first_arg.as_str(), "--us-date" | "--us-dates") {
             set_us_dates(true);
-        } else if first_arg.starts_with("--everything") {
+        } else if first_arg == "--everything" {
             config.everything = Some(true);
-        } else if first_arg.starts_with("--plocate") {
+        } else if first_arg == "--plocate" {
             config.plocate = Some(true);
         } else {
             break;

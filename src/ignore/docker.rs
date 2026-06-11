@@ -170,14 +170,20 @@ fn convert_dockerignore_glob(glob: &str, file_path: &Path) -> Result<Regex, Stri
         return Err("Error parsing .dockerignore pattern: ".to_string() + glob);
     }
 
-    let trimmed = pattern.trim_start_matches(['/', '\\']);
-    if trimmed.len() != pattern.len() {
-        pattern = trimmed.to_string();
-    }
+    // Patterns are relative to the context root; leading and trailing
+    // separators carry no meaning.
+    pattern = pattern
+        .trim_start_matches(['/', '\\'])
+        .trim_end_matches('/')
+        .to_string();
 
     if pattern.is_empty() {
         return Err("Error parsing .dockerignore pattern: ".to_string() + glob);
     }
+
+    // `**/` matches any number of leading directories, including none
+    // (the `.*` token can only originate from `**`).
+    pattern = pattern.replace(".*/", "(?:.*/)?");
 
     #[cfg(windows)]
     let path = file_path
@@ -189,7 +195,14 @@ fn convert_dockerignore_glob(glob: &str, file_path: &Path) -> Result<Regex, Stri
     #[cfg(not(windows))]
     let path = file_path.to_string_lossy().to_string();
 
-    pattern = regex::escape(&path).add("/([^/]+/)*").add(&pattern);
+    // Docker patterns are anchored at the context root (the directory holding
+    // the .dockerignore) rather than floating to any depth, and a pattern that
+    // matches a directory also excludes everything beneath it.
+    let pattern = String::from("^")
+        .add(&regex::escape(&path))
+        .add("/")
+        .add(&pattern)
+        .add("(?:/.*)?$");
 
     Regex::new(&pattern).map_err(|_| "Error creating regex pattern: ".to_string() + pattern.as_str())
 }
@@ -259,6 +272,59 @@ mod tests {
             "plus should be escaped but got: {}",
             regex_str
         );
+    }
+
+    #[test]
+    fn pattern_matches_whole_component_not_prefix() {
+        let filter = convert_dockerignore_pattern("foo", Path::new("/ctx")).unwrap();
+        assert!(filter.regex.is_match("/ctx/foo"));
+        assert!(
+            filter.regex.is_match("/ctx/foo/sub/file.txt"),
+            "a matched directory excludes its subtree"
+        );
+        assert!(
+            !filter.regex.is_match("/ctx/foobar"),
+            "pattern must not match by prefix"
+        );
+    }
+
+    #[test]
+    fn pattern_is_anchored_to_context_root() {
+        let filter = convert_dockerignore_pattern("foo", Path::new("/ctx")).unwrap();
+        assert!(
+            !filter.regex.is_match("/ctx/a/foo"),
+            "plain patterns are root-relative in Docker, not any-depth"
+        );
+        assert!(
+            !filter.regex.is_match("/other/ctx/foo"),
+            "pattern must not match under a different root"
+        );
+    }
+
+    #[test]
+    fn doublestar_matches_any_depth_including_root() {
+        let filter = convert_dockerignore_pattern("**/foo", Path::new("/ctx")).unwrap();
+        assert!(filter.regex.is_match("/ctx/foo"), "`**/` includes zero directories");
+        assert!(filter.regex.is_match("/ctx/a/b/foo"));
+        assert!(!filter.regex.is_match("/ctx/a/foobar"));
+    }
+
+    #[test]
+    fn star_does_not_cross_separators() {
+        let filter = convert_dockerignore_pattern("*.md", Path::new("/ctx")).unwrap();
+        assert!(filter.regex.is_match("/ctx/readme.md"));
+        assert!(
+            !filter.regex.is_match("/ctx/sub/readme.md"),
+            "`*.md` matches only at the context root in Docker"
+        );
+    }
+
+    #[test]
+    fn trailing_slash_matches_directory_and_contents() {
+        let filter = convert_dockerignore_pattern("build/", Path::new("/ctx")).unwrap();
+        assert!(filter.regex.is_match("/ctx/build"));
+        assert!(filter.regex.is_match("/ctx/build/out/app.bin"));
+        assert!(!filter.regex.is_match("/ctx/builder"));
     }
 
     #[test]

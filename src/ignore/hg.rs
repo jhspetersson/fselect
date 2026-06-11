@@ -184,9 +184,15 @@ fn convert_hgignore_glob(glob: &str, file_path: &Path) -> Result<Regex, String> 
             return Err("Error parsing .hgignore pattern: ".to_string() + glob);
         }
 
-        pattern = regex::escape(&file_path.to_string_lossy())
+        // Glob patterns are unrooted (they match at any directory level), but
+        // must cover whole path components: like Mercurial itself, a match
+        // ends at a separator or the end of the path, so `foo` matches `foo`
+        // and `foo/bar` but not `foobar`.
+        pattern = String::from("^")
+            .add(&regex::escape(&file_path.to_string_lossy()))
             .add("/([^/]+/)*")
-            .add(&pattern);
+            .add(&pattern)
+            .add("(?:/|$)");
 
         Regex::new(&pattern).map_err(|_| "Error creating regex pattern: ".to_string() + pattern.as_str())
     }
@@ -216,18 +222,25 @@ fn convert_hgignore_glob(glob: &str, file_path: &Path) -> Result<Regex, String> 
             return Err("Error parsing .hgignore pattern: ".to_string() + glob);
         }
 
-        pattern = regex::escape(&file_path.to_string_lossy())
+        // See the Unix branch: unrooted, but matches whole path components.
+        pattern = String::from("^")
+            .add(&regex::escape(&file_path.to_string_lossy()))
             .add("\\\\([^\\\\]+\\\\)*")
-            .add(&pattern);
+            .add(&pattern)
+            .add("(?:\\\\|$)");
 
         Regex::new(&pattern).map_err(|_| "Error creating regex pattern: ".to_string() + pattern.as_str())
     }
 }
 
 fn convert_hgignore_regexp(regexp: &str, file_path: &Path) -> Result<Regex, String> {
+    // Mercurial matches regexp patterns with `re.search` against the
+    // repo-relative path: unanchored unless the pattern starts with `^`.
+    // Only the repository-root prefix is anchored here; no end anchor is
+    // added so the user's regex keeps full control.
     #[cfg(not(windows))]
     {
-        let mut pattern = regex::escape(&file_path.to_string_lossy());
+        let mut pattern = String::from("^") + &regex::escape(&file_path.to_string_lossy());
         if !regexp.starts_with("^") {
             pattern = pattern.add("/([^/]+/)*");
             pattern = pattern.add(".*");
@@ -242,7 +255,7 @@ fn convert_hgignore_regexp(regexp: &str, file_path: &Path) -> Result<Regex, Stri
 
     #[cfg(windows)]
     {
-        let mut pattern = regex::escape(&file_path.to_string_lossy());
+        let mut pattern = String::from("^") + &regex::escape(&file_path.to_string_lossy());
         if !regexp.starts_with("^") {
             pattern = pattern.add("\\\\([^\\\\]+\\\\)*");
             pattern = pattern.add(".*");
@@ -373,6 +386,68 @@ mod tests {
     fn regexp_caret_anchored_includes_separator_windows() {
         let regex = convert_hgignore_regexp("^src/main", Path::new("C:\\repo")).unwrap();
         assert!(regex.is_match("C:\\repo\\src/main.rs"), "^-anchored pattern should match");
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn glob_matches_whole_component_not_prefix() {
+        let regex = convert_hgignore_glob("foo", Path::new("/repo")).unwrap();
+        assert!(regex.is_match("/repo/foo"));
+        assert!(regex.is_match("/repo/sub/foo"), "hg globs are unrooted");
+        assert!(
+            regex.is_match("/repo/foo/inner.txt"),
+            "a matched directory covers its contents"
+        );
+        assert!(!regex.is_match("/repo/foobar"), "must not match by prefix");
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn glob_repo_prefix_is_start_anchored() {
+        let regex = convert_hgignore_glob("foo", Path::new("/repo")).unwrap();
+        assert!(
+            !regex.is_match("/elsewhere/repo/foo"),
+            "repo prefix must match from the start of the path"
+        );
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn regexp_repo_prefix_is_start_anchored() {
+        let regex = convert_hgignore_regexp("foo", Path::new("/repo")).unwrap();
+        assert!(regex.is_match("/repo/x/myfoo.txt"), "re.search semantics within the repo");
+        assert!(!regex.is_match("/elsewhere/repo/x/foo"));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn glob_matches_whole_component_not_prefix_windows() {
+        let regex = convert_hgignore_glob("foo", Path::new("C:\\repo")).unwrap();
+        assert!(regex.is_match("C:\\repo\\foo"));
+        assert!(regex.is_match("C:\\repo\\sub\\foo"), "hg globs are unrooted");
+        assert!(
+            regex.is_match("C:\\repo\\foo\\inner.txt"),
+            "a matched directory covers its contents"
+        );
+        assert!(!regex.is_match("C:\\repo\\foobar"), "must not match by prefix");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn glob_repo_prefix_is_start_anchored_windows() {
+        let regex = convert_hgignore_glob("foo", Path::new("C:\\repo")).unwrap();
+        assert!(
+            !regex.is_match("X:\\zzzC:\\repo\\foo"),
+            "repo prefix must match from the start of the path"
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn regexp_repo_prefix_is_start_anchored_windows() {
+        let regex = convert_hgignore_regexp("foo", Path::new("C:\\repo")).unwrap();
+        assert!(regex.is_match("C:\\repo\\x\\myfoo.txt"), "re.search semantics within the repo");
+        assert!(!regex.is_match("X:\\zzzC:\\repo\\x\\foo"));
     }
 
     #[test]

@@ -17,6 +17,9 @@ impl LogicalOp {
     }
 }
 
+// Note: there are no `Between`/`NotBetween` variants. The parser rewrites
+// `x between a and b` into `x >= a and x <= b` (and the negation into
+// `x < a or x > b`), so a BETWEEN op never reaches evaluation.
 #[derive(Debug, Clone, Copy, Eq, Hash, PartialEq, PartialOrd, Serialize)]
 pub enum Op {
     Eq,
@@ -31,8 +34,6 @@ pub enum Op {
     NotRx,
     Like,
     NotLike,
-    Between,
-    NotBetween,
     In,
     NotIn,
     Exists,
@@ -54,8 +55,6 @@ impl Op {
             "!=~" | "!~=" | "notrx" => Some(Op::NotRx),
             "like" => Some(Op::Like),
             "notlike" => Some(Op::NotLike),
-            "between" => Some(Op::Between),
-            "notbetween" => Some(Op::NotBetween),
             "in" => Some(Op::In),
             "notin" => Some(Op::NotIn),
             "exists" => Some(Op::Exists),
@@ -86,8 +85,6 @@ impl Op {
             Op::NotRx => Op::Rx,
             Op::Like => Op::NotLike,
             Op::NotLike => Op::Like,
-            Op::Between => Op::NotBetween,
-            Op::NotBetween => Op::Between,
             Op::In => Op::NotIn,
             Op::NotIn => Op::In,
             Op::Exists => Op::NotExists,
@@ -145,8 +142,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn op_from_notbetween() {
-        assert_eq!(Op::from("notbetween".to_string()), Some(Op::NotBetween));
+    fn op_from_between_is_none() {
+        // BETWEEN is rewritten by the parser into >=/<= comparisons and has
+        // no Op variant of its own.
+        assert_eq!(Op::from("between".to_string()), None);
+        assert_eq!(Op::from("notbetween".to_string()), None);
     }
 
     #[test]
@@ -200,7 +200,7 @@ mod tests {
     fn op_negate_roundtrip() {
         let ops = vec![
             Op::Eq, Op::Ne, Op::Eeq, Op::Ene, Op::Gt, Op::Gte, Op::Lt, Op::Lte,
-            Op::Rx, Op::NotRx, Op::Like, Op::NotLike, Op::Between, Op::NotBetween,
+            Op::Rx, Op::NotRx, Op::Like, Op::NotLike,
             Op::In, Op::NotIn, Op::Exists, Op::NotExists,
         ];
         for op in ops {

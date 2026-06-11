@@ -1100,6 +1100,13 @@ impl<'a> Searcher<'a> {
         self.current_follow_symlinks || !file_type.is_symlink()
     }
 
+    fn is_declared_root_alias(&self, alias: &str) -> bool {
+        self.query
+            .roots
+            .iter()
+            .any(|root| root.options.alias.as_deref() == Some(alias))
+    }
+
     fn get_column_expr_value(
         &mut self,
         entry: Option<&DirEntry>,
@@ -1115,21 +1122,27 @@ impl<'a> Searcher<'a> {
 
         if let Some(captures) = FIELD_WITH_ALIAS.captures(&column_expr_str) {
             let column_expr_context_name = captures.get(1).unwrap().as_str();
-            if let Some(ref current_alias) = self.current_alias {
-                if column_expr_context_name != current_alias {
-                    let context = self.record_context.borrow();
-                    if let Some(ctx) = context.get(column_expr_context_name) {
-                        if let Some(val) = ctx.get(captures.get(2).unwrap().as_str()) {
-                            return Ok(Variant::from_string(val));
-                        } else {
-                            //TODO: this should be propagated up to the higher context
-                            return Ok(Variant::empty(VariantType::String));
-                        }
+            if self.current_alias.as_deref() == Some(column_expr_context_name) {
+                should_update_context = true;
+            } else {
+                let context = self.record_context.borrow();
+                if let Some(ctx) = context.get(column_expr_context_name) {
+                    if let Some(val) = ctx.get(captures.get(2).unwrap().as_str()) {
+                        return Ok(Variant::from_string(val));
                     } else {
-                        return Err(SearchError::fatal(format!("Invalid root alias: {}", column_expr_context_name)).with_source("query"));
+                        //TODO: this should be propagated up to the higher context
+                        return Ok(Variant::empty(VariantType::String));
                     }
-                } else {
-                    should_update_context = true;
+                }
+                // The prefix doesn't name any known root context. An explicit
+                // `alias.field` reference (or a prefix matching a declared root
+                // alias) is a query error; any other dotted string is a plain
+                // value (e.g. the literal `readme.md`) and falls through to
+                // normal evaluation.
+                if column_expr.root_alias.is_some()
+                    || self.is_declared_root_alias(column_expr_context_name)
+                {
+                    return Err(SearchError::fatal(format!("Invalid root alias: {}", column_expr_context_name)).with_source("query"));
                 }
             }
         }
@@ -1961,6 +1974,143 @@ mod tests {
         // get_column_expr_value should read the value from record_context rather than the current entry
         let v = searcher.get_column_expr_value(None, &None, root_path, &mut file_map, None, &bound_expr);
         assert_eq!(v.unwrap().to_string(), "foo.txt");
+    }
+
+    #[test]
+    fn unknown_root_alias_errors_without_current_alias() {
+        // `x.name` where no root declares alias `x` (and no alias is being
+        // processed) must be rejected instead of silently evaluating as `name`.
+        let mut searcher = create_test_searcher();
+
+        let mut bound_expr = Expr::field(Field::Name);
+        bound_expr.root_alias = Some(String::from("x"));
+
+        let mut file_map: HashMap<String, String> = HashMap::new();
+        let result = searcher.get_column_expr_value(
+            None, &None, Path::new("."), &mut file_map, None, &bound_expr,
+        );
+
+        match result {
+            Err(e) => {
+                assert!(e.is_fatal(), "unknown alias must be a fatal error");
+                assert!(
+                    e.description.contains("Invalid root alias: x"),
+                    "unexpected error message: {}",
+                    e.description
+                );
+            }
+            Ok(v) => panic!("unknown alias must not resolve, got: {}", v),
+        }
+    }
+
+    #[test]
+    fn unknown_root_alias_errors_with_current_alias() {
+        // Same as above, but while a different alias is being processed.
+        let mut searcher = create_test_searcher();
+        searcher.current_alias = Some(String::from("b"));
+
+        let mut bound_expr = Expr::field(Field::Name);
+        bound_expr.root_alias = Some(String::from("x"));
+
+        let mut file_map: HashMap<String, String> = HashMap::new();
+        let result = searcher.get_column_expr_value(
+            None, &None, Path::new("."), &mut file_map, None, &bound_expr,
+        );
+
+        assert!(
+            matches!(result, Err(ref e) if e.is_fatal() && e.description.contains("Invalid root alias: x")),
+            "unknown alias must be a fatal error, got: {:?}",
+            result.map(|v| v.to_string())
+        );
+    }
+
+    #[test]
+    fn dotted_value_literal_is_not_treated_as_alias() {
+        // A value such as the literal `readme.md` looks like `alias.field`
+        // but must evaluate to itself, not produce an alias error.
+        let mut searcher = create_test_searcher();
+
+        let literal = Expr::value(String::from("readme.md"));
+        let mut file_map: HashMap<String, String> = HashMap::new();
+        let v = searcher.get_column_expr_value(
+            None, &None, Path::new("."), &mut file_map, None, &literal,
+        );
+        assert_eq!(v.unwrap().to_string(), "readme.md");
+    }
+
+    #[test]
+    fn dotted_value_literal_with_current_alias_returns_literal() {
+        // Previously a dotted literal evaluated while processing an aliased
+        // root was misread as an alias reference and raised a fatal error.
+        let mut searcher = create_test_searcher();
+        searcher.current_alias = Some(String::from("a"));
+
+        let literal = Expr::value(String::from("readme.md"));
+        let mut file_map: HashMap<String, String> = HashMap::new();
+        let v = searcher.get_column_expr_value(
+            None, &None, Path::new("."), &mut file_map, None, &literal,
+        );
+        assert_eq!(v.unwrap().to_string(), "readme.md");
+    }
+
+    #[test]
+    fn outer_alias_resolves_from_context_without_current_alias() {
+        // Correlated-subquery shape: the sub-searcher's own root has no alias
+        // (current_alias is None) but the expression references an outer
+        // alias registered in the shared record context.
+        let mut searcher = create_test_searcher();
+
+        {
+            let mut ctx = searcher.record_context.borrow_mut();
+            let key = Field::Name.to_string();
+            ctx.insert("a".to_string(), HashMap::from([(key, String::from("outer.txt"))]));
+        }
+
+        let mut bound_expr = Expr::field(Field::Name);
+        bound_expr.root_alias = Some(String::from("a"));
+
+        let mut file_map: HashMap<String, String> = HashMap::new();
+        let v = searcher.get_column_expr_value(
+            None, &None, Path::new("."), &mut file_map, None, &bound_expr,
+        );
+        assert_eq!(v.unwrap().to_string(), "outer.txt");
+    }
+
+    #[test]
+    fn declared_alias_with_unpopulated_context_errors_for_value_expr() {
+        // `a.sz` where `sz` is not a field parses as a plain value, but when
+        // `a` is declared as a root alias it is an alias.column reference;
+        // with no context registered for `a` yet it must error rather than
+        // silently evaluate to the literal string "a.sz".
+        let mut alias_options = RootOptions::new();
+        alias_options.alias = Some(String::from("a"));
+        let query = Box::leak(Box::new(Query {
+            fields: Vec::new(),
+            roots: vec![Root::new(String::from("/tmp"), alias_options)],
+            expr: None,
+            grouping_fields: Vec::new(),
+            ordering_fields: Vec::new(),
+            ordering_asc: Vec::new(),
+            limit: 0,
+            offset: 0,
+            output_format: OutputFormat::Tabs,
+            raw_query: String::new(),
+        }));
+        let config = Box::leak(Box::new(Config::default()));
+        let default_config = Box::leak(Box::new(Config::default()));
+        let mut searcher = Searcher::new(query, config, default_config, false);
+
+        let value_expr = Expr::value(String::from("a.sz"));
+        let mut file_map: HashMap<String, String> = HashMap::new();
+        let result = searcher.get_column_expr_value(
+            None, &None, Path::new("."), &mut file_map, None, &value_expr,
+        );
+
+        assert!(
+            matches!(result, Err(ref e) if e.description.contains("Invalid root alias: a")),
+            "declared but unpopulated alias must error, got: {:?}",
+            result.map(|v| v.to_string())
+        );
     }
 
     #[cfg(unix)]

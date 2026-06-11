@@ -713,6 +713,11 @@ impl <'a> Parser<'a> {
             }
             Some(Lexeme::Operator(s)) if s.as_str() == "in" || s.as_str() == "exists" || s.as_str() == "notin" || s.as_str() == "notexists" => {
                 let list = self.parse_list()?;
+                // Like SQL: IN requires a single-column subquery, while
+                // EXISTS accepts any column list.
+                if s.as_str() == "in" || s.as_str() == "notin" {
+                    Self::ensure_single_column_subquery(&list, "IN")?;
+                }
                 let op = Op::from_with_not(s.clone(), not)
                     .ok_or_else(|| format!("Unknown operator: {}", s))?;
                 let left = left.ok_or_else(|| "Expected expression before operator".to_string())?;
@@ -853,6 +858,21 @@ impl <'a> Parser<'a> {
         }
     }
 
+    /// SQL allows a subquery in a value position (and in IN lists) only when
+    /// it selects exactly one column; cf. Postgres' "subquery has too many
+    /// columns" / "subquery must return only one column" errors.
+    fn ensure_single_column_subquery(expr: &Expr, context: &str) -> Result<(), String> {
+        if let Some(ref subquery) = expr.subquery
+            && subquery.fields.len() > 1 {
+                return Err(format!(
+                    "{} subquery must return a single column, but it returns {} columns",
+                    context,
+                    subquery.fields.len()
+                ));
+            }
+        Ok(())
+    }
+
     fn parse_paren(&mut self) -> Result<Option<Expr>, String> {
         match self.next_lexeme() {
             Some(Lexeme::Open) => {
@@ -860,7 +880,9 @@ impl <'a> Parser<'a> {
                     Some(Lexeme::Select) => {
                         self.drop_lexeme();
                         self.drop_lexeme();
-                        Ok(Some(self.parse_list()?))
+                        let list = self.parse_list()?;
+                        Self::ensure_single_column_subquery(&list, "Scalar")?;
+                        Ok(Some(list))
                     },
                     _ => {
                         self.drop_lexeme();
@@ -878,7 +900,9 @@ impl <'a> Parser<'a> {
                     Some(Lexeme::Select) => {
                         self.drop_lexeme();
                         self.drop_lexeme();
-                        Ok(Some(self.parse_list()?))
+                        let list = self.parse_list()?;
+                        Self::ensure_single_column_subquery(&list, "Scalar")?;
+                        Ok(Some(list))
                     },
                     _ => {
                         self.drop_lexeme();
@@ -1790,6 +1814,69 @@ mod tests {
             query.grouping_fields,
             vec![Expr::field(Field::Mime)]
         );
+    }
+
+    #[test]
+    fn multicolumn_in_subquery_is_rejected() {
+        let query = "select name from /test where name in (select name, size from /test2)";
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
+        let err = p.parse(false).unwrap_err();
+        assert!(
+            err.contains("single column"),
+            "expected single-column error, got: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn multicolumn_not_in_subquery_is_rejected() {
+        let query = "select name from /test where name not in (select name, size from /test2)";
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
+        assert!(p.parse(false).is_err());
+    }
+
+    #[test]
+    fn single_column_in_subquery_is_accepted() {
+        let query = "select name from /test where name in (select name from /test2)";
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
+        let query = p.parse(false).unwrap();
+        assert!(!p.there_are_remaining_lexemes());
+        assert!(query.expr.is_some());
+    }
+
+    #[test]
+    fn multicolumn_exists_subquery_is_accepted() {
+        // SQL places no column-count restriction on EXISTS.
+        let query = "select name from /test where exists (select name, size from /test2)";
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
+        let query = p.parse(false).unwrap();
+        assert!(query.expr.is_some());
+    }
+
+    #[test]
+    fn multicolumn_scalar_subquery_is_rejected() {
+        let query = "select name from /test where size gt (select size, name from /test2)";
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
+        let err = p.parse(false).unwrap_err();
+        assert!(
+            err.contains("single column"),
+            "expected single-column error, got: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn single_column_scalar_subquery_is_accepted() {
+        let query = "select name from /test where size gt (select size from /test2)";
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
+        let query = p.parse(false).unwrap();
+        assert!(query.expr.is_some());
     }
 
     #[test]

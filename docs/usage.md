@@ -255,8 +255,8 @@ Queries using these functions return only one result row.
 |---------------------------|---------------------------------------------------------------|------------------------------------------------------|
 | AVG                       | Average of all values                                         | `select avg(size) from /home/user/Downloads`         |
 | COUNT                     | Number of rows; `count(col)` skips rows with empty values     | `select count(*) from /home/user/Downloads`          |
-| MAX                       | Maximum value                                                 | `select max(size) from /home/user/Downloads`         |
-| MIN                       | Minimum value                                                 | `select min(size) from /home/user where size gt 0`   |
+| MAX                       | Maximum value (numeric, date, or string)                      | `select max(size) from /home/user/Downloads`         |
+| MIN                       | Minimum value (numeric, date, or string)                      | `select min(size) from /home/user where size gt 0`   |
 | SUM                       | Sum of all values                                             | `select sum(size) from /home/user/Downloads`         |
 | STDDEV_POP, STDDEV or STD | Population standard deviation, the square root of variance    | `select stddev_pop(size) from /home/user/Downloads`  |
 | STDDEV_SAMP               | Sample standard deviation, the square root of sample variance | `select stddev_samp(size) from /home/user/Downloads` |

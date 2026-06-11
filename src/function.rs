@@ -1002,13 +1002,17 @@ pub fn get_aggregate_value(
     match function {
         Function::Min => {
             match field_acc {
+                // Numeric values take precedence; otherwise fall back to the
+                // lexicographic minimum (datetimes, strings).
                 Some(acc) if acc.count > 0 => (acc.min + 0.0).to_string(),
+                Some(acc) => acc.min_value.clone().unwrap_or_default(),
                 _ => String::new(),
             }
         }
         Function::Max => {
             match field_acc {
                 Some(acc) if acc.count > 0 => (acc.max + 0.0).to_string(),
+                Some(acc) => acc.max_value.clone().unwrap_or_default(),
                 _ => String::new(),
             }
         }
@@ -1524,12 +1528,26 @@ pub struct FieldAccumulator {
     pub max: f64,
     pub sum: f64,
     pub m2: f64,
+    /// Lexicographic extremes over the non-empty raw values. Back MIN/MAX for
+    /// non-numeric columns: datetimes are formatted as fixed-width
+    /// `YYYY-MM-DD HH:MM:SS`, so string order equals chronological order, and
+    /// plain strings get SQL-style lexicographic MIN/MAX.
+    pub min_value: Option<String>,
+    pub max_value: Option<String>,
 }
 
 impl FieldAccumulator {
     pub fn push(&mut self, value: &str) {
         if !value.is_empty() {
             self.non_empty_count += 1;
+            match &self.min_value {
+                Some(min) if value >= min.as_str() => {}
+                _ => self.min_value = Some(value.to_string()),
+            }
+            match &self.max_value {
+                Some(max) if value <= max.as_str() => {}
+                _ => self.max_value = Some(value.to_string()),
+            }
         }
         if let Ok(v) = value.parse::<f64>()
             && v.is_finite() {
@@ -2805,6 +2823,56 @@ mod tests {
     }
 
     #[test]
+    fn min_max_over_datetime_values() {
+        let acc = make_accumulator(
+            "Modified",
+            &[
+                "2026-06-11 10:00:00",
+                "2024-01-05 09:30:00",
+                "2025-12-31 23:59:59",
+            ],
+        );
+        assert_eq!(
+            get_aggregate_value(&Function::Min, &acc, "Modified".to_string(), &None),
+            "2024-01-05 09:30:00"
+        );
+        assert_eq!(
+            get_aggregate_value(&Function::Max, &acc, "Modified".to_string(), &None),
+            "2026-06-11 10:00:00"
+        );
+    }
+
+    #[test]
+    fn min_max_over_string_values() {
+        let acc = make_accumulator("Name", &["banana", "apple", "cherry"]);
+        assert_eq!(get_aggregate_value(&Function::Min, &acc, "Name".to_string(), &None), "apple");
+        assert_eq!(get_aggregate_value(&Function::Max, &acc, "Name".to_string(), &None), "cherry");
+    }
+
+    #[test]
+    fn min_max_skip_empty_values() {
+        let acc = make_accumulator("Name", &["", "b", "a", ""]);
+        assert_eq!(get_aggregate_value(&Function::Min, &acc, "Name".to_string(), &None), "a");
+        assert_eq!(get_aggregate_value(&Function::Max, &acc, "Name".to_string(), &None), "b");
+    }
+
+    #[test]
+    fn min_max_only_empty_values_returns_empty() {
+        let acc = make_accumulator("Width", &["", ""]);
+        assert_eq!(get_aggregate_value(&Function::Min, &acc, "Width".to_string(), &None), "");
+        assert_eq!(get_aggregate_value(&Function::Max, &acc, "Width".to_string(), &None), "");
+    }
+
+    #[test]
+    fn min_max_numeric_values_take_precedence() {
+        // A column mixing numeric and non-numeric values keeps numeric
+        // MIN/MAX semantics for the values that parse.
+        let acc = make_accumulator("val", &["10", "9", "abc"]);
+        assert_eq!(get_aggregate_value(&Function::Min, &acc, "val".to_string(), &None), "9");
+        assert_eq!(get_aggregate_value(&Function::Max, &acc, "val".to_string(), &None), "10");
+    }
+
+    #[test]
     fn count_star_counts_all_rows() {
         let acc = make_accumulator("Width", &["100", "", "200"]);
         assert_eq!(get_aggregate_value(&Function::Count, &acc, "*".to_string(), &None), "3");
@@ -3166,17 +3234,17 @@ mod tests {
     }
 
     #[test]
-    fn min_no_parseable_values_is_empty() {
+    fn min_no_parseable_values_falls_back_to_lexicographic() {
         let acc = make_accumulator("val", &["abc", "def"]);
         let result = get_aggregate_value(&Function::Min, &acc, String::from("val"), &None);
-        assert_eq!(result, String::new());
+        assert_eq!(result, "abc");
     }
 
     #[test]
-    fn max_no_parseable_values_is_empty() {
+    fn max_no_parseable_values_falls_back_to_lexicographic() {
         let acc = make_accumulator("val", &["abc", "def"]);
         let result = get_aggregate_value(&Function::Max, &acc, String::from("val"), &None);
-        assert_eq!(result, String::new());
+        assert_eq!(result, "def");
     }
 
     #[test]

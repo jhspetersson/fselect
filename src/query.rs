@@ -39,6 +39,13 @@ impl Query {
             result.extend(column_expr.get_required_fields());
         }
 
+        // Ordering expressions may reference columns that are not selected
+        // (e.g. `select ext, count(*) ... order by max(modified)`); the
+        // aggregation scan must collect their per-file values too.
+        for ordering_expr in &self.ordering_fields {
+            result.extend(ordering_expr.get_required_fields());
+        }
+
         result
     }
 

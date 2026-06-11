@@ -477,12 +477,29 @@ impl<'a> Searcher<'a> {
                 let field_names: Vec<String> = self.query.fields.iter()
                     .map(|f| f.to_string().to_lowercase())
                     .collect();
-                let sorting_indices: Vec<usize> = self.query.ordering_fields.iter()
-                    .map(|f| {
-                        let name = f.to_string().to_lowercase();
-                        field_names.iter().position(|g| g == &name).unwrap_or(0)
-                    })
+                let grouping_names: Vec<String> = self.query.grouping_fields.iter()
+                    .map(|f| f.to_string().to_lowercase())
                     .collect();
+                // Map each ordering expression to its SELECT column when it is
+                // selected; otherwise it is evaluated per group below. An
+                // expression that is neither selected, an aggregate, nor a
+                // grouping column has no per-group value to sort by.
+                let mut sorting_indices: Vec<Option<usize>> =
+                    Vec::with_capacity(self.query.ordering_fields.len());
+                for ordering_expr in self.query.ordering_fields.iter() {
+                    let name = ordering_expr.to_string().to_lowercase();
+                    let index = field_names.iter().position(|g| g == &name);
+                    if index.is_none()
+                        && !ordering_expr.has_aggregate_function()
+                        && !grouping_names.contains(&name)
+                    {
+                        return Err(SearchError::fatal(format!(
+                            "Cannot order by '{}': in a GROUP BY query the ORDER BY expression must appear in the SELECT list, be an aggregate function, or be a grouping column",
+                            ordering_expr
+                        )).with_source("query"));
+                    }
+                    sorting_indices.push(index);
+                }
 
                 let mut grouped_results: TopN<Criteria<String>, Vec<(String, String)>> =
                     if self.query.limit > 0 {
@@ -505,9 +522,34 @@ impl<'a> Searcher<'a> {
                             items.push((field_name, value.to_string()));
                         }
                     }
-                    let criteria_values: Vec<String> = sorting_indices.iter()
-                        .map(|i| items.get(*i).map(|item| item.1.clone()).unwrap_or_default())
-                        .collect();
+                    let mut criteria_values: Vec<String> =
+                        Vec::with_capacity(sorting_indices.len());
+                    for (index, ordering_expr) in
+                        sorting_indices.iter().zip(self.query.ordering_fields.iter())
+                    {
+                        let value = match index {
+                            // Reuse the value already rendered for the SELECT list
+                            Some(index) => items
+                                .get(*index)
+                                .map(|item| item.1.clone())
+                                .unwrap_or_default(),
+                            // Not selected: evaluate the ordering expression
+                            // against this group's accumulator (aggregates) or
+                            // its grouping-key values in file_map.
+                            None => self
+                                .get_column_expr_value(
+                                    None,
+                                    &None,
+                                    Path::new(""),
+                                    &mut file_map,
+                                    Some(group_acc),
+                                    ordering_expr,
+                                )
+                                .map(|v| v.to_string())
+                                .unwrap_or_default(),
+                        };
+                        criteria_values.push(value);
+                    }
                     grouped_results.insert(
                         Criteria::new(ordering_fields_rc.clone(), criteria_values, ordering_asc_rc.clone()),
                         items,
@@ -1357,8 +1399,11 @@ impl<'a> Searcher<'a> {
             }
             // Evaluate inner expressions of aggregate functions so computed values
             // (e.g. "size * 2") are stored in file_map under the correct key.
+            // Ordering expressions are included so that aggregates appearing
+            // only in ORDER BY also accumulate data during the scan.
             // Collect keys first to avoid cloning query.fields on every file.
             let aggregate_inner_exprs: Vec<_> = self.query.fields.iter()
+                .chain(self.query.ordering_fields.iter())
                 .filter_map(|column_expr| {
                     if let Some(ref func) = column_expr.function
                         && func.is_aggregate_function()

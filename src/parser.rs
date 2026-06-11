@@ -79,7 +79,13 @@ impl <'a> Parser<'a> {
             roots.push(Root::default(root_options));
         }
 
+        // A SELECT list that touches no file fields (e.g. `select 1+2`) yields
+        // the same row for every file, so collapse it to a single row. This
+        // must not apply to aggregate or grouped queries: `count(*)` requires
+        // no fields either, but grouping produces one row per group.
         if limit == 0
+            && grouping_fields.is_empty()
+            && !fields.iter().any(|expr| expr.has_aggregate_function())
             && fields
                 .iter()
                 .all(|expr| expr.get_required_fields().is_empty())
@@ -1784,6 +1790,35 @@ mod tests {
             query.grouping_fields,
             vec![Expr::field(Field::Mime)]
         );
+    }
+
+    #[test]
+    fn implicit_limit_applies_to_constant_select() {
+        let query = "select 123 from /test";
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
+        let query = p.parse(false).unwrap();
+        assert_eq!(query.limit, 1, "field-less constant SELECT collapses to one row");
+    }
+
+    #[test]
+    fn no_implicit_limit_for_grouped_aggregate_query() {
+        // `count(*)` requires no file fields, but grouping produces one row
+        // per group — the implicit LIMIT 1 must not truncate the result.
+        let query = "select count(*) from /test group by ext";
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
+        let query = p.parse(false).unwrap();
+        assert_eq!(query.limit, 0);
+    }
+
+    #[test]
+    fn no_implicit_limit_for_plain_aggregate_query() {
+        let query = "select count(*) from /test";
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
+        let query = p.parse(false).unwrap();
+        assert_eq!(query.limit, 0);
     }
 
     #[test]

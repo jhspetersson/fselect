@@ -758,6 +758,22 @@ mod tests {
     use super::*;
     use crate::field::Field;
 
+    #[test]
+    fn topn_equal_criteria_keys_accumulate_values() {
+        // The grouped-results path inserts every group under equal (possibly
+        // empty) ordering criteria; none of them may be lost.
+        let fields = Rc::new(vec![]);
+        let ord = Rc::new(vec![]);
+        let mut t: TopN<Criteria<String>, Vec<(String, String)>> = TopN::limitless();
+        for i in 0..3 {
+            t.insert(
+                Criteria::new(fields.clone(), vec![], ord.clone()),
+                vec![(format!("k{}", i), String::from("v"))],
+            );
+        }
+        assert_eq!(t.iter_values().count(), 3);
+    }
+
     fn basic_criteria<T: Ord + Clone + Display>(vals: &[T]) -> Criteria<T> {
         let fields = Rc::new(vec![Expr::field(Field::Size); vals.len()]);
         let orderings = Rc::new(vec![true; vals.len()]);

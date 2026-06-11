@@ -1098,7 +1098,8 @@ Success.
 I/O error during directory traversal or file reading.
 .TP
 .B 2
-Query parse error.
+Query parse error, or a fatal error while evaluating the query
+(e.g. an invalid root alias).
 .SH EXAMPLES
 .TP
 Find temporary and config files, showing size and full path:

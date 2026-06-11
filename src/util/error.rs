@@ -16,15 +16,22 @@ pub struct SearchError {
     pub source: String,
     pub description: String,
     pub error_level: ErrorLevel,
+    /// The output consumer stopped reading (e.g. piping into `head`). Fatal in
+    /// the sense that the search must stop, but not a failure of the search.
+    broken_pipe: bool,
 }
 
 impl SearchError {
     pub fn normal(description: impl Into<String>) -> Self {
-        SearchError { source: String::new(), description: description.into(), error_level: ErrorLevel::Normal }
+        SearchError { source: String::new(), description: description.into(), error_level: ErrorLevel::Normal, broken_pipe: false }
     }
 
     pub fn fatal(description: impl Into<String>) -> Self {
-        SearchError { source: String::new(), description: description.into(), error_level: ErrorLevel::Fatal }
+        SearchError { source: String::new(), description: description.into(), error_level: ErrorLevel::Fatal, broken_pipe: false }
+    }
+
+    pub fn broken_pipe() -> Self {
+        SearchError { source: String::from("output"), description: String::from("broken pipe"), error_level: ErrorLevel::Fatal, broken_pipe: true }
     }
 
     pub fn with_source(mut self, source: impl Into<String>) -> Self {
@@ -34,6 +41,10 @@ impl SearchError {
 
     pub fn is_fatal(&self) -> bool {
         self.error_level == ErrorLevel::Fatal
+    }
+
+    pub fn is_broken_pipe(&self) -> bool {
+        self.broken_pipe
     }
 
     pub fn print(&self) {
@@ -60,7 +71,9 @@ impl From<String> for SearchError {
 impl From<io::Error> for SearchError {
     fn from(e: io::Error) -> Self {
         if e.kind() == io::ErrorKind::BrokenPipe {
-            SearchError::fatal(e.to_string())
+            let mut err = SearchError::fatal(e.to_string());
+            err.broken_pipe = true;
+            err
         } else {
             SearchError::normal(e.to_string())
         }
@@ -103,5 +116,34 @@ pub fn error_message(source: &str, description: &str) {
         } else {
             eprintln!("{}: {}", source, description);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn broken_pipe_constructor_is_fatal_and_detectable() {
+        let err = SearchError::broken_pipe();
+        assert!(err.is_fatal());
+        assert!(err.is_broken_pipe());
+    }
+
+    #[test]
+    fn broken_pipe_io_error_is_detectable() {
+        let err: SearchError = io::Error::new(io::ErrorKind::BrokenPipe, "pipe closed").into();
+        assert!(err.is_fatal());
+        assert!(err.is_broken_pipe());
+    }
+
+    #[test]
+    fn other_errors_are_not_broken_pipe() {
+        let err: SearchError = io::Error::new(io::ErrorKind::NotFound, "nope").into();
+        assert!(!err.is_fatal());
+        assert!(!err.is_broken_pipe());
+
+        assert!(!SearchError::fatal("boom").is_broken_pipe());
+        assert!(!SearchError::normal("meh").is_broken_pipe());
     }
 }

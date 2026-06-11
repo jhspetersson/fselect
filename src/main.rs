@@ -316,17 +316,23 @@ fn exec_search(query: Vec<String>, config: &mut Config, default_config: &Config,
             let use_colors = !no_color && is_terminal && query.output_format.supports_colorization();
 
             let mut searcher = Searcher::new(&query, config, default_config, use_colors);
+            let mut abort_code: Option<u8> = None;
             if let Err(mut err) = searcher.list_search_results() {
-                if err.source.is_empty() {
-                    err.source = "result".to_string();
+                // A consumer that stops reading our output (e.g. piping into
+                // `head`) ends the search early but is not a failure.
+                if !err.is_broken_pipe() {
+                    if err.source.is_empty() {
+                        err.source = "result".to_string();
+                    }
+                    err.print();
+                    abort_code = Some(if err.is_fatal() { 2 } else { 1 });
                 }
-                err.print();
             }
 
-            let error_count = searcher.error_count;
-            match error_count {
-                0 => 0,
-                _ => 1,
+            match abort_code {
+                Some(code) => code,
+                None if searcher.error_count > 0 => 1,
+                None => 0,
             }
         }
         Err(err) => {
@@ -581,6 +587,55 @@ fn complete_output_formats_info() {
 mod tests {
     #[cfg(feature = "interactive")]
     use super::extract_cd_path;
+    use super::exec_search;
+    use crate::config::Config;
+
+    fn run_query(query: &str) -> u8 {
+        let mut config = Config::default();
+        let default_config = Config::default();
+        exec_search(vec![String::from(query)], &mut config, &default_config, true)
+    }
+
+    /// Creates a temp dir with one file and returns its forward-slash path.
+    fn make_test_dir(name: &str) -> (std::path::PathBuf, String) {
+        let tmp = std::env::temp_dir().join(name);
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        std::fs::write(tmp.join("a.txt"), "x").unwrap();
+        let path = tmp.to_string_lossy().replace('\\', "/");
+        (tmp, path)
+    }
+
+    #[test]
+    fn exec_search_returns_0_on_success() {
+        let (tmp, path) = make_test_dir("fselect_exit_code_ok");
+        let code = run_query(&format!("name from {}", path));
+        let _ = std::fs::remove_dir_all(&tmp);
+        assert_eq!(code, 0);
+    }
+
+    #[test]
+    fn exec_search_returns_1_on_nonfatal_io_error() {
+        let (tmp, path) = make_test_dir("fselect_exit_code_io");
+        let code = run_query(&format!("name from {}/no_such_subdir", path));
+        let _ = std::fs::remove_dir_all(&tmp);
+        assert_eq!(code, 1);
+    }
+
+    #[test]
+    fn exec_search_returns_2_on_fatal_search_error() {
+        // An unknown root alias aborts the search with a fatal error, which
+        // must surface as a non-zero exit code (previously it exited 0).
+        let (tmp, path) = make_test_dir("fselect_exit_code_fatal");
+        let code = run_query(&format!("name, x.name from {}", path));
+        let _ = std::fs::remove_dir_all(&tmp);
+        assert_eq!(code, 2);
+    }
+
+    #[test]
+    fn exec_search_returns_2_on_parse_error() {
+        assert_eq!(run_query(","), 2);
+    }
 
     #[cfg(feature = "interactive")]
     #[test]

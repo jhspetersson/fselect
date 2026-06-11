@@ -1441,7 +1441,7 @@ impl<'a> Searcher<'a> {
             );
         } else {
             try_output!(write!(std::io::stdout(), "{}", String::from(buf)),
-                        Err(SearchError::fatal("broken pipe").with_source("output")));
+                        Err(SearchError::broken_pipe()));
         }
 
         Ok(())

@@ -1084,4 +1084,4 @@ In interactive mode, you can:
 |-------|---------------------------------------------------------------------|
 | 0     | everything OK                                                       |
 | 1     | I/O error has occurred during any directory listing or file reading |
-| 2     | error during parsing of the search query                            |
+| 2     | error during parsing or evaluation of the search query              |

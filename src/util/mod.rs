@@ -19,6 +19,8 @@ pub(crate) mod plocate;
 pub mod dimensions;
 pub mod duration;
 pub(crate) mod error;
+#[cfg(feature = "git")]
+pub(crate) mod git;
 mod glob;
 pub(crate) mod greek;
 pub(crate) mod japanese;

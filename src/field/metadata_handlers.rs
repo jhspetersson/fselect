@@ -507,6 +507,8 @@ mod tests {
         let config = Config::default();
         let default_config = Config::default();
         let mut fms = FileMetadataState::new();
+        #[cfg(feature = "git")]
+        let mut git_cache = crate::util::git::GitCache::new();
         #[cfg(all(unix, feature = "users"))]
         let user_cache = uzers::UsersCache::new();
         let mut ctx = FieldContext {
@@ -514,6 +516,8 @@ mod tests {
             file_info,
             root_path,
             fms: &mut fms,
+            #[cfg(feature = "git")]
+            git_cache: &mut git_cache,
             follow_symlinks: true,
             config: &config,
             default_config: &default_config,

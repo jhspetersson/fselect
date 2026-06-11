@@ -1,8 +1,8 @@
 use crate::field::Field;
 use crate::field::context::FieldContext;
 use crate::field::{
-    content_handlers, exif_handlers, hash_handlers, media_handlers, metadata_handlers,
-    mode_handlers, path_handlers,
+    content_handlers, exif_handlers, git_handlers, hash_handlers, media_handlers,
+    metadata_handlers, mode_handlers, path_handlers,
 };
 use crate::util::*;
 use crate::util::error::SearchError;
@@ -60,6 +60,23 @@ pub fn get_field_value(ctx: &mut FieldContext, field: &Field) -> Result<Variant,
         Field::HasCapabilities => metadata_handlers::handle_has_capabilities(ctx),
         Field::Capabilities => metadata_handlers::handle_capabilities(ctx),
         Field::IsShebang => metadata_handlers::handle_is_shebang(ctx),
+
+        // Git
+        Field::IsGitRepo => git_handlers::handle_is_git_repo(ctx),
+        #[cfg(feature = "git")]
+        Field::IsGitTracked => git_handlers::handle_is_git_tracked(ctx),
+        #[cfg(feature = "git")]
+        Field::IsGitignored => git_handlers::handle_is_gitignored(ctx),
+        #[cfg(feature = "git")]
+        Field::GitStatus => git_handlers::handle_git_status(ctx),
+        #[cfg(feature = "git")]
+        Field::GitBranch => git_handlers::handle_git_branch(ctx),
+        #[cfg(feature = "git")]
+        Field::GitLastCommitHash => git_handlers::handle_git_last_commit_hash(ctx),
+        #[cfg(feature = "git")]
+        Field::GitLastCommitDate => git_handlers::handle_git_last_commit_date(ctx),
+        #[cfg(feature = "git")]
+        Field::GitLastCommitAuthor => git_handlers::handle_git_last_commit_author(ctx),
 
         // Mode / permissions
         Field::Mode => mode_handlers::handle_mode(ctx),

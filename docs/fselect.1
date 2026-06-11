@@ -178,6 +178,34 @@ True if MIME type detection identifies the file as binary.
 .TP
 .B is_text
 True if MIME type detection identifies the file as text.
+.SS Git
+.TP
+.B is_git_repo
+True if the directory contains a
+.B .git
+subdirectory or file (i.e., is the root of a git repository).
+.TP
+.BR is_git_tracked ", " git_tracked
+True if the file is tracked by git.
+.TP
+.BR is_gitignored ", " is_git_ignored
+True if the file is ignored by git.
+.TP
+.B git_status
+Git status of the file:
+.BR clean ", " modified ", " staged ", " untracked ", " conflicted ", or " ignored .
+.TP
+.B git_branch
+Current branch of the git repository containing the file.
+.TP
+.BR git_last_commit_hash ", " git_commit_hash
+Hash of the last commit that touched the file.
+.TP
+.BR git_last_commit_date ", " git_commit_date
+Date of the last commit that touched the file.
+.TP
+.BR git_last_commit_author ", " git_commit_author
+Author of the last commit that touched the file.
 .SS Permissions
 .TP
 .B mode

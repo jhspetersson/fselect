@@ -141,7 +141,13 @@ impl <'a> Parser<'a> {
 
                         self.drop_lexeme();
 
-                        if !is_quoted && Self::is_root_option_keyword(s) {
+                        // Root option keywords terminate the field list, but
+                        // prefix matching makes e.g. "git" shadow the git_*
+                        // fields, so anything that parses as a field stays one.
+                        if !is_quoted
+                            && Self::is_root_option_keyword(s)
+                            && Field::parse_field(s).is_err()
+                        {
                             break;
                         }
 

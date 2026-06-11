@@ -205,6 +205,14 @@ Subqueries have only limited support: in `IN` / `EXISTS` predicates, and as the 
 | `mp3_bitrate` or `bitrate`                   | Returns the bitrate of the audio file in kbps                                                                                 |                                                               |
 | `duration`                                   | Returns the duration of audio file in seconds                                                                                 |                                                               |
 | `is_shebang`                                 | Returns a boolean signifying whether the file starts with a shebang (#!)                                                      |                                                               |
+| `is_git_repo`                                | Returns a boolean signifying whether the directory contains a `.git` subdirectory or file                                     |                                                               |
+| `is_git_tracked` or `git_tracked`            | Returns a boolean signifying whether the file is tracked by git                                                               | Requires the `git` feature (enabled by default)               |
+| `is_gitignored` or `is_git_ignored`          | Returns a boolean signifying whether the file is ignored by git                                                               | Requires the `git` feature (enabled by default)               |
+| `git_status`                                 | Returns the git status of the file (`clean`, `modified`, `staged`, `untracked`, `conflicted`, or `ignored`)                   | Requires the `git` feature (enabled by default)               |
+| `git_branch`                                 | Returns the current branch of the git repository containing the file                                                          | Requires the `git` feature (enabled by default)               |
+| `git_last_commit_hash` or `git_commit_hash`  | Returns the hash of the last commit that touched the file                                                                     | Requires the `git` feature (enabled by default)               |
+| `git_last_commit_date` or `git_commit_date`  | Returns the date of the last commit that touched the file                                                                     | Requires the `git` feature (enabled by default)               |
+| `git_last_commit_author` or `git_commit_author` | Returns the author of the last commit that touched the file                                                                | Requires the `git` feature (enabled by default)               |
 | `is_empty`                                   | Returns a boolean signifying whether the file is empty or the directory is empty                                              |                                                               |
 | `is_archive`                                 | Returns a boolean signifying whether the file is an archival file                                                             | [default extensions](#ext_archive)                            |
 | `is_audio`                                   | Returns a boolean signifying whether the file is an audio file                                                                | [default extensions](#ext_audio)                              |
@@ -766,6 +774,22 @@ nanosecond component of the respective timestamp, for cases where second-level p
 is not enough.
 
     fselect name, mtime, mtime_nsec from /home/user/projects
+
+### Git fields
+
+The git fields look up the repository containing each file (the nearest enclosing work tree)
+and report per-file information. `git_status` returns one of `clean`, `modified`, `staged`,
+`untracked`, `conflicted`, or `ignored`. The `git_last_commit_*` fields walk the repository
+history to find the last commit that touched the file, like `git log -1 -- path`, so they are
+relatively expensive on large histories.
+
+    fselect name, git_status from /home/user/projects/repo where git_status = modified
+    fselect path from /home/user/projects/repo where is_git_tracked = false and is_gitignored = false
+    fselect name, git_last_commit_date, git_last_commit_author from src
+    fselect path, git_branch from /home/user/projects where is_git_repo = true depth 2
+
+`is_git_repo` simply checks for a `.git` subdirectory (or file) and is available in every build.
+All other git fields require the `git` feature (enabled by default).
 
 ### Date and time specifiers
 

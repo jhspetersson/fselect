@@ -9,6 +9,8 @@ use uzers::UsersCache;
 use crate::config::Config;
 use crate::fileinfo::FileInfo;
 use crate::util::*;
+#[cfg(feature = "git")]
+use crate::util::git::GitCache;
 use crate::util::dimensions::get_dimensions;
 use crate::util::duration::get_duration;
 
@@ -196,6 +198,8 @@ pub struct FieldContext<'a> {
     pub file_info: &'a Option<FileInfo>,
     pub root_path: &'a Path,
     pub fms: &'a mut FileMetadataState,
+    #[cfg(feature = "git")]
+    pub git_cache: &'a mut GitCache,
     pub follow_symlinks: bool,
     pub config: &'a Config,
     pub default_config: &'a Config,

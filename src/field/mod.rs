@@ -4,6 +4,7 @@ pub mod context;
 pub mod dispatch;
 mod content_handlers;
 mod exif_handlers;
+mod git_handlers;
 mod hash_handlers;
 mod media_handlers;
 mod metadata_handlers;
@@ -515,7 +516,54 @@ fields! {
         @weight = 2
         @description = "Returns a boolean signifying whether the file starts with a shebang (#!)"
         IsShebang,
-        
+
+        #[text = ["is_git_repo"], data_type = "boolean"]
+        @weight = 1
+        @description = "Returns a boolean signifying whether the directory contains a .git subdirectory or file (i.e., is the root of a git repository)"
+        IsGitRepo,
+
+        #[text = ["is_git_tracked", "git_tracked"], data_type = "boolean"]
+        @weight = 16
+        @description = "Returns a boolean signifying whether the file is tracked by git"
+        #[cfg(feature = "git")]
+        IsGitTracked,
+
+        #[text = ["is_gitignored", "is_git_ignored"], data_type = "boolean"]
+        @weight = 16
+        @description = "Returns a boolean signifying whether the file is ignored by git"
+        #[cfg(feature = "git")]
+        IsGitignored,
+
+        #[text = ["git_status"]]
+        @weight = 16
+        @description = "Returns the git status of the file (clean, modified, staged, untracked, conflicted, or ignored)"
+        #[cfg(feature = "git")]
+        GitStatus,
+
+        #[text = ["git_branch"]]
+        @weight = 16
+        @description = "Returns the current branch of the git repository containing the file"
+        #[cfg(feature = "git")]
+        GitBranch,
+
+        #[text = ["git_last_commit_hash", "git_commit_hash"]]
+        @weight = 1024
+        @description = "Returns the hash of the last commit that touched the file"
+        #[cfg(feature = "git")]
+        GitLastCommitHash,
+
+        #[text = ["git_last_commit_date", "git_commit_date"], data_type = "datetime"]
+        @weight = 1024
+        @description = "Returns the date of the last commit that touched the file"
+        #[cfg(feature = "git")]
+        GitLastCommitDate,
+
+        #[text = ["git_last_commit_author", "git_commit_author"]]
+        @weight = 1024
+        @description = "Returns the author of the last commit that touched the file"
+        #[cfg(feature = "git")]
+        GitLastCommitAuthor,
+
         #[text = ["is_empty"], data_type = "boolean"]
         @for_archived = true
         @weight = 2

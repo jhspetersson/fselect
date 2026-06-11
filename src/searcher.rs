@@ -69,6 +69,8 @@ pub struct Searcher<'a> {
     current_root_dir: PathBuf,
 
     fms: FileMetadataState,
+    #[cfg(feature = "git")]
+    git_cache: crate::util::git::GitCache,
     file_map: HashMap<String, String>,
     conforms_map: HashMap<String, String>,
     subquery_cache: HashMap<String, Vec<String>>,
@@ -216,6 +218,8 @@ impl<'a> Searcher<'a> {
             current_root_dir: PathBuf::new(),
 
             fms: FileMetadataState::new(),
+            #[cfg(feature = "git")]
+            git_cache: crate::util::git::GitCache::new(),
             file_map: HashMap::new(),
             conforms_map: HashMap::new(),
             subquery_cache: HashMap::new(),
@@ -1273,6 +1277,8 @@ impl<'a> Searcher<'a> {
             file_info,
             root_path,
             fms: &mut self.fms,
+            #[cfg(feature = "git")]
+            git_cache: &mut self.git_cache,
             follow_symlinks: self.current_follow_symlinks,
             config: self.config,
             default_config: self.default_config,

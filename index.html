@@ -466,8 +466,8 @@
         </div>
         <div class="feature">
             <div class="icon">&#x1F6E1;</div>
-            <h4>Gitignore Support</h4>
-            <p>Respects <code>.gitignore</code>, <code>.hgignore</code>, and <code>.dockerignore</code> so you don't waste time on files you don't care about.</p>
+            <h4>Git Integration</h4>
+            <p>Query per-file git status, branch, and last commit, and respect <code>.gitignore</code>, <code>.hgignore</code>, and <code>.dockerignore</code> so you don't waste time on files you don't care about.</p>
         </div>
     </div>
 </section>
@@ -773,6 +773,30 @@
 <pre><span class="prompt">$ </span>fselect <span class="field">path</span> <span class="kw">from</span> /home/user/src <span class="kw">where</span> <span class="func">contains</span>(<span class="str">'TODO'</span>) <span class="kw">and</span> <span class="field">name</span> <span class="op">=</span> <span class="str">'*.rs'</span></pre>
     </div>
 
+    <!-- GIT -->
+    <h3><a id="git-fields"></a>Git Status &amp; History <span class="badge badge-medium">medium</span></h3>
+
+    <div class="example-group">
+        <p>See the git status of every file right in your search results:</p>
+<pre><span class="prompt">$ </span>fselect <span class="field">path</span>, <span class="field">git_status</span> <span class="kw">from</span> ~/projects/app <span class="kw">where</span> <span class="field">git_status</span> <span class="op">=</span> <span class="str">'modified'</span></pre>
+    </div>
+
+    <div class="example-group">
+        <p>Hunt down files that are neither tracked nor ignored &mdash; the ones you forgot to commit or gitignore:</p>
+<pre><span class="prompt">$ </span>fselect <span class="field">path</span> <span class="kw">from</span> . <span class="kw">where</span> <span class="field">is_file</span> <span class="kw">and not</span> <span class="field">is_git_tracked</span> <span class="kw">and not</span> <span class="field">is_gitignored</span></pre>
+    </div>
+
+    <div class="example-group">
+        <p>Who touched each file last, and when? Like <code>git log -1</code> for every file at once:</p>
+<pre><span class="prompt">$ </span>fselect <span class="str">"name, git_last_commit_date, git_last_commit_author from src
+  order by git_last_commit_date desc"</span></pre>
+    </div>
+
+    <div class="example-group">
+        <p>Find every git repository under your projects directory, along with its current branch:</p>
+<pre><span class="prompt">$ </span>fselect <span class="field">path</span>, <span class="field">git_branch</span> <span class="kw">from</span> ~/projects <span class="kw">depth</span> <span class="num">2</span> <span class="kw">where</span> <span class="field">is_git_repo</span></pre>
+    </div>
+
     <!-- SUBQUERIES -->
     <h3><a id="subqueries"></a>Subqueries <span class="badge badge-advanced">advanced</span></h3>
 
@@ -984,7 +1008,7 @@
                 <li><code>device</code> &mdash; device code</li>
                 <li><code>rdev</code> &mdash; device ID for special files</li>
                 <li><code>inode</code> &mdash; inode number</li>
-                <li><code>blocks</code> &mdash; 256-byte blocks</li>
+                <li><code>blocks</code> &mdash; 512-byte blocks</li>
                 <li><code>hardlinks</code> &mdash; number of hard links</li>
             </ul>
         </div>
@@ -1013,6 +1037,16 @@
                 <li><code>default_acl</code> / <code>has_default_acl</code></li>
                 <li><code>caps</code> / <code>has_caps</code></li>
                 <li><code>extattrs</code> / <code>has_extattrs</code></li>
+            </ul>
+        </div>
+        <div class="col-group">
+            <h4>Git</h4>
+            <ul>
+                <li><code>git_status</code> &mdash; clean / modified / staged / untracked / conflicted</li>
+                <li><code>git_branch</code> &mdash; current branch</li>
+                <li><code>is_git_tracked</code> / <code>is_gitignored</code></li>
+                <li><code>git_last_commit_hash</code> / <code>git_last_commit_date</code> / <code>git_last_commit_author</code></li>
+                <li><code>is_git_repo</code> &mdash; directory is a repo root</li>
             </ul>
         </div>
     </div>

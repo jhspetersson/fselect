@@ -1029,7 +1029,18 @@ pub fn get_aggregate_value(
                 _ => String::new(),
             }
         }
-        Function::Count => accumulator.total_count.to_string(),
+        Function::Count => {
+            // COUNT(*) and bare COUNT count all rows in the group; COUNT(col)
+            // follows SQL semantics and skips empty (NULL-like) values.
+            if buffer_key == "*" || buffer_key.is_empty() {
+                accumulator.total_count.to_string()
+            } else {
+                match field_acc {
+                    Some(acc) => acc.non_empty_count.to_string(),
+                    None => accumulator.total_count.to_string(),
+                }
+            }
+        }
         Function::StdDevPop => {
             match field_acc {
                 Some(acc) if acc.count > 0 => {
@@ -1506,6 +1517,9 @@ functions! {
 #[derive(Debug, Default)]
 pub struct FieldAccumulator {
     pub count: usize,
+    /// Number of pushed values that were not empty, regardless of whether they
+    /// were numeric. Backs SQL-style `COUNT(col)`, which skips NULL-like values.
+    pub non_empty_count: usize,
     pub min: f64,
     pub max: f64,
     pub sum: f64,
@@ -1514,6 +1528,9 @@ pub struct FieldAccumulator {
 
 impl FieldAccumulator {
     pub fn push(&mut self, value: &str) {
+        if !value.is_empty() {
+            self.non_empty_count += 1;
+        }
         if let Ok(v) = value.parse::<f64>()
             && v.is_finite() {
                 if self.count == 0 {
@@ -2785,6 +2802,26 @@ mod tests {
         let acc = make_accumulator("val", &["1.5", "2.5"]);
         let result = get_aggregate_value(&Function::Sum, &acc, "val".to_string(), &None);
         assert_eq!(result, "4");
+    }
+
+    #[test]
+    fn count_star_counts_all_rows() {
+        let acc = make_accumulator("Width", &["100", "", "200"]);
+        assert_eq!(get_aggregate_value(&Function::Count, &acc, "*".to_string(), &None), "3");
+        // Bare COUNT (no argument) behaves like COUNT(*)
+        assert_eq!(get_aggregate_value(&Function::Count, &acc, String::new(), &None), "3");
+    }
+
+    #[test]
+    fn count_column_skips_empty_values() {
+        let acc = make_accumulator("Width", &["100", "", "200"]);
+        assert_eq!(get_aggregate_value(&Function::Count, &acc, "Width".to_string(), &None), "2");
+    }
+
+    #[test]
+    fn count_column_includes_non_numeric_values() {
+        let acc = make_accumulator("Name", &["a.txt", "b.txt", ""]);
+        assert_eq!(get_aggregate_value(&Function::Count, &acc, "Name".to_string(), &None), "2");
     }
 
     #[test]

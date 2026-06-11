@@ -254,7 +254,7 @@ Queries using these functions return only one result row.
 | Function                  | Meaning                                                       | Example                                              |
 |---------------------------|---------------------------------------------------------------|------------------------------------------------------|
 | AVG                       | Average of all values                                         | `select avg(size) from /home/user/Downloads`         |
-| COUNT                     | Number of all values                                          | `select count(*) from /home/user/Downloads`          |
+| COUNT                     | Number of rows; `count(col)` skips rows with empty values     | `select count(*) from /home/user/Downloads`          |
 | MAX                       | Maximum value                                                 | `select max(size) from /home/user/Downloads`         |
 | MIN                       | Minimum value                                                 | `select min(size) from /home/user where size gt 0`   |
 | SUM                       | Sum of all values                                             | `select sum(size) from /home/user/Downloads`         |

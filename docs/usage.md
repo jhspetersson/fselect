@@ -47,7 +47,9 @@ What to search? Use `where` with any number of conditions.
 
 Group results with `group by` followed by one or more columns. Like `order by`, this clause
 accepts positional numeric shortcuts that refer to columns from the `select` list, for example
-`group by 1` or `group by 1, 2`.
+`group by 1` or `group by 1, 2`. An aggregate function in the `select` list is not required:
+`select ext from /home/user group by ext` returns one row per distinct extension, like
+`SELECT DISTINCT` in SQL.
 
 Order results like in real SQL with `order by`. All columns are supported for ordering by, 
 as well as `asc`/`desc` parameters and positional numeric shortcuts.

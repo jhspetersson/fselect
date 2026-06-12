@@ -230,7 +230,7 @@ impl<'a> Searcher<'a> {
     }
 
     pub fn is_buffered(&self) -> bool {
-        self.query.is_ordered() || self.query.has_aggregate_column() || self.query.offset > 0 || self.silent_mode
+        self.query.is_ordered() || self.query.is_aggregated() || self.query.offset > 0 || self.silent_mode
     }
 
     /// Searches directories based on configured query and outputs results to stdout.
@@ -462,7 +462,7 @@ impl<'a> Searcher<'a> {
         let compute_time = std::time::Instant::now();
 
         // ======== Compute results =========
-        if self.query.has_aggregate_column() {
+        if self.query.is_aggregated() {
             if !self.query.grouping_fields.is_empty() {
                 let group_keys: Vec<String> = self
                     .query
@@ -1390,7 +1390,7 @@ impl<'a> Searcher<'a> {
 
         self.found += 1;
 
-        if self.query.has_aggregate_column() {
+        if self.query.is_aggregated() {
             for field in self.query.get_all_fields() {
                 file_map.insert(
                     field.to_string(),
@@ -1971,6 +1971,71 @@ mod tests {
 
         let searcher_without_aggregate = create_test_searcher();
         assert!(!searcher_without_aggregate.query.has_aggregate_column());
+    }
+
+    #[test]
+    fn test_is_aggregated_with_grouping_only() {
+        // GROUP BY without an aggregate in the SELECT list must still route
+        // through the grouped path (SQL collapses rows into distinct groups).
+        let query = Box::leak(Box::new(Query {
+            fields: vec![Expr::field(Field::Extension)],
+            roots: Vec::new(),
+            expr: None,
+            grouping_fields: vec![Expr::field(Field::Extension)],
+            ordering_fields: Vec::new(),
+            ordering_asc: Vec::new(),
+            limit: 0,
+            offset: 0,
+            output_format: OutputFormat::Tabs,
+            raw_query: String::new(),
+        }));
+        assert!(query.is_aggregated());
+        assert!(!query.has_aggregate_column());
+
+        let plain = create_test_searcher();
+        assert!(!plain.query.is_aggregated());
+    }
+
+    #[test]
+    fn group_by_without_aggregate_yields_distinct_groups() {
+        let tmp = std::env::temp_dir().join("fselect_test_group_no_aggregate");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        fs::write(tmp.join("a.txt"), "1").unwrap();
+        fs::write(tmp.join("b.txt"), "22").unwrap();
+        fs::write(tmp.join("c.md"), "333").unwrap();
+
+        let query = Box::leak(Box::new(Query {
+            fields: vec![Expr::field(Field::Extension)],
+            roots: vec![Root::new(
+                tmp.to_string_lossy().to_string(),
+                RootOptions::new(),
+            )],
+            expr: None,
+            grouping_fields: vec![Expr::field(Field::Extension)],
+            ordering_fields: vec![Expr::field(Field::Extension)],
+            ordering_asc: vec![true],
+            limit: 0,
+            offset: 0,
+            output_format: OutputFormat::Tabs,
+            raw_query: String::new(),
+        }));
+        let config = Box::leak(Box::new(Config::default()));
+        let default_config = Box::leak(Box::new(Config::default()));
+        let mut searcher = Searcher::new(query, config, default_config, false);
+        searcher.silent_mode = true;
+
+        searcher.list_search_results().unwrap();
+
+        let rows: Vec<String> = searcher
+            .output_buffer
+            .iter_values()
+            .map(|s| s.trim_end().to_string())
+            .collect();
+        let _ = fs::remove_dir_all(&tmp);
+
+        // One row per distinct extension, not one row per file.
+        assert_eq!(rows, vec![String::from("md"), String::from("txt")]);
     }
 
     #[test]

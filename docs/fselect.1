@@ -477,6 +477,21 @@ MIME type string.
 .B line_count
 Number of lines in a text file.
 .TP
+.BR word_count " or " words
+Number of whitespace-separated words in a text file.
+.TP
+.BR char_count " or " chars
+Number of characters in a text file.
+.TP
+.B encoding
+Detected text encoding (e.g. ASCII, UTF-8, UTF-16LE), or empty for binary files.
+.TP
+.B has_bom
+True if the file begins with a byte-order mark (BOM).
+.TP
+.BR line_ending " or " line_endings " or " eol
+Line ending style of a text file (LF, CRLF, CR, Mixed, or empty).
+.TP
 .B is_archive
 True if extension matches a known archive format
 (.7z, .bz2, .gz, .rar, .tar, .xz, .zip, and others).

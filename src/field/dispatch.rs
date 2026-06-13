@@ -160,6 +160,11 @@ pub fn get_field_value(ctx: &mut FieldContext, field: &Field) -> Result<Variant,
 
         // Content
         Field::LineCount => content_handlers::handle_line_count(ctx),
+        Field::WordCount => content_handlers::handle_word_count(ctx),
+        Field::CharCount => content_handlers::handle_char_count(ctx),
+        Field::Encoding => content_handlers::handle_encoding(ctx),
+        Field::HasBom => content_handlers::handle_has_bom(ctx),
+        Field::LineEnding => content_handlers::handle_line_ending(ctx),
         Field::Mime => content_handlers::handle_mime(ctx),
         Field::IsBinary | Field::IsText => content_handlers::handle_is_binary_or_text(ctx, field),
         Field::IsArchive

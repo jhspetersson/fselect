@@ -11,6 +11,49 @@ pub fn handle_line_count(ctx: &mut FieldContext) -> Result<Variant, SearchError>
     Ok(Variant::empty(VariantType::String))
 }
 
+pub fn handle_word_count(ctx: &mut FieldContext) -> Result<Variant, SearchError> {
+    ctx.fms.update_content_stats(ctx.entry);
+    if let Some(stats) = ctx.fms.get_content_stats()
+        && stats.is_text {
+            return Ok(Variant::from_int(stats.word_count as i64));
+        }
+    Ok(Variant::empty(VariantType::String))
+}
+
+pub fn handle_char_count(ctx: &mut FieldContext) -> Result<Variant, SearchError> {
+    ctx.fms.update_content_stats(ctx.entry);
+    if let Some(stats) = ctx.fms.get_content_stats()
+        && stats.is_text {
+            return Ok(Variant::from_int(stats.char_count as i64));
+        }
+    Ok(Variant::empty(VariantType::String))
+}
+
+pub fn handle_encoding(ctx: &mut FieldContext) -> Result<Variant, SearchError> {
+    ctx.fms.update_content_stats(ctx.entry);
+    if let Some(stats) = ctx.fms.get_content_stats()
+        && stats.is_text {
+            return Ok(Variant::from_string(&stats.encoding));
+        }
+    Ok(Variant::empty(VariantType::String))
+}
+
+pub fn handle_has_bom(ctx: &mut FieldContext) -> Result<Variant, SearchError> {
+    if let Some(stats) = ctx.fms.get_content_stats() {
+        return Ok(Variant::from_bool(stats.has_bom));
+    }
+    Ok(Variant::from_bool(has_bom(ctx.entry)))
+}
+
+pub fn handle_line_ending(ctx: &mut FieldContext) -> Result<Variant, SearchError> {
+    ctx.fms.update_content_stats(ctx.entry);
+    if let Some(stats) = ctx.fms.get_content_stats()
+        && stats.is_text {
+            return Ok(Variant::from_string(&stats.line_ending));
+        }
+    Ok(Variant::empty(VariantType::String))
+}
+
 pub fn handle_mime(ctx: &mut FieldContext) -> Result<Variant, SearchError> {
     ctx.fms.update_mime_type(ctx.entry);
     if let Some(mime) = ctx.fms.get_mime_type() {
@@ -69,9 +112,100 @@ fn check_extension(
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
+    use std::path::Path;
+
     use crate::config::Config;
 
     use super::*;
+
+    fn test_field(entry: &fs::DirEntry, root_path: &Path, field: &Field) -> Variant {
+        let config = Config::default();
+        let default_config = Config::default();
+        let mut fms = crate::field::context::FileMetadataState::new();
+        #[cfg(feature = "git")]
+        let mut git_cache = crate::util::git::GitCache::new();
+        #[cfg(all(unix, feature = "users"))]
+        let user_cache = uzers::UsersCache::new();
+        let none_file_info = None;
+        let mut ctx = FieldContext {
+            entry,
+            file_info: &none_file_info,
+            root_path,
+            fms: &mut fms,
+            #[cfg(feature = "git")]
+            git_cache: &mut git_cache,
+            follow_symlinks: true,
+            config: &config,
+            default_config: &default_config,
+            #[cfg(all(unix, feature = "users"))]
+            user_cache: &user_cache,
+        };
+        crate::field::dispatch::get_field_value(&mut ctx, field).unwrap()
+    }
+
+    fn entry_for(dir: &Path, name: &str) -> fs::DirEntry {
+        fs::read_dir(dir)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .find(|e| e.file_name() == name)
+            .unwrap()
+    }
+
+    #[test]
+    fn test_content_fields_on_text_file() {
+        let tmp = std::env::temp_dir().join("fselect_test_content_fields_text_h");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        fs::write(tmp.join("a.txt"), "hello world\nsecond line\n").unwrap();
+
+        let entry = entry_for(&tmp, "a.txt");
+
+        assert_eq!(test_field(&entry, &tmp, &Field::WordCount).to_string(), "4");
+        assert_eq!(test_field(&entry, &tmp, &Field::CharCount).to_string(), "24");
+        assert_eq!(test_field(&entry, &tmp, &Field::Encoding).to_string(), "ASCII");
+        assert_eq!(test_field(&entry, &tmp, &Field::HasBom).to_string(), "false");
+        assert_eq!(test_field(&entry, &tmp, &Field::LineEnding).to_string(), "LF");
+
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn test_content_fields_on_binary_file() {
+        let tmp = std::env::temp_dir().join("fselect_test_content_fields_binary_h");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        fs::write(tmp.join("a.bin"), [0x00u8, 0x01, 0x02, b'x']).unwrap();
+
+        let entry = entry_for(&tmp, "a.bin");
+
+        // Text-only fields surface an empty value for binary content.
+        assert_eq!(test_field(&entry, &tmp, &Field::WordCount).to_string(), "");
+        assert_eq!(test_field(&entry, &tmp, &Field::CharCount).to_string(), "");
+        assert_eq!(test_field(&entry, &tmp, &Field::Encoding).to_string(), "");
+        assert_eq!(test_field(&entry, &tmp, &Field::LineEnding).to_string(), "");
+        // has_bom is still a definite boolean.
+        assert_eq!(test_field(&entry, &tmp, &Field::HasBom).to_string(), "false");
+
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn test_has_bom_true_for_utf8_bom_file() {
+        let tmp = std::env::temp_dir().join("fselect_test_content_fields_bom_h");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        let mut content = vec![0xEFu8, 0xBB, 0xBF];
+        content.extend_from_slice(b"data");
+        fs::write(tmp.join("bom.txt"), content).unwrap();
+
+        let entry = entry_for(&tmp, "bom.txt");
+
+        assert_eq!(test_field(&entry, &tmp, &Field::HasBom).to_string(), "true");
+        assert_eq!(test_field(&entry, &tmp, &Field::Encoding).to_string(), "UTF-8");
+
+        let _ = fs::remove_dir_all(&tmp);
+    }
 
     fn is_archive(config: &Config, default_config: &Config, name: &str) -> bool {
         check_extension(name, &config.is_archive, &default_config.is_archive)

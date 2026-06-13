@@ -836,7 +836,32 @@ fields! {
         @weight = 1024
         @description = "Returns a number of lines in a text file"
         LineCount,
-        
+
+        #[text = ["word_count", "words"], data_type = "numeric"]
+        @weight = 1024
+        @description = "Returns the number of whitespace-separated words in a text file"
+        WordCount,
+
+        #[text = ["char_count", "chars"], data_type = "numeric"]
+        @weight = 1024
+        @description = "Returns the number of characters in a text file"
+        CharCount,
+
+        #[text = ["encoding"]]
+        @weight = 1024
+        @description = "Returns the detected text encoding of the file (e.g., ASCII, UTF-8, UTF-16LE), or an empty value for binary files"
+        Encoding,
+
+        #[text = ["has_bom"], data_type = "boolean"]
+        @weight = 16
+        @description = "Returns a boolean signifying whether the file begins with a byte-order mark (BOM)"
+        HasBom,
+
+        #[text = ["line_ending", "line_endings", "eol"]]
+        @weight = 1024
+        @description = "Returns the line ending style of a text file (LF, CRLF, CR, Mixed, or empty)"
+        LineEnding,
+
         #[text = ["is_binary"], data_type = "boolean"]
         @weight = 16
         @description = "Returns a boolean signifying whether the file has binary contents"

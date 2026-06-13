@@ -707,6 +707,133 @@ pub fn get_line_count(entry: &DirEntry) -> Option<usize> {
     None
 }
 
+#[derive(Clone)]
+pub struct ContentStats {
+    pub is_text: bool,
+    pub char_count: usize,
+    pub word_count: usize,
+    pub encoding: String,
+    pub has_bom: bool,
+    pub line_ending: String,
+}
+
+fn detect_bom(bytes: &[u8]) -> Option<(&'static str, usize)> {
+    if bytes.starts_with(&[0xFF, 0xFE, 0x00, 0x00]) {
+        Some(("UTF-32LE", 4))
+    } else if bytes.starts_with(&[0x00, 0x00, 0xFE, 0xFF]) {
+        Some(("UTF-32BE", 4))
+    } else if bytes.starts_with(&[0xEF, 0xBB, 0xBF]) {
+        Some(("UTF-8", 3))
+    } else if bytes.starts_with(&[0xFF, 0xFE]) {
+        Some(("UTF-16LE", 2))
+    } else if bytes.starts_with(&[0xFE, 0xFF]) {
+        Some(("UTF-16BE", 2))
+    } else {
+        None
+    }
+}
+
+pub fn has_bom(entry: &DirEntry) -> bool {
+    if let Ok(mut file) = File::open(entry.path()) {
+        let mut buf = [0u8; 4];
+        if let Ok(n) = file.read(&mut buf) {
+            return detect_bom(&buf[..n]).is_some();
+        }
+    }
+    false
+}
+
+fn decode_utf16(body: &[u8], big_endian: bool) -> String {
+    let units = body.chunks_exact(2).map(|pair| {
+        if big_endian {
+            u16::from_be_bytes([pair[0], pair[1]])
+        } else {
+            u16::from_le_bytes([pair[0], pair[1]])
+        }
+    });
+    char::decode_utf16(units)
+        .map(|r| r.unwrap_or('\u{FFFD}'))
+        .collect()
+}
+
+fn decode_utf32(body: &[u8], big_endian: bool) -> String {
+    body.chunks_exact(4)
+        .map(|q| {
+            let value = if big_endian {
+                u32::from_be_bytes([q[0], q[1], q[2], q[3]])
+            } else {
+                u32::from_le_bytes([q[0], q[1], q[2], q[3]])
+            };
+            char::from_u32(value).unwrap_or('\u{FFFD}')
+        })
+        .collect()
+}
+
+fn detect_line_ending(text: &str) -> String {
+    let bytes = text.as_bytes();
+    let (mut crlf, mut lf, mut cr) = (false, false, false);
+    let mut i = 0;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'\r' => {
+                if bytes.get(i + 1) == Some(&b'\n') {
+                    crlf = true;
+                    i += 2;
+                    continue;
+                }
+                cr = true;
+            }
+            b'\n' => lf = true,
+            _ => {}
+        }
+        i += 1;
+    }
+    match crlf as u8 + lf as u8 + cr as u8 {
+        0 => String::new(),
+        1 if crlf => String::from("CRLF"),
+        1 if lf => String::from("LF"),
+        1 => String::from("CR"),
+        _ => String::from("Mixed"),
+    }
+}
+
+fn compute_content_stats(bytes: &[u8]) -> ContentStats {
+    let bom = detect_bom(bytes);
+    let has_bom = bom.is_some();
+    let (encoding, bom_len) = match bom {
+        Some((name, len)) => (name.to_string(), len),
+        None => (String::new(), 0),
+    };
+    let body = &bytes[bom_len..];
+
+    let (encoding, is_text, text) = match encoding.as_str() {
+        "UTF-16LE" => (encoding, true, decode_utf16(body, false)),
+        "UTF-16BE" => (encoding, true, decode_utf16(body, true)),
+        "UTF-32LE" => (encoding, true, decode_utf32(body, false)),
+        "UTF-32BE" => (encoding, true, decode_utf32(body, true)),
+        "UTF-8" => (encoding, true, String::from_utf8_lossy(body).into_owned()),
+        _ if body.contains(&0u8) => (String::new(), false, String::new()),
+        _ if body.is_ascii() => (String::from("ASCII"), true, String::from_utf8_lossy(body).into_owned()),
+        _ => match std::str::from_utf8(body) {
+            Ok(text) => (String::from("UTF-8"), true, text.to_string()),
+            Err(_) => (String::from("ISO-8859-1"), true, body.iter().map(|&b| b as char).collect()),
+        },
+    };
+
+    ContentStats {
+        char_count: text.chars().count(),
+        word_count: text.split_whitespace().count(),
+        line_ending: detect_line_ending(&text),
+        is_text,
+        has_bom,
+        encoding,
+    }
+}
+
+pub fn get_content_stats(entry: &DirEntry) -> Option<ContentStats> {
+    fs::read(entry.path()).ok().map(|bytes| compute_content_stats(&bytes))
+}
+
 fn hash_file<D: sha1::Digest>(entry: &DirEntry) -> String {
     if let Ok(mut file) = File::open(entry.path()) {
         let mut hasher = D::new();
@@ -772,6 +899,76 @@ mod tests {
             );
         }
         assert_eq!(t.iter_values().count(), 3);
+    }
+
+    #[test]
+    fn test_content_stats_ascii() {
+        let stats = compute_content_stats(b"hello world\nfoo bar baz\n");
+        assert!(stats.is_text);
+        assert_eq!(stats.encoding, "ASCII");
+        assert!(!stats.has_bom);
+        assert_eq!(stats.word_count, 5);
+        assert_eq!(stats.char_count, 24);
+        assert_eq!(stats.line_ending, "LF");
+    }
+
+    #[test]
+    fn test_content_stats_utf8_multibyte_char_count() {
+        // "héllo" + " wörld": accented chars are multi-byte in UTF-8, so the
+        // character count must be lower than the byte length.
+        let stats = compute_content_stats("héllo wörld".as_bytes());
+        assert!(stats.is_text);
+        assert_eq!(stats.encoding, "UTF-8");
+        assert_eq!(stats.char_count, 11);
+        assert_eq!(stats.word_count, 2);
+    }
+
+    #[test]
+    fn test_content_stats_utf8_bom() {
+        let mut bytes = vec![0xEF, 0xBB, 0xBF];
+        bytes.extend_from_slice(b"abc");
+        let stats = compute_content_stats(&bytes);
+        assert!(stats.has_bom);
+        assert_eq!(stats.encoding, "UTF-8");
+        // The BOM is stripped before counting.
+        assert_eq!(stats.char_count, 3);
+    }
+
+    #[test]
+    fn test_content_stats_utf16le_bom() {
+        // BOM + "Hi" in UTF-16LE.
+        let bytes = [0xFF, 0xFE, b'H', 0x00, b'i', 0x00];
+        let stats = compute_content_stats(&bytes);
+        assert!(stats.is_text);
+        assert!(stats.has_bom);
+        assert_eq!(stats.encoding, "UTF-16LE");
+        assert_eq!(stats.char_count, 2);
+        assert_eq!(stats.word_count, 1);
+    }
+
+    #[test]
+    fn test_content_stats_crlf_and_mixed() {
+        assert_eq!(compute_content_stats(b"a\r\nb\r\n").line_ending, "CRLF");
+        assert_eq!(compute_content_stats(b"a\rb\r").line_ending, "CR");
+        assert_eq!(compute_content_stats(b"a\r\nb\nc").line_ending, "Mixed");
+        assert_eq!(compute_content_stats(b"no newline").line_ending, "");
+    }
+
+    #[test]
+    fn test_content_stats_binary() {
+        // A NUL byte (without a UTF-16/32 BOM) marks the content as binary.
+        let stats = compute_content_stats(&[0x00, 0x01, 0x02, b'a']);
+        assert!(!stats.is_text);
+        assert_eq!(stats.encoding, "");
+    }
+
+    #[test]
+    fn test_content_stats_latin1_fallback() {
+        // 0xE9 is "é" in Latin-1 but not valid UTF-8 on its own.
+        let stats = compute_content_stats(&[b'c', b'a', b'f', 0xE9]);
+        assert!(stats.is_text);
+        assert_eq!(stats.encoding, "ISO-8859-1");
+        assert_eq!(stats.char_count, 4);
     }
 
     fn basic_criteria<T: Ord + Clone + Display>(vals: &[T]) -> Criteria<T> {

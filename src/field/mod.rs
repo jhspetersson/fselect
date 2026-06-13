@@ -275,7 +275,19 @@ fields! {
         @weight = 1
         @description = "Returns a boolean signifying whether the file path is a symlink"
         IsSymlink,
-        
+
+        #[text = ["link_target", "symlink_target"]]
+        @for_archived = true
+        @weight = 1
+        @description = "Returns the target path of the symlink, or an empty value if the file is not a symlink"
+        LinkTarget,
+
+        #[text = ["is_broken_symlink", "is_broken_link"], data_type = "boolean"]
+        @for_archived = true
+        @weight = 1
+        @description = "Returns a boolean signifying whether the file path is a symlink whose target does not exist"
+        IsBrokenSymlink,
+
         #[text = ["is_pipe", "is_fifo"], data_type = "boolean"]
         @for_archived = true
         @weight = 1

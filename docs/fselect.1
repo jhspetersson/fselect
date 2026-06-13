@@ -106,6 +106,9 @@ Directory portion of the path, relative to the search root.
 .TP
 .B absdir
 Absolute directory portion of the path.
+.TP
+.BR link_target " or " symlink_target
+Target path of the symlink, or empty if the file is not a symlink.
 .SS File naming terminology
 Given a search root of
 .B /home/user/projects
@@ -150,6 +153,9 @@ True if path is a regular file.
 .TP
 .B is_symlink
 True if path is a symbolic link.
+.TP
+.BR is_broken_symlink " or " is_broken_link
+True if path is a symbolic link whose target does not exist.
 .TP
 .BR is_pipe " or " is_fifo
 True if path is a FIFO or named pipe.

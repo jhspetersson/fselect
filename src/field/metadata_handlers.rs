@@ -140,6 +140,48 @@ pub fn handle_is_symlink(ctx: &mut FieldContext) -> Result<Variant, SearchError>
     }
 }
 
+/// Whether the entry itself is a symlink, resolved without following the link
+/// and reusing the file type computed during traversal when available, so this
+/// usually costs no syscall. A failure to determine the type is reported as
+/// `false`.
+fn entry_is_symlink(ctx: &mut FieldContext) -> bool {
+    if let Some(file_type) = ctx.fms.get_or_compute_file_type(ctx.entry) {
+        return file_type.is_symlink();
+    }
+    get_metadata(ctx.entry, false)
+        .map(|meta| meta.file_type().is_symlink())
+        .unwrap_or(false)
+}
+
+pub fn handle_link_target(ctx: &mut FieldContext) -> Result<Variant, SearchError> {
+    match ctx.file_info {
+        // Archived entries carry no link target.
+        Some(_) => Ok(Variant::empty(VariantType::String)),
+        _ => {
+            if entry_is_symlink(ctx)
+                && let Ok(target) = fs::read_link(ctx.entry.path()) {
+                    return Ok(Variant::from_string(&target.to_string_lossy().to_string()));
+                }
+            Ok(Variant::empty(VariantType::String))
+        }
+    }
+}
+
+pub fn handle_is_broken_symlink(ctx: &mut FieldContext) -> Result<Variant, SearchError> {
+    match ctx.file_info {
+        Some(_) => Ok(Variant::from_bool(false)),
+        _ => {
+            if !entry_is_symlink(ctx) {
+                return Ok(Variant::from_bool(false));
+            }
+            // The entry is a symlink; it is broken when its target cannot be
+            // resolved. `fs::metadata` follows the link, so an error means the
+            // target is missing (or otherwise unreachable).
+            Ok(Variant::from_bool(fs::metadata(ctx.entry.path()).is_err()))
+        }
+    }
+}
+
 /// Resolve a file-type predicate (is_dir/is_file) with the fewest syscalls:
 /// reuse already-loaded metadata, otherwise use the directory entry's file
 /// type (carried over from reading the directory, so usually free) when not
@@ -596,6 +638,120 @@ mod tests {
             "true",
             "is_symlink should be true for a symlink even when follow_symlinks is on"
         );
+    }
+
+    #[test]
+    fn test_link_target_returns_target_for_symlink() {
+        let tmp = std::env::temp_dir().join("fselect_test_link_target_h");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        fs::write(tmp.join("real_file.txt"), "hello world").unwrap();
+
+        #[cfg(unix)]
+        std::os::unix::fs::symlink("real_file.txt", tmp.join("link")).unwrap();
+        #[cfg(windows)]
+        std::os::windows::fs::symlink_file(tmp.join("real_file.txt"), tmp.join("link")).unwrap();
+
+        let entry = fs::read_dir(&tmp)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .find(|e| e.file_name() == "link")
+            .unwrap();
+
+        let result = test_field(&entry, &None, &tmp, &Field::LinkTarget);
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert!(
+            result.to_string().contains("real_file.txt"),
+            "link_target should point at the symlink's target, got {}",
+            result.to_string()
+        );
+    }
+
+    #[test]
+    fn test_link_target_empty_for_regular_file() {
+        let tmp = std::env::temp_dir().join("fselect_test_link_target_regular_h");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        fs::write(tmp.join("real_file.txt"), "hello world").unwrap();
+
+        let entry = fs::read_dir(&tmp)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .find(|e| e.file_name() == "real_file.txt")
+            .unwrap();
+
+        let result = test_field(&entry, &None, &tmp, &Field::LinkTarget);
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(result.to_string(), "", "link_target should be empty for a non-symlink");
+    }
+
+    #[test]
+    fn test_is_broken_symlink_true_for_dangling_link() {
+        let tmp = std::env::temp_dir().join("fselect_test_broken_symlink_h");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+
+        // Point at a target that does not exist.
+        #[cfg(unix)]
+        std::os::unix::fs::symlink("does_not_exist.txt", tmp.join("link")).unwrap();
+        #[cfg(windows)]
+        std::os::windows::fs::symlink_file(tmp.join("does_not_exist.txt"), tmp.join("link")).unwrap();
+
+        let entry = fs::read_dir(&tmp)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .find(|e| e.file_name() == "link")
+            .unwrap();
+
+        let result = test_field(&entry, &None, &tmp, &Field::IsBrokenSymlink);
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(result.to_string(), "true", "is_broken_symlink should be true for a dangling link");
+    }
+
+    #[test]
+    fn test_is_broken_symlink_false_for_valid_link() {
+        let tmp = std::env::temp_dir().join("fselect_test_valid_symlink_h");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        fs::write(tmp.join("real_file.txt"), "hello world").unwrap();
+
+        #[cfg(unix)]
+        std::os::unix::fs::symlink("real_file.txt", tmp.join("link")).unwrap();
+        #[cfg(windows)]
+        std::os::windows::fs::symlink_file(tmp.join("real_file.txt"), tmp.join("link")).unwrap();
+
+        let entry = fs::read_dir(&tmp)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .find(|e| e.file_name() == "link")
+            .unwrap();
+
+        let result = test_field(&entry, &None, &tmp, &Field::IsBrokenSymlink);
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(result.to_string(), "false", "is_broken_symlink should be false for a working link");
+    }
+
+    #[test]
+    fn test_is_broken_symlink_false_for_regular_file() {
+        let tmp = std::env::temp_dir().join("fselect_test_broken_symlink_regular_h");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        fs::write(tmp.join("real_file.txt"), "hello world").unwrap();
+
+        let entry = fs::read_dir(&tmp)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .find(|e| e.file_name() == "real_file.txt")
+            .unwrap();
+
+        let result = test_field(&entry, &None, &tmp, &Field::IsBrokenSymlink);
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(result.to_string(), "false", "is_broken_symlink should be false for a non-symlink");
     }
 
     #[test]

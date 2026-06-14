@@ -115,6 +115,9 @@ pub fn get_field_value(ctx: &mut FieldContext, field: &Field) -> Result<Variant,
         Field::Album => media_handlers::handle_album(ctx),
         Field::Year => media_handlers::handle_year(ctx),
         Field::Genre => media_handlers::handle_genre(ctx),
+        Field::Comment => media_handlers::handle_comment(ctx),
+        Field::Track => media_handlers::handle_track(ctx),
+        Field::Disc => media_handlers::handle_disc(ctx),
 
         // EXIF
         Field::ExifDateTime | Field::ExifDateTimeOriginal => {

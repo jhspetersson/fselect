@@ -631,7 +631,22 @@ fields! {
         @weight = 16
         @description = "Returns the genre of the audio file taken from the file's metadata"
         Genre,
-        
+
+        #[text = ["mp3_comment", "comment"]]
+        @weight = 16
+        @description = "Returns the comment of the audio file taken from the file's metadata"
+        Comment,
+
+        #[text = ["mp3_track", "track"]]
+        @weight = 16
+        @description = "Returns the track number of the audio file taken from the file's metadata (e.g., 4 or 4/9)"
+        Track,
+
+        #[text = ["mp3_disc", "disc"]]
+        @weight = 16
+        @description = "Returns the disc number (part of a set) of the audio file taken from the file's metadata (e.g., 1 or 1/2)"
+        Disc,
+
         #[text = ["exif_datetime"], data_type = "datetime"]
         @weight = 16
         @description = "Returns date and time of taken photo"

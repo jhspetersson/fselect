@@ -89,9 +89,55 @@ pub fn handle_genre(ctx: &mut FieldContext) -> Result<Variant, SearchError> {
     Ok(Variant::empty(VariantType::String))
 }
 
+/// The ID3v1 comment, if present.
+fn mp3_comment(mp3_info: &mp3_metadata::MP3Metadata) -> Option<&String> {
+    mp3_info.tag.as_ref().map(|tag| &tag.comment)
+}
+
+/// The track number, carried by an ID3v2 frame; returns the first one found.
+fn mp3_track_number(mp3_info: &mp3_metadata::MP3Metadata) -> Option<&String> {
+    mp3_info.optional_info.iter().find_map(|info| info.track_number.as_ref())
+}
+
+/// The disc number ("part of a set" ID3v2 frame); returns the first one found.
+fn mp3_disc_number(mp3_info: &mp3_metadata::MP3Metadata) -> Option<&String> {
+    mp3_info.optional_info.iter().find_map(|info| info.part_of_a_set.as_ref())
+}
+
+pub fn handle_comment(ctx: &mut FieldContext) -> Result<Variant, SearchError> {
+    ctx.fms.update_mp3_metadata(ctx.entry);
+    if let Some(mp3_info) = ctx.fms.get_mp3_metadata()
+        && let Some(comment) = mp3_comment(mp3_info) {
+            return Ok(Variant::from_string(comment));
+        }
+    Ok(Variant::empty(VariantType::String))
+}
+
+pub fn handle_track(ctx: &mut FieldContext) -> Result<Variant, SearchError> {
+    ctx.fms.update_mp3_metadata(ctx.entry);
+    if let Some(mp3_info) = ctx.fms.get_mp3_metadata()
+        && let Some(track) = mp3_track_number(mp3_info) {
+            return Ok(Variant::from_string(track));
+        }
+    Ok(Variant::empty(VariantType::String))
+}
+
+pub fn handle_disc(ctx: &mut FieldContext) -> Result<Variant, SearchError> {
+    ctx.fms.update_mp3_metadata(ctx.entry);
+    if let Some(mp3_info) = ctx.fms.get_mp3_metadata()
+        && let Some(disc) = mp3_disc_number(mp3_info) {
+            return Ok(Variant::from_string(disc));
+        }
+    Ok(Variant::empty(VariantType::String))
+}
+
 #[cfg(test)]
 mod tests {
-    use mp3_metadata::Genre;
+    use std::time::Duration as StdDuration;
+
+    use mp3_metadata::{AudioTag, Genre, MP3Metadata, OptionalAudioTags};
+
+    use super::*;
 
     #[test]
     fn test_genre_uses_display_not_debug() {
@@ -101,5 +147,56 @@ mod tests {
         // ClassicRock with Display should be different from Debug
         let display = format!("{}", Genre::ClassicRock);
         assert!(!display.is_empty());
+    }
+
+    fn metadata(tag: Option<AudioTag>, optional: Vec<OptionalAudioTags>) -> MP3Metadata {
+        MP3Metadata {
+            duration: StdDuration::default(),
+            frames: vec![],
+            tag,
+            optional_info: optional,
+        }
+    }
+
+    #[test]
+    fn test_mp3_comment() {
+        let tag = AudioTag {
+            comment: String::from("ripped from CD"),
+            ..Default::default()
+        };
+        let info = metadata(Some(tag), vec![]);
+        assert_eq!(mp3_comment(&info), Some(&String::from("ripped from CD")));
+
+        // No tag at all -> no comment.
+        let info = metadata(None, vec![]);
+        assert_eq!(mp3_comment(&info), None);
+    }
+
+    #[test]
+    fn test_mp3_track_and_disc_numbers() {
+        let optional = OptionalAudioTags {
+            track_number: Some(String::from("4/9")),
+            part_of_a_set: Some(String::from("1/2")),
+            ..Default::default()
+        };
+        let info = metadata(None, vec![optional]);
+
+        assert_eq!(mp3_track_number(&info), Some(&String::from("4/9")));
+        assert_eq!(mp3_disc_number(&info), Some(&String::from("1/2")));
+    }
+
+    #[test]
+    fn test_mp3_track_skips_frames_without_value() {
+        // The first optional frame lacks a track number; the value should be
+        // picked up from the later frame that has one.
+        let empty = OptionalAudioTags::default();
+        let with_track = OptionalAudioTags {
+            track_number: Some(String::from("7")),
+            ..Default::default()
+        };
+        let info = metadata(None, vec![empty, with_track]);
+
+        assert_eq!(mp3_track_number(&info), Some(&String::from("7")));
+        assert_eq!(mp3_disc_number(&info), None);
     }
 }

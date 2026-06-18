@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>fselect &mdash; Find files with SQL-like queries</title>
-    <meta name="description" content="fselect is a command-line tool to search files with SQL-like queries. Filter by size, date, name, content, image dimensions, MP3 tags, and more.">
+    <meta name="description" content="fselect is a command-line tool to search files with SQL-like queries. Filter by size, date, name, content, image dimensions, audio tags, and more.">
     <link rel="icon" type="image/svg+xml" href="favicon.svg">
     <style>
         :root {
@@ -441,8 +441,8 @@
         </div>
         <div class="feature">
             <div class="icon">&#x1F3B5;</div>
-            <h4>MP3 &amp; Media Metadata</h4>
-            <p>Search by bitrate, duration, genre, artist, album. Find that one 320kbps rap track from the 90s in seconds.</p>
+            <h4>Audio &amp; Media Metadata</h4>
+            <p>Search by bitrate, duration, genre, artist, album, track across MP3, FLAC, Ogg, Opus, M4A, WAV, and more. Find that one 320kbps rap track from the 90s in seconds.</p>
         </div>
         <div class="feature">
             <div class="icon">&#x1F5BC;</div>
@@ -950,6 +950,7 @@
                 <li><code>abspath</code> &mdash; absolute path</li>
                 <li><code>dir</code> &mdash; relative directory</li>
                 <li><code>absdir</code> &mdash; absolute directory</li>
+                <li><code>link_target</code> &mdash; symlink target</li>
             </ul>
         </div>
         <div class="col-group">
@@ -971,7 +972,7 @@
         <div class="col-group">
             <h4>File Type Booleans</h4>
             <ul>
-                <li><code>is_dir</code> <code>is_file</code> <code>is_symlink</code></li>
+                <li><code>is_dir</code> <code>is_file</code> <code>is_symlink</code> <code>is_broken_symlink</code></li>
                 <li><code>is_pipe</code> <code>is_char</code> <code>is_block</code> <code>is_socket</code></li>
                 <li><code>is_hidden</code> <code>is_empty</code> <code>is_shebang</code></li>
                 <li><code>is_binary</code> <code>is_text</code></li>
@@ -1016,7 +1017,8 @@
             <h4>Content &amp; Hashes</h4>
             <ul>
                 <li><code>mime</code> &mdash; MIME type</li>
-                <li><code>line_count</code> &mdash; number of lines</li>
+                <li><code>line_count</code> <code>word_count</code> <code>char_count</code> &mdash; text counts</li>
+                <li><code>encoding</code> <code>has_bom</code> <code>line_ending</code> &mdash; text format</li>
                 <li><code>sha1</code> <code>sha256</code> <code>sha512</code> <code>sha3</code></li>
             </ul>
         </div>
@@ -1024,8 +1026,9 @@
             <h4>Image &amp; Media</h4>
             <ul>
                 <li><code>width</code> / <code>height</code> &mdash; dimensions</li>
-                <li><code>title</code> <code>album</code> <code>artist</code> <code>genre</code></li>
-                <li><code>bitrate</code> <code>freq</code> <code>duration</code> <code>mp3_year</code></li>
+                <li><code>title</code> <code>album</code> <code>artist</code> <code>genre</code> <code>comment</code></li>
+                <li><code>track</code> <code>disc</code> <code>audio_year</code> <code>bitrate</code> <code>freq</code> <code>duration</code></li>
+                <li>audio tags &mdash; MP3, FLAC, Ogg, Opus, M4A, WAV, and more</li>
                 <li><code>exif_*</code> &mdash; 40+ EXIF fields</li>
             </ul>
         </div>

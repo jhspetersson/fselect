@@ -1,6 +1,7 @@
 #[cfg(target_os = "linux")]
 pub(crate) mod acl;
 pub(crate) mod app_dirs;
+pub mod audio;
 #[cfg(target_os = "linux")]
 pub(crate) mod capabilities;
 #[cfg(target_os = "linux")]
@@ -45,7 +46,6 @@ use std::rc::Rc;
 use std::sync::LazyLock;
 
 use chrono::{NaiveDate, NaiveDateTime};
-use mp3_metadata::MP3Metadata;
 use regex::Regex;
 
 pub use self::datetime::format_date;
@@ -64,6 +64,7 @@ pub use self::wbuf::WritableBuffer;
 use crate::expr::Expr;
 #[cfg(windows)]
 use crate::mode;
+pub use audio::AudioInfo;
 pub use dimensions::Dimensions;
 pub use duration::Duration;
 
@@ -557,9 +558,6 @@ pub fn get_metadata(entry: &DirEntry, follow_symlinks: bool) -> Option<Metadata>
     None
 }
 
-pub fn get_mp3_metadata(entry: &DirEntry) -> Option<MP3Metadata> {
-    mp3_metadata::read_from_file(entry.path()).ok()
-}
 
 pub fn get_exif_metadata(entry: &DirEntry) -> Option<HashMap<String, String>> {
     if let Ok(file) = File::open(entry.path())

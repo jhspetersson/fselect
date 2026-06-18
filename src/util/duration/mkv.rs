@@ -3,7 +3,6 @@ use std::io;
 use std::path::Path;
 
 use matroska::MatroskaError;
-use mp3_metadata::MP3Metadata;
 
 use crate::util::duration::DurationExtractor;
 use crate::util::Duration;
@@ -15,11 +14,7 @@ impl DurationExtractor for MkvDurationExtractor {
         "mkv" == ext_lowercase || "webm" == ext_lowercase
     }
 
-    fn try_read_duration(
-        &self,
-        path: &Path,
-        _: &Option<MP3Metadata>,
-    ) -> io::Result<Option<Duration>> {
+    fn try_read_duration(&self, path: &Path) -> io::Result<Option<Duration>> {
         let fd = File::open(path)?;
         let matroska = matroska::Matroska::open(fd).map_err(|err| match err {
             MatroskaError::Io(io) => io,
@@ -52,7 +47,7 @@ mod test {
             std::env::var("CARGO_MANIFEST_DIR")? + "/resources/test/" + "video/rust-logo-blk.mkv";
         let path = PathBuf::from(path_string);
         assert_eq!(
-            MkvDurationExtractor.try_read_duration(&path, &None)?,
+            MkvDurationExtractor.try_read_duration(&path)?,
             Some(Duration { length: 1 }),
         );
         Ok(())

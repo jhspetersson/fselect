@@ -14,7 +14,7 @@ While it doesn't tend to fully replace traditional `find` and `ls`, **fselect** 
 * search within archives
 * `.gitignore`, `.hgignore`, and `.dockerignore` support (experimental)
 * search by width and height of images, EXIF metadata
-* search by MP3 info
+* search by audio metadata (MP3, FLAC, Ogg Vorbis, Opus, M4A/AAC, WAV, AIFF, APE, WavPack, Musepack, Speex)
 * search by extended file attributes, POSIX ACLs, and Linux capabilities
 * search by file hashes
 * search by MIME type

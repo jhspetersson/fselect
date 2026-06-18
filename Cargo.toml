@@ -32,9 +32,9 @@ human-time = "0.1.6"
 humansize = "2.0"
 imagesize = "0.14"
 kamadak-exif = "0.6"
+lofty = "0.22"
 lscolors = { version = "0.21", features = [ "nu-ansi-term" ] }
 matroska = "0.30"
-mp3-metadata = "0.4"
 mp4parse = "0.17"
 nu-ansi-term = "0.50"
 rand = "0.10"
@@ -52,7 +52,6 @@ toml = "1"
 tree_magic_mini = { version = "3.0", features = [ "with-gpl-data" ] }
 update-informer = { version = "1.1.0", optional = true }
 wana_kana = "5.0"
-wavers = "1.1"
 zip = "8"
 
 [target.'cfg(unix)'.dependencies]
@@ -78,7 +77,7 @@ extended-description = """\
 * search within archives
 * .gitignore, .hgignore, and .dockerignore support (experimental)
 * search by width and height of images, EXIF metadata
-* search by MP3 info
+* search by audio metadata (MP3, FLAC, Ogg, Opus, M4A, WAV, and more)
 * search by extended file attributes, POSIX ACLs, and Linux capabilities
 * search by file hashes
 * search by MIME type

@@ -604,7 +604,7 @@ fields! {
         
         #[text = ["mp3_freq", "freq"], data_type = "numeric"]
         @weight = 16
-        @description = "Returns the sampling rate of audio or video file"
+        @description = "Returns the sampling rate of the audio file in Hz"
         Freq,
         
         #[text = ["mp3_title", "title"]]
@@ -622,7 +622,7 @@ fields! {
         @description = "Returns the album name of the audio file taken from the file's metadata"
         Album,
         
-        #[text = ["mp3_year"], data_type = "numeric"]
+        #[text = ["mp3_year", "audio_year"], data_type = "numeric"]
         @weight = 16
         @description = "Returns the year of the audio file taken from the file's metadata"
         Year,

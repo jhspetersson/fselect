@@ -2,7 +2,6 @@ use std::collections::HashMap;
 use std::fs::{DirEntry, FileType, Metadata};
 use std::path::Path;
 
-use mp3_metadata::MP3Metadata;
 #[cfg(all(unix, feature = "users"))]
 use uzers::UsersCache;
 
@@ -11,6 +10,7 @@ use crate::fileinfo::FileInfo;
 use crate::util::*;
 #[cfg(feature = "git")]
 use crate::util::git::GitCache;
+use crate::util::audio::{AudioInfo, get_audio_info};
 use crate::util::dimensions::get_dimensions;
 use crate::util::duration::get_duration;
 
@@ -21,7 +21,7 @@ pub struct FileMetadataState {
     pub(crate) content_stats: Option<Option<ContentStats>>,
     pub(crate) dimensions: Option<Option<Dimensions>>,
     pub(crate) duration: Option<Option<Duration>>,
-    pub(crate) mp3_metadata: Option<Option<MP3Metadata>>,
+    pub(crate) audio_info: Option<Option<AudioInfo>>,
     pub(crate) exif_metadata: Option<Option<HashMap<String, String>>>,
     pub(crate) mime_type: Option<Option<String>>,
     pub(crate) sha1_hash: Option<String>,
@@ -39,7 +39,7 @@ impl FileMetadataState {
             content_stats: None,
             dimensions: None,
             duration: None,
-            mp3_metadata: None,
+            audio_info: None,
             exif_metadata: None,
             mime_type: None,
             sha1_hash: None,
@@ -115,14 +115,14 @@ impl FileMetadataState {
         self.content_stats.as_ref().and_then(|o| o.as_ref())
     }
 
-    pub fn update_mp3_metadata(&mut self, entry: &DirEntry) {
-        if self.mp3_metadata.is_none() {
-            self.mp3_metadata = Some(get_mp3_metadata(entry));
+    pub fn update_audio_info(&mut self, entry: &DirEntry) {
+        if self.audio_info.is_none() {
+            self.audio_info = Some(get_audio_info(&entry.path()));
         }
     }
 
-    pub fn get_mp3_metadata(&self) -> Option<&MP3Metadata> {
-        self.mp3_metadata.as_ref().and_then(|o| o.as_ref())
+    pub fn get_audio_info(&self) -> Option<&AudioInfo> {
+        self.audio_info.as_ref().and_then(|o| o.as_ref())
     }
 
     pub fn update_exif_metadata(&mut self, entry: &DirEntry) {
@@ -194,9 +194,15 @@ impl FileMetadataState {
 
     pub fn update_duration(&mut self, entry: &DirEntry) {
         if self.duration.is_none() {
-            self.update_mp3_metadata(entry);
-            let mp3_flat = self.mp3_metadata.as_ref().unwrap_or(&None);
-            self.duration = Some(get_duration(entry.path(), mp3_flat));
+            // Audio durations come from lofty (via the cached audio info);
+            // anything it doesn't handle falls back to the video extractors.
+            self.update_audio_info(entry);
+            let duration = self
+                .get_audio_info()
+                .and_then(|info| info.duration)
+                .map(|length| Duration { length })
+                .or_else(|| get_duration(entry.path()));
+            self.duration = Some(duration);
         }
     }
 
@@ -233,7 +239,7 @@ mod tests {
         assert!(state.content_stats.is_none());
         assert!(state.dimensions.is_none());
         assert!(state.duration.is_none());
-        assert!(state.mp3_metadata.is_none());
+        assert!(state.audio_info.is_none());
         assert!(state.exif_metadata.is_none());
         assert!(state.mime_type.is_none());
         assert!(state.sha1_hash.is_none());
@@ -252,7 +258,7 @@ mod tests {
         state.content_stats = Some(None);
         state.dimensions = Some(None);
         state.duration = Some(None);
-        state.mp3_metadata = Some(None);
+        state.audio_info = Some(None);
         state.exif_metadata = Some(None);
         state.mime_type = Some(None);
         state.sha1_hash = Some(String::new());
@@ -268,7 +274,7 @@ mod tests {
         assert!(state.content_stats.is_none());
         assert!(state.dimensions.is_none());
         assert!(state.duration.is_none());
-        assert!(state.mp3_metadata.is_none());
+        assert!(state.audio_info.is_none());
         assert!(state.exif_metadata.is_none());
         assert!(state.mime_type.is_none());
         assert!(state.sha1_hash.is_none());

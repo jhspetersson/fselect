@@ -16,7 +16,7 @@ Find files with SQL-like queries.
 [Date and time specifiers](#date-and-time-specifiers)  
 [Regular expressions](#regular-expressions)  
 [MIME and file types](#mime-and-file-types)  
-[MP3 support](#mp3-support)  
+[Audio support](#audio-support)  
 [File hashes](#file-hashes)  
 [Output formats](#output-formats)  
 [Configuration file](#configuration-file)  
@@ -212,10 +212,10 @@ Subqueries have only limited support: in `IN` / `EXISTS` predicates, and as the 
 | `mp3_comment` or `comment`                   | Returns the comment of the audio file taken from the file's metadata                                                          |                                                               |
 | `mp3_track` or `track`                       | Returns the track number of the audio file taken from the file's metadata (e.g., 4 or 4/9)                                    |                                                               |
 | `mp3_disc` or `disc`                         | Returns the disc number (part of a set) of the audio file taken from the file's metadata (e.g., 1 or 1/2)                     |                                                               |
-| `mp3_year`                                   | Returns the year of the audio file taken from the file's metadata                                                             |                                                               |
-| `mp3_freq` or `freq`                         | Returns the sampling rate of audio or video file                                                                              |                                                               |
+| `mp3_year` or `audio_year`                   | Returns the year of the audio file taken from the file's metadata                                                             |                                                               |
+| `mp3_freq` or `freq`                         | Returns the sampling rate of the audio file in Hz                                                                             |                                                               |
 | `mp3_bitrate` or `bitrate`                   | Returns the bitrate of the audio file in kbps                                                                                 |                                                               |
-| `duration`                                   | Returns the duration of audio file in seconds                                                                                 |                                                               |
+| `duration`                                   | Returns the duration in seconds of an audio file, or an MP4/Matroska/WebM video                                               |                                                               |
 | `is_shebang`                                 | Returns a boolean signifying whether the file starts with a shebang (#!)                                                      |                                                               |
 | `is_git_repo`                                | Returns a boolean signifying whether the directory contains a `.git` subdirectory or file                                     |                                                               |
 | `is_git_tracked` or `git_tracked`            | Returns a boolean signifying whether the file is tracked by git                                                               | Requires the `git` feature (enabled by default)               |
@@ -874,18 +874,18 @@ The lists below could be edited with the configuration file.
     fselect path from /home/user where is_image = false
     fselect path from /home/user where is_video != true
 
-### MP3 support
+### Audio support
 
-**fselect** can parse basic MP3 metadata and search by bitrate or sampling frequency of the first frame,
-title of the track, artist's name, album, genre, and year.
+**fselect** reads audio metadata via [lofty](https://crates.io/crates/lofty), so it can search by
+bitrate, sampling frequency, title, artist, album, genre, year, comment, track, and disc number across
+many formats: MP3, FLAC, Ogg Vorbis, Opus, M4A/AAC/ALAC, WAV, AIFF, APE, WavPack, Musepack, and Speex.
 
 Duration is measured in seconds.
-
-[List of supported genres](https://docs.rs/mp3-metadata/0.3.0/mp3_metadata/enum.Genre.html)
 
     fselect duration, bitrate, path from /home/user/music
     fselect mp3_year, album, title from /home/user/music where artist like %Vampire% and bitrate gte 320
     fselect bitrate, freq, path from /home/user/music where genre = Rap or genre = HipHop
+    fselect path, title, artist from /home/user/music where ext in (flac, opus, m4a)
 
 ### File hashes
 

@@ -3,8 +3,6 @@ use std::io;
 use std::io::BufReader;
 use std::path::Path;
 
-use mp3_metadata::MP3Metadata;
-
 use crate::util::duration::DurationExtractor;
 use crate::util::Duration;
 
@@ -15,11 +13,7 @@ impl DurationExtractor for Mp4DurationExtractor {
         "mp4" == ext_lowercase
     }
 
-    fn try_read_duration(
-        &self,
-        path: &Path,
-        _: &Option<MP3Metadata>,
-    ) -> io::Result<Option<Duration>> {
+    fn try_read_duration(&self, path: &Path) -> io::Result<Option<Duration>> {
         let fd = File::open(path)?;
         let mut reader = BufReader::new(fd);
         let context = mp4parse::read_mp4(&mut reader)?;
@@ -49,7 +43,7 @@ mod test {
             std::env::var("CARGO_MANIFEST_DIR")? + "/resources/test/" + "video/rust-logo-blk.mp4";
         let path = PathBuf::from(path_string);
         assert_eq!(
-            Mp4DurationExtractor.try_read_duration(&path, &None)?,
+            Mp4DurationExtractor.try_read_duration(&path)?,
             Some(Duration { length: 1 }),
         );
         Ok(())

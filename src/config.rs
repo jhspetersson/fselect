@@ -154,7 +154,7 @@ impl Config {
                 ".asm", ".awk", ".bas", ".c", ".cc", ".ceylon", ".clj", ".coffee", ".cpp", ".cs", ".d",
                 ".dart", ".elm", ".erl", ".go", ".gradle", ".groovy", ".h", ".hh", ".hpp", ".java",
                 ".jl", ".js", ".jsp", ".jsx", ".kt", ".kts", ".lua", ".nim", ".pas", ".php", ".pl",
-                ".pm", ".py", ".rb", ".rs", ".scala", ".sol", ".swift", ".tcl", ".ts", ".tsx",
+                ".pm", ".py", ".qml", ".rb", ".rs", ".scala", ".sol", ".swift", ".tcl", ".ts", ".tsx",
                 ".vala", ".vb", ".zig"
             ],
             is_video: vec_of_strings![

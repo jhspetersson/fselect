@@ -106,6 +106,8 @@ fn is_subquery_cacheable(query: &Query) -> bool {
         .collect();
     !expr_references_external_alias(&query.expr, &own_aliases)
         && query.fields.iter().all(|e| !expr_walk_external_alias(e, &own_aliases))
+        && query.ordering_fields.iter().all(|e| !expr_walk_external_alias(e, &own_aliases))
+        && query.grouping_fields.iter().all(|e| !expr_walk_external_alias(e, &own_aliases))
 }
 
 fn expr_references_external_alias(expr: &Option<Expr>, own: &HashSet<String>) -> bool {
@@ -348,12 +350,30 @@ impl<'a> Searcher<'a> {
         for root in roots {
             self.current_follow_symlinks = root.options.symlinks;
             self.current_alias = root.options.alias.clone();
-            self.subquery_required_fields = match (&self.current_alias, &self.query.expr) {
-                (Some(alias), Some(expr)) => {
-                    let fields = expr.get_fields_required_in_subqueries(alias, false);
+            self.subquery_required_fields = match &self.current_alias {
+                Some(alias) => {
+                    // A correlated subquery can sit in any outer clause — the
+                    // SELECT list, WHERE, ORDER BY, or GROUP BY — so snapshot the
+                    // outer fields it consumes from all of them. Mirrors the
+                    // coverage of is_subquery_cacheable, which inspects the same
+                    // clauses; otherwise a SELECT-list (or ORDER BY) correlation
+                    // would never reach record_context.
+                    let mut fields = HashMap::new();
+                    for column_expr in &self.query.fields {
+                        fields.extend(column_expr.get_fields_required_in_subqueries(alias, false));
+                    }
+                    if let Some(ref expr) = self.query.expr {
+                        fields.extend(expr.get_fields_required_in_subqueries(alias, false));
+                    }
+                    for ordering_expr in &self.query.ordering_fields {
+                        fields.extend(ordering_expr.get_fields_required_in_subqueries(alias, false));
+                    }
+                    for grouping_expr in &self.query.grouping_fields {
+                        fields.extend(grouping_expr.get_fields_required_in_subqueries(alias, false));
+                    }
                     if fields.is_empty() { None } else { Some(fields) }
                 }
-                _ => None,
+                None => None,
             };
 
             if let Some(ref inner) = root.subquery {
@@ -2706,6 +2726,68 @@ mod tests {
         assert!(is_subquery_cacheable(&subquery));
     }
 
+    #[test]
+    fn subquery_correlated_via_order_by_is_not_cacheable() {
+        // The subquery's WHERE and SELECT are independent of the outer row, but
+        // its ORDER BY references `t1.size`. Memoising it would reuse the first
+        // outer row's ordering for every subsequent row.
+        let mut t1_size = Expr::field(Field::Size);
+        t1_size.root_alias = Some(String::from("t1"));
+        let ordering = Expr::arithmetic_op(
+            Expr::field(Field::Size),
+            crate::operators::ArithmeticOp::Subtract,
+            t1_size,
+        );
+
+        let subquery = Query {
+            fields: vec![Expr::field(Field::Name)],
+            roots: vec![Root::new(String::from("/t2"), RootOptions::new())],
+            expr: None,
+            grouping_fields: Vec::new(),
+            ordering_fields: vec![ordering],
+            ordering_asc: vec![true],
+            limit: 0,
+            offset: 0,
+            output_format: OutputFormat::Tabs,
+            raw_query: String::new(),
+        };
+
+        assert!(
+            !is_subquery_cacheable(&subquery),
+            "subquery whose ORDER BY references outer alias t1 must not be cached"
+        );
+    }
+
+    #[test]
+    fn subquery_correlated_via_group_by_is_not_cacheable() {
+        // Same, but the outer-alias reference lives in GROUP BY.
+        let mut t1_size = Expr::field(Field::Size);
+        t1_size.root_alias = Some(String::from("t1"));
+        let grouping = Expr::arithmetic_op(
+            Expr::field(Field::Size),
+            crate::operators::ArithmeticOp::Subtract,
+            t1_size,
+        );
+
+        let subquery = Query {
+            fields: vec![Expr::function(Function::Max)],
+            roots: vec![Root::new(String::from("/t2"), RootOptions::new())],
+            expr: None,
+            grouping_fields: vec![grouping],
+            ordering_fields: Vec::new(),
+            ordering_asc: Vec::new(),
+            limit: 0,
+            offset: 0,
+            output_format: OutputFormat::Tabs,
+            raw_query: String::new(),
+        };
+
+        assert!(
+            !is_subquery_cacheable(&subquery),
+            "subquery whose GROUP BY references outer alias t1 must not be cached"
+        );
+    }
+
     /// Build a real Query via the parser+lexer and execute it silently against
     /// a temp directory. Returns the rendered rows the outer query produced so
     /// we can assert against them as a flat set of strings.
@@ -2823,6 +2905,156 @@ mod tests {
         assert!(
             !names.contains("tiny.bin"),
             "rows filtered by the inner WHERE must not reach the outer query"
+        );
+    }
+
+    /// Build `<parent>/outer` and `<parent>/inner` with files of the given byte
+    /// sizes, for correlated-subquery tests that need two distinct roots.
+    fn make_outer_inner_dirs(
+        parent: &Path,
+        outer: &[(&str, usize)],
+        inner: &[(&str, usize)],
+    ) {
+        let _ = fs::remove_dir_all(parent);
+        fs::create_dir_all(parent.join("outer")).unwrap();
+        fs::create_dir_all(parent.join("inner")).unwrap();
+        for (name, size) in outer {
+            fs::write(parent.join("outer").join(name), vec![0u8; *size]).unwrap();
+        }
+        for (name, size) in inner {
+            fs::write(parent.join("inner").join(name), vec![0u8; *size]).unwrap();
+        }
+    }
+
+    #[test]
+    fn subquery_correlated_via_order_by_recomputes_per_row() {
+        // Regression for the caching half of the bug: a scalar subquery in the
+        // SELECT list, correlated to the outer row ONLY through its ORDER BY
+        // (`abs(t2.size - t1.size)`), must be recomputed for every outer row.
+        // The previous heuristic deemed it cacheable (it never inspected the
+        // subquery's ORDER BY), so the first row's "closest" file was memoised
+        // and wrongly reused for every later row.
+        let tmp = std::env::temp_dir().join("fselect_test_corr_order_by_per_row");
+        make_outer_inner_dirs(
+            &tmp,
+            &[("a.txt", 100), ("b.txt", 300)],
+            &[("s10.dat", 10), ("s90.dat", 90), ("s290.dat", 290), ("s500.dat", 500)],
+        );
+
+        let rows = run_query_against_dir(
+            "select name, size, (select t2.name from __DIR__/inner as t2 order by abs(t2.size - t1.size) limit 1) as closest \
+             from __DIR__/outer as t1 order by name",
+            &tmp,
+        );
+
+        let _ = fs::remove_dir_all(&tmp);
+
+        // a.txt (100) is closest to s90.dat (90); b.txt (300) to s290.dat (290).
+        // Before the fix both rows reported s90.dat — the first row's cached result.
+        assert_eq!(
+            rows,
+            vec![
+                String::from("a.txt\t100\ts90.dat"),
+                String::from("b.txt\t300\ts290.dat"),
+            ],
+            "each outer row must get its own closest inner file, got: {:?}", rows
+        );
+    }
+
+    #[test]
+    fn subquery_correlated_via_order_by_where_filter_keeps_all_matches() {
+        // The reported symptom: `where size = (scalar subquery ordered by
+        // abs(t2.size - t1.size))` dropped every row after the first because the
+        // subquery's first-row result was memoised and reused.
+        let tmp = std::env::temp_dir().join("fselect_test_corr_order_by_where");
+        make_outer_inner_dirs(
+            &tmp,
+            &[("a.txt", 100), ("b.txt", 300)],
+            // 50 is the global minimum and matches neither outer size, so a
+            // broken correlation (which collapses to "smallest inner size")
+            // cannot accidentally satisfy the `=` filter for any row.
+            &[("i50.dat", 50), ("i100.dat", 100), ("i300.dat", 300)],
+        );
+
+        let rows = run_query_against_dir(
+            "select name from __DIR__/outer as t1 \
+             where size = (select t2.size from __DIR__/inner as t2 order by abs(t2.size - t1.size) limit 1) \
+             order by name",
+            &tmp,
+        );
+
+        let _ = fs::remove_dir_all(&tmp);
+
+        // Each outer file has an exact-size twin in inner, so both must match.
+        assert_eq!(
+            rows,
+            vec![String::from("a.txt"), String::from("b.txt")],
+            "every outer row whose closest inner size equals its own must match, got: {:?}", rows
+        );
+    }
+
+    #[test]
+    fn correlated_select_list_subquery_via_order_by_resolves_per_row() {
+        // The outer query references `size` ONLY through the SELECT-list
+        // subquery's ORDER BY — it neither selects nor filters on `size`
+        // itself. The outer row's value must still reach the subquery, which
+        // requires the dependency walk to cover the outer SELECT list (not just
+        // the outer WHERE). Before the fix every row reported s10.dat: the
+        // correlation read an empty size, so abs(size - 0) sorted by raw size.
+        let tmp = std::env::temp_dir().join("fselect_test_corr_select_list_order_by");
+        make_outer_inner_dirs(
+            &tmp,
+            &[("a.txt", 100), ("b.txt", 300)],
+            &[("s10.dat", 10), ("s90.dat", 90), ("s290.dat", 290), ("s500.dat", 500)],
+        );
+
+        let rows = run_query_against_dir(
+            "select name, (select t2.name from __DIR__/inner as t2 order by abs(t2.size - t1.size) limit 1) as closest \
+             from __DIR__/outer as t1 order by name",
+            &tmp,
+        );
+
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(
+            rows,
+            vec![
+                String::from("a.txt\ts90.dat"),
+                String::from("b.txt\ts290.dat"),
+            ],
+            "SELECT-list subquery must see each outer row's size via its ORDER BY, got: {:?}", rows
+        );
+    }
+
+    #[test]
+    fn correlated_select_list_subquery_via_where_resolves_per_row() {
+        // Same call-site gap, exercised through a SELECT-list subquery whose
+        // WHERE references the outer alias. Confirms the fix is not specific to
+        // ORDER BY: any correlated SELECT-list subquery needs the outer field.
+        let tmp = std::env::temp_dir().join("fselect_test_corr_select_list_where");
+        make_outer_inner_dirs(
+            &tmp,
+            &[("a.txt", 100), ("b.txt", 300)],
+            &[("m100.dat", 100), ("m300.dat", 300), ("m999.dat", 999)],
+        );
+
+        let rows = run_query_against_dir(
+            "select name, (select t2.name from __DIR__/inner as t2 where t2.size = t1.size limit 1) as twin \
+             from __DIR__/outer as t1 order by name",
+            &tmp,
+        );
+
+        let _ = fs::remove_dir_all(&tmp);
+
+        // a.txt (100) twins with m100.dat; b.txt (300) with m300.dat.
+        // Before the fix both columns were blank (empty correlation, no match).
+        assert_eq!(
+            rows,
+            vec![
+                String::from("a.txt\tm100.dat"),
+                String::from("b.txt\tm300.dat"),
+            ],
+            "SELECT-list subquery must see each outer row's size via its WHERE, got: {:?}", rows
         );
     }
 }

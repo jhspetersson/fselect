@@ -316,11 +316,22 @@ impl Expr {
     pub fn get_fields_required_in_subqueries(&self, alias: &str, parent_subquery: bool) -> HashMap<Field, String> {
         let mut result = HashMap::new();
 
-        if let Some(ref subquery) = self.subquery
-            && let Some(ref expr) = subquery.expr {
+        if let Some(ref subquery) = self.subquery {
+            // A correlated subquery can reference an outer field from any of its
+            // clauses, not just WHERE: ORDER BY and GROUP BY exprs are evaluated
+            // per inner row too, so their outer-alias references must also be
+            // propagated via record_context.
+            if let Some(ref expr) = subquery.expr {
                 result.extend(expr.get_fields_required_in_subqueries(alias, true));
             }
-        
+            for ordering_expr in &subquery.ordering_fields {
+                result.extend(ordering_expr.get_fields_required_in_subqueries(alias, true));
+            }
+            for grouping_expr in &subquery.grouping_fields {
+                result.extend(grouping_expr.get_fields_required_in_subqueries(alias, true));
+            }
+        }
+
         if let Some(ref left) = self.left {
             result.extend(left.get_fields_required_in_subqueries(alias, parent_subquery));
         }
@@ -981,5 +992,36 @@ mod tests {
         assert!(map.is_empty(), "Expected no required fields for t3 in correlated subquery");
         let map = expr.right.unwrap().subquery.unwrap().expr.unwrap().left.unwrap().right.unwrap().subquery.unwrap().expr.unwrap().get_fields_required_in_subqueries("t1", false);
         assert!(map.is_empty(), "Expected no required fields for t1 in correlated subquery");
+    }
+
+    #[test]
+    fn correlated_order_by_in_subquery_collects_parent_fields() {
+        // The subquery's ONLY reference to the outer alias `t1` lives in its
+        // ORDER BY clause. The dependency walk must still surface `t1.size` so
+        // the outer row's value is propagated to the subquery via
+        // record_context; otherwise the ordering reads an empty value.
+        let expr = parse_where_expr(
+            "select t1.name from /t1 as t1 where t1.size = (select t2.size from /t2 as t2 order by abs(t2.size - t1.size) limit 1)"
+        );
+        let map = expr.get_fields_required_in_subqueries("t1", false);
+        assert_eq!(
+            map,
+            HashMap::from([(Field::Size, String::from("Size"))]),
+            "ORDER BY correlation on t1.size must be collected, got: {:?}", map
+        );
+    }
+
+    #[test]
+    fn correlated_group_by_in_subquery_collects_parent_fields() {
+        // Same as above, but the outer-alias reference lives in GROUP BY.
+        let expr = parse_where_expr(
+            "select t1.name from /t1 as t1 where t1.size = (select max(t2.size) from /t2 as t2 group by abs(t2.size - t1.size) limit 1)"
+        );
+        let map = expr.get_fields_required_in_subqueries("t1", false);
+        assert_eq!(
+            map,
+            HashMap::from([(Field::Size, String::from("Size"))]),
+            "GROUP BY correlation on t1.size must be collected, got: {:?}", map
+        );
     }
 }

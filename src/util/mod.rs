@@ -705,7 +705,7 @@ pub fn get_line_count(entry: &DirEntry) -> Option<usize> {
     None
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ContentStats {
     pub is_text: bool,
     pub char_count: usize,
@@ -741,6 +741,10 @@ pub fn has_bom(entry: &DirEntry) -> bool {
     false
 }
 
+// The whole-buffer decoders below are the reference implementation kept as a
+// test oracle: the production path (`get_content_stats`) streams instead, and
+// the parity tests assert the streaming results match these byte-for-byte.
+#[cfg(test)]
 fn decode_utf16(body: &[u8], big_endian: bool) -> String {
     let units = body.chunks_exact(2).map(|pair| {
         if big_endian {
@@ -754,6 +758,7 @@ fn decode_utf16(body: &[u8], big_endian: bool) -> String {
         .collect()
 }
 
+#[cfg(test)]
 fn decode_utf32(body: &[u8], big_endian: bool) -> String {
     body.chunks_exact(4)
         .map(|q| {
@@ -767,6 +772,7 @@ fn decode_utf32(body: &[u8], big_endian: bool) -> String {
         .collect()
 }
 
+#[cfg(test)]
 fn detect_line_ending(text: &str) -> String {
     let bytes = text.as_bytes();
     let (mut crlf, mut lf, mut cr) = (false, false, false);
@@ -795,6 +801,7 @@ fn detect_line_ending(text: &str) -> String {
     }
 }
 
+#[cfg(test)]
 fn compute_content_stats(bytes: &[u8]) -> ContentStats {
     let bom = detect_bom(bytes);
     let has_bom = bom.is_some();
@@ -829,7 +836,512 @@ fn compute_content_stats(bytes: &[u8]) -> ContentStats {
 }
 
 pub fn get_content_stats(entry: &DirEntry) -> Option<ContentStats> {
-    fs::read(entry.path()).ok().map(|bytes| compute_content_stats(&bytes))
+    let file = File::open(entry.path()).ok()?;
+    content_stats_from_reader(file)
+}
+
+/// Reusable scratch buffer size for streaming reads. Large enough to amortise
+/// syscalls, small enough that peak memory stays bounded regardless of file
+/// size — the whole point of streaming these stats rather than `fs::read`.
+const CONTENT_CHUNK: usize = 32 * 1024;
+
+/// Accumulates char/word/line-ending counts from a stream of decoded `char`s.
+/// Char counting, word splitting (Unicode `White_Space`) and line-ending
+/// detection are all derived from the same scalar stream, matching what the
+/// in-memory oracle computes from a fully decoded `String`.
+#[derive(Default)]
+struct ContentScan {
+    char_count: usize,
+    word_count: usize,
+    in_word: bool,
+    crlf: bool,
+    lf: bool,
+    cr: bool,
+    pending_cr: bool,
+}
+
+impl ContentScan {
+    fn push(&mut self, c: char) {
+        self.char_count += 1;
+
+        if c.is_whitespace() {
+            self.in_word = false;
+        } else if !self.in_word {
+            self.in_word = true;
+            self.word_count += 1;
+        }
+
+        // Line endings: '\r' and '\n' are single ASCII scalars in every encoding
+        // we decode, so scanning the char stream matches a byte scan exactly.
+        if self.pending_cr {
+            self.pending_cr = false;
+            if c == '\n' {
+                self.crlf = true;
+                return;
+            }
+            self.cr = true;
+        }
+        if c == '\r' {
+            self.pending_cr = true;
+        } else if c == '\n' {
+            self.lf = true;
+        }
+    }
+
+    /// Resolve a trailing lone '\r' once the stream ends.
+    fn finish_line(&mut self) {
+        if self.pending_cr {
+            self.cr = true;
+            self.pending_cr = false;
+        }
+    }
+
+    fn line_ending(&self) -> String {
+        match self.crlf as u8 + self.lf as u8 + self.cr as u8 {
+            0 => String::new(),
+            1 if self.crlf => String::from("CRLF"),
+            1 if self.lf => String::from("LF"),
+            1 => String::from("CR"),
+            _ => String::from("Mixed"),
+        }
+    }
+}
+
+/// Decode `buf` as strict UTF-8, pushing each scalar to `scan`. Returns
+/// `Ok(n)` where `n` trailing bytes form an incomplete-but-still-valid sequence
+/// to carry into the next chunk, or `Err(())` when `buf` contains a byte
+/// sequence that can never be valid UTF-8 (caller falls back to Latin-1).
+fn feed_utf8_strict(buf: &[u8], scan: &mut ContentScan) -> Result<usize, ()> {
+    match std::str::from_utf8(buf) {
+        Ok(s) => {
+            for c in s.chars() {
+                scan.push(c);
+            }
+            Ok(0)
+        }
+        Err(e) => {
+            let valid_up_to = e.valid_up_to();
+            if valid_up_to > 0
+                && let Ok(s) = std::str::from_utf8(&buf[..valid_up_to]) {
+                    for c in s.chars() {
+                        scan.push(c);
+                    }
+                }
+            match e.error_len() {
+                None => Ok(buf.len() - valid_up_to),
+                Some(_) => Err(()),
+            }
+        }
+    }
+}
+
+/// Decode `buf` as UTF-8 with U+FFFD replacement (matching `from_utf8_lossy`),
+/// pushing scalars to `scan`. Returns the number of trailing bytes forming an
+/// incomplete sequence to carry; a tail still carried at EOF becomes one U+FFFD.
+fn feed_utf8_lossy(buf: &[u8], scan: &mut ContentScan) -> usize {
+    let mut pos = 0;
+    loop {
+        match std::str::from_utf8(&buf[pos..]) {
+            Ok(s) => {
+                for c in s.chars() {
+                    scan.push(c);
+                }
+                return 0;
+            }
+            Err(e) => {
+                let valid_up_to = e.valid_up_to();
+                if valid_up_to > 0
+                    && let Ok(s) = std::str::from_utf8(&buf[pos..pos + valid_up_to]) {
+                        for c in s.chars() {
+                            scan.push(c);
+                        }
+                    }
+                pos += valid_up_to;
+                match e.error_len() {
+                    None => return buf.len() - pos,
+                    Some(len) => {
+                        scan.push('\u{FFFD}');
+                        pos += len;
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// A streaming consumer of raw file bytes that yields the final `ContentStats`.
+trait ContentSink {
+    fn consume(&mut self, bytes: &[u8]);
+    fn finish(self) -> ContentStats;
+}
+
+/// Drives a sink over the remaining reader, after an already-read `prefix`
+/// (the bytes peeked for BOM detection that belong to the body). Returns `None`
+/// on a read error, matching the previous `fs::read(...).ok()` behaviour.
+fn drive_sink<R: Read, S: ContentSink>(
+    mut reader: R,
+    prefix: &[u8],
+    mut sink: S,
+) -> Option<ContentStats> {
+    if !prefix.is_empty() {
+        sink.consume(prefix);
+    }
+    let mut buf = [0u8; CONTENT_CHUNK];
+    loop {
+        match reader.read(&mut buf) {
+            Ok(0) => break,
+            Ok(n) => sink.consume(&buf[..n]),
+            Err(_) => return None,
+        }
+    }
+    Some(sink.finish())
+}
+
+fn read_up_to_4<R: Read>(reader: &mut R, buf: &mut [u8; 4]) -> Option<usize> {
+    let mut filled = 0;
+    while filled < 4 {
+        match reader.read(&mut buf[filled..]) {
+            Ok(0) => break,
+            Ok(n) => filled += n,
+            Err(_) => return None,
+        }
+    }
+    Some(filled)
+}
+
+fn content_stats_from_reader<R: Read>(mut reader: R) -> Option<ContentStats> {
+    let mut head = [0u8; 4];
+    let head_len = read_up_to_4(&mut reader, &mut head)?;
+    let head = &head[..head_len];
+
+    match detect_bom(head) {
+        Some(("UTF-8", len)) => drive_sink(reader, &head[len..], Utf8BomSink::default()),
+        Some(("UTF-16LE", len)) => drive_sink(reader, &head[len..], Utf16Sink::new(false)),
+        Some(("UTF-16BE", len)) => drive_sink(reader, &head[len..], Utf16Sink::new(true)),
+        Some(("UTF-32LE", len)) => drive_sink(reader, &head[len..], Utf32Sink::new(false)),
+        Some(("UTF-32BE", len)) => drive_sink(reader, &head[len..], Utf32Sink::new(true)),
+        Some((_, _)) => None,
+        None => drive_sink(reader, head, NoBomSink::new()),
+    }
+}
+
+/// No-BOM body. The encoding can only be settled once the whole body is seen
+/// (NUL ⇒ binary, all-ASCII ⇒ ASCII, valid ⇒ UTF-8, otherwise ⇒ Latin-1), so
+/// the UTF-8 and Latin-1 interpretations are counted in parallel and the right
+/// one is chosen in `finish`.
+struct NoBomSink {
+    utf8: ContentScan,
+    latin1: ContentScan,
+    utf8_valid: bool,
+    utf8_carry: Vec<u8>,
+    scratch: Vec<u8>,
+    has_nul: bool,
+    is_ascii: bool,
+    byte_count: usize,
+}
+
+impl NoBomSink {
+    fn new() -> Self {
+        NoBomSink {
+            utf8: ContentScan::default(),
+            latin1: ContentScan::default(),
+            utf8_valid: true,
+            utf8_carry: Vec::new(),
+            scratch: Vec::new(),
+            has_nul: false,
+            is_ascii: true,
+            byte_count: 0,
+        }
+    }
+}
+
+impl ContentSink for NoBomSink {
+    fn consume(&mut self, bytes: &[u8]) {
+        for &b in bytes {
+            self.byte_count += 1;
+            if b == 0 {
+                self.has_nul = true;
+            }
+            if b >= 0x80 {
+                self.is_ascii = false;
+            }
+            self.latin1.push(b as char);
+        }
+
+        if !self.utf8_valid {
+            return;
+        }
+
+        // Decode (carry + new bytes) as strict UTF-8. The carry holds an
+        // incomplete sequence split across the previous chunk boundary; it was
+        // already counted for Latin-1, so it is never re-fed there.
+        if self.utf8_carry.is_empty() {
+            match feed_utf8_strict(bytes, &mut self.utf8) {
+                Ok(tail) => {
+                    self.utf8_carry.clear();
+                    self.utf8_carry.extend_from_slice(&bytes[bytes.len() - tail..]);
+                }
+                Err(()) => {
+                    self.utf8_valid = false;
+                    self.utf8_carry.clear();
+                }
+            }
+        } else {
+            self.scratch.clear();
+            self.scratch.extend_from_slice(&self.utf8_carry);
+            self.scratch.extend_from_slice(bytes);
+            match feed_utf8_strict(&self.scratch, &mut self.utf8) {
+                Ok(tail) => {
+                    let start = self.scratch.len() - tail;
+                    self.utf8_carry = self.scratch[start..].to_vec();
+                }
+                Err(()) => {
+                    self.utf8_valid = false;
+                    self.utf8_carry.clear();
+                }
+            }
+        }
+    }
+
+    fn finish(mut self) -> ContentStats {
+        self.latin1.finish_line();
+        // A trailing incomplete sequence means the body is not valid UTF-8.
+        let utf8_ok = self.utf8_valid && self.utf8_carry.is_empty();
+        if utf8_ok {
+            self.utf8.finish_line();
+        }
+
+        if self.has_nul {
+            ContentStats {
+                is_text: false,
+                char_count: 0,
+                word_count: 0,
+                encoding: String::new(),
+                has_bom: false,
+                line_ending: String::new(),
+            }
+        } else if self.is_ascii {
+            ContentStats {
+                is_text: true,
+                char_count: self.utf8.char_count,
+                word_count: self.utf8.word_count,
+                encoding: String::from("ASCII"),
+                has_bom: false,
+                line_ending: self.utf8.line_ending(),
+            }
+        } else if utf8_ok {
+            ContentStats {
+                is_text: true,
+                char_count: self.utf8.char_count,
+                word_count: self.utf8.word_count,
+                encoding: String::from("UTF-8"),
+                has_bom: false,
+                line_ending: self.utf8.line_ending(),
+            }
+        } else {
+            // Latin-1: one char per body byte.
+            ContentStats {
+                is_text: true,
+                char_count: self.byte_count,
+                word_count: self.latin1.word_count,
+                encoding: String::from("ISO-8859-1"),
+                has_bom: false,
+                line_ending: self.latin1.line_ending(),
+            }
+        }
+    }
+}
+
+/// UTF-8 body behind a BOM: decoded leniently (`from_utf8_lossy` semantics).
+#[derive(Default)]
+struct Utf8BomSink {
+    scan: ContentScan,
+    carry: Vec<u8>,
+    scratch: Vec<u8>,
+}
+
+impl ContentSink for Utf8BomSink {
+    fn consume(&mut self, bytes: &[u8]) {
+        if self.carry.is_empty() {
+            let tail = feed_utf8_lossy(bytes, &mut self.scan);
+            self.carry.clear();
+            self.carry.extend_from_slice(&bytes[bytes.len() - tail..]);
+        } else {
+            self.scratch.clear();
+            self.scratch.extend_from_slice(&self.carry);
+            self.scratch.extend_from_slice(bytes);
+            let tail = feed_utf8_lossy(&self.scratch, &mut self.scan);
+            let start = self.scratch.len() - tail;
+            self.carry = self.scratch[start..].to_vec();
+        }
+    }
+
+    fn finish(mut self) -> ContentStats {
+        if !self.carry.is_empty() {
+            self.scan.push('\u{FFFD}');
+        }
+        self.scan.finish_line();
+        ContentStats {
+            is_text: true,
+            char_count: self.scan.char_count,
+            word_count: self.scan.word_count,
+            encoding: String::from("UTF-8"),
+            has_bom: true,
+            line_ending: self.scan.line_ending(),
+        }
+    }
+}
+
+/// UTF-16 body behind a BOM. Carries one odd byte across chunk boundaries and
+/// one pending high surrogate; unpaired surrogates become U+FFFD, matching
+/// `char::decode_utf16(..).unwrap_or('\u{FFFD}')`.
+struct Utf16Sink {
+    scan: ContentScan,
+    big_endian: bool,
+    byte_carry: Option<u8>,
+    pending_high: Option<u16>,
+}
+
+impl Utf16Sink {
+    fn new(big_endian: bool) -> Self {
+        Utf16Sink {
+            scan: ContentScan::default(),
+            big_endian,
+            byte_carry: None,
+            pending_high: None,
+        }
+    }
+
+    fn push_unit(&mut self, unit: u16) {
+        if let Some(high) = self.pending_high.take() {
+            if (0xDC00..=0xDFFF).contains(&unit) {
+                let c = 0x10000 + (((high - 0xD800) as u32) << 10) + (unit - 0xDC00) as u32;
+                self.scan.push(char::from_u32(c).unwrap_or('\u{FFFD}'));
+                return;
+            }
+            self.scan.push('\u{FFFD}'); // unpaired high surrogate
+        }
+
+        if (0xD800..=0xDBFF).contains(&unit) {
+            self.pending_high = Some(unit);
+        } else if (0xDC00..=0xDFFF).contains(&unit) {
+            self.scan.push('\u{FFFD}'); // unpaired low surrogate
+        } else {
+            self.scan.push(char::from_u32(unit as u32).unwrap_or('\u{FFFD}'));
+        }
+    }
+}
+
+impl ContentSink for Utf16Sink {
+    fn consume(&mut self, bytes: &[u8]) {
+        let mut idx = 0;
+        if let Some(b0) = self.byte_carry.take() {
+            let Some(&b1) = bytes.first() else {
+                self.byte_carry = Some(b0);
+                return;
+            };
+            idx = 1;
+            let unit = if self.big_endian {
+                u16::from_be_bytes([b0, b1])
+            } else {
+                u16::from_le_bytes([b0, b1])
+            };
+            self.push_unit(unit);
+        }
+
+        let mut chunks = bytes[idx..].chunks_exact(2);
+        for pair in chunks.by_ref() {
+            let unit = if self.big_endian {
+                u16::from_be_bytes([pair[0], pair[1]])
+            } else {
+                u16::from_le_bytes([pair[0], pair[1]])
+            };
+            self.push_unit(unit);
+        }
+        if let Some(&b) = chunks.remainder().first() {
+            self.byte_carry = Some(b);
+        }
+    }
+
+    fn finish(mut self) -> ContentStats {
+        if self.pending_high.is_some() {
+            self.scan.push('\u{FFFD}');
+        }
+        // A trailing odd byte is dropped, matching the oracle's chunks_exact(2).
+        self.scan.finish_line();
+        ContentStats {
+            is_text: true,
+            char_count: self.scan.char_count,
+            word_count: self.scan.word_count,
+            encoding: String::from(if self.big_endian { "UTF-16BE" } else { "UTF-16LE" }),
+            has_bom: true,
+            line_ending: self.scan.line_ending(),
+        }
+    }
+}
+
+/// UTF-32 body behind a BOM. Carries up to three bytes across chunk boundaries;
+/// out-of-range code points become U+FFFD, matching the oracle.
+struct Utf32Sink {
+    scan: ContentScan,
+    big_endian: bool,
+    byte_carry: Vec<u8>,
+}
+
+impl Utf32Sink {
+    fn new(big_endian: bool) -> Self {
+        Utf32Sink {
+            scan: ContentScan::default(),
+            big_endian,
+            byte_carry: Vec::with_capacity(4),
+        }
+    }
+
+    fn unit(&self, q: &[u8]) -> u32 {
+        if self.big_endian {
+            u32::from_be_bytes([q[0], q[1], q[2], q[3]])
+        } else {
+            u32::from_le_bytes([q[0], q[1], q[2], q[3]])
+        }
+    }
+}
+
+impl ContentSink for Utf32Sink {
+    fn consume(&mut self, bytes: &[u8]) {
+        let mut idx = 0;
+        if !self.byte_carry.is_empty() {
+            let need = 4 - self.byte_carry.len();
+            let take = need.min(bytes.len());
+            self.byte_carry.extend_from_slice(&bytes[..take]);
+            idx = take;
+            if self.byte_carry.len() < 4 {
+                return;
+            }
+            let value = self.unit(&self.byte_carry);
+            self.scan.push(char::from_u32(value).unwrap_or('\u{FFFD}'));
+            self.byte_carry.clear();
+        }
+
+        let mut chunks = bytes[idx..].chunks_exact(4);
+        for q in chunks.by_ref() {
+            let value = self.unit(q);
+            self.scan.push(char::from_u32(value).unwrap_or('\u{FFFD}'));
+        }
+        self.byte_carry.extend_from_slice(chunks.remainder());
+    }
+
+    fn finish(mut self) -> ContentStats {
+        // Trailing bytes shorter than 4 are dropped, matching chunks_exact(4).
+        self.scan.finish_line();
+        ContentStats {
+            is_text: true,
+            char_count: self.scan.char_count,
+            word_count: self.scan.word_count,
+            encoding: String::from(if self.big_endian { "UTF-32BE" } else { "UTF-32LE" }),
+            has_bom: true,
+            line_ending: self.scan.line_ending(),
+        }
+    }
 }
 
 fn hash_file<D: sha1::Digest>(entry: &DirEntry) -> String {
@@ -967,6 +1479,183 @@ mod tests {
         assert!(stats.is_text);
         assert_eq!(stats.encoding, "ISO-8859-1");
         assert_eq!(stats.char_count, 4);
+    }
+
+    /// Reader that hands out at most `chunk` bytes per `read`, to force the
+    /// streaming decoders' carry/boundary logic to run across split sequences.
+    struct ChunkReader<'a> {
+        data: &'a [u8],
+        pos: usize,
+        chunk: usize,
+    }
+
+    impl<'a> ChunkReader<'a> {
+        fn new(data: &'a [u8], chunk: usize) -> Self {
+            ChunkReader { data, pos: 0, chunk }
+        }
+    }
+
+    impl Read for ChunkReader<'_> {
+        fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+            let remaining = &self.data[self.pos..];
+            let n = remaining.len().min(buf.len()).min(self.chunk);
+            buf[..n].copy_from_slice(&remaining[..n]);
+            self.pos += n;
+            Ok(n)
+        }
+    }
+
+    /// The streaming production path must produce exactly what the in-memory
+    /// oracle does — read in one gulp, one byte at a time, and in 3-byte chunks
+    /// (so multi-byte sequences straddle boundaries in three different ways).
+    fn assert_stream_matches_oracle(bytes: &[u8]) {
+        let oracle = compute_content_stats(bytes);
+
+        let bulk = content_stats_from_reader(bytes).expect("bulk read");
+        assert_eq!(bulk, oracle, "bulk streaming mismatch for {:?}", bytes);
+
+        let one = content_stats_from_reader(ChunkReader::new(bytes, 1)).expect("1-byte read");
+        assert_eq!(one, oracle, "1-byte streaming mismatch for {:?}", bytes);
+
+        let three = content_stats_from_reader(ChunkReader::new(bytes, 3)).expect("3-byte read");
+        assert_eq!(three, oracle, "3-byte streaming mismatch for {:?}", bytes);
+    }
+
+    #[test]
+    fn streaming_matches_oracle_across_encodings() {
+        let utf8_bom = |s: &str| {
+            let mut v = vec![0xEF, 0xBB, 0xBF];
+            v.extend_from_slice(s.as_bytes());
+            v
+        };
+        let utf16le = |units: &[u16]| {
+            let mut v = vec![0xFF, 0xFE];
+            for u in units {
+                v.extend_from_slice(&u.to_le_bytes());
+            }
+            v
+        };
+        let utf16be = |units: &[u16]| {
+            let mut v = vec![0xFE, 0xFF];
+            for u in units {
+                v.extend_from_slice(&u.to_be_bytes());
+            }
+            v
+        };
+        let utf32le = |scalars: &[u32]| {
+            let mut v = vec![0xFF, 0xFE, 0x00, 0x00];
+            for u in scalars {
+                v.extend_from_slice(&u.to_le_bytes());
+            }
+            v
+        };
+        let utf32be = |scalars: &[u32]| {
+            let mut v = vec![0x00, 0x00, 0xFE, 0xFF];
+            for u in scalars {
+                v.extend_from_slice(&u.to_be_bytes());
+            }
+            v
+        };
+
+        let mut cases: Vec<Vec<u8>> = vec![
+            // --- no BOM: ASCII ---
+            b"".to_vec(),
+            b"hello world\nfoo bar baz\n".to_vec(),
+            b"a\r\nb\r\n".to_vec(),
+            b"a\rb\r".to_vec(),
+            b"a\r\nb\nc".to_vec(),
+            b"no newline".to_vec(),
+            b"trailing cr\r".to_vec(),
+            b"  leading and trailing  ".to_vec(),
+            b"tabs\tand\tspaces here".to_vec(),
+            // --- no BOM: UTF-8 ---
+            "héllo wörld".as_bytes().to_vec(),
+            "smile \u{1F600} done".as_bytes().to_vec(),
+            "ideographic\u{3000}space".as_bytes().to_vec(), // U+3000 is whitespace
+            "mix\r\né\nb".as_bytes().to_vec(),
+            // --- no BOM: Latin-1 fallback (invalid UTF-8, no NUL) ---
+            vec![b'c', b'a', b'f', 0xE9],
+            vec![b'a', 0xA0, b'b'],       // 0xA0 = NBSP, whitespace in Latin-1
+            vec![0xE9, 0xE9, b' ', 0xFF], // all high bytes, invalid UTF-8
+            // --- no BOM: binary (NUL present) ---
+            vec![0x00, 0x01, 0x02, b'a'],
+            b"hello\x00world".to_vec(),
+            // --- UTF-8 BOM ---
+            utf8_bom(""),
+            utf8_bom("abc"),
+            utf8_bom("héllo\r\nworld"),
+            {
+                // BOM + "é" + lone invalid byte → lossy U+FFFD
+                let mut v = vec![0xEF, 0xBB, 0xBF, 0xC3, 0xA9, 0xFF];
+                v.push(b'z');
+                v
+            },
+            // --- UTF-16 LE/BE ---
+            utf16le(&[]),
+            utf16le(&[b'H' as u16, b'i' as u16]),
+            utf16be(&[b'H' as u16, b'i' as u16]),
+            utf16le(&[b'a' as u16, b'\r' as u16, b'\n' as u16, b'b' as u16]),
+            utf16le(&[0xD83D, 0xDE00]), // U+1F600 surrogate pair
+            utf16le(&[0xD83D]),         // lone high surrogate → U+FFFD
+            utf16le(&[0xDE00]),         // lone low surrogate → U+FFFD
+            {
+                // UTF-16LE with a trailing odd byte that must be dropped
+                let mut v = utf16le(&[b'A' as u16]);
+                v.push(0x42);
+                v
+            },
+            // --- UTF-32 LE/BE ---
+            utf32le(&[]),
+            utf32le(&[b'A' as u32, b'\n' as u32]),
+            utf32be(&[b'A' as u32, b'\n' as u32]),
+            utf32le(&[0x1F600]),   // astral scalar
+            utf32le(&[0x0011_0000]), // out of range → U+FFFD
+            {
+                // UTF-32LE with trailing partial unit (3 bytes) to drop
+                let mut v = utf32le(&[b'A' as u32]);
+                v.extend_from_slice(&[0x10, 0x20, 0x30]);
+                v
+            },
+            // --- BOM-only files ---
+            vec![0xFF, 0xFE],             // UTF-16LE BOM only
+            vec![0xFF, 0xFE, 0x00, 0x00], // UTF-32LE BOM only
+            vec![0x00, 0x00, 0xFE, 0xFF], // UTF-32BE BOM only
+        ];
+        // A short 3-byte prefix of the UTF-16LE BOM-then-byte ambiguity.
+        cases.push(vec![0xFF, 0xFE, 0x41]);
+
+        for bytes in &cases {
+            assert_stream_matches_oracle(bytes);
+        }
+    }
+
+    #[test]
+    fn streaming_large_ascii_counts_across_chunks() {
+        // ~500 KB read in 7-byte slices: the 5-byte "word " pattern straddles
+        // chunk boundaries, exercising the read loop many times.
+        let mut data = Vec::new();
+        for _ in 0..100_000 {
+            data.extend_from_slice(b"word ");
+        }
+        let stats = content_stats_from_reader(ChunkReader::new(&data, 7)).unwrap();
+        assert_eq!(stats.encoding, "ASCII");
+        assert_eq!(stats.word_count, 100_000);
+        assert_eq!(stats.char_count, 500_000);
+        assert_eq!(stats.line_ending, "");
+    }
+
+    #[test]
+    fn streaming_multibyte_one_byte_at_a_time() {
+        // Every "é" is 2 bytes; reading 1 byte per call forces the UTF-8 carry
+        // path to span a boundary on every single character.
+        let mut data = Vec::new();
+        for _ in 0..1000 {
+            data.extend_from_slice("é".as_bytes());
+        }
+        let stats = content_stats_from_reader(ChunkReader::new(&data, 1)).unwrap();
+        assert_eq!(stats.encoding, "UTF-8");
+        assert_eq!(stats.char_count, 1000);
+        assert_eq!(stats.word_count, 1);
     }
 
     fn basic_criteria<T: Ord + Clone + Display>(vals: &[T]) -> Criteria<T> {

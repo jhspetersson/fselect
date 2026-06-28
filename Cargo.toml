@@ -1,6 +1,6 @@
 [package]
 name = "fselect"
-version = "0.10.1"
+version = "0.10.2"
 authors = ["jhspetersson <jhspetersson@gmail.com>"]
 description = "Find files with SQL-like queries"
 keywords = ["find", "files", "sql", "query", "tool"]
@@ -32,7 +32,7 @@ human-time = "0.1.6"
 humansize = "2.0"
 imagesize = "0.14"
 kamadak-exif = "0.6"
-lofty = "0.22"
+lofty = "0.24"
 lscolors = { version = "0.21", features = [ "nu-ansi-term" ] }
 matroska = "0.30"
 mp4parse = "0.17"
@@ -85,3 +85,12 @@ extended-description = """\
 * interactive mode
 * support for plocate and Everything indexes for lightning-fast search
 * various output formatting (CSV, JSON, and others)"""
+
+[package.metadata.generate-rpm]
+release = "1"
+assets = [
+    { source = "target/release/fselect", dest = "/usr/bin/fselect", mode = "755" },
+    { source = "LICENSE-MIT", dest = "/usr/share/doc/fselect/LICENSE-MIT", mode = "644", doc = true },
+    { source = "LICENSE-APACHE", dest = "/usr/share/doc/fselect/LICENSE-APACHE", mode = "644", doc = true },
+    { source = "README.md", dest = "/usr/share/doc/fselect/README.md", mode = "644", doc = true },
+]

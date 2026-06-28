@@ -50,6 +50,20 @@ pub fn is_audio_ext(ext_lowercase: &str) -> bool {
     )
 }
 
+fn parse_year(value: &str) -> Option<u32> {
+    let digits: String = value
+        .trim_start()
+        .chars()
+        .take_while(|c| c.is_ascii_digit())
+        .take(4)
+        .collect();
+    if digits.len() == 4 {
+        digits.parse().ok()
+    } else {
+        None
+    }
+}
+
 /// Format a number paired with an optional total as `n/total`, or just `n`
 /// when no total is present.
 fn format_numbered(value: Option<u32>, total: Option<u32>) -> Option<String> {
@@ -88,7 +102,10 @@ pub fn get_audio_info(path: &Path) -> Option<AudioInfo> {
         info.album = tag.album().map(|c| c.to_string());
         info.genre = tag.genre().map(|c| c.to_string());
         info.comment = tag.comment().map(|c| c.to_string());
-        info.year = tag.year();
+        info.year = tag
+            .get_string(ItemKey::Year)
+            .or_else(|| tag.get_string(ItemKey::RecordingDate))
+            .and_then(parse_year);
         info.track = format_numbered(tag.track(), tag.track_total());
         info.disc = format_numbered(tag.disk(), tag.disk_total());
     }

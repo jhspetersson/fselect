@@ -39,7 +39,11 @@ on Linux (`--features plocate`, then pass `--plocate`). See the
 
 #### Debian/Ubuntu
 
-[deb package](https://github.com/jhspetersson/fselect/releases/download/0.10.1/fselect_0.10.0-1_amd64.deb)
+[deb package](https://github.com/jhspetersson/fselect/releases/download/0.10.2/fselect_0.10.2-1_amd64.deb)
+
+#### Fedora/RHEL/openSUSE
+
+[rpm package](https://github.com/jhspetersson/fselect/releases/download/0.10.2/fselect-0.10.2-1.x86_64.rpm)
 
 #### Arch Linux
 
@@ -53,11 +57,12 @@ on Linux (`--features plocate`, then pass `--plocate`). See the
 
 #### Other Linux
 
-[Static build with musl](https://github.com/jhspetersson/fselect/releases/download/0.10.1/fselect-x86_64-linux-musl.gz).
+* x86_64: [glibc](https://github.com/jhspetersson/fselect/releases/download/0.10.2/fselect-x86_64-linux.gz) &middot; [musl (static)](https://github.com/jhspetersson/fselect/releases/download/0.10.2/fselect-x86_64-linux-musl.gz)
+* aarch64: [glibc](https://github.com/jhspetersson/fselect/releases/download/0.10.2/fselect-aarch64-linux.gz) &middot; [musl (static)](https://github.com/jhspetersson/fselect/releases/download/0.10.2/fselect-aarch64-linux-musl.gz)
 
 #### Windows 64bit
 
-A statically precompiled [binary](https://github.com/jhspetersson/fselect/releases/download/0.10.1/fselect-x86_64-win.zip) is available at GitHub downloads.
+A precompiled [binary](https://github.com/jhspetersson/fselect/releases/download/0.10.2/fselect-x86_64-win.zip)
 
 #### Windows via winget
 
@@ -73,6 +78,13 @@ A statically precompiled [binary](https://github.com/jhspetersson/fselect/releas
 
 * Install [Scoop](https://scoop.sh)
 * Run `scoop install fselect`
+
+#### macOS
+
+Precompiled binaries are available at GitHub downloads (`gunzip`, then `chmod +x fselect`):
+
+* [Intel (x86_64)](https://github.com/jhspetersson/fselect/releases/download/0.10.2/fselect-x86_64-mac.gz)
+* [Apple Silicon (aarch64)](https://github.com/jhspetersson/fselect/releases/download/0.10.2/fselect-aarch64-mac.gz)
 
 #### Mac via Homebrew
 

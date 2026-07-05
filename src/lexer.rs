@@ -152,8 +152,12 @@ impl Lexer {
             if self.between_parts {
                 match mode {
                     LexingMode::QuotedString(_) => {
+                        // The shell swallowed the whitespace that separated
+                        // these args; inside a quoted string that space is
+                        // part of the literal, so put it back.
                         self.between_parts = false;
                         self.char_index = 0;
+                        s.push(' ');
                         continue;
                     }
                     LexingMode::RawString if s.ends_with('-') && looks_like_date(&s[..s.len() - 1]) => {
@@ -432,6 +436,23 @@ mod tests {
                 Lexer::new(quote)
             }
         }
+    }
+
+    #[test]
+    fn quoted_string_spanning_input_parts_keeps_separating_space() {
+        // The shell strips the space between args; a quoted string that spans
+        // two parts must get it back: `... where name = 'foo bar.txt'` typed
+        // unquoted at a shell arrives with every word as its own arg.
+        let mut lexer = lexer!("select", "name", "from", "/test", "where", "name", "=", "'foo", "bar.txt'");
+        let mut lexemes = vec![];
+        while let Some(lexeme) = lexer.next_lexeme() {
+            lexemes.push(lexeme);
+        }
+        assert!(
+            lexemes.contains(&Lexeme::String(String::from("foo bar.txt"))),
+            "lexemes were {:?}",
+            lexemes
+        );
     }
 
     #[test]
@@ -1800,8 +1821,9 @@ mod tests {
         let mut lexer = lexer!("'foo", "bar'");
         assert_eq!(
             lexer.next_lexeme(),
-            Some(Lexeme::String(String::from("foobar"))),
-            "Quoted string spanning input parts should not have a space injected at the boundary"
+            Some(Lexeme::String(String::from("foo bar"))),
+            "Two input parts can only come from shell-split args, so the \
+             whitespace the shell swallowed belongs inside the quoted string"
         );
     }
 

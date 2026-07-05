@@ -1,10 +1,11 @@
 //! Lazy per-repository cache backing the git-related fields.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 
-use git2::{Repository, Sort, Status};
+use git2::{Commit, ObjectType, Repository, Sort, Status, TreeWalkMode, TreeWalkResult};
 
 /// Information about the last commit that touched a particular file.
 #[derive(Clone)]
@@ -21,6 +22,26 @@ struct RepoEntry {
     workdir: PathBuf,
     /// Memoised branch name; the outer `Option` tracks whether it was computed.
     branch: Option<Option<String>>,
+    history: HistoryScan,
+}
+
+/// Incremental "last commit that touched each path" resolver. History is
+/// walked from HEAD at most once per repository, no matter how many files are
+/// queried: each processed commit records itself as the answer for every path
+/// it touched (first writer wins, and the walk is newest-first). A per-file
+/// `git log -1 -- path` emulation would instead cost
+/// O(files x history x tree depth).
+#[derive(Default)]
+struct HistoryScan {
+    /// Commit ids from HEAD in time order; collected lazily on first use
+    /// (a plain revwalk without loading commits is cheap even for large
+    /// histories, and avoids a self-referential borrow of `repo`).
+    oids: Option<Vec<git2::Oid>>,
+    /// Index of the next unprocessed commit in `oids`.
+    next: usize,
+    /// Resolved last-touch info per repository-relative path (and per
+    /// directory: a commit touching `a/b/c.rs` also touches `a` and `a/b`).
+    resolved: HashMap<String, Rc<CommitInfo>>,
 }
 
 /// Caches opened repositories across files of the same traversal, plus the
@@ -74,14 +95,15 @@ impl GitCache {
         self.repos[idx].repo.is_path_ignored(to_git_path(&rel)).ok()
     }
 
-    /// The last commit that touched the file, like `git log -1 -- path`.
+    /// The last commit that touched the file (or directory), like
+    /// `git log -1 -- path`.
     pub fn last_commit(&mut self, path: &Path) -> Option<CommitInfo> {
         if let Some((cached_path, commit)) = &self.last_commit
             && cached_path == path {
                 return commit.clone();
             }
         let commit = self.locate(path).and_then(|(idx, rel)| {
-            find_last_commit(&self.repos[idx].repo, Path::new(&to_git_path(&rel)))
+            resolve_last_commit(&mut self.repos[idx], &to_git_path(&rel))
         });
         self.last_commit = Some((path.to_path_buf(), commit.clone()));
         commit
@@ -132,6 +154,7 @@ impl GitCache {
             repo,
             workdir,
             branch: None,
+            history: HistoryScan::default(),
         });
         Some(self.repos.len() - 1)
     }
@@ -179,53 +202,137 @@ fn compute_branch(repo: &Repository) -> Option<String> {
     }
 }
 
-/// Walks the history from HEAD and returns the newest commit whose tree entry
-/// for `rel` differs from all of its parents, emulating `git log -1 -- path`.
-fn find_last_commit(repo: &Repository, rel: &Path) -> Option<CommitInfo> {
-    let mut revwalk = repo.revwalk().ok()?;
-    revwalk.push_head().ok()?;
-    let _ = revwalk.set_sorting(Sort::TIME);
-
-    for oid in revwalk.flatten() {
-        let Ok(commit) = repo.find_commit(oid) else {
-            continue;
-        };
-        let Ok(tree) = commit.tree() else {
-            continue;
-        };
-        let entry_id = tree.get_path(rel).ok().map(|e| e.id());
-
-        let touched = if commit.parent_count() == 0 {
-            entry_id.is_some()
-        } else {
-            commit.parents().all(|parent| {
-                let parent_id = parent
-                    .tree()
-                    .ok()
-                    .and_then(|t| t.get_path(rel).ok())
-                    .map(|e| e.id());
-                parent_id != entry_id
-            })
-        };
-
-        if touched {
-            let author = commit.author();
-            let author_name = author
-                .name()
-                .ok()
-                .or_else(|| author.email().ok())
-                .map(String::from)
-                .unwrap_or_default();
-            return Some(CommitInfo {
-                hash: commit.id().to_string(),
-                // Author time, to match what `git log` displays by default.
-                time: author.when().seconds(),
-                author: author_name,
-            });
+/// Advances the repository's history scan until `key` resolves or the walk is
+/// exhausted (then the path was never committed).
+fn resolve_last_commit(entry: &mut RepoEntry, key: &str) -> Option<CommitInfo> {
+    loop {
+        if let Some(info) = entry.history.resolved.get(key) {
+            return Some((**info).clone());
+        }
+        if !advance_history(entry) {
+            return None;
         }
     }
+}
 
-    None
+/// Processes the next unseen commit of the walk, recording it as the
+/// last-touch answer for every path it changed. Returns false once history is
+/// exhausted.
+fn advance_history(entry: &mut RepoEntry) -> bool {
+    let repo = &entry.repo;
+    let oids = entry.history.oids.get_or_insert_with(|| {
+        let mut oids = Vec::new();
+        if let Ok(mut revwalk) = repo.revwalk()
+            && revwalk.push_head().is_ok()
+        {
+            // Topological + time matches `git log` ordering; time alone
+            // tie-breaks same-second commits arbitrarily, which would pick
+            // the wrong "last" commit within such a chain.
+            let _ = revwalk.set_sorting(Sort::TOPOLOGICAL | Sort::TIME);
+            oids = revwalk.flatten().collect();
+        }
+        oids
+    });
+
+    let Some(&oid) = oids.get(entry.history.next) else {
+        return false;
+    };
+    entry.history.next += 1;
+
+    let Ok(commit) = repo.find_commit(oid) else {
+        return true;
+    };
+    let touched = commit_touched_paths(repo, &commit);
+    if touched.is_empty() {
+        return true;
+    }
+
+    let author = commit.author();
+    let author_name = author
+        .name()
+        .ok()
+        .or_else(|| author.email().ok())
+        .map(String::from)
+        .unwrap_or_default();
+    let info = Rc::new(CommitInfo {
+        hash: commit.id().to_string(),
+        // Author time, to match what `git log` displays by default.
+        time: author.when().seconds(),
+        author: author_name,
+    });
+
+    for path in touched {
+        entry
+            .history
+            .resolved
+            .entry(path)
+            .or_insert_with(|| info.clone());
+    }
+
+    true
+}
+
+/// The paths whose content differs between the commit and *all* of its parents
+/// (matching `git log`'s default no-simplification behavior for a single
+/// pathspec), plus every ancestor directory of each, so that directory
+/// queries resolve to the newest commit touching anything beneath them. The
+/// root commit touches everything in its tree.
+fn commit_touched_paths(repo: &Repository, commit: &Commit) -> Vec<String> {
+    let Ok(tree) = commit.tree() else {
+        return Vec::new();
+    };
+
+    if commit.parent_count() == 0 {
+        let mut paths = Vec::new();
+        let _ = tree.walk(TreeWalkMode::PreOrder, |dir, entry| {
+            if (entry.kind() == Some(ObjectType::Blob) || entry.kind() == Some(ObjectType::Tree))
+                && let Ok(name) = entry.name()
+            {
+                paths.push(format!("{}{}", dir, name));
+            }
+            TreeWalkResult::Ok
+        });
+        return paths;
+    }
+
+    let mut intersection: Option<HashSet<String>> = None;
+    for parent in commit.parents() {
+        let Ok(parent_tree) = parent.tree() else {
+            continue;
+        };
+        let Ok(diff) = repo.diff_tree_to_tree(Some(&parent_tree), Some(&tree), None) else {
+            continue;
+        };
+
+        let mut changed = HashSet::new();
+        for delta in diff.deltas() {
+            for path in [delta.old_file().path(), delta.new_file().path()]
+                .into_iter()
+                .flatten()
+            {
+                add_with_ancestors(&mut changed, &path.to_string_lossy());
+            }
+        }
+
+        intersection = Some(match intersection {
+            None => changed,
+            Some(previous) => previous.intersection(&changed).cloned().collect(),
+        });
+    }
+
+    intersection.map(Vec::from_iter).unwrap_or_default()
+}
+
+/// Inserts a '/'-separated path and each of its parent directories.
+fn add_with_ancestors(set: &mut HashSet<String>, path: &str) {
+    let mut end = path.len();
+    loop {
+        set.insert(path[..end].to_string());
+        match path[..end].rfind('/') {
+            Some(idx) if idx > 0 => end = idx,
+            _ => break,
+        }
+    }
 }
 
 /// git2 expects repository-relative paths with forward slashes.
@@ -235,5 +342,116 @@ fn to_git_path(rel: &Path) -> String {
         s.replace('\\', "/")
     } else {
         s.into_owned()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use git2::{IndexAddOption, Signature, Time};
+
+    /// Stages everything and commits with a distinct timestamp — the walk is
+    /// time-sorted, so equal-second commits would tie-break arbitrarily.
+    fn commit_all(repo: &Repository, msg: &str, secs: i64) -> git2::Oid {
+        let sig = Signature::new("test", "test@test", &Time::new(secs, 0)).unwrap();
+        let mut index = repo.index().unwrap();
+        index
+            .add_all(["*"].iter(), IndexAddOption::DEFAULT, None)
+            .unwrap();
+        index.write().unwrap();
+        let tree_id = index.write_tree().unwrap();
+        let tree = repo.find_tree(tree_id).unwrap();
+        let parent = repo.head().ok().and_then(|h| h.peel_to_commit().ok());
+        let parents: Vec<&git2::Commit> = parent.iter().collect();
+        repo.commit(Some("HEAD"), &sig, &sig, msg, &tree, &parents)
+            .unwrap()
+    }
+
+    #[test]
+    fn last_commit_resolves_per_path() {
+        let dir = std::env::temp_dir().join("fselect_test_git_last_commit");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(dir.join("sub")).unwrap();
+        let repo = Repository::init(&dir).unwrap();
+
+        fs::write(dir.join("a.txt"), "one").unwrap();
+        let c1 = commit_all(&repo, "c1", 1_000_000_000);
+
+        fs::write(dir.join("b.txt"), "two").unwrap();
+        let c2 = commit_all(&repo, "c2", 1_000_000_100);
+
+        fs::write(dir.join("sub").join("c.txt"), "three").unwrap();
+        fs::write(dir.join("a.txt"), "one-modified").unwrap();
+        let c3 = commit_all(&repo, "c3", 1_000_000_200);
+
+        fs::write(dir.join("untracked.txt"), "x").unwrap();
+
+        let mut cache = GitCache::new();
+        assert_eq!(
+            cache.last_commit(&dir.join("a.txt")).unwrap().hash,
+            c3.to_string(),
+            "modified file resolves to the modifying commit"
+        );
+        assert_eq!(
+            cache.last_commit(&dir.join("b.txt")).unwrap().hash,
+            c2.to_string(),
+            "untouched-since file resolves to its introducing commit"
+        );
+        assert_eq!(
+            cache.last_commit(&dir.join("sub").join("c.txt")).unwrap().hash,
+            c3.to_string()
+        );
+        assert_eq!(
+            cache.last_commit(&dir.join("sub")).unwrap().hash,
+            c3.to_string(),
+            "directory resolves to the newest commit under it"
+        );
+        assert!(
+            cache.last_commit(&dir.join("untracked.txt")).is_none(),
+            "never-committed file has no last commit"
+        );
+        // Second query for the same repository must reuse the finished walk.
+        assert_eq!(
+            cache.last_commit(&dir.join("a.txt")).unwrap().hash,
+            c3.to_string()
+        );
+        let _ = c1;
+
+        drop(repo);
+        drop(cache);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn last_commit_root_commit_touches_all_paths() {
+        let dir = std::env::temp_dir().join("fselect_test_git_root_commit");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(dir.join("nested")).unwrap();
+        let repo = Repository::init(&dir).unwrap();
+
+        fs::write(dir.join("top.txt"), "t").unwrap();
+        fs::write(dir.join("nested").join("deep.txt"), "d").unwrap();
+        let c1 = commit_all(&repo, "root", 1_000_000_000);
+
+        let mut cache = GitCache::new();
+        assert_eq!(
+            cache.last_commit(&dir.join("top.txt")).unwrap().hash,
+            c1.to_string()
+        );
+        assert_eq!(
+            cache
+                .last_commit(&dir.join("nested").join("deep.txt"))
+                .unwrap()
+                .hash,
+            c1.to_string()
+        );
+        assert_eq!(
+            cache.last_commit(&dir.join("nested")).unwrap().hash,
+            c1.to_string()
+        );
+
+        drop(repo);
+        drop(cache);
+        let _ = fs::remove_dir_all(&dir);
     }
 }

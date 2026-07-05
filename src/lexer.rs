@@ -62,6 +62,7 @@ struct LexerState {
     in_order_by: bool,
     in_value_set: bool,
     roots_finished: bool,
+    paren_depth: u32,
 }
 
 impl LexerState {
@@ -80,6 +81,7 @@ impl LexerState {
             in_order_by: false,
             in_value_set: false,
             roots_finished: false,
+            paren_depth: 0,
         }
     }
 
@@ -335,9 +337,17 @@ impl Lexer {
         self.state.in_value_set = matches!(lexeme, Some(Lexeme::CurlyOpen))
                 || (matches!(lexeme, Some(Lexeme::Open)) && self.state.after_operator);
         self.state.after_operator = matches!(lexeme, Some(Lexeme::Operator(_)));
+        // A comma in the SELECT list suppresses keywords only inside parens
+        // (function args like `upper(foo, from)`); at depth 0 the next `from`
+        // must still be the FROM keyword, or a trailing comma would swallow it.
         self.state.after_logical = matches!(lexeme, Some(Lexeme::Where) | Some(Lexeme::And) | Some(Lexeme::Or) | Some(Lexeme::Open) | Some(Lexeme::CurlyOpen))
                 || (matches!(lexeme, Some(Lexeme::Comma)) && self.state.after_where)
-                || (matches!(lexeme, Some(Lexeme::Comma)) && self.state.before_from);
+                || (matches!(lexeme, Some(Lexeme::Comma)) && self.state.before_from && self.state.paren_depth > 0);
+        self.state.paren_depth = match lexeme {
+            Some(Lexeme::Open) | Some(Lexeme::CurlyOpen) => self.state.paren_depth + 1,
+            Some(Lexeme::Close) | Some(Lexeme::CurlyClose) => self.state.paren_depth.saturating_sub(1),
+            _ => self.state.paren_depth,
+        };
         self.state.after_value_start = matches!(lexeme, Some(Lexeme::Comma)) && self.state.after_where;
         self.state.after_not = matches!(lexeme, Some(Lexeme::Not));
         self.state.after_arithmetic = matches!(lexeme, Some(Lexeme::ArithmeticOperator(_)));

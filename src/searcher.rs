@@ -627,7 +627,9 @@ impl<'a> Searcher<'a> {
                     rendered.clone(),
                 );
 
-                if !self.silent_mode {
+                // An ungrouped aggregate produces a single row; any OFFSET
+                // skips past it (the buffered row is offset-skipped by readers).
+                if !self.silent_mode && self.query.offset == 0 {
                     try_output!(write!(std::io::stdout(), "{}", rendered), Ok(()));
                 }
             }
@@ -737,13 +739,18 @@ impl<'a> Searcher<'a> {
             self.default_config,
             self.use_colors
         );
-        sub_searcher.silent_mode = !self.config.debug;
+        // Always run silent: is_buffered() must hold so results land in
+        // output_buffer instead of leaking to stdout (debug mode included).
+        sub_searcher.silent_mode = true;
         if let Err(err) = sub_searcher.list_search_results() {
             err.print();
             return vec![];
         }
 
+        // The buffer holds limit + offset rows; the offset rows are skipped
+        // only in the print path, so they must be skipped here as well.
         let result_values = sub_searcher.output_buffer.iter_values()
+            .skip(query.offset as usize)
             .map(|s| s.trim_end().to_string())
             .collect::<Vec<String>>();
 
@@ -2799,6 +2806,14 @@ mod tests {
     /// a temp directory. Returns the rendered rows the outer query produced so
     /// we can assert against them as a flat set of strings.
     fn run_query_against_dir(query_template: &str, dir: &Path) -> Vec<String> {
+        run_query_against_dir_with_config(query_template, dir, Config::default())
+    }
+
+    fn run_query_against_dir_with_config(
+        query_template: &str,
+        dir: &Path,
+        config: Config,
+    ) -> Vec<String> {
         use crate::lexer::Lexer;
         use crate::parser::Parser;
 
@@ -2807,7 +2822,7 @@ mod tests {
         let mut parser = Parser::new(&mut lexer);
         let parsed = parser.parse(false).expect("parse failed");
         let parsed = Box::leak(Box::new(parsed));
-        let config = Box::leak(Box::new(Config::default()));
+        let config = Box::leak(Box::new(config));
         let default_config = Box::leak(Box::new(Config::default()));
 
         let mut searcher = Searcher::new(parsed, config, default_config, false);
@@ -2840,6 +2855,53 @@ mod tests {
         let names: HashSet<String> = rows.into_iter().collect();
         assert!(names.contains("one.txt"), "names was {:?}", names);
         assert!(names.contains("two.txt"));
+    }
+
+    #[test]
+    fn subquery_in_list_applies_offset() {
+        // The subquery buffer holds limit + offset rows; the offset rows must
+        // be skipped when handing values to the outer query, or `limit 1
+        // offset 1` would feed two values into the IN list.
+        let tmp = std::env::temp_dir().join("fselect_test_subquery_offset");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        fs::write(tmp.join("small.txt"), "1").unwrap();
+        fs::write(tmp.join("medium.txt"), "22").unwrap();
+        fs::write(tmp.join("large.txt"), "333").unwrap();
+
+        let rows = run_query_against_dir(
+            "select name from __DIR__ depth 1 where name in (select name from __DIR__ depth 1 order by size desc limit 1 offset 1)",
+            &tmp,
+        );
+
+        let _ = fs::remove_dir_all(&tmp);
+        assert_eq!(rows, vec![String::from("medium.txt")]);
+    }
+
+    #[test]
+    fn subquery_results_are_buffered_with_debug_config() {
+        // Subqueries must run silent regardless of config.debug: with debug on
+        // they used to print their rows instead of buffering them, so EXISTS
+        // inverted and IN/scalar subqueries came back empty.
+        let tmp = std::env::temp_dir().join("fselect_test_subquery_debug_config");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        fs::write(tmp.join("one.txt"), "x").unwrap();
+        fs::write(tmp.join("two.txt"), "y").unwrap();
+
+        let mut config = Config::default();
+        config.debug = true;
+
+        let rows = run_query_against_dir_with_config(
+            "select name from __DIR__ depth 1 where exists (select name from __DIR__ depth 1 where name eq 'one.txt')",
+            &tmp,
+            config,
+        );
+
+        let _ = fs::remove_dir_all(&tmp);
+        let names: HashSet<String> = rows.into_iter().collect();
+        assert!(names.contains("one.txt"), "names was {:?}", names);
+        assert!(names.contains("two.txt"), "names was {:?}", names);
     }
 
     #[test]

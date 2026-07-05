@@ -1023,12 +1023,9 @@ impl <'a> Parser<'a> {
                 Err(msg.clone())
             }
             Some(Lexeme::String(ref s)) => {
-                if let Ok((field, root_alias)) = Field::parse_field(s) {
-                    let mut expr = Expr::field_with_root_alias(field, root_alias);
-                    expr.minus = minus;
-                    return Ok(Some(expr));
-                }
-
+                // Quoted strings are always literals, never column references:
+                // `where name = 'size'` must compare against the string "size",
+                // not against the size field.
                 let mut expr = Expr::value(s.to_string());
                 expr.minus = minus;
 
@@ -1108,6 +1105,25 @@ impl <'a> Parser<'a> {
         }
     }
 
+    /// Resolve a bare ORDER BY / GROUP BY identifier against SELECT-list
+    /// aliases: `select size + 1 as s ... order by s` must use the aliased
+    /// expression, not a constant string "s" (which would silently not sort).
+    fn resolve_select_alias(&mut self, fields: &[Expr], name: &str) -> Option<Expr> {
+        let aliased = fields
+            .iter()
+            .find(|f| f.alias.as_deref().is_some_and(|a| a.eq_ignore_ascii_case(name)))?;
+
+        // Only a bare alias is substituted; if the identifier is part of a
+        // larger expression, leave it to the regular expression parser.
+        let next = self.next_lexeme();
+        self.drop_lexeme();
+        if matches!(next, Some(Lexeme::ArithmeticOperator(_))) {
+            return None;
+        }
+
+        Some(aliased.clone())
+    }
+
     fn parse_group_by(&mut self, fields: &[Expr]) -> Result<Vec<Expr>, String> {
         let mut group_by_fields: Vec<Expr> = vec![];
 
@@ -1120,18 +1136,36 @@ impl <'a> Parser<'a> {
                             let actual_field = match grouping_field.parse::<usize>() {
                                 Ok(idx) if idx >= 1 && idx <= fields.len() => fields[idx - 1].clone(),
                                 Ok(_) => return Err(String::from("Group by field index is out of range")),
-                                _ => {
-                                    self.drop_lexeme();
-                                    match self.parse_expr()? {
-                                        Some(expr) => expr,
-                                        None => break,
+                                _ => match self.resolve_select_alias(fields, grouping_field) {
+                                    Some(expr) => expr,
+                                    None => {
+                                        self.drop_lexeme();
+                                        match self.parse_expr()? {
+                                            Some(expr) => expr,
+                                            None => break,
+                                        }
                                     }
-                                }
+                                },
                             };
                             group_by_fields.push(actual_field);
                         }
-                        Some(Lexeme::String(_))
-                        | Some(Lexeme::Open) | Some(Lexeme::CurlyOpen) => {
+                        Some(Lexeme::String(ref grouping_field)) => {
+                            // Grouping by a string literal is meaningless, so a
+                            // quoted string here keeps its historical meaning
+                            // as a field name (or a SELECT-list alias).
+                            if let Ok((field, root_alias)) = Field::parse_field(grouping_field) {
+                                group_by_fields.push(Expr::field_with_root_alias(field, root_alias));
+                            } else if let Some(expr) = self.resolve_select_alias(fields, grouping_field) {
+                                group_by_fields.push(expr);
+                            } else {
+                                self.drop_lexeme();
+                                match self.parse_expr()? {
+                                    Some(group_field) => group_by_fields.push(group_field),
+                                    None => break,
+                                }
+                            }
+                        }
+                        Some(Lexeme::Open) | Some(Lexeme::CurlyOpen) => {
                             self.drop_lexeme();
                             match self.parse_expr()? {
                                 Some(group_field) => group_by_fields.push(group_field),
@@ -1167,19 +1201,42 @@ impl <'a> Parser<'a> {
                             let actual_field = match ordering_field.parse::<usize>() {
                                 Ok(idx) if idx >= 1 && idx <= fields.len() => fields[idx - 1].clone(),
                                 Ok(_) => return Err(String::from("Order by field index is out of range")),
-                                _ => {
-                                    self.drop_lexeme();
-                                    match self.parse_expr()? {
-                                        Some(expr) => expr,
-                                        None => break,
+                                _ => match self.resolve_select_alias(fields, ordering_field) {
+                                    Some(expr) => expr,
+                                    None => {
+                                        self.drop_lexeme();
+                                        match self.parse_expr()? {
+                                            Some(expr) => expr,
+                                            None => break,
+                                        }
                                     }
-                                }
+                                },
                             };
                             order_by_fields.push(actual_field);
                             order_by_directions.push(true);
                         }
-                        Some(Lexeme::String(_))
-                        | Some(Lexeme::Open) | Some(Lexeme::CurlyOpen) => {
+                        Some(Lexeme::String(ref ordering_field)) => {
+                            // Ordering by a string literal is meaningless, so a
+                            // quoted string here keeps its historical meaning
+                            // as a field name (or a SELECT-list alias).
+                            if let Ok((field, root_alias)) = Field::parse_field(ordering_field) {
+                                order_by_fields.push(Expr::field_with_root_alias(field, root_alias));
+                                order_by_directions.push(true);
+                            } else if let Some(expr) = self.resolve_select_alias(fields, ordering_field) {
+                                order_by_fields.push(expr);
+                                order_by_directions.push(true);
+                            } else {
+                                self.drop_lexeme();
+                                match self.parse_expr()? {
+                                    Some(expr) => {
+                                        order_by_fields.push(expr);
+                                        order_by_directions.push(true);
+                                    }
+                                    None => break,
+                                }
+                            }
+                        }
+                        Some(Lexeme::Open) | Some(Lexeme::CurlyOpen) => {
                             self.drop_lexeme();
                             match self.parse_expr()? {
                                 Some(expr) => {
@@ -2263,6 +2320,80 @@ mod tests {
         let q2 = p2.parse(false).unwrap();
 
         assert_eq!(q1.ordering_fields, q2.ordering_fields);
+    }
+
+    #[test]
+    fn quoted_string_in_where_is_literal_not_field() {
+        // A file literally named "size" must be findable: the quoted string is
+        // a literal, not a reference to the size field.
+        let query = "select name from /test where name = 'size'";
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
+        let query = p.parse(false).unwrap();
+
+        let expr = query.expr.unwrap();
+        let right = expr.right.unwrap();
+        assert_eq!(right.val, Some(String::from("size")));
+        assert_eq!(right.field, None);
+    }
+
+    #[test]
+    fn quoted_string_in_select_list_is_literal_not_field() {
+        let query = "select name, 'size' from /test";
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
+        let query = p.parse(false).unwrap();
+
+        assert_eq!(query.fields[1].val, Some(String::from("size")));
+        assert_eq!(query.fields[1].field, None);
+    }
+
+    #[test]
+    fn order_by_alias_of_computed_column_resolves_to_expression() {
+        let query = "select size + 1 as s from /test order by s desc";
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
+        let query = p.parse(false).unwrap();
+        assert!(!p.there_are_remaining_lexemes());
+
+        assert_eq!(query.ordering_fields, query.fields);
+        assert_eq!(query.ordering_asc, vec![false]);
+    }
+
+    #[test]
+    fn group_by_alias_of_computed_column_resolves_to_expression() {
+        let query = "select size + 1 as s, count(*) from /test group by s";
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
+        let query = p.parse(false).unwrap();
+        assert!(!p.there_are_remaining_lexemes());
+
+        assert_eq!(query.grouping_fields, vec![query.fields[0].clone()]);
+    }
+
+    #[test]
+    fn order_by_alias_of_plain_field_resolves_to_expression() {
+        let query = "select ext as e from /test order by e";
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
+        let query = p.parse(false).unwrap();
+        assert!(!p.there_are_remaining_lexemes());
+
+        assert_eq!(query.ordering_fields, query.fields);
+    }
+
+    #[test]
+    fn trailing_comma_in_select_list_does_not_swallow_from() {
+        // A trailing comma must not demote FROM to a value column, or the
+        // query would silently search the current directory instead.
+        let query = "select name, from /test";
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
+        let query = p.parse(false).unwrap();
+
+        assert_eq!(query.fields.len(), 1);
+        assert_eq!(query.roots.len(), 1);
+        assert_eq!(query.roots[0].path, "/test");
     }
 
     #[test]

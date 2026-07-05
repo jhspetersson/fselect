@@ -35,6 +35,7 @@ kamadak-exif = "0.6"
 lofty = "0.24"
 lscolors = { version = "0.21", features = [ "nu-ansi-term" ] }
 matroska = "0.30"
+memchr = "2"
 mp4parse = "0.17"
 nu-ansi-term = "0.50"
 rand = "0.10"

@@ -172,6 +172,9 @@ fn file_contains<R: Read>(mut reader: R, needle: &[u8]) -> bool {
     let overlap = needle.len() - 1;
     let mut buf = vec![0u8; CHUNK + overlap];
     let mut carry = 0usize;
+    // SIMD-accelerated substring search; the naive windows() scan was 3-4x
+    // slower on cached files and O(n*m) on repetitive data.
+    let finder = memchr::memmem::Finder::new(needle);
 
     loop {
         let read = match reader.read(&mut buf[carry..]) {
@@ -180,7 +183,7 @@ fn file_contains<R: Read>(mut reader: R, needle: &[u8]) -> bool {
             Err(_) => return false,
         };
         let end = carry + read;
-        if memmem(&buf[..end], needle) {
+        if finder.find(&buf[..end]).is_some() {
             return true;
         }
         if end >= overlap {
@@ -190,13 +193,6 @@ fn file_contains<R: Read>(mut reader: R, needle: &[u8]) -> bool {
             carry = end;
         }
     }
-}
-
-fn memmem(haystack: &[u8], needle: &[u8]) -> bool {
-    if needle.len() > haystack.len() {
-        return false;
-    }
-    haystack.windows(needle.len()).any(|w| w == needle)
 }
 
 /// Parses `arg` as an `f64` and applies `f` to it. A value that does not parse

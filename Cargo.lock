@@ -546,6 +546,7 @@ dependencies = [
  "lofty",
  "lscolors",
  "matroska",
+ "memchr",
  "mp4parse",
  "nu-ansi-term",
  "rand 0.10.1",

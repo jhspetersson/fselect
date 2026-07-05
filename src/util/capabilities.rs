@@ -57,8 +57,10 @@ macro_rules! check_caps_word_1 {
     };
 }
 
+const VFS_CAP_REVISION_MASK: u32 = 0xFF000000;
 const VFS_CAP_REVISION_1: u32 = 0x01000000;
-const VFS_CAP_REVISION_2: u32 = 0x02000002;
+const VFS_CAP_REVISION_2: u32 = 0x02000000;
+const VFS_CAP_REVISION_3: u32 = 0x03000000;
 const VFS_CAP_FLAGS_EFFECTIVE: u32 = 0x000001;
 const XATTR_CAPS_SZ_1: usize = 12; // 4 (magic) + 4 (permitted) + 4 (inherited)
 const XATTR_CAPS_SZ_2: usize = 20; // 4 (magic) + 2 * (4 (permitted) + 4 (inherited))
@@ -70,7 +72,7 @@ pub fn parse_capabilities(caps: Vec<u8>) -> String {
     }
 
     let magic_etc = u32::from_le_bytes(caps[0..4].try_into().unwrap());
-    let revision = magic_etc & !VFS_CAP_FLAGS_EFFECTIVE;
+    let revision = magic_etc & VFS_CAP_REVISION_MASK;
 
     let effective = if magic_etc & VFS_CAP_FLAGS_EFFECTIVE != 0 {
         String::from("e")
@@ -91,8 +93,8 @@ pub fn parse_capabilities(caps: Vec<u8>) -> String {
 
             check_caps_word_0!(permitted, inherited, effective, result);
         }
-        VFS_CAP_REVISION_2 => {
-            // v2 (20 bytes) and v3 (24 bytes with rootid) share the same revision
+        VFS_CAP_REVISION_2 | VFS_CAP_REVISION_3 => {
+            // v2 (20 bytes) and v3 (24 bytes with rootid) share the data layout
             if caps.len() < XATTR_CAPS_SZ_2 {
                 return String::new();
             }
@@ -147,6 +149,45 @@ pub fn has_capability(caps_string: &str, cap_name: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn v2_blob(magic_flags: u32, permitted0: u32, inherited0: u32) -> Vec<u8> {
+        let mut blob = Vec::new();
+        blob.extend_from_slice(&(VFS_CAP_REVISION_2 | magic_flags).to_le_bytes());
+        blob.extend_from_slice(&permitted0.to_le_bytes());
+        blob.extend_from_slice(&inherited0.to_le_bytes());
+        blob.extend_from_slice(&0u32.to_le_bytes());
+        blob.extend_from_slice(&0u32.to_le_bytes());
+        blob
+    }
+
+    #[test]
+    fn test_parse_v2_blob_as_written_by_setcap() {
+        // `setcap cap_net_bind_service=ep` writes a v2 blob whose magic is
+        // 0x02000000 | effective flag; parsing must not come back empty.
+        let blob = v2_blob(VFS_CAP_FLAGS_EFFECTIVE, 1 << 10, 0);
+        assert_eq!(parse_capabilities(blob), "cap_net_bind_service=ep");
+    }
+
+    #[test]
+    fn test_parse_v3_blob_with_rootid() {
+        let mut blob = Vec::new();
+        blob.extend_from_slice(&(VFS_CAP_REVISION_3 | VFS_CAP_FLAGS_EFFECTIVE).to_le_bytes());
+        blob.extend_from_slice(&(1u32 << 10).to_le_bytes());
+        blob.extend_from_slice(&0u32.to_le_bytes());
+        blob.extend_from_slice(&0u32.to_le_bytes());
+        blob.extend_from_slice(&0u32.to_le_bytes());
+        blob.extend_from_slice(&1000u32.to_le_bytes());
+        assert_eq!(
+            parse_capabilities(blob),
+            "cap_net_bind_service=ep [rootid=1000]"
+        );
+    }
+
+    #[test]
+    fn test_parse_v2_blob_without_effective_flag() {
+        let blob = v2_blob(0, 1 << 21, 0);
+        assert_eq!(parse_capabilities(blob), "cap_sys_admin=p");
+    }
 
     #[test]
     fn test_has_capability_exact_match() {

@@ -10,7 +10,9 @@ pub struct Mp4DurationExtractor;
 
 impl DurationExtractor for Mp4DurationExtractor {
     fn supports_ext(&self, ext_lowercase: &str) -> bool {
-        "mp4" == ext_lowercase
+        // All ISO-BMFF containers mp4parse reads; util/audio.rs excludes
+        // these from lofty on the assumption this extractor handles them.
+        matches!(ext_lowercase, "mp4" | "m4v" | "mov" | "3gp")
     }
 
     fn try_read_duration(&self, path: &Path) -> io::Result<Option<Duration>> {
@@ -28,10 +30,12 @@ impl DurationExtractor for Mp4DurationExtractor {
             .tracks
             .iter()
             .find(|track| track.track_type == mp4parse::TrackType::Video)
-            .and_then(|track| {
-                track.tkhd.as_ref().map(|tkhd| Duration {
-                    length: (tkhd.duration / timescale) as usize,
-                })
+            .and_then(|track| track.tkhd.as_ref())
+            // Fragmented/DASH files store all-ones for "unknown" (ISO
+            // 14496-12); reporting it would show a ~4-million-second video.
+            .filter(|tkhd| tkhd.duration != u64::MAX && tkhd.duration != u32::MAX as u64)
+            .map(|tkhd| Duration {
+                length: (tkhd.duration / timescale) as usize,
             }))
     }
 }

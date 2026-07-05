@@ -10,7 +10,8 @@ pub struct Mp4DimensionsExtractor;
 
 impl DimensionsExtractor for Mp4DimensionsExtractor {
     fn supports_ext(&self, ext_lowercase: &str) -> bool {
-        "mp4" == ext_lowercase
+        // All ISO-BMFF containers mp4parse reads.
+        matches!(ext_lowercase, "mp4" | "m4v" | "mov" | "3gp")
     }
 
     fn try_read_dimensions(&self, path: &Path) -> io::Result<Option<Dimensions>> {

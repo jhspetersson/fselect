@@ -17,7 +17,6 @@ use crate::util::duration::get_duration;
 pub struct FileMetadataState {
     pub(crate) file_metadata: Option<Option<Metadata>>,
     pub(crate) entry_file_type: Option<Option<FileType>>,
-    pub(crate) line_count: Option<Option<usize>>,
     pub(crate) content_stats: Option<Option<ContentStats>>,
     pub(crate) dimensions: Option<Option<Dimensions>>,
     pub(crate) duration: Option<Option<Duration>>,
@@ -35,7 +34,6 @@ impl FileMetadataState {
         FileMetadataState {
             file_metadata: None,
             entry_file_type: None,
-            line_count: None,
             content_stats: None,
             dimensions: None,
             duration: None,
@@ -96,19 +94,15 @@ impl FileMetadataState {
     }
 
     pub fn update_line_count(&mut self, entry: &DirEntry) {
-        if self.line_count.is_none() {
-            // A content-stats pass already streamed the whole file and counted
-            // newlines; reuse it instead of reading the file a second time.
-            if let Some(Some(stats)) = &self.content_stats {
-                self.line_count = Some(Some(stats.line_count));
-            } else {
-                self.line_count = Some(get_line_count(entry));
-            }
-        }
+        // Always derived from the content-stats pass: a raw newline-byte scan
+        // disagrees with the decoded text for UTF-16/32 files (0x0A occurs
+        // inside multibyte code units), which made the reported count depend
+        // on which content field happened to be evaluated first.
+        self.update_content_stats(entry);
     }
 
     pub fn get_line_count(&self) -> Option<usize> {
-        self.line_count.flatten()
+        self.get_content_stats().map(|stats| stats.line_count)
     }
 
     pub fn update_content_stats(&mut self, entry: &DirEntry) {
@@ -241,7 +235,6 @@ mod tests {
 
         assert!(state.file_metadata.is_none());
         assert!(state.entry_file_type.is_none());
-        assert!(state.line_count.is_none());
         assert!(state.content_stats.is_none());
         assert!(state.dimensions.is_none());
         assert!(state.duration.is_none());
@@ -260,7 +253,6 @@ mod tests {
 
         state.file_metadata = Some(None);
         state.entry_file_type = Some(None);
-        state.line_count = Some(None);
         state.content_stats = Some(None);
         state.dimensions = Some(None);
         state.duration = Some(None);
@@ -276,7 +268,6 @@ mod tests {
 
         assert!(state.file_metadata.is_none());
         assert!(state.entry_file_type.is_none());
-        assert!(state.line_count.is_none());
         assert!(state.content_stats.is_none());
         assert!(state.dimensions.is_none());
         assert!(state.duration.is_none());

@@ -39,7 +39,7 @@ use std::fs::DirEntry;
 use std::fs::File;
 use std::fs::Metadata;
 use std::io::Read;
-use std::io::{BufRead, BufReader};
+use std::io::BufReader;
 use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -602,8 +602,14 @@ pub fn canonical_path(path_buf: &PathBuf) -> Result<String, String> {
 pub fn format_absolute_path(path_buf: &Path) -> String {
     let path = format!("{}", path_buf.to_string_lossy());
 
+    // canonicalize returns verbatim paths: `\\?\C:\...` for drives but
+    // `\\?\UNC\server\share\...` for network paths, which must map back to
+    // `\\server\share\...`, not to the invalid `UNC\server\share\...`.
     #[cfg(windows)]
-    let path = path.replace("\\\\?\\", "");
+    let path = match path.strip_prefix("\\\\?\\UNC\\") {
+        Some(rest) => format!("\\\\{}", rest),
+        None => path.replace("\\\\?\\", ""),
+    };
 
     path
 }
@@ -667,13 +673,13 @@ pub fn get_exif_metadata(entry: &DirEntry) -> Option<HashMap<String, String>> {
                     exif_info.insert(String::from("__Lat"), coord.to_string());
                 }
 
+            // Unparseable altitude data is omitted rather than masked as a
+            // valid-looking 0.0.
             if let (Some(altitude_str), Some(altitude_ref)) =
                 (exif_info.get("GPSAltitude").cloned(), exif_info.get("GPSAltitudeRef").cloned())
+                && let Ok(altitude) = altitude_str.parse::<f32>()
             {
-                let mut altitude = altitude_str.parse::<f32>().unwrap_or(0.0);
-                if altitude_ref.eq("1") {
-                    altitude = -altitude;
-                }
+                let altitude = if altitude_ref.eq("1") { -altitude } else { altitude };
                 exif_info.insert(String::from("__Alt"), altitude.to_string());
             }
 
@@ -738,34 +744,6 @@ pub fn is_hidden(file_name: &str, metadata: &Option<Metadata>, archive_mode: boo
     {
         false
     }
-}
-
-pub fn get_line_count(entry: &DirEntry) -> Option<usize> {
-    if let Ok(file) = File::open(entry.path()) {
-        let mut reader = BufReader::with_capacity(1024 * 32, file);
-        let mut count = 0;
-
-        loop {
-            let len = {
-                if let Ok(buf) = reader.fill_buf() {
-                    if buf.is_empty() {
-                        break;
-                    }
-
-                    count += bytecount::count(buf, b'\n');
-                    buf.len()
-                } else {
-                    return None;
-                }
-            };
-
-            reader.consume(len);
-        }
-
-        return Some(count);
-    }
-
-    None
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

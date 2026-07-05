@@ -30,6 +30,45 @@ macro_rules! unix_int_handler {
     };
 }
 
+/// Defines the paired `<time>`/`<time>_nsec` handlers. On Unix they read the
+/// raw `st_*` fields; elsewhere they fall back to the portable `SystemTime`
+/// accessor so the fields aren't just empty on Windows. Note `ctime` maps to
+/// creation time there (the Windows CRT's own st_ctime convention) — Unix
+/// keeps real inode-change time, which `created()` would not be.
+macro_rules! epoch_time_handler {
+    ($name:ident, $nsec_name:ident, $unix_accessor:ident, $unix_nsec_accessor:ident, $st_accessor:ident) => {
+        pub fn $name(ctx: &mut FieldContext) -> Result<Variant, SearchError> {
+            ctx.fms.update_file_metadata(ctx.entry, ctx.follow_symlinks);
+            if let Some(attrs) = ctx.fms.get_file_metadata() {
+                #[cfg(unix)]
+                return Ok(Variant::from_int(attrs.$unix_accessor() as i64));
+                #[cfg(not(unix))]
+                if let Ok(sdt) = attrs.$st_accessor()
+                    && let Ok(duration) = sdt.duration_since(std::time::UNIX_EPOCH)
+                {
+                    return Ok(Variant::from_int(duration.as_secs() as i64));
+                }
+            }
+            Ok(Variant::empty(VariantType::Int))
+        }
+
+        pub fn $nsec_name(ctx: &mut FieldContext) -> Result<Variant, SearchError> {
+            ctx.fms.update_file_metadata(ctx.entry, ctx.follow_symlinks);
+            if let Some(attrs) = ctx.fms.get_file_metadata() {
+                #[cfg(unix)]
+                return Ok(Variant::from_int(attrs.$unix_nsec_accessor() as i64));
+                #[cfg(not(unix))]
+                if let Ok(sdt) = attrs.$st_accessor()
+                    && let Ok(duration) = sdt.duration_since(std::time::UNIX_EPOCH)
+                {
+                    return Ok(Variant::from_int(duration.subsec_nanos() as i64));
+                }
+            }
+            Ok(Variant::empty(VariantType::Int))
+        }
+    };
+}
+
 /// Defines a handler that reads a `SystemTime` from the entry's metadata
 /// (`created`/`accessed`) and converts it to a local datetime variant.
 macro_rules! datetime_handler {
@@ -232,12 +271,9 @@ unix_int_handler!(handle_inode, ino, VariantType::String);
 unix_int_handler!(handle_blocks, blocks, VariantType::String);
 unix_int_handler!(handle_blksize, blksize, VariantType::String);
 unix_int_handler!(handle_hardlinks, nlink, VariantType::String);
-unix_int_handler!(handle_atime, atime, VariantType::Int);
-unix_int_handler!(handle_atime_nsec, atime_nsec, VariantType::Int);
-unix_int_handler!(handle_mtime, mtime, VariantType::Int);
-unix_int_handler!(handle_mtime_nsec, mtime_nsec, VariantType::Int);
-unix_int_handler!(handle_ctime, ctime, VariantType::Int);
-unix_int_handler!(handle_ctime_nsec, ctime_nsec, VariantType::Int);
+epoch_time_handler!(handle_atime, handle_atime_nsec, atime, atime_nsec, accessed);
+epoch_time_handler!(handle_mtime, handle_mtime_nsec, mtime, mtime_nsec, modified);
+epoch_time_handler!(handle_ctime, handle_ctime_nsec, ctime, ctime_nsec, created);
 
 datetime_handler!(handle_created, created);
 datetime_handler!(handle_accessed, accessed);

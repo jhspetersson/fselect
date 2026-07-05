@@ -655,7 +655,7 @@ impl <'a> Parser<'a> {
 
         if left.is_err()
             && let Some(Lexeme::Operator(s)) = lexeme
-                && s.to_lowercase() == "exists" {
+                && matches!(s.to_lowercase().as_str(), "exists" | "notexists") {
                     exists_present = true;
                 }
         self.drop_lexeme();
@@ -2427,6 +2427,19 @@ mod tests {
 
         let expr = Expr::op(Expr::field(Field::Name), Op::Exists, list_expr);
         assert_eq!(query.expr, Some(expr));
+    }
+
+    #[test]
+    fn query_with_notexists_operator_and_no_left_operand() {
+        // The no-LHS recovery must accept `notexists` just like `exists`.
+        let query = "select name from /test where notexists (select name from /test2)";
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
+        let query = p.parse(false).unwrap();
+        assert!(!p.there_are_remaining_lexemes());
+
+        let expr = query.expr.unwrap();
+        assert_eq!(expr.op, Some(Op::NotExists));
     }
 
     #[test]

@@ -1,7 +1,7 @@
 use std::sync::{LazyLock, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use chrono::{DateTime, Duration, Local, LocalResult, NaiveDate, NaiveDateTime, NaiveTime, TimeZone, Timelike, Utc};
+use chrono::{DateTime, Duration, Local, NaiveDate, NaiveDateTime, NaiveTime, Timelike, Utc};
 use chrono_english::{parse_date_string, Dialect};
 use regex::Regex;
 
@@ -81,24 +81,19 @@ pub fn parse_datetime(s: &str) -> Result<(NaiveDateTime, NaiveDateTime), String>
                 }
             }
 
-            match Local.with_ymd_and_hms(year, month, day, 0, 0, 0) {
-                LocalResult::Single(date) => {
-                    let base = date.naive_local();
-                    let start = base
-                        .with_hour(hour_start)
-                        .and_then(|d| d.with_minute(min_start))
-                        .and_then(|d| d.with_second(sec_start));
-                    let finish = base
-                        .with_hour(hour_finish)
-                        .and_then(|d| d.with_minute(min_finish))
-                        .and_then(|d| d.with_second(sec_finish));
+            // Build the naive datetime directly: a Local round-trip would fail on
+            // DST-skipped or ambiguous midnights while adding nothing to the result
+            match NaiveDate::from_ymd_opt(year, month, day) {
+                Some(date) => {
+                    let start = date.and_hms_opt(hour_start, min_start, sec_start);
+                    let finish = date.and_hms_opt(hour_finish, min_finish, sec_finish);
 
                     match (start, finish) {
                         (Some(s), Some(f)) => Ok((s, f)),
                         _ => Err("Error parsing date/time value: ".to_string() + s),
                     }
                 }
-                _ => Err("Error converting date/time to local: ".to_string() + s),
+                None => Err("Error parsing date/time value: ".to_string() + s),
             }
         }
         None => {
@@ -265,6 +260,14 @@ mod tests {
 
         assert!(result.is_err());
         assert_eq!(result.unwrap_err(), "Error parsing date/time value: invalid-date");
+    }
+
+    #[test]
+    fn test_parse_invalid_calendar_date() {
+        // Genuinely invalid dates must still error after dropping the Local round-trip
+        assert!(parse_datetime("2023-02-30").is_err());
+        assert!(parse_datetime("2023-13-01").is_err());
+        assert!(parse_datetime("2023-04-31").is_err());
     }
 
     #[test]

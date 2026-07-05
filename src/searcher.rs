@@ -104,17 +104,29 @@ fn is_subquery_cacheable(query: &Query) -> bool {
         .iter()
         .filter_map(|r| r.options.alias.clone())
         .collect();
-    !expr_references_external_alias(&query.expr, &own_aliases)
-        && query.fields.iter().all(|e| !expr_walk_external_alias(e, &own_aliases))
-        && query.ordering_fields.iter().all(|e| !expr_walk_external_alias(e, &own_aliases))
-        && query.grouping_fields.iter().all(|e| !expr_walk_external_alias(e, &own_aliases))
+    !query_walk_external_alias(query, &own_aliases)
 }
 
-fn expr_references_external_alias(expr: &Option<Expr>, own: &HashSet<String>) -> bool {
-    match expr {
-        Some(e) => expr_walk_external_alias(e, own),
-        None => false,
-    }
+/// Walk every clause of a query — WHERE, SELECT list, ORDER BY, GROUP BY, and
+/// FROM-subselects — looking for a root_alias not declared by the query (or an
+/// enclosing level). Any hit means the query depends on outer-row state.
+fn query_walk_external_alias(query: &Query, own: &HashSet<String>) -> bool {
+    if let Some(ref expr) = query.expr
+        && expr_walk_external_alias(expr, own) { return true; }
+    if query.fields.iter().any(|e| expr_walk_external_alias(e, own)) { return true; }
+    if query.ordering_fields.iter().any(|e| expr_walk_external_alias(e, own)) { return true; }
+    if query.grouping_fields.iter().any(|e| expr_walk_external_alias(e, own)) { return true; }
+    query.roots.iter().any(|root| {
+        root.subquery.as_ref().is_some_and(|sub| {
+            let nested_own: HashSet<String> = sub
+                .roots
+                .iter()
+                .filter_map(|r| r.options.alias.clone())
+                .chain(own.iter().cloned())
+                .collect();
+            query_walk_external_alias(sub, &nested_own)
+        })
+    })
 }
 
 fn expr_walk_external_alias(expr: &Expr, own: &HashSet<String>) -> bool {
@@ -128,8 +140,8 @@ fn expr_walk_external_alias(expr: &Expr, own: &HashSet<String>) -> bool {
         && expr_walk_external_alias(right, own) { return true; }
     if let Some(ref args) = expr.args
         && args.iter().any(|a| expr_walk_external_alias(a, own)) { return true; }
-    // Nested subqueries: descend so a doubly-nested correlated reference is
-    // also detected.
+    // Nested subqueries: descend through every clause so a doubly-nested
+    // correlated reference (including one via a FROM-subselect) is detected.
     if let Some(ref sub) = expr.subquery {
         let nested_own: HashSet<String> = sub
             .roots
@@ -137,8 +149,9 @@ fn expr_walk_external_alias(expr: &Expr, own: &HashSet<String>) -> bool {
             .filter_map(|r| r.options.alias.clone())
             .chain(own.iter().cloned())
             .collect();
-        if let Some(ref sub_expr) = sub.expr
-            && expr_walk_external_alias(sub_expr, &nested_own) { return true; }
+        if query_walk_external_alias(sub, &nested_own) {
+            return true;
+        }
     }
     false
 }
@@ -443,6 +456,9 @@ impl<'a> Searcher<'a> {
                 search_upstream_dockerignore(&mut self.dockerignore_filters, &self.current_root_dir);
             }
 
+            // The external indexes only know physical descendants of the root,
+            // so a root declared with `sym` (follow symlinks) must fall back
+            // to real traversal or symlinked subtrees would be silently missed.
             #[cfg(all(windows, feature = "everything"))]
             {
                 if self.config.everything.unwrap_or(false)
@@ -450,6 +466,7 @@ impl<'a> Searcher<'a> {
                     && !self.current_apply_gitignore
                     && !self.current_apply_hgignore
                     && !self.current_apply_dockerignore
+                    && !self.current_follow_symlinks
                     && self.try_visit_with_everything(&self.current_root_dir.clone())?
                 {
                     continue;
@@ -463,6 +480,7 @@ impl<'a> Searcher<'a> {
                     && !self.current_apply_gitignore
                     && !self.current_apply_hgignore
                     && !self.current_apply_dockerignore
+                    && !self.current_follow_symlinks
                     && self.try_visit_with_plocate(&self.current_root_dir.clone())?
                 {
                     continue;
@@ -749,9 +767,11 @@ impl<'a> Searcher<'a> {
 
         // The buffer holds limit + offset rows; the offset rows are skipped
         // only in the print path, so they must be skipped here as well.
+        // Strip only the row terminator: file names may legally end in spaces
+        // or tabs, and a mangled name would silently drop the row later.
         let result_values = sub_searcher.output_buffer.iter_values()
             .skip(query.offset as usize)
-            .map(|s| s.trim_end().to_string())
+            .map(|s| s.trim_end_matches(['\r', '\n']).to_string())
             .collect::<Vec<String>>();
 
         if ok_to_cache {
@@ -2799,6 +2819,24 @@ mod tests {
         assert!(
             !is_subquery_cacheable(&subquery),
             "subquery whose GROUP BY references outer alias t1 must not be cached"
+        );
+    }
+
+    #[test]
+    fn subquery_with_correlated_from_subselect_is_not_cacheable() {
+        use crate::lexer::Lexer;
+        use crate::parser::Parser;
+
+        // The outer-alias reference hides inside the FROM-subselect: memoising
+        // this query would reuse the first outer row's result for every row.
+        let query = "select name from (select path from /test where size gt t1.size)";
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut parser = Parser::new(&mut lexer);
+        let parsed = parser.parse(false).expect("parse failed");
+
+        assert!(
+            !is_subquery_cacheable(&parsed),
+            "query with a correlated FROM-subselect must not be cached"
         );
     }
 

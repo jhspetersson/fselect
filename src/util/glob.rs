@@ -8,10 +8,6 @@ static GLOB_SPECIAL_CHARS: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new("(\\?|\\.|\\*|\\[|\\]|\\(|\\)|\\^|\\$|\\+|\\{|\\}|\\||\\\\)").unwrap()
 });
 
-static LIKE_SPECIAL_CHARS: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new("(%|_|\\?|\\.|\\*|\\[|\\]|\\(|\\)|\\^|\\$|\\+|\\{|\\}|\\||\\\\)").unwrap()
-});
-
 pub fn is_glob(s: &str) -> bool {
     s.contains("*") || s.contains('?')
 }
@@ -46,28 +42,34 @@ pub fn convert_glob_to_pattern(s: &str) -> Result<String, String> {
 }
 
 pub fn convert_like_to_pattern(s: &str) -> Result<String, String> {
-    let string = LIKE_SPECIAL_CHARS.replace_all(s, |c: &Captures| {
-        match c.index(0) {
-            "%" => ".*",
-            "_" => ".",
-            "?" => "\\?",
-            "." => "\\.",
-            "*" => "\\*",
-            "[" => "\\[",
-            "]" => "\\]",
-            "(" => "\\(",
-            ")" => "\\)",
-            "^" => "\\^",
-            "$" => "\\$",
-            "+" => "\\+",
-            "{" => "\\{",
-            "}" => "\\}",
-            "|" => "\\|",
-            "\\" => "\\\\",
-            _ => "",
+    fn push_literal(c: char, out: &mut String) {
+        match c {
+            '?' | '.' | '*' | '[' | ']' | '(' | ')' | '^' | '$' | '+' | '{' | '}' | '|' | '\\' => {
+                out.push('\\');
+                out.push(c);
+            }
+            _ => out.push(c),
         }
-        .to_string()
-    });
+    }
+
+    let mut string = String::with_capacity(s.len() + 8);
+    let mut chars = s.chars().peekable();
+    while let Some(c) = chars.next() {
+        match c {
+            // MySQL default escape character: \_ , \% and \\ match the literal
+            // character; a backslash before anything else stays a literal backslash
+            '\\' => match chars.peek() {
+                Some(&next @ ('_' | '%' | '\\')) => {
+                    chars.next();
+                    push_literal(next, &mut string);
+                }
+                _ => string.push_str("\\\\"),
+            },
+            '%' => string.push_str(".*"),
+            '_' => string.push('.'),
+            _ => push_literal(c, &mut string),
+        }
+    }
 
     if string.is_empty() {
         return Err("Error parsing LIKE expression: ".to_string() + s);
@@ -193,5 +195,60 @@ mod tests {
     fn test_convert_like_escapes_braces() {
         let pattern = convert_like_to_pattern("file{1}").unwrap();
         assert_eq!(pattern, "^(?i)file\\{1\\}$");
+    }
+
+    #[test]
+    fn test_convert_like_escaped_underscore() {
+        let pattern = convert_like_to_pattern("a\\_b.txt").unwrap();
+        assert_eq!(pattern, "^(?i)a_b\\.txt$");
+        let re = regex::Regex::new(&pattern).unwrap();
+        assert!(re.is_match("a_b.txt"));
+        assert!(!re.is_match("axb.txt"));
+    }
+
+    #[test]
+    fn test_convert_like_escaped_percent() {
+        let pattern = convert_like_to_pattern("100\\%").unwrap();
+        assert_eq!(pattern, "^(?i)100%$");
+        let re = regex::Regex::new(&pattern).unwrap();
+        assert!(re.is_match("100%"));
+        assert!(!re.is_match("100200"));
+    }
+
+    #[test]
+    fn test_convert_like_escaped_backslash() {
+        let pattern = convert_like_to_pattern("a\\\\b").unwrap();
+        assert_eq!(pattern, "^(?i)a\\\\b$");
+        let re = regex::Regex::new(&pattern).unwrap();
+        assert!(re.is_match("a\\b"));
+        assert!(!re.is_match("ab"));
+    }
+
+    #[test]
+    fn test_convert_like_backslash_before_other_char_is_literal() {
+        // MySQL keeps the backslash when it does not precede a wildcard or backslash
+        let pattern = convert_like_to_pattern("a\\b").unwrap();
+        assert_eq!(pattern, "^(?i)a\\\\b$");
+        let re = regex::Regex::new(&pattern).unwrap();
+        assert!(re.is_match("a\\b"));
+        assert!(!re.is_match("ab"));
+    }
+
+    #[test]
+    fn test_convert_like_trailing_backslash_is_literal() {
+        let pattern = convert_like_to_pattern("dir\\").unwrap();
+        assert_eq!(pattern, "^(?i)dir\\\\$");
+        let re = regex::Regex::new(&pattern).unwrap();
+        assert!(re.is_match("dir\\"));
+        assert!(!re.is_match("dir"));
+    }
+
+    #[test]
+    fn test_convert_like_unescaped_wildcards_still_work() {
+        let pattern = convert_like_to_pattern("a\\_b%").unwrap();
+        let re = regex::Regex::new(&pattern).unwrap();
+        assert!(re.is_match("a_b"));
+        assert!(re.is_match("a_b-anything"));
+        assert!(!re.is_match("aXb"));
     }
 }

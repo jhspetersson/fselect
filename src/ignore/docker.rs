@@ -4,11 +4,8 @@ use std::fs::File;
 use std::io::BufRead;
 use std::io::BufReader;
 use std::ops::Add;
-use std::ops::Index;
 use std::path::Path;
-use std::sync::LazyLock;
 
-use regex::Captures;
 use regex::Regex;
 
 #[derive(Clone, Debug)]
@@ -90,25 +87,26 @@ fn parse_dockerignore(
 
     if let Ok(file) = File::open(file_path) {
         let reader = BufReader::new(file);
-        reader
-            .lines()
-            .filter(|line| match line {
-                Ok(line) => {
-                    let trimmed = line.trim();
-                    !trimmed.is_empty() && !trimmed.starts_with('#')
-                }
-                _ => false,
-            })
-            .for_each(|line| {
-                if err.is_empty()
-                    && let Ok(line) = line {
-                        let pattern = convert_dockerignore_pattern(&line, dir_path);
-                        match pattern {
-                            Ok(pattern) => result.push(pattern),
-                            Err(parse_err) => err = parse_err,
-                        }
+        for (index, line) in reader.lines().enumerate() {
+            if err.is_empty()
+                && let Ok(line) = line {
+                    // Docker strips a UTF-8 BOM from the first line and
+                    // trims whitespace from every line before parsing.
+                    let line = match index {
+                        0 => line.trim_start_matches('\u{feff}'),
+                        _ => line.as_str(),
+                    };
+                    let line = line.trim();
+                    if line.is_empty() || line.starts_with('#') {
+                        continue;
                     }
-            });
+                    let pattern = convert_dockerignore_pattern(line, dir_path);
+                    match pattern {
+                        Ok(pattern) => result.push(pattern),
+                        Err(parse_err) => err = parse_err,
+                    }
+                }
+        }
     };
 
     match err.is_empty() {
@@ -121,69 +119,98 @@ fn convert_dockerignore_pattern(
     pattern: &str,
     file_path: &Path,
 ) -> Result<DockerignoreFilter, String> {
-    let mut pattern = String::from(pattern);
+    let mut pattern = pattern;
 
     let mut negate = false;
-    if pattern.starts_with("!") {
-        pattern = pattern[1..].to_string();
+    if let Some(rest) = pattern.strip_prefix('!') {
+        // Docker trims whitespace again after removing the `!`.
+        pattern = rest.trim_start();
         negate = true;
     }
 
-    match convert_dockerignore_glob(&pattern, file_path) {
+    match convert_dockerignore_glob(pattern, file_path) {
         Ok(regex) => Ok(DockerignoreFilter::new(regex, negate)),
         _ => Err("Error creating regex while parsing .dockerignore glob: "
             .to_string()
-            .add(&pattern)),
+            .add(pattern)),
     }
 }
 
-static DOCKER_CONVERT_REPLACE_REGEX: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new("(\\*\\*|\\?|\\.|\\*|\\[|\\]|\\(|\\)|\\^|\\$|\\+|\\{|\\}|\\||\\\\)").unwrap()
-});
+// Finds the index of the `]` closing the character class that starts at
+// `start` (which must hold `[`), honoring `\` escapes; None if unterminated.
+fn find_char_class_end(chars: &[char], start: usize) -> Option<usize> {
+    let mut i = start + 1;
+    while i < chars.len() {
+        match chars[i] {
+            '\\' => i += 2,
+            ']' => return Some(i),
+            _ => i += 1,
+        }
+    }
+    None
+}
 
 fn convert_dockerignore_glob(glob: &str, file_path: &Path) -> Result<Regex, String> {
-    let mut pattern = DOCKER_CONVERT_REPLACE_REGEX
-        .replace_all(glob, |c: &Captures| {
-            match c.index(0) {
-                "**" => ".*",
-                "." => "\\.",
-                "*" => "[^/]*",
-                "?" => "[^/]",
-                "[" => "\\[",
-                "]" => "\\]",
-                "(" => "\\(",
-                ")" => "\\)",
-                "^" => "\\^",
-                "$" => "\\$",
-                "+" => "\\+",
-                "{" => "\\{",
-                "}" => "\\}",
-                "|" => "\\|",
-                "\\" => "\\\\",
-                _ => "",
-            }
-            .to_string()
-        })
-        .to_string();
-
-    if pattern.is_empty() {
-        return Err("Error parsing .dockerignore pattern: ".to_string() + glob);
-    }
-
     // Patterns are relative to the context root; leading and trailing
     // separators carry no meaning.
-    pattern = pattern
-        .trim_start_matches(['/', '\\'])
-        .trim_end_matches('/')
-        .to_string();
+    let glob_trimmed = glob.trim_start_matches(['/', '\\']).trim_end_matches('/');
 
-    if pattern.is_empty() {
+    if glob_trimmed.is_empty() {
         return Err("Error parsing .dockerignore pattern: ".to_string() + glob);
     }
 
-    // `**/` matches any number of leading directories, including none
-    // (the `.*` token can only originate from `**`).
-    pattern = pattern.replace(".*/", "(?:.*/)?");
+    let mut pattern = String::new();
+    let chars: Vec<char> = glob_trimmed.chars().collect();
+    let mut i = 0;
+    while i < chars.len() {
+        match chars[i] {
+            '*' if chars.get(i + 1) == Some(&'*') => {
+                // `**/` matches any number of leading directories,
+                // including none.
+                if chars.get(i + 2) == Some(&'/') {
+                    pattern.push_str("(?:.*/)?");
+                    i += 3;
+                } else {
+                    pattern.push_str(".*");
+                    i += 2;
+                }
+            }
+            '*' => {
+                pattern.push_str("[^/]*");
+                i += 1;
+            }
+            '?' => {
+                pattern.push_str("[^/]");
+                i += 1;
+            }
+            '[' => match find_char_class_end(&chars, i) {
+                // Go filepath.Match character classes (`[abc]`, ranges like
+                // `[a-z]`, negated `[^abc]`) pass through as regex classes,
+                // exactly as Docker's patternmatcher does.
+                Some(end) => {
+                    pattern.extend(&chars[i..=end]);
+                    i = end + 1;
+                }
+                // An unterminated `[` is ErrBadPattern in Go (never
+                // matches); escaping it as a literal is the safer choice
+                // here since an invalid pattern would otherwise discard
+                // the whole .dockerignore file.
+                None => {
+                    pattern.push_str("\\[");
+                    i += 1;
+                }
+            },
+            c @ ('.' | ']' | '(' | ')' | '^' | '$' | '+' | '{' | '}' | '|' | '\\') => {
+                pattern.push('\\');
+                pattern.push(c);
+                i += 1;
+            }
+            c => {
+                pattern.push(c);
+                i += 1;
+            }
+        }
+    }
 
     #[cfg(windows)]
     let path = file_path
@@ -249,16 +276,33 @@ mod tests {
     }
 
     #[test]
-    fn glob_with_brackets_is_escaped() {
-        let result = convert_dockerignore_glob("data[1].txt", Path::new("/tmp"));
-        assert!(result.is_ok(), "should not fail on brackets");
-        let regex = result.unwrap();
-        let regex_str = regex.as_str();
-        assert!(
-            regex_str.contains("\\[") && regex_str.contains("\\]"),
-            "brackets should be escaped but got: {}",
-            regex_str
-        );
+    fn char_class_matches_listed_characters() {
+        let filter = convert_dockerignore_pattern("*.[ch]", Path::new("/ctx")).unwrap();
+        assert!(filter.regex.is_match("/ctx/main.c"));
+        assert!(filter.regex.is_match("/ctx/util.h"));
+        assert!(!filter.regex.is_match("/ctx/main.o"));
+    }
+
+    #[test]
+    fn char_class_supports_ranges() {
+        let filter = convert_dockerignore_pattern("file[a-c].txt", Path::new("/ctx")).unwrap();
+        assert!(filter.regex.is_match("/ctx/filea.txt"));
+        assert!(filter.regex.is_match("/ctx/filec.txt"));
+        assert!(!filter.regex.is_match("/ctx/filed.txt"));
+    }
+
+    #[test]
+    fn char_class_supports_negation() {
+        let filter = convert_dockerignore_pattern("file[^a].txt", Path::new("/ctx")).unwrap();
+        assert!(filter.regex.is_match("/ctx/fileb.txt"));
+        assert!(!filter.regex.is_match("/ctx/filea.txt"));
+    }
+
+    #[test]
+    fn unterminated_char_class_is_treated_as_literal() {
+        let filter = convert_dockerignore_pattern("foo[bar", Path::new("/ctx")).unwrap();
+        assert!(filter.regex.is_match("/ctx/foo[bar"));
+        assert!(!filter.regex.is_match("/ctx/foobar"));
     }
 
     #[test]
@@ -352,6 +396,51 @@ mod tests {
             1,
             "indented comment should not be parsed as a pattern, got {} filters",
             filters.len()
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn lines_are_whitespace_trimmed() {
+        let dir = std::env::temp_dir().join("fselect_docker_trim_test");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let file_path = dir.join(".dockerignore");
+        std::fs::write(&file_path, "foo \n  !bar\n").unwrap();
+
+        let filters = parse_dockerignore(&file_path, &dir).unwrap();
+        assert_eq!(filters.len(), 2);
+
+        let target_foo = dir.join("foo").to_string_lossy().to_string();
+        assert!(
+            matches_dockerignore_filter(&filters, &target_foo),
+            "trailing whitespace should be trimmed before compilation"
+        );
+        assert!(filters[1].negate, "indented negation should be detected");
+        let target_bar = dir.join("bar").to_string_lossy().replace('\\', "/");
+        assert!(
+            filters[1].regex.is_match(&target_bar),
+            "leading whitespace should be trimmed before compilation"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn utf8_bom_is_stripped_from_first_line() {
+        let dir = std::env::temp_dir().join("fselect_docker_bom_test");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let file_path = dir.join(".dockerignore");
+        std::fs::write(&file_path, b"\xEF\xBB\xBFfoo\n").unwrap();
+
+        let filters = parse_dockerignore(&file_path, &dir).unwrap();
+        assert_eq!(filters.len(), 1);
+        let target = dir.join("foo").to_string_lossy().to_string();
+        assert!(
+            matches_dockerignore_filter(&filters, &target),
+            "first pattern should match despite the BOM"
         );
 
         let _ = std::fs::remove_dir_all(&dir);

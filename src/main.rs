@@ -9,7 +9,7 @@ extern crate uzers;
 extern crate xattr;
 
 use std::{env, fs};
-use std::io::{stdout, IsTerminal};
+use std::io::{stderr, stdout, IsTerminal};
 use std::path::PathBuf;
 use std::process::ExitCode;
 #[cfg(feature = "update-notifications")]
@@ -52,16 +52,13 @@ mod util;
 fn main() -> ExitCode {
     let default_config = Config::default();
 
-    let mut config = match Config::new() {
-        Ok(cnf) => cnf,
-        Err(err) => {
-            eprintln!("{}", err);
-            Config::default()
-        }
-    };
+    let mut config = Config::new().unwrap_or_else(|err| {
+        eprintln!("{}", err);
+        Config::default()
+    });
 
     let env_no_color = std::env::var("NO_COLOR").is_ok();
-    let mut no_color = env_no_color || config.no_color.unwrap_or(false);
+    let mut no_color = env_no_color || config.no_color.unwrap_or(false) || !stdout().is_terminal();
 
     #[cfg(windows)]
     {
@@ -164,7 +161,9 @@ fn main() -> ExitCode {
         first_arg = args[0].to_ascii_lowercase();
     }
     
-    set_use_colors(!no_color);
+    // Error messages go to stderr; color them only when stderr is actually a
+    // terminal, or redirected/piped error output leaks escape codes.
+    set_use_colors(!no_color && stderr().is_terminal());
 
     if config.us_dates.unwrap_or(default_config.us_dates.unwrap()) {
         set_us_dates(true);
@@ -312,8 +311,7 @@ fn exec_search(query: Vec<String>, config: &mut Config, default_config: &Config,
 
     match query {
         Ok(query) => {
-            let is_terminal = stdout().is_terminal();
-            let use_colors = !no_color && is_terminal && query.output_format.supports_colorization();
+            let use_colors = !no_color && query.output_format.supports_colorization();
 
             let mut searcher = Searcher::new(&query, config, default_config, use_colors);
             let mut abort_code: Option<u8> = None;

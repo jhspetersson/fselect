@@ -563,6 +563,14 @@ impl Display for Expr {
             fmt.write_char('-')?;
         }
 
+        // A negated composite must keep its grouping: -(1 Add 2) and
+        // (-1) Add 2 would otherwise render identically and share a cache key.
+        let negated_composite = self.minus
+            && (self.arithmetic_op.is_some() || self.logical_op.is_some() || self.op.is_some());
+        if negated_composite {
+            fmt.write_char('(')?;
+        }
+
         if let Some(ref function) = self.function {
             if let Some(ref alias) = self.alias {
                 fmt.write_str(alias)?;
@@ -618,6 +626,10 @@ impl Display for Expr {
             write_operand(fmt, right)?;
         }
 
+        if negated_composite {
+            fmt.write_char(')')?;
+        }
+
         Ok(())
     }
 }
@@ -658,6 +670,18 @@ mod tests {
         // parentheses, (1+2)*3 and 1+(2*3) collide and reuse each other's
         // cached values.
         let query = "select (1+2)*3, 1+(2*3) from /test";
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut parser = Parser::new(&mut lexer);
+        let query = parser.parse(false).unwrap();
+
+        assert_ne!(query.fields[0].to_string(), query.fields[1].to_string());
+    }
+
+    #[test]
+    fn display_distinguishes_negated_composite() {
+        // -(1+2) is -3 while -1+2 is 1; without parentheses around the negated
+        // composite both would render identically and share a cache key.
+        let query = "select -(1+2), -1+2 from /test";
         let mut lexer = Lexer::new(vec![query.to_string()]);
         let mut parser = Parser::new(&mut lexer);
         let query = parser.parse(false).unwrap();

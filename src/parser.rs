@@ -1018,6 +1018,19 @@ impl <'a> Parser<'a> {
             }
         }
 
+        // Unary minus before a parenthesized expression: -(1+2). The toggle
+        // makes -(-1) cancel out instead of silently staying negative.
+        if minus && matches!(lexeme, Some(Lexeme::Open) | Some(Lexeme::CurlyOpen)) {
+            self.drop_lexeme();
+            return match self.parse_paren()? {
+                Some(mut expr) => {
+                    expr.minus = !expr.minus;
+                    Ok(Some(expr))
+                }
+                None => Err("Error parsing expression, expecting string".to_string()),
+            };
+        }
+
         match lexeme {
             Some(Lexeme::Error(ref msg)) => {
                 Err(msg.clone())
@@ -1044,6 +1057,27 @@ impl <'a> Parser<'a> {
                         expr.minus = minus;
                         return Ok(Some(expr));
                     }
+
+                // After a comparison operator the lexer emits a bare "-" as a
+                // RawString (start of a negative literal), so `size gt -(1+2)`
+                // arrives here rather than as an arithmetic operator.
+                if s == "-" {
+                    let next = self.next_lexeme();
+                    if matches!(next, Some(Lexeme::Open) | Some(Lexeme::CurlyOpen)) {
+                        self.drop_lexeme();
+                        return match self.parse_paren()? {
+                            Some(mut expr) => {
+                                expr.minus = !expr.minus;
+                                if minus {
+                                    expr.minus = !expr.minus;
+                                }
+                                Ok(Some(expr))
+                            }
+                            None => Err("Error parsing expression, expecting string".to_string()),
+                        };
+                    }
+                    self.drop_lexeme();
+                }
 
                 let mut expr = Expr::value(s.to_string());
                 expr.minus = minus;
@@ -2394,6 +2428,42 @@ mod tests {
         assert_eq!(query.fields.len(), 1);
         assert_eq!(query.roots.len(), 1);
         assert_eq!(query.roots[0].path, "/test");
+    }
+
+    #[test]
+    fn unary_minus_on_parenthesized_expression_parses() {
+        let query = "select -(1+2) from /test";
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
+        let query = p.parse(false).unwrap();
+        assert!(!p.there_are_remaining_lexemes());
+
+        assert_eq!(query.fields.len(), 1);
+        assert!(query.fields[0].minus);
+        assert!(query.fields[0].arithmetic_op.is_some());
+    }
+
+    #[test]
+    fn unary_minus_on_parenthesized_expression_in_where_parses() {
+        let query = "select name from /test where size gt -(1+2)";
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
+        let query = p.parse(false).unwrap();
+        assert!(!p.there_are_remaining_lexemes());
+
+        let expr = query.expr.unwrap();
+        let right = expr.right.unwrap();
+        assert!(right.minus);
+    }
+
+    #[test]
+    fn double_unary_minus_cancels() {
+        let query = "select -(-1) from /test";
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
+        let query = p.parse(false).unwrap();
+
+        assert!(!query.fields[0].minus);
     }
 
     #[test]

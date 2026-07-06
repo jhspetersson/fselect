@@ -98,6 +98,19 @@ macro_rules! try_output {
 /// its expressions references a `root_alias` that is not declared on one of
 /// the subquery's own roots — that's the correlated-subquery case, where the
 /// result depends on outer-row state propagated via `record_context`.
+/// Applies a leading unary minus to an evaluated expression value, with
+/// MySQL-style numeric coercion (0 - x). Empty values stay empty, like
+/// negating SQL NULL. Literal values are excluded: they carry their sign in
+/// the string itself (`Variant::from_signed_string`).
+fn apply_minus(column_expr: &Expr, value: Variant) -> Variant {
+    if !column_expr.minus || value.to_string().is_empty() {
+        return value;
+    }
+    crate::operators::ArithmeticOp::Subtract
+        .calc(&Variant::from_int(0), &value)
+        .unwrap_or(value)
+}
+
 fn is_subquery_cacheable(query: &Query) -> bool {
     let own_aliases: HashSet<String> = query
         .roots
@@ -1262,29 +1275,33 @@ impl<'a> Searcher<'a> {
             let list = self.get_list_from_subquery(*subquery);
             if !list.is_empty() {
                 let result = list.first().unwrap().to_string();
-                return Ok(Variant::from_string(&result));
+                return Ok(apply_minus(column_expr, Variant::from_string(&result)));
             }
         }
 
         if let Some(ref _function) = column_expr.function {
             let result =
                 self.get_function_value(entry, file_info, root_path, file_map, accumulator, column_expr)?;
+            let result = apply_minus(column_expr, result);
             file_map.insert(column_expr_str, result.to_string());
             return Ok(result);
         }
 
         if let Some(ref field) = column_expr.field {
             if let Some(entry) = entry {
-                let result = self.get_field_value(entry, file_info, root_path, field).unwrap_or(Variant::empty(VariantType::String));
+                let raw = self.get_field_value(entry, file_info, root_path, field).unwrap_or(Variant::empty(VariantType::String));
+                // The record context feeds correlated subqueries and must hold
+                // the raw field value; only the returned value is negated.
+                let result = apply_minus(column_expr, raw.clone());
                 file_map.insert(column_expr_str, result.to_string());
                 let mut context = self.record_context.borrow_mut();
                 let context_key = self.current_alias.clone().unwrap_or_else(|| String::from(""));
                 let context_entry = context.entry(context_key).or_default();
                 let entry_key = if let Some(alias) = column_expr.alias.clone() { alias } else { field.to_string() };
-                context_entry.insert(entry_key, result.to_string());
+                context_entry.insert(entry_key, raw.to_string());
                 return Ok(result);
             } else if let Some(val) = file_map.get(&field.to_string()) {
-                return Ok(Variant::from_string(val));
+                return Ok(apply_minus(column_expr, Variant::from_string(val)));
             } else {
                 return Ok(Variant::empty(VariantType::String));
             }
@@ -1304,13 +1321,13 @@ impl<'a> Searcher<'a> {
                 if let Some(ref right) = column_expr.right {
                     let right_result =
                         self.get_column_expr_value(entry, file_info, root_path, file_map, accumulator, right)?;
-                        result = op.calc(&left_result, &right_result);
+                        result = op.calc(&left_result, &right_result).map(|v| apply_minus(column_expr, v));
                         file_map.insert(column_expr_str, result.clone()?.to_string());
                 } else {
-                    result = Ok(left_result);
+                    result = Ok(apply_minus(column_expr, left_result));
                 }
             } else {
-                result = Ok(left_result);
+                result = Ok(apply_minus(column_expr, left_result));
             }
         } else {
             result = Ok(Variant::empty(VariantType::Int));
@@ -2820,6 +2837,22 @@ mod tests {
             !is_subquery_cacheable(&subquery),
             "subquery whose GROUP BY references outer alias t1 must not be cached"
         );
+    }
+
+    #[test]
+    fn unary_minus_negates_parens_fields_and_functions() {
+        let tmp = std::env::temp_dir().join("fselect_test_unary_minus");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        fs::write(tmp.join("x.txt"), "12345").unwrap();
+
+        let rows = run_query_against_dir(
+            "select -(1+2), -abs(3), size, -size, -(-1) from __DIR__ where name = 'x.txt'",
+            &tmp,
+        );
+
+        let _ = fs::remove_dir_all(&tmp);
+        assert_eq!(rows, vec![String::from("-3\t-3\t5\t-5\t1")]);
     }
 
     #[test]

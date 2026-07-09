@@ -390,7 +390,7 @@
 
 <nav>
     <div class="inner">
-        <div class="logo">fselect <span>v0.10.1</span></div>
+        <div class="logo">fselect <span>v0.10.2</span></div>
         <button class="hamburger" aria-label="Toggle menu" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('open')">
             <span></span><span></span><span></span>
         </button>
@@ -469,6 +469,11 @@
             <h4>Git Integration</h4>
             <p>Query per-file git status, branch, and last commit, and respect <code>.gitignore</code>, <code>.hgignore</code>, and <code>.dockerignore</code> so you don't waste time on files you don't care about.</p>
         </div>
+        <div class="feature">
+            <div class="icon">&#x26A1;</div>
+            <h4>Index-Backed Search</h4>
+            <p>Skip the directory walk entirely &mdash; query the <a href="https://www.voidtools.com/">Everything</a> index on Windows or the <a href="https://plocate.sesse.net/">plocate</a> database on Linux for lightning-fast results.</p>
+        </div>
     </div>
 </section>
 
@@ -498,9 +503,9 @@
         </div>
         <div class="install-card">
             <h4>Debian / Ubuntu</h4>
-            <pre><span class="prompt">$ </span>dpkg -i fselect_0.10.1-1_amd64.deb</pre>
+            <pre><span class="prompt">$ </span>dpkg -i fselect_0.10.2-1_amd64.deb</pre>
             <p style="font-size:0.8rem;color:var(--text-dim);margin-top:0.5rem;">
-                <a href="https://github.com/jhspetersson/fselect/releases/download/0.10.1/fselect_0.10.1-1_amd64.deb">Download .deb</a>
+                <a href="https://github.com/jhspetersson/fselect/releases/download/0.10.2/fselect_0.10.2-1_amd64.deb">Download .deb</a>
             </p>
         </div>
         <div class="install-card">
@@ -518,16 +523,16 @@
         <div class="install-card">
             <h4>Windows (binary)</h4>
             <p style="font-size:0.8rem;color:var(--text-dim);margin-top:0.5rem;">
-                <a href="https://github.com/jhspetersson/fselect/releases/download/0.10.1/fselect-x86_64-win.zip">Download .zip</a>
+                <a href="https://github.com/jhspetersson/fselect/releases/download/0.10.2/fselect-x86_64-win.zip">Download .zip</a>
             </p>
         </div>
         <div class="install-card" style="grid-column: 1 / -1;">
             <h4>Linux (static musl binary)</h4>
-            <pre><span class="prompt">$ </span>curl -LO https://github.com/jhspetersson/fselect/releases/download/0.10.1/fselect-x86_64-linux-musl.gz
+            <pre><span class="prompt">$ </span>curl -LO https://github.com/jhspetersson/fselect/releases/download/0.10.2/fselect-x86_64-linux-musl.gz
 <span class="prompt">$ </span>gunzip fselect-x86_64-linux-musl.gz
 <span class="prompt">$ </span>chmod +x fselect-x86_64-linux-musl</pre>
             <p style="font-size:0.8rem;color:var(--text-dim);margin-top:0.5rem;">
-                <a href="https://github.com/jhspetersson/fselect/releases/download/0.10.1/fselect-x86_64-linux-musl.gz">Download .gz</a>
+                <a href="https://github.com/jhspetersson/fselect/releases/download/0.10.2/fselect-x86_64-linux-musl.gz">Download .gz</a>
             </p>
         </div>
     </div>
@@ -627,8 +632,9 @@
     </div>
 
     <div class="example-group">
-        <p>SQL-style <code>LIKE</code> patterns (% = any chars, _ = single char, ? = optional char):</p>
-<pre><span class="prompt">$ </span>fselect <span class="str">"path from /home/user where name like '%report-2024-__-__???'"</span></pre>
+        <p>SQL-style <code>LIKE</code> patterns (% = any chars, _ = single char, \ escapes a literal % or _):</p>
+<pre><span class="prompt">$ </span>fselect <span class="str">"path from /home/user where name like '%report-2024-__-__.pdf'"</span>
+<span class="prompt">$ </span>fselect <span class="str">"path from /tmp where name like '100\%_backup%'"</span></pre>
     </div>
 
     <div class="example-group">
@@ -661,6 +667,15 @@
 
 <span class="comment"># respect .gitignore</span>
 <span class="prompt">$ </span>fselect <span class="field">size</span>, <span class="field">path</span> <span class="kw">from</span> /home/user/projects gitignore <span class="kw">where</span> <span class="field">name</span> <span class="op">=</span> <span class="str">'*.cpp'</span></pre>
+    </div>
+
+    <div class="example-group">
+        <p>Skip the directory walk and pull candidate paths from a prebuilt file-name index instead. Build with the <code>everything</code> (Windows) or <code>plocate</code> (Linux) feature, then flip it on with a flag &mdash; all fields, functions, and filtering work exactly the same, and fselect falls back to normal traversal if the index isn't available:</p>
+<pre><span class="comment"># Windows: use the Everything index</span>
+<span class="prompt">&gt; </span>fselect --everything <span class="str">"name, size from C:\Users where size gt 100mb"</span>
+
+<span class="comment"># Linux: use the plocate database</span>
+<span class="prompt">$ </span>fselect --plocate <span class="str">"name, size from /home where size gt 100mb"</span></pre>
     </div>
 
     <!-- FUNCTIONS -->
@@ -950,7 +965,7 @@
                 <li><code>abspath</code> &mdash; absolute path</li>
                 <li><code>dir</code> &mdash; relative directory</li>
                 <li><code>absdir</code> &mdash; absolute directory</li>
-                <li><code>link_target</code> &mdash; symlink target</li>
+                <li><code>link_target</code> / <code>symlink_target</code> &mdash; symlink target</li>
             </ul>
         </div>
         <div class="col-group">
@@ -967,6 +982,7 @@
                 <li><code>created</code> &mdash; creation time</li>
                 <li><code>modified</code> &mdash; last modification</li>
                 <li><code>atime</code> / <code>mtime</code> / <code>ctime</code> &mdash; Unix timestamps</li>
+                <li><code>atime_nsec</code> / <code>mtime_nsec</code> / <code>ctime_nsec</code> &mdash; nanosecond parts</li>
             </ul>
         </div>
         <div class="col-group">
@@ -1010,6 +1026,7 @@
                 <li><code>rdev</code> &mdash; device ID for special files</li>
                 <li><code>inode</code> &mdash; inode number</li>
                 <li><code>blocks</code> &mdash; 512-byte blocks</li>
+                <li><code>blksize</code> &mdash; preferred I/O block size</li>
                 <li><code>hardlinks</code> &mdash; number of hard links</li>
             </ul>
         </div>
@@ -1070,7 +1087,7 @@
             <tr><td>&gt;=</td><td>gte, ge</td><td>Greater than or equal</td></tr>
             <tr><td>&lt;</td><td>lt</td><td>Less than</td></tr>
             <tr><td>&lt;=</td><td>lte, le</td><td>Less than or equal</td></tr>
-            <tr><td>like</td><td></td><td>SQL LIKE pattern match</td></tr>
+            <tr><td>like</td><td></td><td>SQL LIKE pattern match (\ escapes % and _)</td></tr>
             <tr><td>notlike</td><td></td><td>SQL LIKE pattern not match</td></tr>
             <tr><td>between</td><td></td><td>Range check</td></tr>
             <tr><td>not between</td><td>notbetween</td><td>Not in range</td></tr>
@@ -1149,6 +1166,10 @@
             <tr><td>gb</td><td>Gigabyte</td><td>1,000,000,000 bytes</td></tr>
             <tr><td>t, tib</td><td>Tebibyte</td><td>1,099,511,627,776 bytes</td></tr>
             <tr><td>tb</td><td>Terabyte</td><td>1,000,000,000,000 bytes</td></tr>
+            <tr><td>p, pib</td><td>Pebibyte</td><td>1,125,899,906,842,624 bytes</td></tr>
+            <tr><td>pb</td><td>Petabyte</td><td>1,000,000,000,000,000 bytes</td></tr>
+            <tr><td>e, eib</td><td>Exbibyte</td><td>1,152,921,504,606,846,976 bytes</td></tr>
+            <tr><td>eb</td><td>Exabyte</td><td>1,000,000,000,000,000,000 bytes</td></tr>
         </tbody>
     </table></div>
 

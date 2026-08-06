@@ -19,6 +19,7 @@ pub struct Query {
     pub expr: Option<Expr>,
     /// Fields to group by
     pub grouping_fields: Vec<Expr>,
+    pub having: Option<Expr>,
     /// Fields to order by
     pub ordering_fields: Vec<Expr>,
     /// Ordering direction (true for asc, false for desc)
@@ -46,6 +47,10 @@ impl Query {
             result.extend(ordering_expr.get_required_fields());
         }
 
+        if let Some(ref having) = self.having {
+            result.extend(having.get_required_fields());
+        }
+
         result
     }
 
@@ -62,7 +67,9 @@ impl Query {
     /// `select ext from dir group by ext` collapses rows into distinct groups
     /// even though no aggregate function appears in the SELECT list.
     pub fn is_aggregated(&self) -> bool {
-        self.has_aggregate_column() || !self.grouping_fields.is_empty()
+        self.has_aggregate_column()
+            || !self.grouping_fields.is_empty()
+            || self.having.as_ref().is_some_and(|h| h.has_aggregate_function())
     }
 }
 

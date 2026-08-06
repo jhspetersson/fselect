@@ -29,7 +29,7 @@ Find files with SQL-like queries.
 
 ### Basic usage
 
-    fselect [ARGS] COLUMN[, COLUMN...] [from ROOT[, ROOT...]] [where EXPR] [group by COLUMNS] [order by COLUMNS] [limit N] [offset N] [into FORMAT]
+    fselect [ARGS] COLUMN[, COLUMN...] [from ROOT[, ROOT...]] [where EXPR] [group by COLUMNS] [having EXPR] [order by COLUMNS] [limit N] [offset N] [into FORMAT]
 
 You write an SQL-like query, that's it.
 
@@ -50,6 +50,21 @@ accepts positional numeric shortcuts that refer to columns from the `select` lis
 `group by 1` or `group by 1, 2`. An aggregate function in the `select` list is not required:
 `select ext from /home/user group by ext` returns one row per distinct extension, like
 `SELECT DISTINCT` in SQL.
+
+Filter the groups themselves with `having`, which runs after aggregation
+(while `where` filters individual files before it):
+
+    fselect ext, count(*) from /home/user group by ext having count(*) > 10
+    fselect "ext, sum(size) from /home/user group by ext having sum(size) > 100mb"
+    fselect "ext, count(*) as c from /home/user group by ext having c > 10 order by c desc"
+    fselect "sha256, count(*) from /home/user/Downloads group by sha256 having count(*) > 1"
+
+A `having` condition may use aggregate functions (even ones not in the `select` list),
+grouping columns, `select`-list aliases, and `and`/`or`/`not` logic. Referencing a
+non-grouping column outside an aggregate is an error, as in SQL. With aggregation but no
+`group by`, the whole result set forms one implicit group, and `having` decides whether the
+single result row is returned at all. Subqueries (`in`, `exists`) are not supported inside
+`having` yet.
 
 Order results like in real SQL with `order by`. All columns are supported for ordering by, 
 as well as `asc`/`desc` parameters and positional numeric shortcuts.

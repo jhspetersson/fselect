@@ -102,7 +102,7 @@ Precompiled binaries are available at GitHub downloads (`gunzip`, then `chmod +x
 
 ### Usage
 
-    fselect [ARGS] COLUMN[, COLUMN...] [from ROOT[, ROOT...]] [where EXPR] [group by COLUMNS] [order by COLUMNS] [limit N] [offset N] [into FORMAT]
+    fselect [ARGS] COLUMN[, COLUMN...] [from ROOT[, ROOT...]] [where EXPR] [group by COLUMNS] [having EXPR] [order by COLUMNS] [limit N] [offset N] [into FORMAT]
 
 ### Interactive mode
 
@@ -310,6 +310,11 @@ Group results:
     fselect "ext, count(*) from /tmp group by ext"
     fselect "ext, count(*) from /tmp group by 1"
     fselect "mime, ext, count(*) from /tmp group by 1, 2"
+
+Filter groups after aggregation:
+
+    fselect "ext, count(*) from /tmp group by ext having count(*) > 10"
+    fselect "sha256, count(*) from ~/Downloads group by sha256 having count(*) > 1"
 
 Order results:
 

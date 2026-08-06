@@ -289,6 +289,65 @@ impl Expr {
         false
     }
 
+    pub fn get_non_aggregated_fields(&self) -> HashSet<Field> {
+        let mut result = HashSet::new();
+        Self::collect_non_aggregated_fields(self, &mut result);
+        result
+    }
+
+    fn collect_non_aggregated_fields(expr: &Expr, result: &mut HashSet<Field>) {
+        if let Some(ref function) = expr.function
+            && function.is_aggregate_function() {
+                return;
+            }
+
+        if let Some(field) = expr.field {
+            result.insert(field);
+        }
+
+        if let Some(ref left) = expr.left {
+            Self::collect_non_aggregated_fields(left, result);
+        }
+
+        if let Some(ref right) = expr.right {
+            Self::collect_non_aggregated_fields(right, result);
+        }
+
+        if let Some(ref args) = expr.args {
+            for arg in args {
+                Self::collect_non_aggregated_fields(arg, result);
+            }
+        }
+    }
+
+    pub fn get_aggregate_exprs(&self) -> Vec<&Expr> {
+        let mut result = vec![];
+        Self::collect_aggregate_exprs(self, &mut result);
+        result
+    }
+
+    fn collect_aggregate_exprs<'a>(expr: &'a Expr, result: &mut Vec<&'a Expr>) {
+        if let Some(ref function) = expr.function
+            && function.is_aggregate_function() {
+                result.push(expr);
+                return;
+            }
+
+        if let Some(ref left) = expr.left {
+            Self::collect_aggregate_exprs(left, result);
+        }
+
+        if let Some(ref right) = expr.right {
+            Self::collect_aggregate_exprs(right, result);
+        }
+
+        if let Some(ref args) = expr.args {
+            for arg in args {
+                Self::collect_aggregate_exprs(arg, result);
+            }
+        }
+    }
+
     pub fn get_required_fields(&self) -> HashSet<Field> {
         let mut result = HashSet::new();
 
@@ -329,6 +388,9 @@ impl Expr {
             }
             for grouping_expr in &subquery.grouping_fields {
                 result.extend(grouping_expr.get_fields_required_in_subqueries(alias, true));
+            }
+            if let Some(ref having) = subquery.having {
+                result.extend(having.get_fields_required_in_subqueries(alias, true));
             }
         }
 

@@ -20,6 +20,8 @@ fselect \- find files with SQL-like queries
 .RB [ group
 .B by
 .IR COLUMNS ]
+.RB [ having
+.IR EXPR ]
 .RB [ order
 .B by
 .IR COLUMNS ]
@@ -1158,6 +1160,9 @@ $ fselect "MIN(size), MAX(size), AVG(size), SUM(size), COUNT(*) from /home/user/
 .TP
 Group files by extension with count:
 $ fselect "ext, count(*) from /tmp group by ext"
+.TP
+Filter groups after aggregation:
+$ fselect "ext, count(*) from /tmp group by ext having count(*) > 10"
 .TP
 Search with depth limit and symlink following:
 $ fselect path from /home/user depth 5 symlinks where name = '*.jpg'

@@ -120,8 +120,8 @@ fn is_subquery_cacheable(query: &Query) -> bool {
     !query_walk_external_alias(query, &own_aliases)
 }
 
-/// Walk every clause of a query — WHERE, SELECT list, ORDER BY, GROUP BY, and
-/// FROM-subselects — looking for a root_alias not declared by the query (or an
+/// Walk every clause of a query — WHERE, SELECT list, ORDER BY, GROUP BY,
+/// HAVING, and FROM-subselects — looking for a root_alias not declared by the query (or an
 /// enclosing level). Any hit means the query depends on outer-row state.
 fn query_walk_external_alias(query: &Query, own: &HashSet<String>) -> bool {
     if let Some(ref expr) = query.expr
@@ -129,6 +129,8 @@ fn query_walk_external_alias(query: &Query, own: &HashSet<String>) -> bool {
     if query.fields.iter().any(|e| expr_walk_external_alias(e, own)) { return true; }
     if query.ordering_fields.iter().any(|e| expr_walk_external_alias(e, own)) { return true; }
     if query.grouping_fields.iter().any(|e| expr_walk_external_alias(e, own)) { return true; }
+    if let Some(ref having) = query.having
+        && expr_walk_external_alias(having, own) { return true; }
     query.roots.iter().any(|root| {
         root.subquery.as_ref().is_some_and(|sub| {
             let nested_own: HashSet<String> = sub
@@ -563,12 +565,17 @@ impl<'a> Searcher<'a> {
                         TopN::limitless()
                     };
 
+                let having_expr = self.query.having.as_ref();
                 for (group_key, group_acc) in &accumulators {
-                    let mut items: Vec<(String, String)> = Vec::new();
                     let mut file_map = HashMap::new();
                     for (i, k) in group_keys.iter().enumerate() {
                         file_map.insert(k.clone(), group_key.get(i).cloned().unwrap_or_default());
                     }
+                    if let Some(having_expr) = having_expr
+                        && !self.group_conforms(&mut file_map, group_acc, having_expr)? {
+                            continue;
+                        }
+                    let mut items: Vec<(String, String)> = Vec::new();
                     for column_expr in &self.query.fields {
                         if let Ok(value) = self.get_column_expr_value(
                             None, &None, Path::new(""), &mut file_map, Some(group_acc), column_expr,
@@ -637,6 +644,11 @@ impl<'a> Searcher<'a> {
                 let accumulators = std::mem::take(&mut self.accumulators);
                 let empty_acc = function::GroupAccumulator::default();
                 let ungrouped_acc = accumulators.get(&vec![]).unwrap_or(&empty_acc);
+                let mut passes_having = true;
+                if let Some(having_expr) = self.query.having.as_ref() {
+                    passes_having =
+                        self.group_conforms(&mut HashMap::new(), ungrouped_acc, having_expr)?;
+                }
                 for column_expr in &self.query.fields {
                     if let Ok(value) = self.get_column_expr_value(
                         None,
@@ -651,17 +663,19 @@ impl<'a> Searcher<'a> {
                     }
                 }
 
-                self.results_writer.write_row(&mut buf, items)?;
-                let rendered = String::from(buf);
-                self.output_buffer.insert(
-                    Criteria::new(Rc::new(vec![]), vec![], Rc::new(vec![])),
-                    rendered.clone(),
-                );
+                if passes_having {
+                    self.results_writer.write_row(&mut buf, items)?;
+                    let rendered = String::from(buf);
+                    self.output_buffer.insert(
+                        Criteria::new(Rc::new(vec![]), vec![], Rc::new(vec![])),
+                        rendered.clone(),
+                    );
 
-                // An ungrouped aggregate produces a single row; any OFFSET
-                // skips past it (the buffered row is offset-skipped by readers).
-                if !self.silent_mode && self.query.offset == 0 {
-                    try_output!(write!(std::io::stdout(), "{}", rendered), Ok(()));
+                    // An ungrouped aggregate produces a single row; any OFFSET
+                    // skips past it (the buffered row is offset-skipped by readers).
+                    if !self.silent_mode && self.query.offset == 0 {
+                        try_output!(write!(std::io::stdout(), "{}", rendered), Ok(()));
+                    }
                 }
             }
         } else if self.is_buffered() && !self.silent_mode {
@@ -1473,8 +1487,15 @@ impl<'a> Searcher<'a> {
             // Ordering expressions are included so that aggregates appearing
             // only in ORDER BY also accumulate data during the scan.
             // Collect keys first to avoid cloning query.fields on every file.
+            let having_aggregate_exprs: Vec<&Expr> = self
+                .query
+                .having
+                .as_ref()
+                .map(|h| h.get_aggregate_exprs())
+                .unwrap_or_default();
             let aggregate_inner_exprs: Vec<_> = self.query.fields.iter()
                 .chain(self.query.ordering_fields.iter())
+                .chain(having_aggregate_exprs)
                 .filter_map(|column_expr| {
                     if let Some(ref func) = column_expr.function
                         && func.is_aggregate_function()
@@ -1769,8 +1790,26 @@ impl<'a> Searcher<'a> {
                 }
             };
             self.conforms_map = temp_map;
-            let mut arg_map = HashMap::new();
 
+            result = match op {
+                Op::In => {
+                    let mut arg_map = HashMap::new();
+                    self.check_in_list(expr, entry, file_info, root_path, &mut arg_map, &field_value, false)?
+                }
+                Op::NotIn => {
+                    let mut arg_map = HashMap::new();
+                    self.check_in_list(expr, entry, file_info, root_path, &mut arg_map, &field_value, true)?
+                }
+                _ => self.compare_variants(op, &field_value, &value)?,
+            };
+        }
+
+        Ok(result)
+    }
+
+    fn compare_variants(&mut self, op: &Op, field_value: &Variant, value: &Variant) -> Result<bool, SearchError> {
+        let result;
+        {
             result = match field_value.get_type() {
                 VariantType::String => {
                     let val = value.to_string();
@@ -1805,8 +1844,6 @@ impl<'a> Searcher<'a> {
                         Op::Lte => field_str <= val,
                         Op::Eeq => val.eq(&field_str),
                         Op::Ene => val.ne(&field_str),
-                        Op::In => self.check_in_list(expr, entry, file_info, root_path, &mut arg_map, &field_value, false)?,
-                        Op::NotIn => self.check_in_list(expr, entry, file_info, root_path, &mut arg_map, &field_value, true)?,
                         _ => false,
                     }
                 }
@@ -1820,8 +1857,6 @@ impl<'a> Searcher<'a> {
                         Op::Gte => int_value >= val,
                         Op::Lt => int_value < val,
                         Op::Lte => int_value <= val,
-                        Op::In => self.check_in_list(expr, entry, file_info, root_path, &mut arg_map, &field_value, false)?,
-                        Op::NotIn => self.check_in_list(expr, entry, file_info, root_path, &mut arg_map, &field_value, true)?,
                         _ => false,
                     }
                 }
@@ -1835,8 +1870,6 @@ impl<'a> Searcher<'a> {
                         Op::Gte => float_value >= val,
                         Op::Lt => float_value < val,
                         Op::Lte => float_value <= val,
-                        Op::In => self.check_in_list(expr, entry, file_info, root_path, &mut arg_map, &field_value, false)?,
-                        Op::NotIn => self.check_in_list(expr, entry, file_info, root_path, &mut arg_map, &field_value, true)?,
                         _ => false,
                     }
                 }
@@ -1849,8 +1882,6 @@ impl<'a> Searcher<'a> {
                         Op::Gte => field_value.to_bool() >= val,
                         Op::Lt => !field_value.to_bool() & val,
                         Op::Lte => field_value.to_bool() <= val,
-                        Op::In => self.check_in_list(expr, entry, file_info, root_path, &mut arg_map, &field_value, false)?,
-                        Op::NotIn => self.check_in_list(expr, entry, file_info, root_path, &mut arg_map, &field_value, true)?,
                         _ => false,
                     }
                 }
@@ -1874,22 +1905,83 @@ impl<'a> Searcher<'a> {
                                 Op::Gte => dt >= start,
                                 Op::Lt => dt < start,
                                 Op::Lte => dt <= finish,
-                                Op::In => self.check_in_list(expr, entry, file_info, root_path, &mut arg_map, &field_value, false)?,
-                                Op::NotIn => self.check_in_list(expr, entry, file_info, root_path, &mut arg_map, &field_value, true)?,
                                 _ => false,
                             }
                         }
-                        _ => match op {
-                            Op::In => self.check_in_list(expr, entry, file_info, root_path, &mut arg_map, &field_value, false)?,
-                            Op::NotIn => self.check_in_list(expr, entry, file_info, root_path, &mut arg_map, &field_value, true)?,
-                            _ => false,
-                        },
+                        _ => false,
                     }
                 }
             };
         }
 
         Ok(result)
+    }
+
+    fn group_conforms(
+        &mut self,
+        file_map: &mut HashMap<String, String>,
+        group_acc: &function::GroupAccumulator,
+        expr: &Expr,
+    ) -> Result<bool, SearchError> {
+        if let Some(ref logical_op) = expr.logical_op {
+            let left_result = match expr.left {
+                Some(ref left) => self.group_conforms(file_map, group_acc, left)?,
+                None => false,
+            };
+
+            let right_result = |s: &mut Self, file_map: &mut HashMap<String, String>| -> Result<bool, SearchError> {
+                match expr.right {
+                    Some(ref right) => s.group_conforms(file_map, group_acc, right),
+                    None => Ok(false),
+                }
+            };
+
+            return match logical_op {
+                LogicalOp::And => if !left_result { Ok(false) } else { right_result(self, file_map) },
+                LogicalOp::Or => if left_result { Ok(true) } else { right_result(self, file_map) },
+            };
+        }
+
+        if let Some(ref op) = expr.op {
+            if matches!(op, Op::In | Op::NotIn | Op::Exists | Op::NotExists) {
+                return Err(SearchError::fatal(
+                    "IN, NOT IN, EXISTS, and NOT EXISTS are not supported in the HAVING clause",
+                )
+                .with_source("query"));
+            }
+            let left_expr = expr.left.as_ref().ok_or_else(|| {
+                SearchError::fatal("Expected expression before operator in HAVING").with_source("query")
+            })?;
+            let right_expr = expr.right.as_ref().ok_or_else(|| {
+                SearchError::fatal("Expected expression after operator in HAVING").with_source("query")
+            })?;
+            let field_value = self.get_column_expr_value(
+                None, &None, Path::new(""), file_map, Some(group_acc), left_expr,
+            )?;
+            let value = self.get_column_expr_value(
+                None, &None, Path::new(""), file_map, Some(group_acc), right_expr,
+            )?;
+            let field_value = Self::retype_group_value(left_expr, right_expr, field_value);
+            return self.compare_variants(op, &field_value, &value);
+        }
+
+        Ok(false)
+    }
+
+    fn retype_group_value(left_expr: &Expr, right_expr: &Expr, value: Variant) -> Variant {
+        if !matches!(value.get_type(), VariantType::String) {
+            return value;
+        }
+        if left_expr.contains_datetime() || right_expr.contains_datetime() {
+            if let Ok((dt_from, _)) = value.to_datetime() {
+                return Variant::from_datetime(dt_from);
+            }
+        } else if (left_expr.contains_numeric() || right_expr.contains_numeric())
+            && let Ok(f) = value.to_string().parse::<f64>()
+                && f.is_finite() {
+                    return Variant::from_float(f);
+                }
+        value
     }
 
     fn check_extension(
@@ -1926,6 +2018,7 @@ mod tests {
             roots: Vec::new(),
             expr: None,
             grouping_fields: Vec::new(),
+            having: None,
             ordering_fields: Vec::new(),
             ordering_asc: Vec::new(),
             limit: 0,
@@ -1948,6 +2041,7 @@ mod tests {
             roots: Vec::new(),
             expr: None,
             grouping_fields: Vec::new(),
+            having: None,
             ordering_fields: vec![Expr::field(Field::Name)],
             ordering_asc: vec![true],
             limit: 0,
@@ -1973,6 +2067,7 @@ mod tests {
             roots: Vec::new(),
             expr: None,
             grouping_fields: Vec::new(),
+            having: None,
             ordering_fields: Vec::new(),
             ordering_asc: Vec::new(),
             limit: 0,
@@ -2013,6 +2108,7 @@ mod tests {
             roots: Vec::new(),
             expr: None,
             grouping_fields: Vec::new(),
+            having: None,
             ordering_fields: Vec::new(),
             ordering_asc: Vec::new(),
             limit: 10,
@@ -2053,6 +2149,7 @@ mod tests {
             roots: Vec::new(),
             expr: None,
             grouping_fields: vec![Expr::field(Field::Extension)],
+            having: None,
             ordering_fields: Vec::new(),
             ordering_asc: Vec::new(),
             limit: 0,
@@ -2084,6 +2181,7 @@ mod tests {
             )],
             expr: None,
             grouping_fields: vec![Expr::field(Field::Extension)],
+            having: None,
             ordering_fields: vec![Expr::field(Field::Extension)],
             ordering_asc: vec![true],
             limit: 0,
@@ -2270,6 +2368,7 @@ mod tests {
             roots: vec![Root::new(String::from("/tmp"), alias_options)],
             expr: None,
             grouping_fields: Vec::new(),
+            having: None,
             ordering_fields: Vec::new(),
             ordering_asc: Vec::new(),
             limit: 0,
@@ -2481,6 +2580,7 @@ mod tests {
             roots: vec![Root::new(tmp.to_string_lossy().to_string(), RootOptions::new())],
             expr: None,
             grouping_fields: Vec::new(),
+            having: None,
             ordering_fields: Vec::new(),
             ordering_asc: Vec::new(),
             limit: 0,
@@ -2677,6 +2777,7 @@ mod tests {
             )],
             expr: Some(inner_where),
             grouping_fields: Vec::new(),
+            having: None,
             ordering_fields: Vec::new(),
             ordering_asc: Vec::new(),
             limit: 0,
@@ -2767,6 +2868,7 @@ mod tests {
             roots: vec![Root::new(String::from("/t2"), RootOptions::new())],
             expr: Some(inner_where),
             grouping_fields: Vec::new(),
+            having: None,
             ordering_fields: Vec::new(),
             ordering_asc: Vec::new(),
             limit: 0,
@@ -2795,6 +2897,7 @@ mod tests {
             roots: vec![Root::new(String::from("/t2"), RootOptions::new())],
             expr: None,
             grouping_fields: Vec::new(),
+            having: None,
             ordering_fields: vec![ordering],
             ordering_asc: vec![true],
             limit: 0,
@@ -2825,6 +2928,7 @@ mod tests {
             roots: vec![Root::new(String::from("/t2"), RootOptions::new())],
             expr: None,
             grouping_fields: vec![grouping],
+            having: None,
             ordering_fields: Vec::new(),
             ordering_asc: Vec::new(),
             limit: 0,
@@ -2926,6 +3030,140 @@ mod tests {
         let names: HashSet<String> = rows.into_iter().collect();
         assert!(names.contains("one.txt"), "names was {:?}", names);
         assert!(names.contains("two.txt"));
+    }
+
+    #[test]
+    fn group_by_having_filters_groups() {
+        let tmp = std::env::temp_dir().join("fselect_test_having_filters_groups");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        fs::write(tmp.join("a.rs"), "x").unwrap();
+        fs::write(tmp.join("b.rs"), "x").unwrap();
+        fs::write(tmp.join("c.rs"), "x").unwrap();
+        fs::write(tmp.join("d.txt"), "x").unwrap();
+
+        let rows = run_query_against_dir(
+            "select ext, count(*) from __DIR__ depth 1 group by ext having count(*) > 2",
+            &tmp,
+        );
+
+        let _ = fs::remove_dir_all(&tmp);
+        assert_eq!(rows, vec![String::from("rs\t3")]);
+    }
+
+    #[test]
+    fn having_compares_numerically_not_lexicographically() {
+        let tmp = std::env::temp_dir().join("fselect_test_having_numeric_compare");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        for i in 0..10 {
+            fs::write(tmp.join(format!("f{}.rs", i)), "x").unwrap();
+        }
+        fs::write(tmp.join("a.txt"), "x").unwrap();
+        fs::write(tmp.join("b.txt"), "x").unwrap();
+
+        let rows = run_query_against_dir(
+            "select ext, count(*) from __DIR__ depth 1 group by ext having count(*) >= 10",
+            &tmp,
+        );
+
+        let _ = fs::remove_dir_all(&tmp);
+        assert_eq!(rows, vec![String::from("rs\t10")]);
+    }
+
+    #[test]
+    fn having_aggregate_not_in_select_list() {
+        let tmp = std::env::temp_dir().join("fselect_test_having_agg_not_selected");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        fs::write(tmp.join("big.rs"), "x".repeat(100)).unwrap();
+        fs::write(tmp.join("small.txt"), "x").unwrap();
+
+        let rows = run_query_against_dir(
+            "select ext from __DIR__ depth 1 group by ext having max(size) > 50",
+            &tmp,
+        );
+
+        let _ = fs::remove_dir_all(&tmp);
+        assert_eq!(rows, vec![String::from("rs")]);
+    }
+
+    #[test]
+    fn having_on_grouping_column() {
+        let tmp = std::env::temp_dir().join("fselect_test_having_grouping_column");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        fs::write(tmp.join("a.rs"), "x").unwrap();
+        fs::write(tmp.join("b.txt"), "x").unwrap();
+
+        let rows = run_query_against_dir(
+            "select ext, count(*) from __DIR__ depth 1 group by ext having ext = rs",
+            &tmp,
+        );
+
+        let _ = fs::remove_dir_all(&tmp);
+        assert_eq!(rows, vec![String::from("rs\t1")]);
+    }
+
+    #[test]
+    fn having_with_logical_ops_filters_both_sides() {
+        let tmp = std::env::temp_dir().join("fselect_test_having_logical_ops");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        fs::write(tmp.join("a.rs"), "x").unwrap();
+        fs::write(tmp.join("b.rs"), "x").unwrap();
+        fs::write(tmp.join("c.txt"), "x").unwrap();
+        fs::write(tmp.join("d.md"), "x").unwrap();
+        fs::write(tmp.join("e.md"), "x").unwrap();
+        fs::write(tmp.join("f.md"), "x").unwrap();
+
+        let rows = run_query_against_dir(
+            "select ext, count(*) from __DIR__ depth 1 group by ext having count(*) > 1 and count(*) < 3",
+            &tmp,
+        );
+
+        let _ = fs::remove_dir_all(&tmp);
+        assert_eq!(rows, vec![String::from("rs\t2")]);
+    }
+
+    #[test]
+    fn having_resolves_select_alias_at_runtime() {
+        let tmp = std::env::temp_dir().join("fselect_test_having_alias_runtime");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        fs::write(tmp.join("a.rs"), "x").unwrap();
+        fs::write(tmp.join("b.rs"), "x").unwrap();
+        fs::write(tmp.join("c.txt"), "x").unwrap();
+
+        let rows = run_query_against_dir(
+            "select ext, count(*) as c from __DIR__ depth 1 group by ext having c > 1",
+            &tmp,
+        );
+
+        let _ = fs::remove_dir_all(&tmp);
+        assert_eq!(rows, vec![String::from("rs\t2")]);
+    }
+
+    #[test]
+    fn ungrouped_having_keeps_or_discards_single_row() {
+        let tmp = std::env::temp_dir().join("fselect_test_having_ungrouped");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        fs::write(tmp.join("a.txt"), "x").unwrap();
+        fs::write(tmp.join("b.txt"), "x").unwrap();
+
+        let kept = run_query_against_dir(
+            "select count(*) from __DIR__ depth 1 having count(*) > 1",
+            &tmp,
+        );
+        let discarded = run_query_against_dir(
+            "select count(*) from __DIR__ depth 1 having count(*) > 100",
+            &tmp,
+        );
+
+        let _ = fs::remove_dir_all(&tmp);
+        assert_eq!(kept, vec![String::from("2")]);
+        assert!(discarded.is_empty(), "row should be discarded, got {:?}", discarded);
     }
 
     #[test]

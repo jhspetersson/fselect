@@ -26,6 +26,7 @@ pub enum Lexeme {
     Or,
     Not,
     Group,
+    Having,
     Order,
     By,
     DescendingOrder,
@@ -297,6 +298,13 @@ impl Lexer {
                     self.state.in_order_by = false;
                     Some(Lexeme::Group)
                 }
+                "having" if self.state.is_keyword_position(search_root_ctx) => {
+                    self.state.before_from = false;
+                    self.state.after_where = true;
+                    self.state.in_group_by = false;
+                    self.state.in_order_by = false;
+                    Some(Lexeme::Having)
+                }
                 "order" if self.state.is_keyword_position(search_root_ctx) => {
                     self.state.after_where = false;
                     self.state.in_group_by = false;
@@ -335,7 +343,7 @@ impl Lexer {
         };
 
         self.state.roots_finished = self.state.roots_finished
-                || matches!(lexeme, Some(Lexeme::Where) | Some(Lexeme::Group) | Some(Lexeme::Order) | Some(Lexeme::Limit) | Some(Lexeme::Offset) | Some(Lexeme::Into));
+                || matches!(lexeme, Some(Lexeme::Where) | Some(Lexeme::Group) | Some(Lexeme::Having) | Some(Lexeme::Order) | Some(Lexeme::Limit) | Some(Lexeme::Offset) | Some(Lexeme::Into));
         self.state.possible_search_root = matches!(lexeme, Some(Lexeme::From))
                 || (matches!(lexeme, Some(Lexeme::Comma)) && !self.state.before_from && !self.state.roots_finished);
         self.state.in_value_set = matches!(lexeme, Some(Lexeme::CurlyOpen))
@@ -344,7 +352,7 @@ impl Lexer {
         // A comma in the SELECT list suppresses keywords only inside parens
         // (function args like `upper(foo, from)`); at depth 0 the next `from`
         // must still be the FROM keyword, or a trailing comma would swallow it.
-        self.state.after_logical = matches!(lexeme, Some(Lexeme::Where) | Some(Lexeme::And) | Some(Lexeme::Or) | Some(Lexeme::Open) | Some(Lexeme::CurlyOpen))
+        self.state.after_logical = matches!(lexeme, Some(Lexeme::Where) | Some(Lexeme::Having) | Some(Lexeme::And) | Some(Lexeme::Or) | Some(Lexeme::Open) | Some(Lexeme::CurlyOpen))
                 || (matches!(lexeme, Some(Lexeme::Comma)) && self.state.after_where)
                 || (matches!(lexeme, Some(Lexeme::Comma)) && self.state.before_from && self.state.paren_depth > 0);
         self.state.paren_depth = match lexeme {
@@ -1291,6 +1299,84 @@ mod tests {
             lexer.next_lexeme(),
             Some(Lexeme::RawString(String::from("mime")))
         );
+    }
+
+    #[test]
+    fn having() {
+        let mut lexer = lexer!("select ext from /test group by ext having count(*) > 1");
+        assert_having_lexemes(&mut lexer);
+    }
+
+    #[test]
+    fn having_with_multiple_input_parts() {
+        let mut lexer = lexer!(
+            "select", "ext", "from", "/test", "group", "by", "ext", "having", "count(*)", ">", "1"
+        );
+        assert_having_lexemes(&mut lexer);
+    }
+
+    fn assert_having_lexemes(lexer: &mut Lexer) {
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Select));
+        assert_eq!(
+            lexer.next_lexeme(),
+            Some(Lexeme::RawString(String::from("ext")))
+        );
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::From));
+        assert_eq!(
+            lexer.next_lexeme(),
+            Some(Lexeme::RawString(String::from("/test")))
+        );
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Group));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::By));
+        assert_eq!(
+            lexer.next_lexeme(),
+            Some(Lexeme::RawString(String::from("ext")))
+        );
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Having));
+        assert_eq!(
+            lexer.next_lexeme(),
+            Some(Lexeme::RawString(String::from("count")))
+        );
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Open));
+        assert_eq!(
+            lexer.next_lexeme(),
+            Some(Lexeme::RawString(String::from("*")))
+        );
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Close));
+        assert_eq!(
+            lexer.next_lexeme(),
+            Some(Lexeme::Operator(String::from(">")))
+        );
+        assert_eq!(
+            lexer.next_lexeme(),
+            Some(Lexeme::RawString(String::from("1")))
+        );
+    }
+
+    #[test]
+    fn having_with_logical_ops_and_order_by() {
+        let mut lexer =
+            lexer!("select ext from /test group by ext having count(*) > 1 and ext = rs order by 1");
+        loop {
+            match lexer.next_lexeme() {
+                Some(Lexeme::Having) => break,
+                None => panic!("HAVING lexeme not produced"),
+                _ => {}
+            }
+        }
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("count"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Open));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("*"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Close));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Operator(String::from(">"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("1"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::And));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("ext"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Operator(String::from("="))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("rs"))));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::Order));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::By));
+        assert_eq!(lexer.next_lexeme(), Some(Lexeme::RawString(String::from("1"))));
     }
 
     #[test]

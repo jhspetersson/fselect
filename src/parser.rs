@@ -1,5 +1,6 @@
 //! Handles the parsing of the query string
 
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::str::FromStr;
 
@@ -57,6 +58,7 @@ impl <'a> Parser<'a> {
         let expr = self.parse_where()?;
         self.where_parsed = true;
         let grouping_fields = self.parse_group_by(&fields)?;
+        let having = self.parse_having(&fields)?;
         let (ordering_fields, ordering_asc) = self.parse_order_by(&fields)?;
         let (mut limit, limit_offset) = self.parse_limit()?;
         let mut offset = self.parse_offset()?;
@@ -66,6 +68,30 @@ impl <'a> Parser<'a> {
                 return Err("Ambiguous offset specified".to_string())
             } else {
                 offset = limit_offset;
+            }
+        }
+
+        if let Some(ref having_expr) = having {
+            let aggregate_context = having_expr.has_aggregate_function()
+                || !grouping_fields.is_empty()
+                || fields.iter().any(|f| f.has_aggregate_function());
+            if !aggregate_context {
+                return Err("HAVING requires GROUP BY or an aggregate function; use WHERE to filter individual files".to_string());
+            }
+            if Self::contains_op_unsupported_in_having(having_expr) {
+                return Err("IN, NOT IN, EXISTS, and NOT EXISTS are not supported in the HAVING clause".to_string());
+            }
+            let allowed_fields: HashSet<Field> = grouping_fields
+                .iter()
+                .flat_map(|f| f.get_required_fields())
+                .collect();
+            for field in having_expr.get_non_aggregated_fields() {
+                if !allowed_fields.contains(&field) {
+                    return Err(format!(
+                        "Cannot use '{}' in HAVING: it is not a grouping column; wrap it in an aggregate function or filter with WHERE",
+                        field.to_string().to_lowercase()
+                    ));
+                }
             }
         }
 
@@ -99,6 +125,7 @@ impl <'a> Parser<'a> {
             roots,
             expr,
             grouping_fields,
+            having,
             ordering_fields,
             ordering_asc,
             limit,
@@ -1222,6 +1249,54 @@ impl <'a> Parser<'a> {
         Ok(group_by_fields)
     }
 
+    fn parse_having(&mut self, fields: &[Expr]) -> Result<Option<Expr>, String> {
+        match self.next_lexeme() {
+            Some(Lexeme::Having) => {
+                let mut having = self.parse_expr()?;
+                if having.is_none() {
+                    return Err("Expected expression after HAVING".to_string());
+                }
+                if let Some(ref mut having) = having {
+                    Self::resolve_having_aliases(having, fields);
+                }
+                Ok(having)
+            }
+            _ => {
+                self.drop_lexeme();
+                Ok(None)
+            }
+        }
+    }
+
+    fn resolve_having_aliases(expr: &mut Expr, fields: &[Expr]) {
+        if expr.logical_op.is_some() {
+            if let Some(ref mut left) = expr.left {
+                Self::resolve_having_aliases(left, fields);
+            }
+            if let Some(ref mut right) = expr.right {
+                Self::resolve_having_aliases(right, fields);
+            }
+        } else if expr.op.is_some()
+            && let Some(ref mut left) = expr.left
+                && left.field.is_none()
+                    && left.function.is_none()
+                        && left.left.is_none()
+                            && let Some(ref val) = left.val.clone()
+                                && let Some(aliased) = fields
+                                    .iter()
+                                    .find(|f| f.alias.as_deref().is_some_and(|a| a.eq_ignore_ascii_case(val))) {
+                                        **left = aliased.clone();
+                                    }
+    }
+
+    fn contains_op_unsupported_in_having(expr: &Expr) -> bool {
+        if matches!(expr.op, Some(Op::In) | Some(Op::NotIn) | Some(Op::Exists) | Some(Op::NotExists)) {
+            return true;
+        }
+        expr.left.as_ref().is_some_and(|e| Self::contains_op_unsupported_in_having(e))
+            || expr.right.as_ref().is_some_and(|e| Self::contains_op_unsupported_in_having(e))
+    }
+
     fn parse_order_by(&mut self, fields: &[Expr]) -> Result<(Vec<Expr>, Vec<bool>), String> {
         let mut order_by_fields: Vec<Expr> = vec![];
         let mut order_by_directions: Vec<bool> = vec![];
@@ -1904,6 +1979,114 @@ mod tests {
         assert_eq!(
             query.grouping_fields,
             vec![Expr::field(Field::Mime)]
+        );
+    }
+
+    #[test]
+    fn having_parses_expression() {
+        let query = "select ext, count(*) from /test group by ext having count(*) > 5";
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
+        let query = p.parse(false).unwrap();
+        assert!(!p.there_are_remaining_lexemes());
+        let having = query.having.expect("HAVING expression not parsed");
+        assert_eq!(having.op, Some(Op::Gt));
+        assert_eq!(having.left.as_ref().unwrap().function, Some(Function::Count));
+        assert_eq!(having.right.as_ref().unwrap().val, Some(String::from("5")));
+    }
+
+    #[test]
+    fn having_with_logical_ops() {
+        let query = "select ext from /test group by ext having count(*) > 1 and count(*) < 100";
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
+        let query = p.parse(false).unwrap();
+        let having = query.having.expect("HAVING expression not parsed");
+        assert!(having.logical_op.is_some());
+    }
+
+    #[test]
+    fn having_before_order_by() {
+        let query = "select ext, count(*) from /test group by ext having count(*) > 1 order by 2 desc limit 3";
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
+        let query = p.parse(false).unwrap();
+        assert!(!p.there_are_remaining_lexemes());
+        assert!(query.having.is_some());
+        assert_eq!(query.ordering_fields.len(), 1);
+        assert_eq!(query.ordering_asc, vec![false]);
+        assert_eq!(query.limit, 3);
+    }
+
+    #[test]
+    fn having_resolves_select_alias() {
+        let query = "select ext, count(*) as c from /test group by ext having c > 5";
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
+        let query = p.parse(false).unwrap();
+        let having = query.having.expect("HAVING expression not parsed");
+        assert_eq!(
+            having.left.as_ref().unwrap().function,
+            Some(Function::Count),
+            "alias 'c' must resolve to the aliased count(*) expression"
+        );
+    }
+
+    #[test]
+    fn having_without_aggregation_is_rejected() {
+        let query = "select name from /test having name = foo";
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
+        let err = p.parse(false).unwrap_err();
+        assert!(
+            err.contains("HAVING requires GROUP BY or an aggregate function"),
+            "unexpected error: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn having_with_aggregate_but_no_group_by_is_accepted() {
+        let query = "select count(*) from /test having count(*) > 5";
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
+        let query = p.parse(false).unwrap();
+        assert!(query.having.is_some());
+        assert!(query.is_aggregated());
+    }
+
+    #[test]
+    fn having_with_non_grouping_field_is_rejected() {
+        let query = "select ext, count(*) from /test group by ext having size > 100";
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
+        let err = p.parse(false).unwrap_err();
+        assert!(
+            err.contains("not a grouping column"),
+            "unexpected error: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn having_with_grouping_field_is_accepted() {
+        let query = "select ext, count(*) from /test group by ext having ext = rs";
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
+        let query = p.parse(false).unwrap();
+        assert!(query.having.is_some());
+    }
+
+    #[test]
+    fn having_with_in_is_rejected() {
+        let query = "select ext, count(*) from /test group by ext having count(*) in (1, 2)";
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
+        let err = p.parse(false).unwrap_err();
+        assert!(
+            err.contains("not supported in the HAVING clause"),
+            "unexpected error: {}",
+            err
         );
     }
 

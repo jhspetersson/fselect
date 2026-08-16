@@ -48,42 +48,56 @@ enum LexingMode {
     Close(char),
 }
 
+#[derive(Clone, Copy, PartialEq, Debug)]
+enum Clause {
+    Fields,
+    Roots,
+    Where,
+    GroupBy,
+    OrderBy,
+    Tail,
+}
+
 #[derive(Clone)]
 struct LexerState {
-    before_from: bool,
+    clause: Clause,
     possible_search_root: bool,
     after_open: bool,
-    after_where: bool,
     after_operator: bool,
     after_logical: bool,
     after_value_start: bool,
     after_not: bool,
     after_arithmetic: bool,
-    in_group_by: bool,
-    in_order_by: bool,
     in_value_set: bool,
-    roots_finished: bool,
     paren_depth: u32,
 }
 
 impl LexerState {
     fn new() -> Self {
         LexerState {
-            before_from: true,
+            clause: Clause::Fields,
             possible_search_root: false,
             after_open: false,
-            after_where: false,
             after_operator: false,
             after_logical: false,
             after_value_start: false,
             after_not: false,
             after_arithmetic: false,
-            in_group_by: false,
-            in_order_by: false,
             in_value_set: false,
-            roots_finished: false,
             paren_depth: 0,
         }
+    }
+
+    fn in_fields(&self) -> bool {
+        self.clause == Clause::Fields
+    }
+
+    fn in_where(&self) -> bool {
+        self.clause == Clause::Where
+    }
+
+    fn in_expression(&self) -> bool {
+        matches!(self.clause, Clause::Fields | Clause::Where | Clause::GroupBy | Clause::OrderBy)
     }
 
     /// Common guard for clause-level keywords (from, where, group, order, by, limit, offset, into)
@@ -276,76 +290,55 @@ impl Lexer {
                     Some(Lexeme::Select)
                 }
                 "from" if self.state.is_keyword_position(search_root_ctx) => {
-                    self.state.before_from = false;
-                    self.state.after_where = false;
-                    self.state.in_group_by = false;
-                    self.state.in_order_by = false;
+                    self.state.clause = Clause::Roots;
                     Some(Lexeme::From)
                 }
                 "where" if self.state.is_keyword_position(search_root_ctx) => {
-                    self.state.before_from = false;
-                    self.state.after_where = true;
-                    self.state.in_group_by = false;
-                    self.state.in_order_by = false;
+                    self.state.clause = Clause::Where;
                     Some(Lexeme::Where)
                 }
-                "or" if self.state.after_where && !self.state.after_operator && !self.state.after_logical && !self.state.after_not => Some(Lexeme::Or),
-                "and" if self.state.after_where && !self.state.after_operator && !self.state.after_logical && !self.state.after_not => Some(Lexeme::And),
-                "not" if self.state.after_where && !self.state.after_operator && !self.state.after_value_start => Some(Lexeme::Not),
+                "or" if self.state.in_where() && self.state.is_keyword_position(false) => Some(Lexeme::Or),
+                "and" if self.state.in_where() && self.state.is_keyword_position(false) => Some(Lexeme::And),
+                "not" if self.state.in_where() && !self.state.after_operator && !self.state.after_value_start => Some(Lexeme::Not),
                 "group" if self.state.is_keyword_position(search_root_ctx) => {
-                    self.state.after_where = false;
-                    self.state.in_group_by = true;
-                    self.state.in_order_by = false;
+                    self.state.clause = Clause::GroupBy;
                     Some(Lexeme::Group)
                 }
                 "having" if self.state.is_keyword_position(search_root_ctx) => {
-                    self.state.before_from = false;
-                    self.state.after_where = true;
-                    self.state.in_group_by = false;
-                    self.state.in_order_by = false;
+                    self.state.clause = Clause::Where;
                     Some(Lexeme::Having)
                 }
                 "order" if self.state.is_keyword_position(search_root_ctx) => {
-                    self.state.after_where = false;
-                    self.state.in_group_by = false;
-                    self.state.in_order_by = true;
+                    self.state.clause = Clause::OrderBy;
                     Some(Lexeme::Order)
                 }
                 "by" if self.state.is_keyword_position(search_root_ctx) => Some(Lexeme::By),
-                "asc" if self.state.is_keyword_position(search_root_ctx) && !self.state.before_from && !self.state.after_where && self.state.in_order_by => self.next_lexeme(),
-                "desc" if self.state.is_keyword_position(search_root_ctx) && !self.state.before_from && !self.state.after_where && self.state.in_order_by => Some(Lexeme::DescendingOrder),
+                "asc" if self.state.is_keyword_position(search_root_ctx) && self.state.clause == Clause::OrderBy => self.next_lexeme(),
+                "desc" if self.state.is_keyword_position(search_root_ctx) && self.state.clause == Clause::OrderBy => Some(Lexeme::DescendingOrder),
                 "limit" if self.state.is_keyword_position(search_root_ctx) => {
-                    self.state.after_where = false;
-                    self.state.in_group_by = false;
-                    self.state.in_order_by = false;
+                    self.state.clause = Clause::Tail;
                     Some(Lexeme::Limit)
                 }
                 "offset" if self.state.is_keyword_position(search_root_ctx) => {
-                    self.state.after_where = false;
-                    self.state.in_group_by = false;
-                    self.state.in_order_by = false;
+                    self.state.clause = Clause::Tail;
                     Some(Lexeme::Offset)
                 }
                 "into" if self.state.is_keyword_position(search_root_ctx) => {
-                    self.state.after_where = false;
-                    self.state.in_group_by = false;
-                    self.state.in_order_by = false;
+                    self.state.clause = Clause::Tail;
                     Some(Lexeme::Into)
                 }
-                "exists" | "notexists" if self.state.after_where && !self.state.after_operator && !self.state.after_value_start && !self.state.in_value_set => Some(Lexeme::Operator(s.to_lowercase())),
+                "exists" | "notexists" if self.state.in_where() && !self.state.after_operator && !self.state.after_value_start && !self.state.in_value_set => Some(Lexeme::Operator(s.to_lowercase())),
                 "eq" | "ne" | "gt" | "lt" | "ge" | "le" | "gte" | "lte" | "eeq" | "ene"
                 | "regexp" | "rx" | "like" | "notlike" | "notrx"
-                | "between" | "notbetween" | "in" | "notin" if self.state.after_where && !self.state.after_operator && !self.state.after_logical => Some(Lexeme::Operator(s.to_lowercase())),
-                "mul" | "div" | "mod" | "plus" | "minus" if (self.state.before_from || self.state.after_where || self.state.in_group_by || self.state.in_order_by) && self.state.is_keyword_position(false) => Some(Lexeme::ArithmeticOperator(s)),
+                | "between" | "notbetween" | "in" | "notin" if self.state.in_where() && !self.state.after_operator && !self.state.after_logical => Some(Lexeme::Operator(s.to_lowercase())),
+                "mul" | "div" | "mod" | "plus" | "minus" if self.state.in_expression() && self.state.is_keyword_position(false) => Some(Lexeme::ArithmeticOperator(s)),
                 _ => Some(Lexeme::RawString(s)),
             },
             _ => None,
         };
 
-        self.state.roots_finished = self.state.roots_finished
-                || matches!(lexeme, Some(Lexeme::Where) | Some(Lexeme::Group) | Some(Lexeme::Having) | Some(Lexeme::Order) | Some(Lexeme::Limit) | Some(Lexeme::Offset) | Some(Lexeme::Into));
         self.state.possible_search_root = matches!(lexeme, Some(Lexeme::From))
-                || (matches!(lexeme, Some(Lexeme::Comma)) && !self.state.before_from && !self.state.roots_finished);
+                || (matches!(lexeme, Some(Lexeme::Comma)) && self.state.clause == Clause::Roots);
         self.state.in_value_set = matches!(lexeme, Some(Lexeme::CurlyOpen))
                 || (matches!(lexeme, Some(Lexeme::Open)) && self.state.after_operator);
         self.state.after_operator = matches!(lexeme, Some(Lexeme::Operator(_)));
@@ -353,14 +346,14 @@ impl Lexer {
         // (function args like `upper(foo, from)`); at depth 0 the next `from`
         // must still be the FROM keyword, or a trailing comma would swallow it.
         self.state.after_logical = matches!(lexeme, Some(Lexeme::Where) | Some(Lexeme::Having) | Some(Lexeme::And) | Some(Lexeme::Or) | Some(Lexeme::Open) | Some(Lexeme::CurlyOpen))
-                || (matches!(lexeme, Some(Lexeme::Comma)) && self.state.after_where)
-                || (matches!(lexeme, Some(Lexeme::Comma)) && self.state.before_from && self.state.paren_depth > 0);
+                || (matches!(lexeme, Some(Lexeme::Comma)) && self.state.in_where())
+                || (matches!(lexeme, Some(Lexeme::Comma)) && self.state.in_fields() && self.state.paren_depth > 0);
         self.state.paren_depth = match lexeme {
             Some(Lexeme::Open) | Some(Lexeme::CurlyOpen) => self.state.paren_depth + 1,
             Some(Lexeme::Close) | Some(Lexeme::CurlyClose) => self.state.paren_depth.saturating_sub(1),
             _ => self.state.paren_depth,
         };
-        self.state.after_value_start = matches!(lexeme, Some(Lexeme::Comma)) && self.state.after_where;
+        self.state.after_value_start = matches!(lexeme, Some(Lexeme::Comma)) && self.state.in_where();
         self.state.after_not = matches!(lexeme, Some(Lexeme::Not));
         self.state.after_arithmetic = matches!(lexeme, Some(Lexeme::ArithmeticOperator(_)));
 
@@ -368,18 +361,17 @@ impl Lexer {
     }
 
     fn is_arithmetic_op_char(&self, c: char) -> bool {
-        let in_expr_context = self.state.before_from || self.state.after_where || self.state.in_group_by || self.state.in_order_by;
         match c {
-            '+' | '-' => in_expr_context && !self.state.after_operator,
+            '+' | '-' => self.state.in_expression() && !self.state.after_operator,
             '*' | '/' | '%' => {
-                in_expr_context && !self.state.after_open && !self.state.after_operator
+                self.state.in_expression() && !self.state.after_open && !self.state.after_operator
             }
             _ => false,
         }
     }
 
     fn is_op_char(&self, c: char) -> bool {
-        if !self.state.before_from && !self.state.after_where {
+        if !matches!(self.state.clause, Clause::Fields | Clause::Where) {
             return false;
         }
 

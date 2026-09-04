@@ -10,7 +10,9 @@ use crate::operators::ArithmeticOp;
 use crate::operators::LogicalOp;
 use crate::operators::Op;
 use crate::query::Query;
-use crate::util::Variant;
+use crate::util::{str_to_bool, Variant};
+
+pub const IS_FILE: &str = "is_file";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Expr {
@@ -82,8 +84,9 @@ impl Expr {
     pub fn op(left: Expr, op: Op, right: Expr) -> Expr {
         let left_weight = left.weight;
         let right_weight = right.weight;
+        let is_file = Self::is_file_comparison(&left, op, &right);
 
-        Expr {
+        let mut expr = Expr {
             left: Some(Box::new(left)),
             arithmetic_op: None,
             logical_op: None,
@@ -99,14 +102,48 @@ impl Expr {
             alias: None,
             weight: left_weight + right_weight,
             props: ExprProps::default(),
+        };
+        if let Some(is_file) = is_file {
+            expr.set_prop(IS_FILE, Variant::from_bool(is_file));
+        }
+
+        expr
+    }
+
+    fn is_file_comparison(left: &Expr, op: Op, right: &Expr) -> Option<bool> {
+        let literal = if left.is_file_prop() == Some(true) {
+            right.bool_literal()?
+        } else if right.is_file_prop() == Some(true) {
+            left.bool_literal()?
+        } else {
+            return None;
+        };
+
+        match op {
+            Op::Eq | Op::Eeq => Some(literal),
+            Op::Ne | Op::Ene => Some(!literal),
+            _ => None,
         }
     }
 
-    pub fn logical_op(left: Expr, logical_op: LogicalOp, right: Expr) -> Expr {
+    fn bool_literal(&self) -> Option<bool> {
+        if self.field.is_some() || self.function.is_some() || self.subquery.is_some()
+            || self.left.is_some() || self.right.is_some() || self.minus {
+            return None;
+        }
+        self.val.as_deref().and_then(str_to_bool)
+    }
+
+    pub fn is_file_prop(&self) -> Option<bool> {
+        self.get_prop(IS_FILE).map(|v| v.to_bool())
+    }
+
+    pub fn logical_op(left: Expr, logical_op: LogicalOp, right: Expr) -> Result<Expr, String> {
         let left_weight = left.weight;
         let right_weight = right.weight;
+        let props = Self::merge_props(&left, &logical_op, &right)?;
 
-        Expr {
+        let expr = Expr {
             left: Some(Box::new(left)),
             arithmetic_op: None,
             logical_op: Some(logical_op),
@@ -121,8 +158,44 @@ impl Expr {
             root_alias: None,
             alias: None,
             weight: left_weight + right_weight,
-            props: ExprProps::default(),
+            props,
+        };
+
+        Ok(expr)
+    }
+
+    fn merge_props(left: &Expr, logical_op: &LogicalOp, right: &Expr) -> Result<ExprProps, String> {
+        let mut props = ExprProps::default();
+
+        for (key, left_value) in left.props.iter() {
+            match right.props.get(key) {
+                Some(right_value) if right_value != left_value => {
+                    if *logical_op == LogicalOp::And {
+                        return Err(format!(
+                            "Conflicting conditions: '{}' requires {} = {}, but '{}' requires {} = {}",
+                            left, key, left_value, right, key, right_value
+                        ));
+                    }
+                }
+                Some(_) => {
+                    props.insert(key.clone(), left_value.clone());
+                }
+                None if *logical_op == LogicalOp::And => {
+                    props.insert(key.clone(), left_value.clone());
+                }
+                None => {}
+            }
         }
+
+        if *logical_op == LogicalOp::And {
+            for (key, right_value) in right.props.iter() {
+                if !left.props.contains_key(key) {
+                    props.insert(key.clone(), right_value.clone());
+                }
+            }
+        }
+
+        Ok(props)
     }
 
     pub fn arithmetic_op(left: Expr, arithmetic_op: ArithmeticOp, right: Expr) -> Expr {
@@ -149,8 +222,12 @@ impl Expr {
     }
 
     pub fn field(field: Field) -> Expr {
+        Self::field_with_root_alias(field, None)
+    }
+
+    fn field_base(field: Field) -> Expr {
         let weight = field.get_weight();
-        
+
         Expr {
             left: None,
             arithmetic_op: None,
@@ -171,25 +248,14 @@ impl Expr {
     }
 
     pub fn field_with_root_alias(field: Field, root_alias: Option<String>) -> Expr {
-        let weight = field.get_weight();
-
-        Expr {
-            left: None,
-            arithmetic_op: None,
-            logical_op: None,
-            op: None,
-            right: None,
-            minus: false,
-            field: Some(field),
-            function: None,
-            args: None,
-            val: None,
-            subquery: None,
-            root_alias,
-            alias: None,
-            weight,
-            props: ExprProps::default(),
+        let is_file = field == Field::IsFile;
+        let mut expr = Self::field_base(field);
+        expr.root_alias = root_alias;
+        if is_file {
+            expr.set_prop(IS_FILE, Variant::from_bool(true));
         }
+
+        expr
     }
 
     pub fn function(function: Function) -> Expr {
@@ -302,12 +368,10 @@ impl Expr {
         self.weight = self.weight - old_weight + args_weight;
     }
 
-    #[allow(unused)]
     pub fn set_prop<K: Into<String>>(&mut self, name: K, value: Variant) -> Option<Variant> {
         self.props.insert(name.into(), value)
     }
 
-    #[allow(unused)]
     pub fn get_prop(&self, name: &str) -> Option<&Variant> {
         self.props.get(name)
     }
@@ -833,7 +897,7 @@ mod tests {
                 Op::Lte,
                 Expr::value(String::from("758")),
             ),
-        );
+        ).unwrap();
         assert_eq!(expr.weight, 2);
         
         let expr = Expr::logical_op(
@@ -856,15 +920,15 @@ mod tests {
                         Op::Lte,
                         Expr::value(String::from("758")),
                     ),
-                ),
-            ),
+                ).unwrap(),
+            ).unwrap(),
             LogicalOp::Or,
             Expr::op(
                 Expr::field(Field::Name),
                 Op::Eq,
                 Expr::value(String::from("xxx")),
             ),
-        );
+        ).unwrap();
         assert_eq!(expr.weight, 2);
     }
 
@@ -902,6 +966,76 @@ mod tests {
         b.set_prop("k", Variant::from_bool(false));
         assert_ne!(*b.props, *a.props);
         assert_eq!(a, b);
+    }
+
+    #[test]
+    fn is_file_field_sets_prop() {
+        assert_eq!(Expr::field(Field::IsFile).is_file_prop(), Some(true));
+        assert_eq!(Expr::field_with_root_alias(Field::IsFile, Some("r".to_string())).is_file_prop(), Some(true));
+        assert_eq!(Expr::field(Field::Name).is_file_prop(), None);
+        assert_eq!(Expr::field(Field::IsDir).is_file_prop(), None);
+    }
+
+    #[test]
+    fn is_file_comparison_sets_prop() {
+        let cmp = |op: Op, val: &str| Expr::op(Expr::field(Field::IsFile), op, Expr::value(val.to_string()));
+        assert_eq!(cmp(Op::Eq, "true").is_file_prop(), Some(true));
+        assert_eq!(cmp(Op::Eeq, "yes").is_file_prop(), Some(true));
+        assert_eq!(cmp(Op::Eq, "false").is_file_prop(), Some(false));
+        assert_eq!(cmp(Op::Ne, "true").is_file_prop(), Some(false));
+        assert_eq!(cmp(Op::Ne, "false").is_file_prop(), Some(true));
+        assert_eq!(cmp(Op::Eq, "maybe").is_file_prop(), None);
+        assert_eq!(cmp(Op::Like, "true").is_file_prop(), None);
+
+        let reversed = Expr::op(Expr::value("true".to_string()), Op::Eq, Expr::field(Field::IsFile));
+        assert_eq!(reversed.is_file_prop(), Some(true));
+
+        let other = Expr::op(Expr::field(Field::Name), Op::Eq, Expr::value("true".to_string()));
+        assert_eq!(other.is_file_prop(), None);
+    }
+
+    #[test]
+    fn logical_op_propagates_is_file() {
+        let is_file = || Expr::op(Expr::field(Field::IsFile), Op::Eq, Expr::value("true".to_string()));
+        let not_file = || Expr::op(Expr::field(Field::IsFile), Op::Eq, Expr::value("false".to_string()));
+        let unrelated = || Expr::op(Expr::field(Field::Size), Op::Gt, Expr::value("0".to_string()));
+
+        assert_eq!(Expr::logical_op(is_file(), LogicalOp::And, unrelated()).unwrap().is_file_prop(), Some(true));
+        assert_eq!(Expr::logical_op(unrelated(), LogicalOp::And, not_file()).unwrap().is_file_prop(), Some(false));
+        assert_eq!(Expr::logical_op(is_file(), LogicalOp::Or, unrelated()).unwrap().is_file_prop(), None);
+        assert_eq!(Expr::logical_op(is_file(), LogicalOp::Or, is_file()).unwrap().is_file_prop(), Some(true));
+        assert_eq!(Expr::logical_op(unrelated(), LogicalOp::And, unrelated()).unwrap().is_file_prop(), None);
+
+        let err = Expr::logical_op(is_file(), LogicalOp::And, not_file()).unwrap_err();
+        assert!(err.contains("is_file"), "unexpected error: {}", err);
+        assert_eq!(Expr::logical_op(not_file(), LogicalOp::Or, is_file()).unwrap().is_file_prop(), None);
+    }
+
+    #[test]
+    fn logical_op_merges_arbitrary_props() {
+        let with = |key: &str, value: i64| {
+            let mut e = Expr::value("1".to_string());
+            e.set_prop(key, Variant::from_int(value));
+            e
+        };
+        let plain = || Expr::value("1".to_string());
+
+        let and = Expr::logical_op(with("a", 1), LogicalOp::And, with("b", 2)).unwrap();
+        assert_eq!(and.get_prop("a").map(|v| v.to_int()), Some(1));
+        assert_eq!(and.get_prop("b").map(|v| v.to_int()), Some(2));
+
+        let or = Expr::logical_op(with("a", 1), LogicalOp::Or, with("b", 2)).unwrap();
+        assert!(or.props.is_empty());
+
+        let or_same = Expr::logical_op(with("a", 1), LogicalOp::Or, with("a", 1)).unwrap();
+        assert_eq!(or_same.get_prop("a").map(|v| v.to_int()), Some(1));
+
+        assert_eq!(Expr::logical_op(with("a", 1), LogicalOp::And, plain()).unwrap().get_prop("a").map(|v| v.to_int()), Some(1));
+        assert!(Expr::logical_op(plain(), LogicalOp::Or, with("a", 1)).unwrap().props.is_empty());
+
+        let err = Expr::logical_op(with("a", 1), LogicalOp::And, with("a", 2)).unwrap_err();
+        assert!(err.contains("a = 1") && err.contains("a = 2"), "unexpected error: {}", err);
+        assert!(Expr::logical_op(with("a", 1), LogicalOp::Or, with("a", 2)).unwrap().props.is_empty());
     }
 
     fn parse_where_expr(sql: &str) -> Expr {
@@ -1029,7 +1163,7 @@ mod tests {
                 Op::Gt,
                 Expr::value("0".to_string()),
             ),
-        );
+        ).unwrap();
         let displayed = format!("{}", expr);
         assert!(displayed.contains("And"),
             "Expected 'And' in display, got: {}", displayed);
@@ -1160,7 +1294,7 @@ mod tests {
                 Op::Eq,
                 Expr::value(String::from("oops")),
             ),
-        );
+        ).unwrap();
         let err = expr.validate_datetime_literals().unwrap_err();
         assert!(err.contains("oops"));
     }

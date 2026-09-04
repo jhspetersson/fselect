@@ -13,6 +13,12 @@ use crate::query::Query;
 use crate::util::{str_to_bool, Variant};
 
 pub const IS_FILE: &str = "is_file";
+pub const IS_DIR: &str = "is_dir";
+pub const IS_PIPE: &str = "is_pipe";
+pub const IS_CHAR: &str = "is_char";
+pub const IS_BLOCK: &str = "is_block";
+pub const IS_SOCKET: &str = "is_socket";
+pub const FILE_TYPE_PROPS: [&str; 6] = [IS_FILE, IS_DIR, IS_PIPE, IS_CHAR, IS_BLOCK, IS_SOCKET];
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Expr {
@@ -36,6 +42,17 @@ pub struct Expr {
 
 #[derive(Debug, Clone, Default)]
 pub struct ExprProps(HashMap<String, Variant>);
+
+impl ExprProps {
+    fn set_file_type(&mut self, key: &'static str, value: bool) {
+        self.insert(key.to_string(), Variant::from_bool(value));
+        if value {
+            for other in FILE_TYPE_PROPS.iter().filter(|other| **other != key) {
+                self.insert(other.to_string(), Variant::from_bool(false));
+            }
+        }
+    }
+}
 
 impl Deref for ExprProps {
     type Target = HashMap<String, Variant>;
@@ -84,9 +101,9 @@ impl Expr {
     pub fn op(left: Expr, op: Op, right: Expr) -> Expr {
         let left_weight = left.weight;
         let right_weight = right.weight;
-        let is_file = Self::is_file_comparison(&left, op, &right);
+        let props = Self::comparison_props(&left, op, &right);
 
-        let mut expr = Expr {
+        Expr {
             left: Some(Box::new(left)),
             arithmetic_op: None,
             logical_op: None,
@@ -101,27 +118,53 @@ impl Expr {
             root_alias: None,
             alias: None,
             weight: left_weight + right_weight,
-            props: ExprProps::default(),
-        };
-        if let Some(is_file) = is_file {
-            expr.set_prop(IS_FILE, Variant::from_bool(is_file));
+            props,
         }
-
-        expr
     }
 
-    fn is_file_comparison(left: &Expr, op: Op, right: &Expr) -> Option<bool> {
-        let literal = if left.is_file_prop() == Some(true) {
-            right.bool_literal()?
-        } else if right.is_file_prop() == Some(true) {
-            left.bool_literal()?
-        } else {
-            return None;
-        };
+    fn comparison_props(left: &Expr, op: Op, right: &Expr) -> ExprProps {
+        let mut props = ExprProps::default();
+        if let Some((field, value)) = Self::bool_field_comparison(left, op, right)
+            && let Some(key) = Self::file_type_key(&field) {
+            props.set_file_type(key, value);
+        }
 
-        match op {
-            Op::Eq | Op::Eeq => Some(literal),
-            Op::Ne | Op::Ene => Some(!literal),
+        props
+    }
+
+    fn field_props(field: &Field) -> ExprProps {
+        let mut props = ExprProps::default();
+        if let Some(key) = Self::file_type_key(field) {
+            props.set_file_type(key, true);
+        }
+
+        props
+    }
+
+    fn bool_field_comparison(left: &Expr, op: Op, right: &Expr) -> Option<(Field, bool)> {
+        let negated = match op {
+            Op::Eq | Op::Eeq => false,
+            Op::Ne | Op::Ene => true,
+            _ => return None,
+        };
+        let (field, literal_expr) = match (left.field, right.field) {
+            (Some(field), None) => (field, right),
+            (None, Some(field)) => (field, left),
+            _ => return None,
+        };
+        let literal = literal_expr.bool_literal()?;
+
+        Some((field, literal != negated))
+    }
+
+    fn file_type_key(field: &Field) -> Option<&'static str> {
+        match field {
+            Field::IsFile => Some(IS_FILE),
+            Field::IsDir => Some(IS_DIR),
+            Field::IsPipe => Some(IS_PIPE),
+            Field::IsCharacterDevice => Some(IS_CHAR),
+            Field::IsBlockDevice => Some(IS_BLOCK),
+            Field::IsSocket => Some(IS_SOCKET),
             _ => None,
         }
     }
@@ -134,9 +177,11 @@ impl Expr {
         self.val.as_deref().and_then(str_to_bool)
     }
 
-    pub fn is_file_prop(&self) -> Option<bool> {
-        self.get_prop(IS_FILE).map(|v| v.to_bool())
+    #[allow(unused)]
+    pub fn bool_prop(&self, key: &str) -> Option<bool> {
+        self.get_prop(key).map(|v| v.to_bool())
     }
+
 
     pub fn logical_op(left: Expr, logical_op: LogicalOp, right: Expr) -> Result<Expr, String> {
         let left_weight = left.weight;
@@ -167,7 +212,11 @@ impl Expr {
     fn merge_props(left: &Expr, logical_op: &LogicalOp, right: &Expr) -> Result<ExprProps, String> {
         let mut props = ExprProps::default();
 
-        for (key, left_value) in left.props.iter() {
+        let mut left_keys: Vec<&String> = left.props.keys().collect();
+        left_keys.sort();
+
+        for key in left_keys {
+            let left_value = &left.props[key];
             match right.props.get(key) {
                 Some(right_value) if right_value != left_value => {
                     if *logical_op == LogicalOp::And {
@@ -225,8 +274,9 @@ impl Expr {
         Self::field_with_root_alias(field, None)
     }
 
-    fn field_base(field: Field) -> Expr {
+    pub fn field_with_root_alias(field: Field, root_alias: Option<String>) -> Expr {
         let weight = field.get_weight();
+        let props = Self::field_props(&field);
 
         Expr {
             left: None,
@@ -240,22 +290,11 @@ impl Expr {
             args: None,
             val: None,
             subquery: None,
-            root_alias: None,
+            root_alias,
             alias: None,
             weight,
-            props: ExprProps::default(),
+            props,
         }
-    }
-
-    pub fn field_with_root_alias(field: Field, root_alias: Option<String>) -> Expr {
-        let is_file = field == Field::IsFile;
-        let mut expr = Self::field_base(field);
-        expr.root_alias = root_alias;
-        if is_file {
-            expr.set_prop(IS_FILE, Variant::from_bool(true));
-        }
-
-        expr
     }
 
     pub fn function(function: Function) -> Expr {
@@ -368,10 +407,12 @@ impl Expr {
         self.weight = self.weight - old_weight + args_weight;
     }
 
+    #[allow(unused)]
     pub fn set_prop<K: Into<String>>(&mut self, name: K, value: Variant) -> Option<Variant> {
         self.props.insert(name.into(), value)
     }
 
+    #[allow(unused)]
     pub fn get_prop(&self, name: &str) -> Option<&Variant> {
         self.props.get(name)
     }
@@ -970,28 +1011,81 @@ mod tests {
 
     #[test]
     fn is_file_field_sets_prop() {
-        assert_eq!(Expr::field(Field::IsFile).is_file_prop(), Some(true));
-        assert_eq!(Expr::field_with_root_alias(Field::IsFile, Some("r".to_string())).is_file_prop(), Some(true));
-        assert_eq!(Expr::field(Field::Name).is_file_prop(), None);
-        assert_eq!(Expr::field(Field::IsDir).is_file_prop(), None);
+        assert_eq!(Expr::field(Field::IsFile).bool_prop(IS_FILE), Some(true));
+        assert_eq!(Expr::field_with_root_alias(Field::IsFile, Some("r".to_string())).bool_prop(IS_FILE), Some(true));
+        assert_eq!(Expr::field(Field::Name).bool_prop(IS_FILE), None);
+        assert_eq!(Expr::field(Field::IsDir).bool_prop(IS_FILE), Some(false));
+    }
+
+    #[test]
+    fn file_type_fields_are_mutually_exclusive() {
+        for (field, key) in [
+            (Field::IsFile, IS_FILE),
+            (Field::IsDir, IS_DIR),
+            (Field::IsPipe, IS_PIPE),
+            (Field::IsCharacterDevice, IS_CHAR),
+            (Field::IsBlockDevice, IS_BLOCK),
+            (Field::IsSocket, IS_SOCKET),
+        ] {
+            for expr in [
+                Expr::field(field),
+                Expr::op(Expr::field(field), Op::Ne, Expr::value("false".to_string())),
+            ] {
+                assert_eq!(expr.props.len(), FILE_TYPE_PROPS.len(), "{}", key);
+                for other in FILE_TYPE_PROPS {
+                    assert_eq!(expr.bool_prop(other), Some(other == key), "{} -> {}", key, other);
+                }
+            }
+
+            let negative = Expr::op(Expr::field(field), Op::Eq, Expr::value("false".to_string()));
+            assert_eq!(negative.props.len(), 1, "{}", key);
+            assert_eq!(negative.bool_prop(key), Some(false), "{}", key);
+        }
+
+        assert_eq!(Expr::field(Field::IsDir).bool_prop(IS_FILE), Some(false));
+        assert_eq!(Expr::op(Expr::field(Field::IsDir), Op::Ne, Expr::value("false".to_string())).bool_prop(IS_FILE), Some(false));
+        assert_eq!(Expr::op(Expr::field(Field::IsDir), Op::Eq, Expr::value("false".to_string())).bool_prop(IS_FILE), None);
+        assert_eq!(Expr::field(Field::IsSymlink).props.len(), 0);
+    }
+
+    #[test]
+    fn is_dir_field_sets_prop() {
+        assert_eq!(Expr::field(Field::IsDir).bool_prop(IS_DIR), Some(true));
+        assert_eq!(Expr::field(Field::IsFile).bool_prop(IS_DIR), Some(false));
+        assert_eq!(Expr::field(Field::Name).bool_prop(IS_DIR), None);
+
+        let cmp = |op: Op, val: &str| Expr::op(Expr::field(Field::IsDir), op, Expr::value(val.to_string()));
+        assert_eq!(cmp(Op::Eq, "true").bool_prop(IS_DIR), Some(true));
+        assert_eq!(cmp(Op::Eq, "false").bool_prop(IS_DIR), Some(false));
+        assert_eq!(cmp(Op::Ne, "true").bool_prop(IS_DIR), Some(false));
+        assert_eq!(cmp(Op::Eq, "true").bool_prop(IS_FILE), Some(false));
+        assert_eq!(cmp(Op::Eq, "false").bool_prop(IS_FILE), None);
+
+        let both = Expr::logical_op(
+            Expr::op(Expr::field(Field::IsFile), Op::Eq, Expr::value("false".to_string())),
+            LogicalOp::And,
+            Expr::op(Expr::field(Field::IsDir), Op::Eq, Expr::value("true".to_string())),
+        ).unwrap();
+        assert_eq!(both.bool_prop(IS_FILE), Some(false));
+        assert_eq!(both.bool_prop(IS_DIR), Some(true));
     }
 
     #[test]
     fn is_file_comparison_sets_prop() {
         let cmp = |op: Op, val: &str| Expr::op(Expr::field(Field::IsFile), op, Expr::value(val.to_string()));
-        assert_eq!(cmp(Op::Eq, "true").is_file_prop(), Some(true));
-        assert_eq!(cmp(Op::Eeq, "yes").is_file_prop(), Some(true));
-        assert_eq!(cmp(Op::Eq, "false").is_file_prop(), Some(false));
-        assert_eq!(cmp(Op::Ne, "true").is_file_prop(), Some(false));
-        assert_eq!(cmp(Op::Ne, "false").is_file_prop(), Some(true));
-        assert_eq!(cmp(Op::Eq, "maybe").is_file_prop(), None);
-        assert_eq!(cmp(Op::Like, "true").is_file_prop(), None);
+        assert_eq!(cmp(Op::Eq, "true").bool_prop(IS_FILE), Some(true));
+        assert_eq!(cmp(Op::Eeq, "yes").bool_prop(IS_FILE), Some(true));
+        assert_eq!(cmp(Op::Eq, "false").bool_prop(IS_FILE), Some(false));
+        assert_eq!(cmp(Op::Ne, "true").bool_prop(IS_FILE), Some(false));
+        assert_eq!(cmp(Op::Ne, "false").bool_prop(IS_FILE), Some(true));
+        assert_eq!(cmp(Op::Eq, "maybe").bool_prop(IS_FILE), None);
+        assert_eq!(cmp(Op::Like, "true").bool_prop(IS_FILE), None);
 
         let reversed = Expr::op(Expr::value("true".to_string()), Op::Eq, Expr::field(Field::IsFile));
-        assert_eq!(reversed.is_file_prop(), Some(true));
+        assert_eq!(reversed.bool_prop(IS_FILE), Some(true));
 
         let other = Expr::op(Expr::field(Field::Name), Op::Eq, Expr::value("true".to_string()));
-        assert_eq!(other.is_file_prop(), None);
+        assert_eq!(other.bool_prop(IS_FILE), None);
     }
 
     #[test]
@@ -1000,15 +1094,15 @@ mod tests {
         let not_file = || Expr::op(Expr::field(Field::IsFile), Op::Eq, Expr::value("false".to_string()));
         let unrelated = || Expr::op(Expr::field(Field::Size), Op::Gt, Expr::value("0".to_string()));
 
-        assert_eq!(Expr::logical_op(is_file(), LogicalOp::And, unrelated()).unwrap().is_file_prop(), Some(true));
-        assert_eq!(Expr::logical_op(unrelated(), LogicalOp::And, not_file()).unwrap().is_file_prop(), Some(false));
-        assert_eq!(Expr::logical_op(is_file(), LogicalOp::Or, unrelated()).unwrap().is_file_prop(), None);
-        assert_eq!(Expr::logical_op(is_file(), LogicalOp::Or, is_file()).unwrap().is_file_prop(), Some(true));
-        assert_eq!(Expr::logical_op(unrelated(), LogicalOp::And, unrelated()).unwrap().is_file_prop(), None);
+        assert_eq!(Expr::logical_op(is_file(), LogicalOp::And, unrelated()).unwrap().bool_prop(IS_FILE), Some(true));
+        assert_eq!(Expr::logical_op(unrelated(), LogicalOp::And, not_file()).unwrap().bool_prop(IS_FILE), Some(false));
+        assert_eq!(Expr::logical_op(is_file(), LogicalOp::Or, unrelated()).unwrap().bool_prop(IS_FILE), None);
+        assert_eq!(Expr::logical_op(is_file(), LogicalOp::Or, is_file()).unwrap().bool_prop(IS_FILE), Some(true));
+        assert_eq!(Expr::logical_op(unrelated(), LogicalOp::And, unrelated()).unwrap().bool_prop(IS_FILE), None);
 
         let err = Expr::logical_op(is_file(), LogicalOp::And, not_file()).unwrap_err();
         assert!(err.contains("is_file"), "unexpected error: {}", err);
-        assert_eq!(Expr::logical_op(not_file(), LogicalOp::Or, is_file()).unwrap().is_file_prop(), None);
+        assert_eq!(Expr::logical_op(not_file(), LogicalOp::Or, is_file()).unwrap().bool_prop(IS_FILE), None);
     }
 
     #[test]

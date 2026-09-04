@@ -6,7 +6,7 @@ use std::str::FromStr;
 
 #[cfg(feature = "interactive")]
 use directories::UserDirs;
-use crate::expr::{Expr, IS_FILE};
+use crate::expr::{Expr, FILE_TYPE_PROPS};
 use crate::field::Field;
 use crate::function::Function;
 use crate::lexer::Lexeme;
@@ -1524,7 +1524,9 @@ impl <'a> Parser<'a> {
 
     fn negate_expr_op(expr: &Expr) -> Expr {
         let mut result = expr.clone();
-        result.props.remove(IS_FILE);
+        for key in FILE_TYPE_PROPS {
+            result.props.remove(key);
+        }
 
         if let Some(left) = &expr.left {
             result.left = Some(Box::from(Self::negate_expr_op(left)));
@@ -1549,6 +1551,7 @@ impl <'a> Parser<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::expr::{IS_DIR, IS_FILE, IS_PIPE, IS_SOCKET};
 
     #[test]
     fn simple_query() {
@@ -3658,28 +3661,58 @@ mod tests {
     #[test]
     fn where_is_file_sets_prop() {
         let query = parse_query("select name from /test where is_file and size > 0").unwrap();
-        assert_eq!(query.expr.unwrap().is_file_prop(), Some(true));
+        assert_eq!(query.expr.unwrap().bool_prop(IS_FILE), Some(true));
 
         let query = parse_query("select name from /test where size > 0 and is_file = true").unwrap();
-        assert_eq!(query.expr.unwrap().is_file_prop(), Some(true));
+        assert_eq!(query.expr.unwrap().bool_prop(IS_FILE), Some(true));
 
         let query = parse_query("select name from /test where is_file = false and size > 0").unwrap();
-        assert_eq!(query.expr.unwrap().is_file_prop(), Some(false));
+        assert_eq!(query.expr.unwrap().bool_prop(IS_FILE), Some(false));
 
         let query = parse_query("select name from /test where is_file or size > 0").unwrap();
-        assert_eq!(query.expr.unwrap().is_file_prop(), None);
+        assert_eq!(query.expr.unwrap().bool_prop(IS_FILE), None);
 
         let query = parse_query("select is_file from /test").unwrap();
-        assert_eq!(query.fields[0].is_file_prop(), Some(true));
+        assert_eq!(query.fields[0].bool_prop(IS_FILE), Some(true));
+    }
+
+    #[test]
+    fn where_is_dir_sets_prop() {
+        let query = parse_query("select name from /test where is_dir and size > 0").unwrap();
+        let expr = query.expr.unwrap();
+        assert_eq!(expr.bool_prop(IS_DIR), Some(true));
+        assert_eq!(expr.bool_prop(IS_FILE), Some(false));
+
+        let query = parse_query("select name from /test where not is_dir").unwrap();
+        assert_eq!(query.expr.unwrap().bool_prop(IS_DIR), None);
+
+        let err = parse_query("select name from /test where is_dir and is_dir = false").unwrap_err();
+        assert!(err.contains("is_dir"), "unexpected error: {}", err);
+
+        let err = parse_query("select name from /test where is_file and is_dir").unwrap_err();
+        assert!(err.contains("requires is_dir = false, but 'IsDir Eq true' requires is_dir = true"), "unexpected error: {}", err);
+
+        let err = parse_query("select name from /test where is_dir and size > 0 and is_pipe").unwrap_err();
+        assert!(err.contains("is_dir"), "unexpected error: {}", err);
+
+        let query = parse_query("select name from /test where is_file or is_pipe").unwrap();
+        let expr = query.expr.unwrap();
+        assert_eq!(expr.bool_prop(IS_DIR), Some(false));
+        assert_eq!(expr.bool_prop(IS_FILE), None);
+        assert_eq!(expr.bool_prop(IS_PIPE), None);
+        assert_eq!(expr.bool_prop(IS_SOCKET), Some(false));
+
+        let err = parse_query("select name from /test where is_pipe and is_socket").unwrap_err();
+        assert!(err.contains("is_pipe") || err.contains("is_socket"), "unexpected error: {}", err);
     }
 
     #[test]
     fn not_clears_is_file_prop() {
         let query = parse_query("select name from /test where not is_file = true").unwrap();
-        assert_eq!(query.expr.unwrap().is_file_prop(), None);
+        assert_eq!(query.expr.unwrap().bool_prop(IS_FILE), None);
 
         let query = parse_query("select name from /test where not (is_file and size > 0)").unwrap();
-        assert_eq!(query.expr.unwrap().is_file_prop(), None);
+        assert_eq!(query.expr.unwrap().bool_prop(IS_FILE), None);
     }
 
     #[test]
@@ -3693,6 +3726,6 @@ mod tests {
         assert!(parse_query("select name from /test where is_file and not is_file").is_ok());
 
         let query = parse_query("select name from /test where is_file or (is_file = false and size > 1mb)").unwrap();
-        assert_eq!(query.expr.unwrap().is_file_prop(), None);
+        assert_eq!(query.expr.unwrap().bool_prop(IS_FILE), None);
     }
 }

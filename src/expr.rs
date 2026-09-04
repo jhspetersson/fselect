@@ -3,14 +3,16 @@ use std::fmt;
 use std::fmt::Display;
 use std::fmt::Formatter;
 use std::hash::{DefaultHasher, Hash, Hasher};
+use std::ops::{Deref, DerefMut};
 use crate::field::Field;
 use crate::function::Function;
 use crate::operators::ArithmeticOp;
 use crate::operators::LogicalOp;
 use crate::operators::Op;
 use crate::query::Query;
+use crate::util::Variant;
 
-#[derive(Debug, Clone, PartialOrd, PartialEq, Eq, Hash, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Expr {
     pub left: Option<Box<Expr>>,
     pub arithmetic_op: Option<ArithmeticOp>,
@@ -26,7 +28,35 @@ pub struct Expr {
     pub root_alias: Option<String>,
     pub alias: Option<String>,
     pub weight: i32,
+    #[serde(skip)]
+    pub props: ExprProps,
 }
+
+#[derive(Debug, Clone, Default)]
+pub struct ExprProps(HashMap<String, Variant>);
+
+impl Deref for ExprProps {
+    type Target = HashMap<String, Variant>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl DerefMut for ExprProps {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl PartialEq for ExprProps {
+    fn eq(&self, _other: &Self) -> bool {
+        true
+    }
+}
+
+impl Eq for ExprProps {}
+
 
 impl Expr {
     pub fn new() -> Expr {
@@ -45,6 +75,7 @@ impl Expr {
             root_alias: None,
             alias: None,
             weight: 0,
+            props: ExprProps::default(),
         }
     }
     
@@ -67,6 +98,7 @@ impl Expr {
             root_alias: None,
             alias: None,
             weight: left_weight + right_weight,
+            props: ExprProps::default(),
         }
     }
 
@@ -89,6 +121,7 @@ impl Expr {
             root_alias: None,
             alias: None,
             weight: left_weight + right_weight,
+            props: ExprProps::default(),
         }
     }
 
@@ -111,6 +144,7 @@ impl Expr {
             root_alias: None,
             alias: None,
             weight: left_weight + right_weight,
+            props: ExprProps::default(),
         }
     }
 
@@ -132,6 +166,7 @@ impl Expr {
             root_alias: None,
             alias: None,
             weight,
+            props: ExprProps::default(),
         }
     }
 
@@ -153,6 +188,7 @@ impl Expr {
             root_alias,
             alias: None,
             weight,
+            props: ExprProps::default(),
         }
     }
 
@@ -174,6 +210,7 @@ impl Expr {
             root_alias: None,
             alias: None,
             weight,
+            props: ExprProps::default(),
         }
     }
 
@@ -199,6 +236,7 @@ impl Expr {
             root_alias: None,
             alias: None,
             weight: weight + left_weight,
+            props: ExprProps::default(),
         }
     }
 
@@ -218,6 +256,7 @@ impl Expr {
             root_alias: None,
             alias: None,
             weight: 0,
+            props: ExprProps::default(),
         }
     }
     
@@ -242,6 +281,7 @@ impl Expr {
             root_alias: None,
             alias: None,
             weight,
+            props: ExprProps::default(),
         }
     }
     
@@ -261,6 +301,19 @@ impl Expr {
         self.args = Some(args);
         self.weight = self.weight - old_weight + args_weight;
     }
+
+    #[allow(unused)]
+    pub fn set_prop<K: Into<String>>(&mut self, name: K, value: Variant) -> Option<Variant> {
+        self.props.insert(name.into(), value)
+    }
+
+    #[allow(unused)]
+    pub fn get_prop(&self, name: &str) -> Option<&Variant> {
+        self.props.get(name)
+    }
+
+
+
 
     pub fn has_aggregate_function(&self) -> bool {
         if let Some(ref left) = self.left
@@ -813,6 +866,42 @@ mod tests {
             ),
         );
         assert_eq!(expr.weight, 2);
+    }
+
+    #[test]
+    fn props_default_empty_and_mutable() {
+        let mut expr = Expr::value("1".to_string());
+        assert!(expr.props.is_empty());
+
+        expr.set_prop("weight_hint", Variant::from_int(5));
+        expr.props.insert("name".to_string(), Variant::from_string(&"x".to_string()));
+
+        assert!(expr.props.contains_key("weight_hint"));
+        assert_eq!(expr.get_prop("weight_hint").map(|v| v.to_int()), Some(5));
+        assert_eq!(expr.props.len(), 2);
+
+        assert_eq!(expr.props.remove("name").map(|v| v.to_string()), Some("x".to_string()));
+        assert!(expr.get_prop("name").is_none());
+    }
+
+    #[test]
+    fn props_are_cloned_but_ignored_by_expr_equality() {
+        let mut a = Expr::value("1".to_string());
+        a.set_prop("k", Variant::from_bool(true));
+
+        let cloned = a.clone();
+        assert_eq!(*cloned.props, *a.props);
+
+        let mut b = Expr::value("1".to_string());
+        assert_ne!(*b.props, *a.props);
+        assert_eq!(a, b);
+
+        b.set_prop("k", Variant::from_bool(true));
+        assert_eq!(*b.props, *a.props);
+
+        b.set_prop("k", Variant::from_bool(false));
+        assert_ne!(*b.props, *a.props);
+        assert_eq!(a, b);
     }
 
     fn parse_where_expr(sql: &str) -> Expr {

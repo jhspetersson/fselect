@@ -7,7 +7,7 @@ use crate::expr::Expr;
 use crate::field::Field;
 use crate::query::TraversalMode::Bfs;
 
-#[derive(Debug, Clone, PartialOrd, PartialEq, Eq, Hash, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 /// Represents a query to be executed on .
 ///
 pub struct Query {
@@ -73,7 +73,7 @@ impl Query {
     }
 }
 
-#[derive(Debug, Clone, PartialOrd, PartialEq, Eq, Hash, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 /// Represents a root directory to start the search from, with traversal options.
 /// When `subquery` is present, the root represents the result set of an inner
 /// query rather than a filesystem path; `path` is unused in that case.

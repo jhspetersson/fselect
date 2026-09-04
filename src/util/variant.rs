@@ -4,7 +4,7 @@ use chrono::NaiveDateTime;
 
 use crate::util::{format_datetime, parse_datetime, parse_filesize, str_to_bool};
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum VariantType {
     String,
     Int,
@@ -13,7 +13,7 @@ pub enum VariantType {
     DateTime,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Variant {
     value_type: VariantType,
     string_value: String,

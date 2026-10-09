@@ -1078,12 +1078,15 @@ impl <'a> Parser<'a> {
                     return Ok(Some(expr));
                 }
 
-                if let Ok(function) = Function::from_str(s)
-                    && let Ok(expr) = self.parse_function(function) {
-                        let mut expr = expr;
-                        expr.minus = minus;
-                        return Ok(Some(expr));
-                    }
+                // Once a function name is recognised, argument errors must
+                // propagate: silently falling back to the literal "upper"
+                // would leave the already-consumed lexemes unrewound and
+                // turn `where length(name > 3` into a constant condition.
+                if let Ok(function) = Function::from_str(s) {
+                    let mut expr = self.parse_function(function)?;
+                    expr.minus = minus;
+                    return Ok(Some(expr));
+                }
 
                 // After a comparison operator the lexer emits a bare "-" as a
                 // RawString (start of a negative literal), so `size gt -(1+2)`
@@ -1135,32 +1138,37 @@ impl <'a> Parser<'a> {
             return Ok(function_expr);
         }
 
-        if let Ok(Some(function_arg)) = self.parse_expr() {
-            function_expr.add_left(function_arg);
-        } else {
-            self.next_lexeme();
-            return Ok(function_expr);
+        let is_close = |lexeme: &Lexeme| {
+            (*lexeme == Lexeme::Close && !curly_mode) || (*lexeme == Lexeme::CurlyClose && curly_mode)
+        };
+
+        // Empty argument list, e.g. `curdate()`
+        match self.next_lexeme() {
+            Some(ref lexeme) if is_close(lexeme) => return Ok(function_expr),
+            _ => self.drop_lexeme(),
+        }
+
+        match self.parse_expr()? {
+            Some(function_arg) => function_expr.add_left(function_arg),
+            None => return Err(format!("Error in function expression: {}", function_expr)),
         }
 
         let mut args = vec![];
 
         loop {
             match self.next_lexeme() {
-                Some(Lexeme::Comma) => match self.parse_expr() {
-                    Ok(Some(expr)) => args.push(expr),
-                    _ => {
-                        return Err("Error in function expression".to_string());
+                Some(Lexeme::Comma) => match self.parse_expr()? {
+                    Some(expr) => args.push(expr),
+                    None => {
+                        return Err(format!("Error in function expression: {}", function_expr));
                     }
                 },
-                Some(lexeme)
-                    if (lexeme == Lexeme::Close && !curly_mode)
-                        || (lexeme == Lexeme::CurlyClose && curly_mode) =>
-                {
+                Some(ref lexeme) if is_close(lexeme) => {
                     function_expr.set_args(args);
                     return Ok(function_expr);
                 }
                 _ => {
-                    return Err("Error in function expression".to_string());
+                    return Err(format!("Missing closing parenthesis in function expression: {}", function_expr));
                 }
             }
         }
@@ -3727,5 +3735,46 @@ mod tests {
 
         let query = parse_query("select name from /test where is_file or (is_file = false and size > 1mb)").unwrap();
         assert_eq!(query.expr.unwrap().bool_prop(IS_FILE), None);
+    }
+
+    #[test]
+    fn unclosed_function_call_is_an_error_not_a_literal() {
+        // Previously the failed function parse was discarded, the consumed
+        // lexemes were lost, and "length" became a string literal: the WHERE
+        // clause silently matched nothing and the SELECT list searched cwd.
+        for sql in [
+            "select name from /test where length(name > 3",
+            "select name from /test where upper(name = 'A.TXT'",
+            "select upper(name from /test limit 1",
+            "select name, upper(ext from /test",
+            "select name from /test order by length(name limit 1",
+            "select name, length(name, from /test",
+            "select name from /test where length{name > 3",
+        ] {
+            let err = parse_query(sql).unwrap_err();
+            assert!(
+                err.contains("function expression") && (err.contains("Length") || err.contains("Upper")),
+                "{}: unexpected error: {}", sql, err
+            );
+        }
+    }
+
+    #[test]
+    fn well_formed_function_calls_still_parse() {
+        let query = parse_query("select curdate() from /test").unwrap();
+        let expr = &query.fields[0];
+        assert!(expr.function.is_some());
+        assert!(expr.left.is_none());
+        assert!(expr.args.as_ref().is_none_or(|args| args.is_empty()));
+
+        let query = parse_query("select upper{name}, concat(name, '-', ext) from /test where length(name) > 3").unwrap();
+        assert_eq!(query.fields.len(), 2);
+        assert_eq!(format!("{}", query.fields[0]), "Upper(Name)");
+        assert_eq!(query.fields[1].args.as_ref().map(|a| a.len()), Some(2));
+        assert_eq!(format!("{}", query.expr.unwrap()), "Length(Name) Gt 3");
+
+        // A bare function name without parentheses is still accepted as before
+        let query = parse_query("select name from /test where name = year").unwrap();
+        assert!(query.expr.unwrap().right.unwrap().function.is_some());
     }
 }

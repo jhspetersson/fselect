@@ -304,7 +304,9 @@ fn exec_search(query: Vec<String>, config: &mut Config, default_config: &Config,
         dbg!(&query);
     }
 
-    if parser.there_are_remaining_lexemes() {
+    // A parse error that stops mid-query naturally leaves lexemes behind;
+    // report the specific error before complaining about trailing tokens.
+    if query.is_ok() && parser.there_are_remaining_lexemes() {
         error_message("query", "could not parse tokens at the end of the query");
         return 2;
     }

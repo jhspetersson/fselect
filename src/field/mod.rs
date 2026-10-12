@@ -208,6 +208,11 @@ fields! {
         @description = "Returns the absolute directory of the file"
         AbsDir,
         
+        #[text = ["depth"], data_type = "numeric"]
+        @weight = 1
+        @description = "Returns the depth of the file relative to the search root (1 for its direct children)"
+        Depth,
+        
         #[text = ["size"], data_type = "numeric"]
         @for_archived = true
         @weight = 1

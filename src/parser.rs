@@ -176,7 +176,7 @@ impl <'a> Parser<'a> {
                         // fields, so anything that parses as a field stays one.
                         if !is_quoted
                             && Self::is_root_option_keyword(s)
-                            && Field::parse_field(s).is_err()
+                            && (Field::parse_field(s).is_err() || self.numeric_argument_follows())
                         {
                             break;
                         }
@@ -508,6 +508,14 @@ impl <'a> Parser<'a> {
                 alias,
             })),
         }
+    }
+
+    fn numeric_argument_follows(&mut self) -> bool {
+        self.next_lexeme();
+        let follows = matches!(self.next_lexeme(), Some(Lexeme::RawString(ref s)) if s.parse::<u32>().is_ok());
+        self.drop_lexeme();
+        self.drop_lexeme();
+        follows
     }
 
     fn is_root_option_keyword(s: &str) -> bool {
@@ -3752,6 +3760,27 @@ mod tests {
                 RootOptions::from(0, 0, false, false, None, None, None, Bfs, false, None),
             )]
         );
+    }
+
+    #[test]
+    fn depth_field_is_distinct_from_the_depth_root_option() {
+        let query = "select name, depth from /test depth 2 where depth > 1 order by depth";
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
+        let parsed = p.parse(false).unwrap_or_else(|e| panic!("{}: {}", query, e));
+        assert!(!p.there_are_remaining_lexemes(), "{}: leftover lexemes", query);
+        assert_eq!(parsed.fields[1].field, Some(Field::Depth));
+        assert_eq!(parsed.roots[0].options.max_depth, 2);
+        assert_eq!(parsed.expr.unwrap().left.unwrap().field, Some(Field::Depth));
+        assert_eq!(parsed.ordering_fields[0].field, Some(Field::Depth));
+
+        let parsed = parse_query("select depth from /test").unwrap();
+        assert_eq!(parsed.fields[0].field, Some(Field::Depth));
+        assert_eq!(parsed.roots[0].options.max_depth, 0);
+
+        let parsed = parse_query("select name, depth depth 3").unwrap();
+        assert_eq!(parsed.fields[1].field, Some(Field::Depth));
+        assert_eq!(parsed.roots[0].options.max_depth, 3);
     }
 
     #[test]

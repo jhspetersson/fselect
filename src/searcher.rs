@@ -3470,6 +3470,26 @@ mod tests {
     }
 
     #[test]
+    fn depth_field_counts_levels_below_the_search_root() {
+        let tmp = std::env::temp_dir().join("fselect_test_depth_field");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(tmp.join("sub").join("deep")).unwrap();
+        fs::write(tmp.join("a.txt"), "").unwrap();
+        fs::write(tmp.join("sub").join("b.txt"), "").unwrap();
+        fs::write(tmp.join("sub").join("deep").join("c.txt"), "").unwrap();
+
+        let rows = run_query_against_dir("select name, depth from __DIR__ where is_file order by depth", &tmp);
+        let level_two = run_query_against_dir("select name from __DIR__ where depth = 2", &tmp);
+        let mut capped = run_query_against_dir("select name, depth from __DIR__ depth 1", &tmp);
+        capped.sort();
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(rows, vec!["a.txt	1", "b.txt	2", "c.txt	3"]);
+        assert_eq!(level_two, vec!["b.txt", "deep"]);
+        assert_eq!(capped, vec!["a.txt	1", "sub	1"]);
+    }
+
+    #[test]
     fn bare_aliased_boolean_in_correlated_subquery_tests_the_outer_entry() {
         let tmp = std::env::temp_dir().join("fselect_test_bare_aliased_boolean");
         let _ = fs::remove_dir_all(&tmp);

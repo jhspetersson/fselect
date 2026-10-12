@@ -21,6 +21,7 @@ pub fn get_field_value(ctx: &mut FieldContext, field: &Field) -> Result<Variant,
         Field::AbsPath => path_handlers::handle_abspath(ctx),
         Field::Directory => path_handlers::handle_directory(ctx),
         Field::AbsDir => path_handlers::handle_absdir(ctx),
+        Field::Depth => path_handlers::handle_depth(ctx),
 
         // Size / type metadata
         Field::Size => metadata_handlers::handle_size(ctx),

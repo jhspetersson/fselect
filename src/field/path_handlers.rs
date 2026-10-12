@@ -98,6 +98,12 @@ pub fn handle_directory(ctx: &mut FieldContext) -> Result<Variant, SearchError> 
     Ok(Variant::empty(VariantType::String))
 }
 
+pub fn handle_depth(ctx: &mut FieldContext) -> Result<Variant, SearchError> {
+    let path = ctx.entry.path();
+    let relative = path.strip_prefix(ctx.root_path).unwrap_or(&path);
+    Ok(Variant::from_int(relative.components().count() as i64))
+}
+
 pub fn handle_absdir(ctx: &mut FieldContext) -> Result<Variant, SearchError> {
     let file_path = match ctx.file_info {
         Some(file_info) => file_info.name.clone(),

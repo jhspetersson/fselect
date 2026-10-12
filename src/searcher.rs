@@ -1526,11 +1526,6 @@ impl<'a> Searcher<'a> {
             items.push((field.column_name(), value));
         }
 
-        if file_info.is_some() {
-            let archive_path = entry.path().to_string_lossy().to_string();
-            items.insert(0, (String::from("archive"), format!("[{}]", archive_path)));
-        }
-
         let mut criteria = vec!["".to_string(); self.query.ordering_fields.len()];
         for (idx, field) in self.query.ordering_fields.iter().enumerate() {
             criteria[idx] = match file_map.get(&field.to_string()) {
@@ -3170,6 +3165,36 @@ mod tests {
 
         let _ = fs::remove_dir_all(&tmp);
         assert_eq!(rows, vec![String::from("medium.txt")]);
+    }
+
+    #[test]
+    fn archive_entries_produce_rectangular_rows() {
+        use std::io::Write;
+        use std::path::MAIN_SEPARATOR_STR as SEP;
+
+        let tmp = std::env::temp_dir().join("fselect_test_archive_rows");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        fs::write(tmp.join("plain.txt"), "x").unwrap();
+        let mut zip = zip::ZipWriter::new(fs::File::create(tmp.join("pack.zip")).unwrap());
+        let options = zip::write::SimpleFileOptions::default();
+        zip.start_file("inner.txt", options).unwrap();
+        zip.write_all(b"hello").unwrap();
+        zip.start_file("sub/deep.txt", options).unwrap();
+        zip.write_all(b"deeper").unwrap();
+        zip.finish().unwrap();
+
+        let csv = run_query_against_dir("select path, name from __DIR__ arc order by path into csv", &tmp);
+        let json = run_query_against_dir("select name, size from __DIR__ arc where name = inner.txt into json", &tmp);
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(csv, vec![
+            "pack.zip,pack.zip".to_string(),
+            format!("pack.zip{SEP}inner.txt,inner.txt"),
+            format!("pack.zip{SEP}sub{SEP}deep.txt,deep.txt"),
+            "plain.txt,plain.txt".to_string(),
+        ]);
+        assert_eq!(json, vec![r#"{"name":"inner.txt","size":"5"}"#]);
     }
 
     #[test]

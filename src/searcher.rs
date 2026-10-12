@@ -572,8 +572,7 @@ impl<'a> Searcher<'a> {
                         if let Ok(value) = self.get_column_expr_value(
                             None, &None, Path::new(""), &mut file_map, Some(group_acc), column_expr,
                         ) {
-                            let field_name = column_expr.to_string().to_lowercase();
-                            items.push((field_name, value.to_string()));
+                            items.push((column_expr.column_name(), value.to_string()));
                         }
                     }
                     let mut criteria_values: Vec<String> =
@@ -650,8 +649,7 @@ impl<'a> Searcher<'a> {
                         Some(ungrouped_acc),
                         column_expr
                     ) {
-                        let field_name = column_expr.to_string().to_lowercase();
-                        items.push((field_name, value.to_string()));
+                        items.push((column_expr.column_name(), value.to_string()));
                     }
                 }
 
@@ -1525,7 +1523,7 @@ impl<'a> Searcher<'a> {
                 true => self.colorize(&record.to_string()),
                 false => record.to_string(),
             };
-            items.push((field.to_string(), value));
+            items.push((field.column_name(), value));
         }
 
         if file_info.is_some() {
@@ -3172,6 +3170,27 @@ mod tests {
 
         let _ = fs::remove_dir_all(&tmp);
         assert_eq!(rows, vec![String::from("medium.txt")]);
+    }
+
+    #[test]
+    fn json_keys_match_between_plain_and_grouped_output() {
+        let tmp = std::env::temp_dir().join("fselect_test_json_keys");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        fs::write(tmp.join("a.md"), "").unwrap();
+
+        let plain = run_query_against_dir(
+            "select ext, size * 2 as dbl, upper(name), size + 1 from __DIR__ where ext = md into json",
+            &tmp,
+        );
+        let grouped = run_query_against_dir(
+            "select ext, size * 2 as dbl, count(*), max(size) + 1 from __DIR__ group by ext into json",
+            &tmp,
+        );
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(plain, vec![r#"{"extension":"md","dbl":"0","upper(name)":"A.MD","size + 1":"1"}"#]);
+        assert_eq!(grouped, vec![r#"{"extension":"md","dbl":"0","count(*)":"1","max(size) + 1":"1"}"#]);
     }
 
     #[test]

@@ -102,6 +102,18 @@ pub enum ArithmeticOp {
     Modulo,
 }
 
+impl std::fmt::Display for ArithmeticOp {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        f.write_str(match self {
+            ArithmeticOp::Add => "+",
+            ArithmeticOp::Subtract => "-",
+            ArithmeticOp::Multiply => "*",
+            ArithmeticOp::Divide => "/",
+            ArithmeticOp::Modulo => "%",
+        })
+    }
+}
+
 impl ArithmeticOp {
     pub fn from(text: &str) -> Option<ArithmeticOp> {
         match text.to_lowercase().as_str() {
@@ -140,6 +152,15 @@ impl ArithmeticOp {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn arithmetic_op_displays_as_its_symbol() {
+        assert_eq!(ArithmeticOp::Add.to_string(), "+");
+        assert_eq!(ArithmeticOp::Subtract.to_string(), "-");
+        assert_eq!(ArithmeticOp::Multiply.to_string(), "*");
+        assert_eq!(ArithmeticOp::Divide.to_string(), "/");
+        assert_eq!(ArithmeticOp::Modulo.to_string(), "%");
+    }
 
     #[test]
     fn op_from_between_is_none() {

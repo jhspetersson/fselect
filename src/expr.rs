@@ -806,6 +806,13 @@ impl Expr {
         Ok(())
     }
 
+    pub fn column_name(&self) -> String {
+        match self.alias {
+            Some(ref alias) => alias.clone(),
+            None => self.to_string().to_lowercase(),
+        }
+    }
+
     pub fn contains_colorized(&self) -> bool {
         Self::contains_colorized_field(self)
     }
@@ -894,7 +901,7 @@ impl Display for Expr {
         }
 
         if let Some(ref op) = self.arithmetic_op {
-            fmt.write_str(&format!(" {:?} ", op))?;
+            fmt.write_str(&format!(" {} ", op))?;
         }
 
         if let Some(ref op) = self.logical_op {
@@ -976,6 +983,29 @@ fn compares_numerically(field: &Field) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn column_name_is_lowercase_and_honors_aliases() {
+        assert_eq!(Expr::field(Field::Extension).column_name(), "extension");
+        assert_eq!(
+            Expr::field_with_root_alias(Field::Name, Some("t1".to_string())).column_name(),
+            "t1.name"
+        );
+
+        let doubled = Expr::arithmetic_op(Expr::field(Field::Size), ArithmeticOp::Multiply, Expr::value("2".to_string()));
+        assert_eq!(doubled.column_name(), "size * 2");
+
+        let mut aliased = doubled.clone();
+        aliased.alias = Some("Dbl".to_string());
+        assert_eq!(aliased.column_name(), "Dbl", "alias on an arithmetic expression");
+
+        let upper = Expr::function_left(Function::Upper, Some(Box::new(Expr::field(Field::Name))));
+        assert_eq!(upper.column_name(), "upper(name)");
+
+        let mut aliased_field = Expr::field(Field::Extension);
+        aliased_field.alias = Some("E".to_string());
+        assert_eq!(aliased_field.column_name(), "E");
+    }
     use crate::field::Field;
     use crate::function::Function;
     use crate::lexer::Lexer;
@@ -1335,9 +1365,7 @@ mod tests {
             ArithmeticOp::Add,
             Expr::value("2".to_string()),
         );
-        let displayed = format!("{}", expr);
-        assert!(displayed.contains("Add"),
-            "Expected 'Add' in display, got: {}", displayed);
+        assert_eq!(format!("{}", expr), "1 + 2");
     }
 
     #[test]

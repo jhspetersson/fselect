@@ -75,6 +75,9 @@ pub struct Searcher<'a> {
     conforms_map: HashMap<String, String>,
     subquery_cache: HashMap<String, Vec<String>>,
     silent_mode: bool,
+    /// Runs a subquery on behalf of an enclosing searcher, whose aliases it
+    /// may legitimately reference.
+    is_nested: bool,
 
     pub error_count: i32,
 }
@@ -112,65 +115,78 @@ fn apply_minus(column_expr: &Expr, value: Variant) -> Variant {
 }
 
 fn is_subquery_cacheable(query: &Query) -> bool {
-    let own_aliases: HashSet<String> = query
+    find_external_alias(query, &own_root_aliases(query)).is_none()
+}
+
+fn own_root_aliases(query: &Query) -> HashSet<String> {
+    query
         .roots
         .iter()
         .filter_map(|r| r.options.alias.clone())
-        .collect();
-    !query_walk_external_alias(query, &own_aliases)
+        .collect()
 }
 
-/// Walk every clause of a query — WHERE, SELECT list, ORDER BY, GROUP BY,
-/// HAVING, and FROM-subselects — looking for a root_alias not declared by the query (or an
-/// enclosing level). Any hit means the query depends on outer-row state.
-fn query_walk_external_alias(query: &Query, own: &HashSet<String>) -> bool {
+/// The first root alias referenced anywhere in `query` (nested scopes
+/// included) that neither the query nor an enclosing scope (`own`) declares.
+fn find_external_alias(query: &Query, own: &HashSet<String>) -> Option<String> {
     if let Some(ref expr) = query.expr
-        && expr_walk_external_alias(expr, own) { return true; }
-    if query.fields.iter().any(|e| expr_walk_external_alias(e, own)) { return true; }
-    if query.ordering_fields.iter().any(|e| expr_walk_external_alias(e, own)) { return true; }
-    if query.grouping_fields.iter().any(|e| expr_walk_external_alias(e, own)) { return true; }
-    if let Some(ref having) = query.having
-        && expr_walk_external_alias(having, own) { return true; }
-    query.roots.iter().any(|root| {
-        root.subquery.as_ref().is_some_and(|sub| {
-            let nested_own: HashSet<String> = sub
-                .roots
-                .iter()
-                .filter_map(|r| r.options.alias.clone())
+        && let Some(alias) = expr_find_external_alias(expr, own) { return Some(alias); }
+    let clauses = query.fields.iter()
+        .chain(query.ordering_fields.iter())
+        .chain(query.grouping_fields.iter())
+        .chain(query.having.iter());
+    for expr in clauses {
+        if let Some(alias) = expr_find_external_alias(expr, own) {
+            return Some(alias);
+        }
+    }
+    query.roots.iter().find_map(|root| {
+        root.subquery.as_ref().and_then(|sub| {
+            let nested_own: HashSet<String> = own_root_aliases(sub)
+                .into_iter()
                 .chain(own.iter().cloned())
                 .collect();
-            query_walk_external_alias(sub, &nested_own)
+            find_external_alias(sub, &nested_own)
         })
     })
 }
 
-fn expr_walk_external_alias(expr: &Expr, own: &HashSet<String>) -> bool {
+fn expr_find_external_alias(expr: &Expr, own: &HashSet<String>) -> Option<String> {
     if let Some(ref alias) = expr.root_alias
         && !own.contains(alias) {
-            return true;
+            return Some(alias.clone());
         }
     if let Some(ref left) = expr.left
-        && expr_walk_external_alias(left, own) { return true; }
+        && let Some(alias) = expr_find_external_alias(left, own) { return Some(alias); }
     if let Some(ref right) = expr.right
-        && expr_walk_external_alias(right, own) { return true; }
+        && let Some(alias) = expr_find_external_alias(right, own) { return Some(alias); }
     if let Some(ref args) = expr.args
-        && args.iter().any(|a| expr_walk_external_alias(a, own)) { return true; }
-    // Nested subqueries: descend through every clause so a doubly-nested
-    // correlated reference (including one via a FROM-subselect) is detected.
+        && let Some(alias) = args.iter().find_map(|a| expr_find_external_alias(a, own)) { return Some(alias); }
     if let Some(ref sub) = expr.subquery {
-        let nested_own: HashSet<String> = sub
-            .roots
-            .iter()
-            .filter_map(|r| r.options.alias.clone())
+        let nested_own: HashSet<String> = own_root_aliases(sub)
+            .into_iter()
             .chain(own.iter().cloned())
             .collect();
-        if query_walk_external_alias(sub, &nested_own) {
-            return true;
+        if let Some(alias) = find_external_alias(sub, &nested_own) {
+            return Some(alias);
         }
     }
-    false
+    None
 }
 
+/// Compiles one regex component of a `regexp` root path.
+fn root_part_regex(part: &str) -> Result<Regex, SearchError> {
+    Regex::new(&format!("^{}$", part))
+        .map_err(|_| SearchError::fatal(format!("invalid regex in root path: {}", part)))
+}
+
+/// HAVING is evaluated against group accumulators, where set membership and
+/// existence tests have no meaning.
+fn having_uses_unsupported_op(expr: &Expr) -> bool {
+    matches!(expr.op, Some(Op::In | Op::NotIn | Op::Exists | Op::NotExists))
+        || expr.left.as_deref().is_some_and(having_uses_unsupported_op)
+        || expr.right.as_deref().is_some_and(having_uses_unsupported_op)
+}
 #[cfg(any(all(windows, feature = "everything"), all(unix, feature = "plocate")))]
 fn external_index_depth(path: &Path, root_prefix: &str) -> Option<u32> {
     let s = path.to_string_lossy();
@@ -258,6 +274,7 @@ impl<'a> Searcher<'a> {
             conforms_map: HashMap::new(),
             subquery_cache: HashMap::new(),
             silent_mode: false,
+            is_nested: false,
 
             error_count: 0,
         }
@@ -269,12 +286,84 @@ impl<'a> Searcher<'a> {
 
     /// Searches directories based on configured query and outputs results to stdout.
     pub fn list_search_results(&mut self) -> Result<(), SearchError> {
-        let current_dir = std::env::current_dir()?;
+        // A query that can never run is rejected before any output, so a
+        // fatal error never leaves a half-written JSON array or HTML page.
+        self.validate()?;
 
         if !self.silent_mode {
             let col_count = self.query.fields.len();
             try_output!(self.results_writer.write_header(&self.query.raw_query, col_count, &mut std::io::stdout()), Ok(()));
         }
+
+        let result = self.search_and_print();
+
+        // Once the header is out the footer always follows, even when the
+        // search aborted, so the document stays well-formed.
+        if !self.silent_mode
+            && let Err(err) = self.results_writer.write_footer(&mut std::io::stdout().lock())
+                && result.is_ok() {
+                    return Err(err.into());
+                }
+
+        result
+    }
+
+    /// Static checks that need no file system access. Everything reported
+    /// here used to surface only after the output header had been written.
+    fn validate(&self) -> Result<(), SearchError> {
+        // The top-level walk descends into every subquery scope, so a nested
+        // searcher (which may reference enclosing aliases) skips this check.
+        if !self.is_nested
+            && let Some(alias) = find_external_alias(self.query, &own_root_aliases(self.query)) {
+                return Err(SearchError::fatal(format!("Invalid root alias: {}", alias)).with_source("query"));
+            }
+
+        for root in self.query.roots.iter().filter(|root| root.options.regexp) {
+            for part in root.path.split('/').filter(|part| looks_like_regexp(part)) {
+                root_part_regex(part)?;
+            }
+        }
+
+        if let Some(ordering_expr) = self.unsortable_grouped_ordering() {
+            return Err(SearchError::fatal(format!(
+                "Cannot order by '{}': in a GROUP BY query the ORDER BY expression must appear in the SELECT list, be an aggregate function, or be a grouping column",
+                ordering_expr
+            )).with_source("query"));
+        }
+
+        if let Some(ref having) = self.query.having
+            && having_uses_unsupported_op(having) {
+                return Err(SearchError::fatal(
+                    "IN, NOT IN, EXISTS, and NOT EXISTS are not supported in the HAVING clause",
+                )
+                .with_source("query"));
+            }
+
+        Ok(())
+    }
+
+    /// In a GROUP BY query an ORDER BY expression must be a selected column,
+    /// an aggregate, or a grouping column; anything else has no per-group value.
+    fn unsortable_grouped_ordering(&self) -> Option<&Expr> {
+        if !self.query.is_aggregated() || self.query.grouping_fields.is_empty() {
+            return None;
+        }
+        let field_names: Vec<String> = self.query.fields.iter()
+            .map(|f| f.to_string().to_lowercase())
+            .collect();
+        let grouping_names: Vec<String> = self.query.grouping_fields.iter()
+            .map(|f| f.to_string().to_lowercase())
+            .collect();
+        self.query.ordering_fields.iter().find(|ordering_expr| {
+            let name = ordering_expr.to_string().to_lowercase();
+            !field_names.contains(&name)
+                && !ordering_expr.has_aggregate_function()
+                && !grouping_names.contains(&name)
+        })
+    }
+
+    fn search_and_print(&mut self) -> Result<(), SearchError> {
+        let current_dir = std::env::current_dir()?;
 
         let start_time = std::time::Instant::now();
 
@@ -289,13 +378,7 @@ impl<'a> Searcher<'a> {
                 for part in parts {
                     if looks_like_regexp(part) {
                         // Create a regex from the part
-                        let rx_string = format!("^{}$", part);
-                        let rx = match Regex::new(&rx_string) {
-                            Ok(rx) => rx,
-                            Err(_) => {
-                                return Err(SearchError::fatal(format!("invalid regex in root path: {}", part)));
-                            }
-                        };
+                        let rx = root_part_regex(part)?;
                         let mut tmp = vec![];
 
                         if ext_roots.is_empty() {
@@ -526,29 +609,15 @@ impl<'a> Searcher<'a> {
                 let field_names: Vec<String> = self.query.fields.iter()
                     .map(|f| f.to_string().to_lowercase())
                     .collect();
-                let grouping_names: Vec<String> = self.query.grouping_fields.iter()
-                    .map(|f| f.to_string().to_lowercase())
-                    .collect();
                 // Map each ordering expression to its SELECT column when it is
-                // selected; otherwise it is evaluated per group below. An
-                // expression that is neither selected, an aggregate, nor a
-                // grouping column has no per-group value to sort by.
-                let mut sorting_indices: Vec<Option<usize>> =
-                    Vec::with_capacity(self.query.ordering_fields.len());
-                for ordering_expr in self.query.ordering_fields.iter() {
-                    let name = ordering_expr.to_string().to_lowercase();
-                    let index = field_names.iter().position(|g| g == &name);
-                    if index.is_none()
-                        && !ordering_expr.has_aggregate_function()
-                        && !grouping_names.contains(&name)
-                    {
-                        return Err(SearchError::fatal(format!(
-                            "Cannot order by '{}': in a GROUP BY query the ORDER BY expression must appear in the SELECT list, be an aggregate function, or be a grouping column",
-                            ordering_expr
-                        )).with_source("query"));
-                    }
-                    sorting_indices.push(index);
-                }
+                // selected; otherwise it is evaluated per group below
+                // (`validate` has already rejected anything unsortable).
+                let sorting_indices: Vec<Option<usize>> = self.query.ordering_fields.iter()
+                    .map(|ordering_expr| {
+                        let name = ordering_expr.to_string().to_lowercase();
+                        field_names.iter().position(|g| g == &name)
+                    })
+                    .collect();
 
                 let mut grouped_results: TopN<Criteria<String>, Vec<(String, String)>> =
                     if self.query.limit > 0 {
@@ -682,11 +751,6 @@ impl<'a> Searcher<'a> {
             drop(stdout);
         }
 
-        if !self.silent_mode {
-            let mut stdout = std::io::stdout().lock();
-            self.results_writer.write_footer(&mut stdout)?;
-        }
-
         let completion_time = std::time::Instant::now();
 
         if self.config.debug {
@@ -777,6 +841,7 @@ impl<'a> Searcher<'a> {
         // Always run silent: is_buffered() must hold so results land in
         // output_buffer instead of leaking to stdout (debug mode included).
         sub_searcher.silent_mode = true;
+        sub_searcher.is_nested = true;
         if let Err(err) = sub_searcher.list_search_results() {
             err.print();
             return vec![];

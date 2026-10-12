@@ -250,19 +250,19 @@ fn file_type_predicate(
 }
 
 pub fn handle_is_pipe(ctx: &mut FieldContext) -> Result<Variant, SearchError> {
-    Ok(check_file_mode(ctx, &mode::is_pipe, &mode::mode_is_pipe))
+    Ok(check_file_type_mode(ctx, &mode::mode_is_pipe))
 }
 
 pub fn handle_is_char_device(ctx: &mut FieldContext) -> Result<Variant, SearchError> {
-    Ok(check_file_mode(ctx, &mode::is_char_device, &mode::mode_is_char_device))
+    Ok(check_file_type_mode(ctx, &mode::mode_is_char_device))
 }
 
 pub fn handle_is_block_device(ctx: &mut FieldContext) -> Result<Variant, SearchError> {
-    Ok(check_file_mode(ctx, &mode::is_block_device, &mode::mode_is_block_device))
+    Ok(check_file_type_mode(ctx, &mode::mode_is_block_device))
 }
 
 pub fn handle_is_socket(ctx: &mut FieldContext) -> Result<Variant, SearchError> {
-    Ok(check_file_mode(ctx, &mode::is_socket, &mode::mode_is_socket))
+    Ok(check_file_type_mode(ctx, &mode::mode_is_socket))
 }
 
 unix_int_handler!(handle_device, dev, VariantType::String);
@@ -544,25 +544,32 @@ pub fn handle_is_shebang(ctx: &mut FieldContext) -> Result<Variant, SearchError>
     Ok(Variant::from_bool(is_shebang(&ctx.entry.path())))
 }
 
-pub fn check_file_mode(
-    ctx: &mut FieldContext,
-    mode_func_boxed: &dyn Fn(&std::fs::Metadata) -> bool,
-    mode_func_i32: &dyn Fn(u32) -> bool,
-) -> Variant {
+/// The Unix mode of the current entry: the one recorded in the archive for
+/// archived entries, otherwise the one from the file metadata. `None` where
+/// there is no such thing (Windows, or an archive that did not store it).
+fn unix_mode(ctx: &mut FieldContext) -> Option<u32> {
     match ctx.file_info {
-        Some(file_info) => {
-            if let Some(mode) = file_info.mode {
-                return Variant::from_bool(mode_func_i32(mode));
-            }
-        }
-        _ => {
+        Some(file_info) => file_info.mode,
+        None => {
             ctx.fms.update_file_metadata(ctx.entry, ctx.follow_symlinks);
-            if let Some(attrs) = ctx.fms.get_file_metadata() {
-                return Variant::from_bool(mode_func_boxed(attrs));
-            }
+            ctx.fms.get_file_metadata().and_then(mode::get_mode_from_boxed_unix_int)
         }
     }
-    Variant::from_bool(false)
+}
+
+/// File-type bits (pipe, socket, devices): an entry without a Unix mode is
+/// simply none of those, so the answer is a definite `false`.
+pub fn check_file_type_mode(ctx: &mut FieldContext, mode_func: &dyn Fn(u32) -> bool) -> Variant {
+    Variant::from_bool(unix_mode(ctx).is_some_and(mode_func))
+}
+
+/// Permission bits: without a Unix mode the question has no answer, so the
+/// value is empty rather than a misleading `false`.
+pub fn check_permission_mode(ctx: &mut FieldContext, mode_func: &dyn Fn(u32) -> bool) -> Variant {
+    match unix_mode(ctx) {
+        Some(mode) => Variant::from_bool(mode_func(mode)),
+        None => Variant::empty(VariantType::String),
+    }
 }
 
 #[cfg(test)]
@@ -603,6 +610,57 @@ mod tests {
             user_cache: &user_cache,
         };
         dispatch::get_field_value(&mut ctx, field).unwrap()
+    }
+
+    fn make_entry(name: &str) -> (std::path::PathBuf, fs::DirEntry) {
+        let tmp = std::env::temp_dir().join(name);
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        fs::write(tmp.join("dummy.txt"), "").unwrap();
+        let entry = fs::read_dir(&tmp).unwrap().next().unwrap().unwrap();
+        (tmp, entry)
+    }
+
+    #[test]
+    fn permission_bits_of_archive_entries_follow_their_recorded_unix_mode() {
+        let (tmp, entry) = make_entry("fselect_test_archive_mode_bits");
+        let with_mode = Some(FileInfo {
+            name: String::from("inner.txt"),
+            size: 0,
+            mode: Some(0o100644),
+            modified: None,
+        });
+        let without_mode = Some(FileInfo {
+            name: String::from("inner.txt"),
+            size: 0,
+            mode: None,
+            modified: None,
+        });
+
+        let user_read = test_field(&entry, &with_mode, &tmp, &Field::UserRead).to_string();
+        let other_write = test_field(&entry, &with_mode, &tmp, &Field::OtherWrite).to_string();
+        // An archive that recorded no Unix mode cannot answer: empty, not false.
+        let unknown_read = test_field(&entry, &without_mode, &tmp, &Field::UserRead).to_string();
+        let unknown_suid = test_field(&entry, &without_mode, &tmp, &Field::Suid).to_string();
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(user_read, "true");
+        assert_eq!(other_write, "false");
+        assert_eq!(unknown_read, "");
+        assert_eq!(unknown_suid, "");
+    }
+
+    #[cfg(not(unix))]
+    #[test]
+    fn permission_bits_are_empty_where_files_have_no_unix_mode() {
+        let (tmp, entry) = make_entry("fselect_test_windows_mode_bits");
+        let values: Vec<String> = [Field::UserRead, Field::UserWrite, Field::GroupExec, Field::OtherAll, Field::Suid, Field::IsSticky]
+            .iter()
+            .map(|field| test_field(&entry, &None, &tmp, field).to_string())
+            .collect();
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(values, vec![""; 6], "permission bits are a Unix concept and must be empty here");
     }
 
     #[test]

@@ -240,6 +240,9 @@ Per-group permission bits.
 .TP
 .BR other_read ", " other_write ", " other_exec ", " other_all " / " other_rwx
 Permission bits for other users.
+All permission bits, as well as
+.BR suid ", " sgid " and " sticky ,
+are empty on Windows and for archive entries without a stored Unix mode.
 .TP
 .BR suid " or " is_suid
 SUID bit.

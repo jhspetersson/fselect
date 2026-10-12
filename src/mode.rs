@@ -197,58 +197,38 @@ pub fn get_mode_from_boxed_unix_int(meta: &Metadata) -> Option<u32> {
     }
 }
 
-/// Generate a pair of functions: one that checks a mode bit on raw `u32`,
-/// and one that extracts the mode from `Metadata` first.
+/// Generate a predicate that checks a mode bit on a raw Unix `u32` mode.
 macro_rules! mode_check {
-    ($meta_fn:ident, $mode_fn:ident, $mask:expr, $expected:expr) => {
-        pub fn $meta_fn(meta: &Metadata) -> bool {
-            match get_mode_from_boxed_unix_int(meta) {
-                Some(mode) => $mode_fn(mode),
-                None => false,
-            }
-        }
-
+    ($mode_fn:ident, $mask:expr, $expected:expr) => {
         pub fn $mode_fn(mode: u32) -> bool {
             mode & $mask == $expected
         }
     };
 }
 
-mode_check!(user_read, mode_user_read, S_IRUSR, S_IRUSR);
-mode_check!(user_write, mode_user_write, S_IWUSR, S_IWUSR);
-mode_check!(user_exec, mode_user_exec, S_IXUSR, S_IXUSR);
-mode_check!(group_read, mode_group_read, S_IRGRP, S_IRGRP);
-mode_check!(group_write, mode_group_write, S_IWGRP, S_IWGRP);
-mode_check!(group_exec, mode_group_exec, S_IXGRP, S_IXGRP);
-mode_check!(other_read, mode_other_read, S_IROTH, S_IROTH);
-mode_check!(other_write, mode_other_write, S_IWOTH, S_IWOTH);
-mode_check!(other_exec, mode_other_exec, S_IXOTH, S_IXOTH);
-mode_check!(suid_bit_set, mode_suid, S_ISUID, S_ISUID);
-mode_check!(sgid_bit_set, mode_sgid, S_ISGID, S_ISGID);
-mode_check!(sticky_bit_set, mode_sticky, S_ISVTX, S_ISVTX);
-mode_check!(is_pipe, mode_is_pipe, S_IFMT, S_IFIFO);
-mode_check!(is_char_device, mode_is_char_device, S_IFMT, S_IFCHR);
-mode_check!(is_block_device, mode_is_block_device, S_IFMT, S_IFBLK);
-mode_check!(is_socket, mode_is_socket, S_IFMT, S_IFSOCK);
-
-pub fn user_all(meta: &Metadata) -> bool {
-    user_read(meta) && user_write(meta) && user_exec(meta)
-}
+mode_check!(mode_user_read, S_IRUSR, S_IRUSR);
+mode_check!(mode_user_write, S_IWUSR, S_IWUSR);
+mode_check!(mode_user_exec, S_IXUSR, S_IXUSR);
+mode_check!(mode_group_read, S_IRGRP, S_IRGRP);
+mode_check!(mode_group_write, S_IWGRP, S_IWGRP);
+mode_check!(mode_group_exec, S_IXGRP, S_IXGRP);
+mode_check!(mode_other_read, S_IROTH, S_IROTH);
+mode_check!(mode_other_write, S_IWOTH, S_IWOTH);
+mode_check!(mode_other_exec, S_IXOTH, S_IXOTH);
+mode_check!(mode_suid, S_ISUID, S_ISUID);
+mode_check!(mode_sgid, S_ISGID, S_ISGID);
+mode_check!(mode_sticky, S_ISVTX, S_ISVTX);
+mode_check!(mode_is_pipe, S_IFMT, S_IFIFO);
+mode_check!(mode_is_char_device, S_IFMT, S_IFCHR);
+mode_check!(mode_is_block_device, S_IFMT, S_IFBLK);
+mode_check!(mode_is_socket, S_IFMT, S_IFSOCK);
 
 pub fn mode_user_all(mode: u32) -> bool {
     mode_user_read(mode) && mode_user_write(mode) && mode_user_exec(mode)
 }
 
-pub fn group_all(meta: &Metadata) -> bool {
-    group_read(meta) && group_write(meta) && group_exec(meta)
-}
-
 pub fn mode_group_all(mode: u32) -> bool {
     mode_group_read(mode) && mode_group_write(mode) && mode_group_exec(mode)
-}
-
-pub fn other_all(meta: &Metadata) -> bool {
-    other_read(meta) && other_write(meta) && other_exec(meta)
 }
 
 pub fn mode_other_all(mode: u32) -> bool {

@@ -199,6 +199,31 @@ fn file_contains<R: Read>(mut reader: R, needle: &[u8]) -> bool {
 /// Parses `arg` as an `f64` and applies `f` to it. A value that does not parse
 /// as a number yields an empty string variant, matching the behavior shared by
 /// all the numeric functions.
+/// LEAST / GREATEST. Empty (missing) arguments are skipped. When every
+/// remaining argument is a number the comparison is numeric, with non-finite
+/// values skipped too; otherwise all arguments are compared as strings, as in
+/// MySQL. `pick` is the ordering a candidate must have against the current
+/// best to replace it.
+fn least_or_greatest(first: &str, rest: &[String], pick: Ordering) -> Variant {
+    let values: Vec<&str> = std::iter::once(first)
+        .chain(rest.iter().map(String::as_str))
+        .filter(|value| !value.is_empty())
+        .collect();
+
+    let numbers: Option<Vec<f64>> = values.iter().map(|value| value.parse::<f64>().ok()).collect();
+    match numbers {
+        Some(numbers) => numbers
+            .into_iter()
+            .filter(|number| number.is_finite())
+            .reduce(|best, number| if number.partial_cmp(&best) == Some(pick) { number } else { best })
+            .map_or_else(|| Variant::empty(VariantType::String), Variant::from_float),
+        None => values
+            .into_iter()
+            .reduce(|best, value| if value.cmp(best) == pick { value } else { best })
+            .map_or_else(|| Variant::empty(VariantType::String), |value| Variant::from_string(&value.to_string())),
+    }
+}
+
 fn unary_float(arg: &str, f: impl FnOnce(f64) -> Result<Variant, String>) -> Result<Variant, String> {
     match arg.parse::<f64>() {
         Ok(val) => f(val),
@@ -407,36 +432,8 @@ pub fn get_value(
             }
             Ok(Variant::from_float(result))
         }),
-        Function::Least => unary_float(&function_arg, |val| {
-            let mut least = if val.is_finite() { val } else { f64::INFINITY };
-            for arg in function_args {
-                if let Ok(val) = arg.parse::<f64>()
-                    && val.is_finite() {
-                        least = least.min(val);
-                    }
-            }
-
-            if least.is_finite() {
-                Ok(Variant::from_float(least))
-            } else {
-                Ok(Variant::empty(VariantType::String))
-            }
-        }),
-        Function::Greatest => unary_float(&function_arg, |val| {
-            let mut greatest = if val.is_finite() { val } else { f64::NEG_INFINITY };
-            for arg in function_args {
-                if let Ok(val) = arg.parse::<f64>()
-                    && val.is_finite() {
-                        greatest = greatest.max(val);
-                    }
-            }
-
-            if greatest.is_finite() {
-                Ok(Variant::from_float(greatest))
-            } else {
-                Ok(Variant::empty(VariantType::String))
-            }
-        }),
+        Function::Least => Ok(least_or_greatest(&function_arg, &function_args, Ordering::Less)),
+        Function::Greatest => Ok(least_or_greatest(&function_arg, &function_args, Ordering::Greater)),
         Function::Pi => {
             Ok(Variant::from_float(std::f64::consts::PI))
         }
@@ -1941,6 +1938,31 @@ mod tests {
         assert_eq!(result.unwrap().to_int(), 30);
     }
     
+    #[test]
+    fn least_and_greatest_compare_strings_lexicographically() {
+        let least = get_value(&Function::Least, String::from("pear"), vec![String::from("apple"), String::from("fig")], None, &None);
+        assert_eq!(least.unwrap().to_string(), "apple");
+        let greatest = get_value(&Function::Greatest, String::from("pear"), vec![String::from("apple"), String::from("fig")], None, &None);
+        assert_eq!(greatest.unwrap().to_string(), "pear");
+
+        // One non-numeric argument turns the whole comparison into a string one, as in MySQL.
+        let mixed = get_value(&Function::Greatest, String::from("10"), vec![String::from("9"), String::from("abc")], None, &None);
+        assert_eq!(mixed.unwrap().to_string(), "abc");
+        let mixed = get_value(&Function::Least, String::from("10"), vec![String::from("9"), String::from("abc")], None, &None);
+        assert_eq!(mixed.unwrap().to_string(), "10");
+    }
+
+    #[test]
+    fn least_and_greatest_skip_empty_arguments_before_choosing_the_comparison() {
+        // An empty (missing) value must not demote `10` vs `9` to a string comparison.
+        let least = get_value(&Function::Least, String::from("10"), vec![String::from(""), String::from("9")], None, &None);
+        assert_eq!(least.unwrap().to_int(), 9);
+        let only_empty = get_value(&Function::Greatest, String::from(""), vec![String::from("")], None, &None);
+        assert_eq!(only_empty.unwrap().to_string(), "");
+        let strings = get_value(&Function::Greatest, String::from(""), vec![String::from("b"), String::from("a")], None, &None);
+        assert_eq!(strings.unwrap().to_string(), "b");
+    }
+
     #[test]
     fn function_pi() {
         let function = Function::Pi;

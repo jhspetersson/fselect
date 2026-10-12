@@ -3168,6 +3168,23 @@ mod tests {
     }
 
     #[test]
+    fn line_count_field_handles_cr_and_missing_trailing_newline() {
+        let tmp = std::env::temp_dir().join("fselect_test_line_count_styles");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        fs::write(tmp.join("cr.txt"), "a\rb\rc\r").unwrap();
+        fs::write(tmp.join("crlf.txt"), "a\r\nb\r\nc\r\n").unwrap();
+        fs::write(tmp.join("lf_open.txt"), "a\nb\nc").unwrap();
+        fs::write(tmp.join("single.txt"), "single").unwrap();
+        fs::write(tmp.join("empty.txt"), "").unwrap();
+
+        let rows = run_query_against_dir("select name, line_count from __DIR__ order by name", &tmp);
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(rows, vec!["cr.txt\t3", "crlf.txt\t3", "empty.txt\t0", "lf_open.txt\t3", "single.txt\t1"]);
+    }
+
+    #[test]
     fn min_max_of_fsize_match_the_smallest_and_largest_file() {
         let tmp = std::env::temp_dir().join("fselect_test_fsize_min_max");
         let _ = fs::remove_dir_all(&tmp);

@@ -815,6 +815,30 @@ fn decode_utf32(body: &[u8], big_endian: bool) -> String {
 }
 
 #[cfg(test)]
+fn count_lines(text: &str) -> usize {
+    let mut lines = 0;
+    let mut line_open = false;
+    let mut chars = text.chars().peekable();
+    while let Some(c) = chars.next() {
+        match c {
+            '\r' => {
+                lines += 1;
+                line_open = false;
+                if chars.peek() == Some(&'\n') {
+                    chars.next();
+                }
+            }
+            '\n' => {
+                lines += 1;
+                line_open = false;
+            }
+            _ => line_open = true,
+        }
+    }
+    lines + line_open as usize
+}
+
+#[cfg(test)]
 fn detect_line_ending(text: &str) -> String {
     let bytes = text.as_bytes();
     let (mut crlf, mut lf, mut cr) = (false, false, false);
@@ -873,7 +897,7 @@ fn compute_content_stats(bytes: &[u8]) -> ContentStats {
         // For binary files the decoded text is empty; count newline bytes in
         // the body instead, matching the standalone line-count byte scan.
         line_count: match is_text {
-            true => text.chars().filter(|&c| c == '\n').count(),
+            true => count_lines(&text),
             false => bytecount::count(body, b'\n'),
         },
         line_ending: detect_line_ending(&text),
@@ -902,6 +926,8 @@ struct ContentScan {
     char_count: usize,
     word_count: usize,
     newline_count: usize,
+    line_count: usize,
+    line_open: bool,
     in_word: bool,
     crlf: bool,
     lf: bool,
@@ -930,22 +956,34 @@ impl ContentScan {
             self.pending_cr = false;
             if c == '\n' {
                 self.crlf = true;
+                self.line_count += 1;
                 return;
             }
             self.cr = true;
+            self.line_count += 1;
         }
         if c == '\r' {
             self.pending_cr = true;
+            self.line_open = false;
         } else if c == '\n' {
             self.lf = true;
+            self.line_count += 1;
+            self.line_open = false;
+        } else {
+            self.line_open = true;
         }
     }
 
-    /// Resolve a trailing lone '\r' once the stream ends.
+    /// Resolve a trailing lone '\r' and an unterminated last line once the stream ends.
     fn finish_line(&mut self) {
         if self.pending_cr {
             self.cr = true;
             self.pending_cr = false;
+            self.line_count += 1;
+        }
+        if self.line_open {
+            self.line_count += 1;
+            self.line_open = false;
         }
     }
 
@@ -1181,7 +1219,7 @@ impl ContentSink for NoBomSink {
                 is_text: true,
                 char_count: self.utf8.char_count,
                 word_count: self.utf8.word_count,
-                line_count: self.utf8.newline_count,
+                line_count: self.utf8.line_count,
                 encoding: String::from("ASCII"),
                 has_bom: false,
                 line_ending: self.utf8.line_ending(),
@@ -1191,7 +1229,7 @@ impl ContentSink for NoBomSink {
                 is_text: true,
                 char_count: self.utf8.char_count,
                 word_count: self.utf8.word_count,
-                line_count: self.utf8.newline_count,
+                line_count: self.utf8.line_count,
                 encoding: String::from("UTF-8"),
                 has_bom: false,
                 line_ending: self.utf8.line_ending(),
@@ -1202,7 +1240,7 @@ impl ContentSink for NoBomSink {
                 is_text: true,
                 char_count: self.byte_count,
                 word_count: self.latin1.word_count,
-                line_count: self.latin1.newline_count,
+                line_count: self.latin1.line_count,
                 encoding: String::from("ISO-8859-1"),
                 has_bom: false,
                 line_ending: self.latin1.line_ending(),
@@ -1244,7 +1282,7 @@ impl ContentSink for Utf8BomSink {
             is_text: true,
             char_count: self.scan.char_count,
             word_count: self.scan.word_count,
-            line_count: self.scan.newline_count,
+            line_count: self.scan.line_count,
             encoding: String::from("UTF-8"),
             has_bom: true,
             line_ending: self.scan.line_ending(),
@@ -1333,7 +1371,7 @@ impl ContentSink for Utf16Sink {
             is_text: true,
             char_count: self.scan.char_count,
             word_count: self.scan.word_count,
-            line_count: self.scan.newline_count,
+            line_count: self.scan.line_count,
             encoding: String::from(if self.big_endian { "UTF-16BE" } else { "UTF-16LE" }),
             has_bom: true,
             line_ending: self.scan.line_ending(),
@@ -1398,7 +1436,7 @@ impl ContentSink for Utf32Sink {
             is_text: true,
             char_count: self.scan.char_count,
             word_count: self.scan.word_count,
-            line_count: self.scan.newline_count,
+            line_count: self.scan.line_count,
             encoding: String::from(if self.big_endian { "UTF-32BE" } else { "UTF-32LE" }),
             has_bom: true,
             line_ending: self.scan.line_ending(),
@@ -1471,6 +1509,23 @@ mod tests {
             );
         }
         assert_eq!(t.iter_values().count(), 3);
+    }
+
+    #[test]
+    fn line_count_counts_lines_for_every_line_ending_style() {
+        let count = |bytes: &[u8]| compute_content_stats(bytes).line_count;
+        assert_eq!(count(b""), 0);
+        assert_eq!(count(b"single"), 1);
+        assert_eq!(count(b"a\nb\nc\n"), 3);
+        assert_eq!(count(b"a\nb\nc"), 3);
+        assert_eq!(count(b"a\r\nb\r\nc\r\n"), 3);
+        assert_eq!(count(b"a\r\nb\r\nc"), 3);
+        assert_eq!(count(b"a\rb\rc\r"), 3);
+        assert_eq!(count(b"a\rb\rc"), 3);
+        assert_eq!(count(b"a\r\nb\nc"), 3);
+        assert_eq!(count(b"a\r\r"), 2);
+        assert_eq!(count(b"\n\n"), 2);
+        assert_eq!(count("h\u{e9}llo\rw\u{f6}rld".as_bytes()), 2);
     }
 
     #[test]

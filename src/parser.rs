@@ -443,7 +443,7 @@ impl <'a> Parser<'a> {
                             } else if s == "dfs" {
                                 traversal = Dfs;
                                 mode = RootParsingMode::Options;
-                            } else if s.starts_with("regex") {
+                            } else if s.starts_with("regex") || s == "rx" {
                                 regexp = true;
                                 mode = RootParsingMode::Options;
                             } else if s == "as" {
@@ -484,10 +484,6 @@ impl <'a> Parser<'a> {
                             mode = RootParsingMode::Options;
                         }
                     },
-                    Lexeme::Operator(s) if s.eq("rx") => {
-                        regexp = true;
-                        mode = RootParsingMode::Options;
-                    }
                     _ => {
                         self.drop_lexeme();
                         if mode != RootParsingMode::Unknown && mode != RootParsingMode::Options {
@@ -538,6 +534,7 @@ impl <'a> Parser<'a> {
             || s == "bfs"
             || s == "dfs"
             || s.starts_with("regex")
+            || s == "rx"
             || s == "as"
     }
 
@@ -3156,6 +3153,35 @@ mod tests {
         assert!(!p2.there_are_remaining_lexemes());
 
         assert_eq!(query.fields, query2.fields);
+    }
+
+    #[test]
+    fn rx_root_option_is_a_synonym_of_regexp() {
+        for query in [
+            "select name from /te.*/sub rx",
+            "select name from /te.*/sub RX",
+            "select name from /te.*/sub rx where name = 'x'",
+            "select name from /te.*/sub depth 2 rx symlinks",
+            "select name from /te.*/sub rx, /other regexp",
+        ] {
+            let mut lexer = Lexer::new(vec![query.to_string()]);
+            let mut p = Parser::new(&mut lexer);
+            let parsed = p.parse(false).unwrap_or_else(|e| panic!("{}: {}", query, e));
+            assert!(!p.there_are_remaining_lexemes(), "{}: leftover lexemes", query);
+            assert_eq!(parsed.roots[0].path, "/te.*/sub", "{}", query);
+            assert!(parsed.roots[0].options.regexp, "{}: rx should enable regexp roots", query);
+        }
+        let mut lexer = Lexer::new(vec!["select name from /te.*/sub depth 2 rx symlinks".to_string()]);
+        let parsed = Parser::new(&mut lexer).parse(false).unwrap();
+        assert_eq!(parsed.roots[0].options.max_depth, 2);
+        assert!(parsed.roots[0].options.symlinks);
+    }
+
+    #[test]
+    fn rx_root_option_does_not_shadow_a_field_named_rx() {
+        // `rx` is only a root option; a SELECT list ending right before FROM
+        // and a WHERE using the rx operator keep working.
+        parse_where("select name from /test rx where name rx '^a'");
     }
 
     #[test]

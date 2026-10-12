@@ -80,43 +80,31 @@ fn main() -> ExitCode {
 
     let mut first_arg = args[0].to_ascii_lowercase();
 
-    // Flags are matched exactly: a quoted query is a single argument and may
-    // well contain words like "version" or "help" (e.g. "exif_version from .").
-    if matches!(first_arg.as_str(), "version" | "-v" | "--version" | "/version") {
-        short_usage_info(no_color);
-        return ExitCode::SUCCESS;
-    }
-
-    if matches!(first_arg.as_str(), "help" | "-h" | "--help" | "-help" | "/?" | "/h" | "/help") {
-        usage_info(config, default_config, no_color);
-        return ExitCode::SUCCESS;
-    }
-
-    if first_arg.starts_with("--fields") {
-        complete_fields_info();
-        return ExitCode::SUCCESS;
-    }
-
-    if first_arg.starts_with("--functions") {
-        complete_functions_info();
-        return ExitCode::SUCCESS;
-    }
-
-    if first_arg.starts_with("--root-options") {
-        complete_root_options_info();
-        return ExitCode::SUCCESS;
-    }
-
-    if first_arg.starts_with("--output-formats") {
-        complete_output_formats_info();
-        return ExitCode::SUCCESS;
-    }
-
     #[allow(unused_mut)]
     let mut interactive = false;
 
     loop {
-        if matches!(first_arg.as_str(), "--nocolor" | "--no-color" | "-nocolor" | "/nocolor") {
+        // Flags are matched exactly: a quoted query is a single argument and may
+        // well contain words like "version" or "help" (e.g. "exif_version from .").
+        if matches!(first_arg.as_str(), "version" | "-v" | "--version" | "/version") {
+            short_usage_info(no_color);
+            return ExitCode::SUCCESS;
+        } else if matches!(first_arg.as_str(), "help" | "-h" | "--help" | "-help" | "/?" | "/h" | "/help") {
+            usage_info(config, default_config, no_color);
+            return ExitCode::SUCCESS;
+        } else if first_arg.starts_with("--fields") {
+            complete_fields_info();
+            return ExitCode::SUCCESS;
+        } else if first_arg.starts_with("--functions") {
+            complete_functions_info();
+            return ExitCode::SUCCESS;
+        } else if first_arg.starts_with("--root-options") {
+            complete_root_options_info();
+            return ExitCode::SUCCESS;
+        } else if first_arg.starts_with("--output-formats") {
+            complete_output_formats_info();
+            return ExitCode::SUCCESS;
+        } else if matches!(first_arg.as_str(), "--nocolor" | "--no-color" | "-nocolor" | "/nocolor") {
             no_color = true;
         } else if matches!(first_arg.as_str(), "-i" | "--interactive" | "/i") {
             #[cfg(feature = "interactive")]

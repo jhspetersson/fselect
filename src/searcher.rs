@@ -3470,6 +3470,19 @@ mod tests {
         tmp
     }
 
+    #[cfg(all(unix, feature = "users"))]
+    #[test]
+    fn group_field_can_be_selected_and_filtered() {
+        let tmp = make_sized_files_dir("fselect_test_group_field");
+        let mut names = run_query_against_dir("select name from __DIR__ where length(group) > 0 order by group, name", &tmp);
+        names.sort();
+        let groups = run_query_against_dir("select group from __DIR__", &tmp);
+        let _ = fs::remove_dir_all(&tmp);
+        assert_eq!(names, vec!["empty.txt", "s12.txt", "s3.txt"]);
+        assert_eq!(groups.len(), 3);
+        assert!(groups.iter().all(|g| !g.is_empty()), "group names should not be empty: {:?}", groups);
+    }
+
     #[test]
     fn numeric_field_compared_to_non_numeric_runtime_value_matches_nothing() {
         // Literals like `size > 'abc'` are rejected by the parser; operands the

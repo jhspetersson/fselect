@@ -309,7 +309,7 @@ impl Lexer {
                 "or" if self.state.in_where() && self.state.is_keyword_position(false) => Some(Lexeme::Or),
                 "and" if self.state.in_where() && self.state.is_keyword_position(false) => Some(Lexeme::And),
                 "not" if self.state.in_where() && !self.state.after_operator && !self.state.after_value_start => Some(Lexeme::Not),
-                "group" if self.state.is_keyword_position(search_root_ctx) => {
+                "group" if self.state.is_keyword_position(search_root_ctx) && self.next_word_is("by") => {
                     self.state.clause = Clause::GroupBy;
                     Some(Lexeme::Group)
                 }
@@ -367,6 +367,32 @@ impl Lexer {
         self.state.after_arithmetic = matches!(lexeme, Some(Lexeme::ArithmeticOperator(_)));
 
         lexeme
+    }
+
+    fn next_word_is(&self, word: &str) -> bool {
+        let mut input_index = self.input_index;
+        let mut char_index = self.char_index;
+        let mut next = String::new();
+        while let Some(part) = self.input.get(input_index) {
+            for c in part.chars().skip(char_index) {
+                if c.is_ascii_whitespace() {
+                    if next.is_empty() {
+                        continue;
+                    }
+                    return next.eq_ignore_ascii_case(word);
+                }
+                if c == ',' || is_paren_char(c) || self.is_op_char(c) {
+                    return !next.is_empty() && next.eq_ignore_ascii_case(word);
+                }
+                next.push(c);
+            }
+            if !next.is_empty() {
+                return next.eq_ignore_ascii_case(word);
+            }
+            input_index += 1;
+            char_index = 0;
+        }
+        false
     }
 
     fn is_arithmetic_op_char(&self, c: char) -> bool {
@@ -1442,6 +1468,45 @@ c"))), "lexemes were {:?}", lexemes);
     fn group_by() {
         let mut lexer = lexer!("select AVG(size) from /test group by mime");
         assert_group_by_lexemes(&mut lexer);
+    }
+
+    #[test]
+    fn group_is_a_field_unless_by_follows() {
+        let mut lexer = lexer!("select name, group from /test where group = 'x' order by group");
+        assert_eq!(
+            collect(&mut lexer),
+            vec![
+                Lexeme::Select, raw("name"), Lexeme::Comma, raw("group"),
+                Lexeme::From, raw("/test"),
+                Lexeme::Where, raw("group"), Lexeme::Operator("=".to_string()), Lexeme::String("x".to_string()),
+                Lexeme::Order, Lexeme::By, raw("group"),
+            ]
+        );
+    }
+
+    #[test]
+    fn group_before_a_comma_or_at_the_end_is_a_field() {
+        let mut lexer = lexer!("select group, name from /test group by group");
+        assert_eq!(
+            collect(&mut lexer),
+            vec![
+                Lexeme::Select, raw("group"), Lexeme::Comma, raw("name"),
+                Lexeme::From, raw("/test"),
+                Lexeme::Group, Lexeme::By, raw("group"),
+            ]
+        );
+    }
+
+    #[test]
+    fn group_by_keyword_is_detected_across_input_parts() {
+        let mut lexer = lexer!("select", "group", "from", "/test", "group", "by", "group");
+        assert_eq!(
+            collect(&mut lexer),
+            vec![
+                Lexeme::Select, raw("group"), Lexeme::From, raw("/test"),
+                Lexeme::Group, Lexeme::By, raw("group"),
+            ]
+        );
     }
 
     #[test]

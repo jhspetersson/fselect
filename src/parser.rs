@@ -169,16 +169,6 @@ impl <'a> Parser<'a> {
                         fields.push(Expr::field(Field::Modified));
                         fields.push(Expr::field(Field::Path));
                     } else {
-                        if s.to_lowercase() == "group" {
-                            if let Some(Lexeme::By) = self.next_lexeme() {
-                                self.drop_lexeme();
-                                self.drop_lexeme();
-                                break;
-                            } else {
-                                self.drop_lexeme();
-                            }
-                        }
-
                         self.drop_lexeme();
 
                         // Root option keywords terminate the field list, but
@@ -3762,6 +3752,32 @@ mod tests {
                 RootOptions::from(0, 0, false, false, None, None, None, Bfs, false, None),
             )]
         );
+    }
+
+    #[test]
+    fn select_alias_named_group_is_not_the_group_by_keyword() {
+        let query = "select name as group from /test order by group";
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
+        let parsed = p.parse(false).unwrap_or_else(|e| panic!("{}: {}", query, e));
+        assert!(!p.there_are_remaining_lexemes(), "{}: leftover lexemes", query);
+        assert_eq!(parsed.fields[0].alias.as_deref(), Some("group"));
+        assert_eq!(parsed.ordering_fields[0].field, Some(Field::Name), "alias not resolved in ORDER BY");
+    }
+
+    #[cfg(all(unix, feature = "users"))]
+    #[test]
+    fn group_field_is_selectable_everywhere() {
+        let query = "select group, name from /test where group = 'wheel' group by group order by group";
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
+        let parsed = p.parse(false).unwrap_or_else(|e| panic!("{}: {}", query, e));
+        assert!(!p.there_are_remaining_lexemes(), "{}: leftover lexemes", query);
+        assert_eq!(parsed.fields[0].field, Some(Field::Group));
+        assert_eq!(parsed.fields[1].field, Some(Field::Name));
+        assert_eq!(parsed.expr.unwrap().left.unwrap().field, Some(Field::Group));
+        assert_eq!(parsed.grouping_fields[0].field, Some(Field::Group));
+        assert_eq!(parsed.ordering_fields[0].field, Some(Field::Group));
     }
 
     #[test]

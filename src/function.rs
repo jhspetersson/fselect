@@ -25,7 +25,8 @@ use serde::ser::{Serialize, Serializer};
 use xattr::FileExt;
 
 use crate::fileinfo::FileInfo;
-use crate::util::{capitalize_initials, format_date, format_time, format_datetime, parse_datetime};
+use crate::util::{capitalize_initials, format_date, format_time, format_datetime, parse_datetime, parse_filesize};
+use std::cmp::Ordering;
 use crate::util::variant::{Variant, VariantType};
 
 macro_rules! functions {
@@ -1545,19 +1546,22 @@ pub struct FieldAccumulator {
     /// plain strings get SQL-style lexicographic MIN/MAX.
     pub min_value: Option<String>,
     pub max_value: Option<String>,
+    min_size: Option<u64>,
+    max_size: Option<u64>,
 }
 
 impl FieldAccumulator {
     pub fn push(&mut self, value: &str) {
         if !value.is_empty() {
             self.non_empty_count += 1;
-            match &self.min_value {
-                Some(min) if value >= min.as_str() => {}
-                _ => self.min_value = Some(value.to_string()),
+            let size = parse_filesize(value);
+            if matches!(Self::compare(value, size, &self.min_value, self.min_size), None | Some(Ordering::Less)) {
+                self.min_value = Some(value.to_string());
+                self.min_size = size;
             }
-            match &self.max_value {
-                Some(max) if value <= max.as_str() => {}
-                _ => self.max_value = Some(value.to_string()),
+            if matches!(Self::compare(value, size, &self.max_value, self.max_size), None | Some(Ordering::Greater)) {
+                self.max_value = Some(value.to_string());
+                self.max_size = size;
             }
         }
         if let Ok(v) = value.parse::<f64>()
@@ -1577,6 +1581,16 @@ impl FieldAccumulator {
                     self.m2 += (v - old_mean) * (v - new_mean);
                 }
             }
+    }
+}
+
+impl FieldAccumulator {
+    fn compare(value: &str, size: Option<u64>, current: &Option<String>, current_size: Option<u64>) -> Option<Ordering> {
+        let current = current.as_ref()?;
+        Some(match (size, current_size) {
+            (Some(size), Some(current_size)) => size.cmp(&current_size),
+            _ => value.cmp(current.as_str()),
+        })
     }
 }
 
@@ -2893,6 +2907,17 @@ mod tests {
             &None,
         ).unwrap();
         assert_eq!(result.to_string(), "Hello\tWorld");
+    }
+
+    #[test]
+    fn min_max_compare_formatted_sizes_numerically() {
+        let acc = make_accumulator("fsize", &["11.72KiB", "1.91MiB", "900B"]);
+        assert_eq!(get_aggregate_value(&Function::Min, &acc, "fsize".to_string(), &None), "900B");
+        assert_eq!(get_aggregate_value(&Function::Max, &acc, "fsize".to_string(), &None), "1.91MiB");
+
+        let acc = make_accumulator("fsize", &["2 KB", "900 B", "1 MB"]);
+        assert_eq!(get_aggregate_value(&Function::Min, &acc, "fsize".to_string(), &None), "900 B");
+        assert_eq!(get_aggregate_value(&Function::Max, &acc, "fsize".to_string(), &None), "1 MB");
     }
 
     #[test]

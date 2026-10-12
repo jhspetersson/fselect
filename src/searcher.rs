@@ -3168,6 +3168,24 @@ mod tests {
     }
 
     #[test]
+    fn min_max_of_fsize_match_the_smallest_and_largest_file() {
+        let tmp = std::env::temp_dir().join("fselect_test_fsize_min_max");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        fs::write(tmp.join("small.bin"), vec![0u8; 900]).unwrap();
+        fs::write(tmp.join("mid.bin"), vec![0u8; 12_000]).unwrap();
+        fs::write(tmp.join("big.bin"), vec![0u8; 2_000_000]).unwrap();
+
+        let smallest = run_query_against_dir("select fsize from __DIR__ order by size limit 1", &tmp);
+        let largest = run_query_against_dir("select fsize from __DIR__ order by size desc limit 1", &tmp);
+        let aggregated = run_query_against_dir("select min(fsize), max(fsize) from __DIR__", &tmp);
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_ne!(smallest, largest);
+        assert_eq!(aggregated, vec![format!("{}	{}", smallest[0], largest[0])]);
+    }
+
+    #[test]
     fn archive_entries_produce_rectangular_rows() {
         use std::io::Write;
         use std::path::MAIN_SEPARATOR_STR as SEP;

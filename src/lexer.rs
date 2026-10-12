@@ -240,7 +240,7 @@ impl Lexer {
                         } else if c == ','
                             || ((self.input.len() == 1
                                 || (self.input.len() > 1 && !self.state.possible_search_root))
-                                && (c == ' ' || is_paren_char(c) || self.is_op_char(c))) {
+                                && (c.is_ascii_whitespace() || is_paren_char(c) || self.is_op_char(c))) {
                             break;
                         }
                     }
@@ -251,7 +251,7 @@ impl Lexer {
                 LexingMode::Undefined => {
                     self.char_index += 1;
                     match c {
-                        ' ' => {}
+                        c if c.is_ascii_whitespace() => {}
                         '\'' | '"' | '`' => mode = LexingMode::QuotedString(c),
                         ',' => mode = LexingMode::Comma,
                         '(' | '{' => mode = LexingMode::Open(c),
@@ -268,7 +268,7 @@ impl Lexer {
                         }
                     }
 
-                    if c != ' ' {
+                    if !c.is_ascii_whitespace() {
                         self.state.after_open = matches!(mode, LexingMode::Open(_));
                     }
                 }
@@ -453,6 +453,48 @@ mod tests {
             "lexemes were {:?}",
             lexemes
         );
+    }
+
+    #[test]
+    fn tabs_newlines_and_cr_separate_lexemes_like_spaces() {
+        // A query pasted from a file or heredoc arrives as one arg with
+        // newlines/tabs; those must split tokens exactly like spaces do.
+        let mut lexer = lexer!("select name,
+	size
+from /test	where
+name = 'a.txt'
+");
+        let mut lexemes = vec![];
+        while let Some(lexeme) = lexer.next_lexeme() {
+            lexemes.push(lexeme);
+        }
+        assert_eq!(
+            lexemes,
+            vec![
+                Lexeme::Select,
+                Lexeme::RawString(String::from("name")),
+                Lexeme::Comma,
+                Lexeme::RawString(String::from("size")),
+                Lexeme::From,
+                Lexeme::RawString(String::from("/test")),
+                Lexeme::Where,
+                Lexeme::RawString(String::from("name")),
+                Lexeme::Operator(String::from("=")),
+                Lexeme::String(String::from("a.txt")),
+            ]
+        );
+    }
+
+    #[test]
+    fn whitespace_inside_quoted_string_is_preserved() {
+        let mut lexer = lexer!("select name from /test where name = 'a	b
+c'");
+        let mut lexemes = vec![];
+        while let Some(lexeme) = lexer.next_lexeme() {
+            lexemes.push(lexeme);
+        }
+        assert!(lexemes.contains(&Lexeme::String(String::from("a	b
+c"))), "lexemes were {:?}", lexemes);
     }
 
     #[test]

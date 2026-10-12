@@ -269,14 +269,6 @@ impl<'a> Searcher<'a> {
 
     /// Searches directories based on configured query and outputs results to stdout.
     pub fn list_search_results(&mut self) -> Result<(), SearchError> {
-        // Pre-flight: catch unparseable date/datetime literals once, up front,
-        // so a typo like `where modified = 'not-a-date'` fails immediately
-        // with a single fatal error instead of degrading per file scanned.
-        if let Some(ref where_expr) = self.query.expr
-            && let Err(msg) = where_expr.validate_datetime_literals() {
-                return Err(SearchError::fatal(msg).with_source("where"));
-            }
-
         let current_dir = std::env::current_dir()?;
 
         if !self.silent_mode {
@@ -1651,8 +1643,10 @@ impl<'a> Searcher<'a> {
             )?;
             let matches = match field_type {
                 VariantType::String => arg_val.to_string() == field_value.to_string(),
-                VariantType::Int => arg_val.to_int() == field_value.to_int(),
-                VariantType::Float => arg_val.to_float() == field_value.to_float(),
+                // Unparsable numeric args (`size in ('abc')`) are skipped,
+                // not coerced to 0, like the DateTime arm below.
+                VariantType::Int => arg_val.to_int_opt() == Some(field_value.to_int()),
+                VariantType::Float => arg_val.to_float_opt() == Some(field_value.to_float()),
                 VariantType::Bool => arg_val.to_bool() == field_value.to_bool(),
                 VariantType::DateTime => {
                     // Unparseable values: silently skip this arg (treat as a
@@ -1848,7 +1842,12 @@ impl<'a> Searcher<'a> {
                     }
                 }
                 VariantType::Int => {
-                    let val = value.to_int();
+                    // A literal that is neither a number nor a file size
+                    // (`size = ''`, `size > 'abc'`) is a non-match rather than
+                    // 0, mirroring the DateTime branch's NULL-like semantics.
+                    let Some(val) = value.to_int_opt() else {
+                        return Ok(false);
+                    };
                     let int_value = field_value.to_int();
                     match op {
                         Op::Eq | Op::Eeq => int_value == val,
@@ -1861,7 +1860,9 @@ impl<'a> Searcher<'a> {
                     }
                 }
                 VariantType::Float => {
-                    let val = value.to_float();
+                    let Some(val) = value.to_float_opt() else {
+                        return Ok(false);
+                    };
                     let float_value = field_value.to_float();
                     match op {
                         Op::Eq | Op::Eeq => float_value == val,
@@ -3434,5 +3435,54 @@ mod tests {
             ],
             "SELECT-list subquery must see each outer row's size via its WHERE, got: {:?}", rows
         );
+    }
+
+    fn make_sized_files_dir(name: &str) -> std::path::PathBuf {
+        let tmp = std::env::temp_dir().join(name);
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        fs::write(tmp.join("empty.txt"), "").unwrap();
+        fs::write(tmp.join("s3.txt"), "aaa").unwrap();
+        fs::write(tmp.join("s12.txt"), "aaaaaaaaaaaa").unwrap();
+        tmp
+    }
+
+    #[test]
+    fn numeric_field_compared_to_non_numeric_runtime_value_matches_nothing() {
+        // Literals like `size > 'abc'` are rejected by the parser; operands the
+        // parser can't see (fields, functions) used to coerce to 0 at runtime
+        // and so matched empty files. Like the DateTime branch, an unparsable
+        // operand is now a non-match (SQL NULL semantics).
+        let tmp = make_sized_files_dir("fselect_test_numeric_vs_non_numeric");
+        for query in [
+            "select name from __DIR__ where size = ext",
+            "select name from __DIR__ where size <= ext",
+            "select name from __DIR__ where size != ext",
+            "select name from __DIR__ where size > upper(ext)",
+            "select name from __DIR__ where size in (ext)",
+        ] {
+            let rows = run_query_against_dir(query, &tmp);
+            assert!(rows.is_empty(), "{} should match nothing, got {:?}", query, rows);
+        }
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn numeric_field_compared_to_numeric_strings_still_coerces() {
+        let tmp = make_sized_files_dir("fselect_test_numeric_vs_numeric_strings");
+        let sorted = |q: &str| {
+            let mut rows = run_query_against_dir(q, &tmp);
+            rows.sort();
+            rows
+        };
+        assert_eq!(sorted("select name from __DIR__ where size > '1'"), vec!["s12.txt", "s3.txt"]);
+        assert_eq!(sorted("select name from __DIR__ where size >= '0'"), vec!["empty.txt", "s12.txt", "s3.txt"]);
+        assert_eq!(sorted("select name from __DIR__ where size = 0"), vec!["empty.txt"]);
+        assert_eq!(sorted("select name from __DIR__ where size < '1kb'"), vec!["empty.txt", "s12.txt", "s3.txt"]);
+        assert_eq!(sorted("select name from __DIR__ where size > '0.5'"), vec!["s12.txt", "s3.txt"]);
+        // an unparsable runtime IN member is skipped, not coerced to 0
+        assert_eq!(sorted("select name from __DIR__ where size in (0, ext)"), vec!["empty.txt"]);
+        assert_eq!(sorted("select name from __DIR__ where size not in (ext)"), vec!["empty.txt", "s12.txt", "s3.txt"]);
+        let _ = fs::remove_dir_all(&tmp);
     }
 }

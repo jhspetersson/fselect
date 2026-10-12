@@ -57,6 +57,13 @@ impl <'a> Parser<'a> {
         self.roots_parsed = true;
         let expr = self.parse_where()?;
         self.where_parsed = true;
+        // Fail once, up front, on literals that can never match: a typo like
+        // `modified = 'not-a-date'` or `size > 'abc'` would otherwise be
+        // silently coerced per file scanned.
+        if let Some(ref where_expr) = expr {
+            where_expr.validate_datetime_literals()?;
+            where_expr.validate_numeric_literals()?;
+        }
         let grouping_fields = self.parse_group_by(&fields)?;
         let having = self.parse_having(&fields)?;
         let (ordering_fields, ordering_asc) = self.parse_order_by(&fields)?;
@@ -1567,6 +1574,93 @@ mod tests {
         let query = p.parse(false).unwrap();
         assert!(!p.there_are_remaining_lexemes(), "leftover lexemes in {:?}", query);
         query.expr.unwrap()
+    }
+
+    fn parse_err(query: &str) -> String {
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
+        p.parse(false).err().unwrap_or_else(|| panic!("{} should not parse", query))
+    }
+
+    #[test]
+    fn non_numeric_literal_against_numeric_field_is_a_parse_error() {
+        for query in [
+            "select name from . where size = ''",
+            "select name from . where size > 'abc'",
+            "select name from . where size > abc",
+            "select name from . where size != 'abc'",
+            "select name from . where 'abc' < size",
+            "select name from . where size in ('abc')",
+            "select name from . where size in (0, 'abc')",
+            "select name from . where size not in ('')",
+            "select name from . where name = 'x' and width > 'wide'",
+            "select name from . where size > 0 or line_count = 'many'",
+        ] {
+            let err = parse_err(query);
+            assert!(
+                err.to_lowercase().contains("can't parse number") || err.to_lowercase().contains("cannot"),
+                "{}: unexpected error text {:?}", query, err
+            );
+        }
+        assert!(parse_err("select name from . where size > 'abc'").contains("'abc'"));
+        assert!(parse_err("select name from . where width > 'wide'").contains("width"));
+    }
+
+    #[test]
+    fn unparseable_datetime_literal_is_a_parse_error() {
+        for query in [
+            "select name from . where modified = 'not-a-date'",
+            "select name from . where modified > oops",
+            "select name from . where created in ('2026-01-01', 'bad')",
+            "select name from . where size > 0 and modified = 'oops'",
+            "select name from . where 'oops' < modified",
+            "select name from (select name from . where modified = 'oops')",
+        ] {
+            let err = parse_err(query);
+            assert!(err.contains("Can't parse datetime"), "{}: unexpected error text {:?}", query, err);
+        }
+        assert!(parse_err("select name from . where modified = 'not-a-date'").contains("not-a-date"));
+    }
+
+    #[test]
+    fn valid_datetime_literals_still_parse() {
+        for query in [
+            "select name from . where modified = '2026-01-01'",
+            "select name from . where modified > 2026-01-01",
+            "select name from . where modified > '2026-01-01 10:00:00'",
+            "select name from . where modified > today",
+            "select name from . where modified > 'yesterday'",
+            "select name from . where modified in ('2026-01-01', '2026-01-02')",
+            "select name from . where modified = created",
+            "select name from . where modified > date_add(created, 1)",
+            "select name from . where name = 'not-a-date'",
+        ] {
+            parse_where(query);
+        }
+    }
+
+    #[test]
+    fn numeric_field_comparisons_that_coerce_still_parse() {
+        for query in [
+            "select name from . where size > '1kb'",
+            "select name from . where size > 1kb",
+            "select name from . where size > '0.5'",
+            "select name from . where size > -5",
+            "select name from . where size > name",
+            "select name from . where size > length(name)",
+            "select name from . where size > 2*4",
+            "select name from . where size in (0, '1kb', 2mb)",
+            "select name from . where fsize = '12 B'",
+            "select name from . where exif_exposure_time = '1/250'",
+            "select name from . where modified > 'yesterday'",
+            "select name from . where name = 'abc'",
+        ] {
+            parse_where(query);
+        }
+        // subquery WHERE clauses are validated too, with no outer WHERE to unwrap
+        let mut lexer = Lexer::new(vec!["select name from (select name from . where size > '1kb')".to_string()]);
+        assert!(Parser::new(&mut lexer).parse(false).is_ok());
+        assert!(parse_err("select name from (select name from . where size > 'abc')").contains("'abc'"));
     }
 
     #[test]
@@ -3241,7 +3335,10 @@ mod tests {
 
     #[test]
     fn word_arithmetic_operator_does_not_double_drop() {
-        let query = "select name from /test where size > mul";
+        // `mul` after a comparison operator is a value, not the arithmetic
+        // keyword (a string field: against `size` the word is now rejected
+        // at parse time as a non-numeric literal).
+        let query = "select name from /test where name > mul";
         let mut lexer = Lexer::new(vec![query.to_string()]);
         let mut p = Parser::new(&mut lexer);
         let result = p.parse(false);

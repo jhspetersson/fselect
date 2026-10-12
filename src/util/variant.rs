@@ -133,46 +133,46 @@ impl Variant {
         }
     }
 
+    /// Integer value, coercing an unparsable string to 0 (MySQL-style).
     pub fn to_int(&self) -> i64 {
-        match self.int_value {
-            Some(i) => i,
-            None => {
-                if let Some(f) = self.float_value {
-                    return f as i64;
-                }
+        self.to_int_opt().unwrap_or(0)
+    }
 
-                let int_value = self.string_value.parse::<i64>();
-                match int_value {
-                    Ok(i) => i,
-                    _ => match self.string_value.parse::<f64>() {
-                        Ok(f) if f.is_finite() => f as i64,
-                        _ => match parse_filesize(&self.string_value) {
-                            Some(size) => size as i64,
-                            _ => 0,
-                        },
-                    },
-                }
-            }
+    /// Integer value, or `None` for a string that is neither a number nor a
+    /// file size with a unit suffix.
+    pub fn to_int_opt(&self) -> Option<i64> {
+        if let Some(i) = self.int_value {
+            return Some(i);
+        }
+        if let Some(f) = self.float_value {
+            return Some(f as i64);
+        }
+        if let Ok(i) = self.string_value.parse::<i64>() {
+            return Some(i);
+        }
+        match self.string_value.parse::<f64>() {
+            Ok(f) if f.is_finite() => Some(f as i64),
+            _ => parse_filesize(&self.string_value).map(|size| size as i64),
         }
     }
 
+    /// Float value, coercing an unparsable string to 0.0 (MySQL-style).
     pub fn to_float(&self) -> f64 {
-        if let Some(f) = self.float_value {
-            return f;
-        }
+        self.to_float_opt().unwrap_or(0.0)
+    }
 
-        match self.int_value {
-            Some(i) => i as f64,
-            None => {
-                let float_value = self.string_value.parse::<f64>();
-                match float_value {
-                    Ok(f) if f.is_finite() => f,
-                    _ => match parse_filesize(&self.string_value) {
-                        Some(size) => size as f64,
-                        _ => 0.0,
-                    },
-                }
-            }
+    /// Float value, or `None` for a string that is neither a number nor a
+    /// file size with a unit suffix.
+    pub fn to_float_opt(&self) -> Option<f64> {
+        if let Some(f) = self.float_value {
+            return Some(f);
+        }
+        if let Some(i) = self.int_value {
+            return Some(i as f64);
+        }
+        match self.string_value.parse::<f64>() {
+            Ok(f) if f.is_finite() => Some(f),
+            _ => parse_filesize(&self.string_value).map(|size| size as f64),
         }
     }
 
@@ -525,5 +525,27 @@ mod tests {
         let v2 = v1.clone();
         assert_eq!(v2.to_int(), 10);
         assert_eq!(v2.to_string(), "10");
+    }
+
+    #[test]
+    fn to_int_opt_rejects_non_numeric_strings() {
+        assert_eq!(Variant::from_string(&String::from("abc")).to_int_opt(), None);
+        assert_eq!(Variant::from_string(&String::from("")).to_int_opt(), None);
+        assert_eq!(Variant::from_string(&String::from("12")).to_int_opt(), Some(12));
+        assert_eq!(Variant::from_string(&String::from("3.7")).to_int_opt(), Some(3));
+        assert_eq!(Variant::from_string(&String::from("2kib")).to_int_opt(), Some(2048));
+        assert_eq!(Variant::from_int(5).to_int_opt(), Some(5));
+        assert_eq!(Variant::from_float(2.5).to_int_opt(), Some(2));
+        assert_eq!(Variant::from_bool(true).to_int_opt(), Some(1));
+    }
+
+    #[test]
+    fn to_float_opt_rejects_non_numeric_strings() {
+        assert_eq!(Variant::from_string(&String::from("abc")).to_float_opt(), None);
+        assert_eq!(Variant::from_string(&String::from("")).to_float_opt(), None);
+        assert_eq!(Variant::from_string(&String::from("3.5")).to_float_opt(), Some(3.5));
+        assert_eq!(Variant::from_string(&String::from("2kib")).to_float_opt(), Some(2048.0));
+        assert_eq!(Variant::from_int(5).to_float_opt(), Some(5.0));
+        assert_eq!(Variant::from_float(2.5).to_float_opt(), Some(2.5));
     }
 }

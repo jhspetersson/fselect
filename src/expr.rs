@@ -44,13 +44,45 @@ pub struct Expr {
 pub struct ExprProps(HashMap<String, Variant>);
 
 impl ExprProps {
-    fn set_file_type(&mut self, key: &'static str, value: bool) {
-        self.insert(key.to_string(), Variant::from_bool(value));
+    /// A field under a foreign root alias (`t1.is_dir` inside a correlated
+    /// subquery) describes a different entry than the bare field, so its
+    /// props are keyed `alias.name` and never clash with the entry's own type.
+    fn scoped_key(scope: Option<&str>, key: &str) -> String {
+        match scope {
+            Some(scope) => format!("{}.{}", scope, key),
+            None => key.to_string(),
+        }
+    }
+
+    fn set_file_type(&mut self, scope: Option<&str>, key: &'static str, value: bool) {
+        self.insert(Self::scoped_key(scope, key), Variant::from_bool(value));
         if value {
             for other in FILE_TYPE_PROPS.iter().filter(|other| **other != key) {
-                self.insert(other.to_string(), Variant::from_bool(false));
+                self.insert(Self::scoped_key(scope, other), Variant::from_bool(false));
             }
         }
+    }
+
+    /// The file type these props assert, as `(scope, key)`.
+    fn asserted_file_type(&self) -> Option<(Option<String>, &'static str)> {
+        self.iter()
+            .filter(|(_, value)| value.to_bool())
+            .find_map(|(key, _)| {
+                let (scope, name) = match key.rsplit_once('.') {
+                    Some((scope, name)) => (Some(scope.to_string()), name),
+                    None => (None, key.as_str()),
+                };
+                FILE_TYPE_PROPS.iter().copied().find(|prop| *prop == name).map(|prop| (scope, prop))
+            })
+    }
+
+    fn is_file_type_key(key: &str) -> bool {
+        let name = key.rsplit_once('.').map_or(key, |(_, name)| name);
+        FILE_TYPE_PROPS.contains(&name)
+    }
+
+    pub fn clear_file_types(&mut self) {
+        self.retain(|key, _| !Self::is_file_type_key(key));
     }
 }
 
@@ -124,37 +156,39 @@ impl Expr {
 
     fn comparison_props(left: &Expr, op: Op, right: &Expr) -> ExprProps {
         let mut props = ExprProps::default();
-        if let Some((field, value)) = Self::bool_field_comparison(left, op, right)
-            && let Some(key) = Self::file_type_key(&field) {
-            props.set_file_type(key, value);
+        if let Some((field_expr, value)) = Self::bool_field_comparison(left, op, right)
+            && let Some((scope, key)) = field_expr.props.asserted_file_type() {
+            props.set_file_type(scope.as_deref(), key, value);
         }
 
         props
     }
 
-    fn field_props(field: &Field) -> ExprProps {
+    fn field_props(field: &Field, scope: Option<&str>) -> ExprProps {
         let mut props = ExprProps::default();
         if let Some(key) = Self::file_type_key(field) {
-            props.set_file_type(key, true);
+            props.set_file_type(scope, key, true);
         }
 
         props
     }
 
-    fn bool_field_comparison(left: &Expr, op: Op, right: &Expr) -> Option<(Field, bool)> {
+    /// For `field = literal` / `literal != field` style comparisons, the field
+    /// operand (whose props carry its alias scope) and the asserted value.
+    fn bool_field_comparison<'a>(left: &'a Expr, op: Op, right: &'a Expr) -> Option<(&'a Expr, bool)> {
         let negated = match op {
             Op::Eq | Op::Eeq => false,
             Op::Ne | Op::Ene => true,
             _ => return None,
         };
-        let (field, literal_expr) = match (left.field, right.field) {
-            (Some(field), None) => (field, right),
-            (None, Some(field)) => (field, left),
+        let (field_expr, literal_expr) = match (left.field, right.field) {
+            (Some(_), None) => (left, right),
+            (None, Some(_)) => (right, left),
             _ => return None,
         };
         let literal = literal_expr.bool_literal()?;
 
-        Some((field, literal != negated))
+        Some((field_expr, literal != negated))
     }
 
     fn file_type_key(field: &Field) -> Option<&'static str> {
@@ -184,9 +218,22 @@ impl Expr {
 
 
     pub fn logical_op(left: Expr, logical_op: LogicalOp, right: Expr) -> Result<Expr, String> {
+        Self::build_logical_op(left, logical_op, right, true)
+    }
+
+    /// Combines operands that sit under a NOT. A contradiction there
+    /// (`not (is_file and is_dir)`) is a tautology, not a query that can
+    /// never match, so conflicting file-type props are dropped instead of
+    /// rejected.
+    pub fn negated_logical_op(left: Expr, logical_op: LogicalOp, right: Expr) -> Expr {
+        Self::build_logical_op(left, logical_op, right, false)
+            .expect("conflicts are not reported for negated expressions")
+    }
+
+    fn build_logical_op(left: Expr, logical_op: LogicalOp, right: Expr, reject_conflicts: bool) -> Result<Expr, String> {
         let left_weight = left.weight;
         let right_weight = right.weight;
-        let props = Self::merge_props(&left, &logical_op, &right)?;
+        let props = Self::merge_props(&left, &logical_op, &right, reject_conflicts)?;
 
         let expr = Expr {
             left: Some(Box::new(left)),
@@ -209,7 +256,7 @@ impl Expr {
         Ok(expr)
     }
 
-    fn merge_props(left: &Expr, logical_op: &LogicalOp, right: &Expr) -> Result<ExprProps, String> {
+    fn merge_props(left: &Expr, logical_op: &LogicalOp, right: &Expr, reject_conflicts: bool) -> Result<ExprProps, String> {
         let mut props = ExprProps::default();
 
         let mut left_keys: Vec<&String> = left.props.keys().collect();
@@ -219,7 +266,7 @@ impl Expr {
             let left_value = &left.props[key];
             match right.props.get(key) {
                 Some(right_value) if right_value != left_value => {
-                    if *logical_op == LogicalOp::And {
+                    if *logical_op == LogicalOp::And && reject_conflicts {
                         return Err(format!(
                             "Conflicting conditions: '{}' requires {} = {}, but '{}' requires {} = {}",
                             left, key, left_value, right, key, right_value
@@ -274,9 +321,23 @@ impl Expr {
         Self::field_with_root_alias(field, None)
     }
 
+    /// A field of the query's own entry, optionally written with the local
+    /// root alias (`t1.size` where `t1` is this query's root).
     pub fn field_with_root_alias(field: Field, root_alias: Option<String>) -> Expr {
+        let props = Self::field_props(&field, None);
+        Self::field_expr(field, root_alias, props)
+    }
+
+    /// A field of a different entry: a correlated reference to an outer
+    /// query's root alias. Its file-type props are scoped to that alias so
+    /// they are not confused with the current entry's own type.
+    pub fn external_field(field: Field, root_alias: String) -> Expr {
+        let props = Self::field_props(&field, Some(&root_alias));
+        Self::field_expr(field, Some(root_alias), props)
+    }
+
+    fn field_expr(field: Field, root_alias: Option<String>, props: ExprProps) -> Expr {
         let weight = field.get_weight();
-        let props = Self::field_props(&field);
 
         Expr {
             left: None,
@@ -1134,6 +1195,32 @@ mod tests {
         b.set_prop("k", Variant::from_bool(false));
         assert_ne!(*b.props, *a.props);
         assert_eq!(a, b);
+    }
+
+    #[test]
+    fn external_field_scopes_file_type_props_to_its_alias() {
+        // Inside a correlated subquery `t1` names the OUTER entry, so its file
+        // type is independent of the subquery entry's own type.
+        let outer_dir = Expr::external_field(Field::IsDir, "t1".to_string());
+        assert_eq!(outer_dir.bool_prop("t1.is_dir"), Some(true));
+        assert_eq!(outer_dir.bool_prop("t1.is_file"), Some(false));
+        assert_eq!(outer_dir.bool_prop(IS_DIR), None);
+
+        let own_file = Expr::field_with_root_alias(Field::IsFile, Some("t2".to_string()));
+        let both = Expr::logical_op(own_file, LogicalOp::And, outer_dir.clone()).unwrap();
+        assert_eq!(both.bool_prop(IS_FILE), Some(true));
+        assert_eq!(both.bool_prop("t1.is_dir"), Some(true));
+
+        // Comparisons keep the scope, so same-alias contradictions are still caught.
+        let outer_not_dir = Expr::op(
+            Expr::external_field(Field::IsDir, "t1".to_string()),
+            Op::Eq,
+            Expr::value("false".to_string()),
+        );
+        assert_eq!(outer_not_dir.bool_prop("t1.is_dir"), Some(false));
+        assert_eq!(outer_not_dir.bool_prop(IS_DIR), None);
+        let err = Expr::logical_op(outer_dir, LogicalOp::And, outer_not_dir).unwrap_err();
+        assert!(err.contains("t1.is_dir = true") && err.contains("t1.is_dir = false"), "{}", err);
     }
 
     #[test]

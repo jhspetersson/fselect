@@ -3572,6 +3572,29 @@ mod tests {
     }
 
     #[test]
+    fn correlated_subquery_can_test_the_outer_entry_type_next_to_its_own() {
+        let tmp = std::env::temp_dir().join("fselect_test_cross_alias_file_type");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(tmp.join("outer").join("subdir")).unwrap();
+        fs::write(tmp.join("outer").join("a.txt"), "x").unwrap();
+        fs::create_dir_all(tmp.join("inner")).unwrap();
+        fs::write(tmp.join("inner").join("b.txt"), "y").unwrap();
+
+        let dirs_with_inner_files = run_query_against_dir(
+            "select name from __DIR__/outer as t1              where exists (select name from __DIR__/inner as t2 where t2.is_file and t1.is_dir) order by name",
+            &tmp,
+        );
+        let everything = run_query_against_dir(
+            "select name from __DIR__/outer where not (is_file and is_dir) order by name",
+            &tmp,
+        );
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(dirs_with_inner_files, vec!["subdir"]);
+        assert_eq!(everything, vec!["a.txt", "subdir"]);
+    }
+
+    #[test]
     fn depth_field_counts_levels_below_the_search_root() {
         let tmp = std::env::temp_dir().join("fselect_test_depth_field");
         let _ = fs::remove_dir_all(&tmp);

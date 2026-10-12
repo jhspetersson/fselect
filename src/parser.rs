@@ -6,7 +6,7 @@ use std::str::FromStr;
 
 #[cfg(feature = "interactive")]
 use directories::UserDirs;
-use crate::expr::{Expr, FILE_TYPE_PROPS};
+use crate::expr::Expr;
 use crate::field::Field;
 use crate::function::Function;
 use crate::lexer::Lexeme;
@@ -28,6 +28,11 @@ pub struct Parser<'a> {
     roots_parsed: bool,
     where_parsed: bool,
     debug: bool,
+    /// Aliases declared on this query's own roots; any other alias in an
+    /// expression refers to an enclosing query's entry.
+    root_aliases: Vec<String>,
+    /// How many NOTs enclose the condition being parsed.
+    negation_depth: usize,
 }
 
 impl <'a> Parser<'a> {
@@ -39,6 +44,8 @@ impl <'a> Parser<'a> {
             roots_parsed: false,
             where_parsed: false,
             debug: false,
+            root_aliases: vec![],
+            negation_depth: 0,
         }
     }
 
@@ -54,6 +61,7 @@ impl <'a> Parser<'a> {
         let fields = self.parse_fields()?;
         let mut roots = self.parse_roots()?;
         let root_options = self.parse_root_options()?;
+        self.root_aliases = roots.iter().filter_map(|root| root.options.alias.clone()).collect();
         self.roots_parsed = true;
         let expr = self.parse_where()?;
         self.where_parsed = true;
@@ -572,7 +580,7 @@ impl <'a> Parser<'a> {
                     right = match right {
                         Some(right) => {
                             let expr = expr.ok_or_else(|| "Expected expression after OR".to_string())?;
-                            Some(Expr::logical_op(right, LogicalOp::Or, expr)?)
+                            Some(self.logical_op(right, LogicalOp::Or, expr)?)
                         }
                         None => expr,
                     };
@@ -584,9 +592,9 @@ impl <'a> Parser<'a> {
                         Some(right) => {
                             let left = left.ok_or_else(|| "Expected expression before OR".to_string())?;
                             if left.weight <= right.weight {
-                                Ok(Some(Expr::logical_op(left, LogicalOp::Or, right)?))
+                                Ok(Some(self.logical_op(left, LogicalOp::Or, right)?))
                             } else {
-                                Ok(Some(Expr::logical_op(right, LogicalOp::Or, left)?))
+                                Ok(Some(self.logical_op(right, LogicalOp::Or, left)?))
                             }
                         }
                         None => Ok(left),
@@ -630,7 +638,7 @@ impl <'a> Parser<'a> {
                     right = match right {
                         Some(right) => {
                             let expr = expr.ok_or_else(|| "Expected expression after AND".to_string())?;
-                            Some(Expr::logical_op(right, LogicalOp::And, expr)?)
+                            Some(self.logical_op(right, LogicalOp::And, expr)?)
                         }
                         None => expr,
                     };
@@ -642,9 +650,9 @@ impl <'a> Parser<'a> {
                         Some(right) => {
                             let left = left.ok_or_else(|| "Expected expression before AND".to_string())?;
                             if left.weight <= right.weight {
-                                Ok(Some(Expr::logical_op(left, LogicalOp::And, right)?))
+                                Ok(Some(self.logical_op(left, LogicalOp::And, right)?))
                             } else {
-                                Ok(Some(Expr::logical_op(right, LogicalOp::And, left)?))
+                                Ok(Some(self.logical_op(right, LogicalOp::And, left)?))
                             }
                         }
                         None => Ok(left),
@@ -666,6 +674,23 @@ impl <'a> Parser<'a> {
             }
         }
 
+        if !negate {
+            return self.parse_comparison();
+        }
+
+        // Under NOT a contradiction such as `not (is_file and is_dir)` is a
+        // tautology, so the file-type conflict check must stay quiet.
+        self.negation_depth += 1;
+        let result = self.parse_comparison();
+        self.negation_depth -= 1;
+
+        match result {
+            Ok(Some(expr)) => Ok(Some(Self::negate_expr_op(&expr))),
+            other => other,
+        }
+    }
+
+    fn parse_comparison(&mut self) -> Result<Option<Expr>, String> {
         let mut exists_present = false;
 
         let left = self.parse_add_sub();
@@ -733,7 +758,7 @@ impl <'a> Parser<'a> {
                     right_between,
                 );
 
-                Ok(Some(Expr::logical_op(
+                Ok(Some(self.logical_op(
                     left_expr,
                     match is_negated {
                         false => LogicalOp::And,
@@ -792,12 +817,10 @@ impl <'a> Parser<'a> {
                     && !self.where_parsed
             } else { false };
             if should_wrap {
+                // Reuse the parsed field as-is: it already carries its root
+                // alias and alias-scoped props.
                 let expr = result.unwrap().unwrap();
-                result = Ok(Some(Expr::op(
-                    Expr::field_with_root_alias(expr.field.unwrap(), expr.root_alias),
-                    Op::Eq,
-                    Expr::value(String::from("true")),
-                )));
+                result = Ok(Some(Expr::op(expr, Op::Eq, Expr::value(String::from("true")))));
             } else if should_wrap_func {
                 let expr = result.unwrap().unwrap();
                 let func_expr = Expr::function_left(expr.function.unwrap(), expr.left);
@@ -809,12 +832,25 @@ impl <'a> Parser<'a> {
             }
         }
 
-        if negate
-            && let Ok(Some(expr)) = result {
-                return Ok(Some(Self::negate_expr_op(&expr)));
-            }
-
         result
+    }
+
+    fn logical_op(&self, left: Expr, logical_op: LogicalOp, right: Expr) -> Result<Expr, String> {
+        if self.negation_depth > 0 {
+            Ok(Expr::negated_logical_op(left, logical_op, right))
+        } else {
+            Expr::logical_op(left, logical_op, right)
+        }
+    }
+
+    /// A root alias that is not one of this query's own is a correlated
+    /// reference to an enclosing query. Before the roots are known (the
+    /// SELECT list) every alias is taken to be local.
+    fn is_local_alias(&self, root_alias: Option<&str>) -> bool {
+        match root_alias {
+            Some(alias) => !self.roots_parsed || self.root_aliases.iter().any(|local| local == alias),
+            None => true,
+        }
     }
 
     fn parse_add_sub(&mut self) -> Result<Option<Expr>, String> {
@@ -1077,7 +1113,10 @@ impl <'a> Parser<'a> {
             }
             Some(Lexeme::RawString(ref s)) => {
                 if let Ok((field, root_alias)) = Field::parse_field(s) {
-                    let mut expr = Expr::field_with_root_alias(field, root_alias);
+                    let mut expr = match root_alias {
+                        Some(alias) if !self.is_local_alias(Some(&alias)) => Expr::external_field(field, alias),
+                        root_alias => Expr::field_with_root_alias(field, root_alias),
+                    };
                     expr.minus = minus;
                     return Ok(Some(expr));
                 }
@@ -1536,9 +1575,7 @@ impl <'a> Parser<'a> {
 
     fn negate_expr_op(expr: &Expr) -> Expr {
         let mut result = expr.clone();
-        for key in FILE_TYPE_PROPS {
-            result.props.remove(key);
-        }
+        result.props.clear_file_types();
 
         if let Some(left) = &expr.left {
             result.left = Some(Box::from(Self::negate_expr_op(left)));
@@ -3941,6 +3978,50 @@ mod tests {
 
         let err = parse_query("select name from /test where is_pipe and is_socket").unwrap_err();
         assert!(err.contains("is_pipe") || err.contains("is_socket"), "unexpected error: {}", err);
+    }
+
+    #[test]
+    fn file_type_conditions_on_different_root_aliases_do_not_conflict() {
+        // `t2` is the subquery's own root, `t1` the outer entry: a directory
+        // in the outer query can be paired with files in the inner one.
+        let query = parse_query(
+            "select name from /outer as t1 where exists (select name from /inner as t2 where t2.is_file and t1.is_dir)",
+        )
+        .unwrap_or_else(|e| panic!("cross-alias file-type conditions rejected: {}", e));
+        assert!(query.expr.is_some());
+
+        // The subquery's own alias is the plain entry, so this is still a contradiction.
+        let err = parse_query(
+            "select name from /outer as t1 where exists (select name from /inner as t2 where t2.is_file and t2.is_dir)",
+        )
+        .unwrap_err();
+        assert!(err.contains("is_dir"), "unexpected error: {}", err);
+
+        // So is mixing the local alias with the bare field in the outer query ...
+        let err = parse_query("select name from /test as t1 where t1.is_file and is_dir").unwrap_err();
+        assert!(err.contains("is_dir"), "unexpected error: {}", err);
+
+        // ... and asking two different things of the same outer entry.
+        let err = parse_query(
+            "select name from /outer as t1 where exists (select name from /inner as t2 where t1.is_file and t1.is_dir)",
+        )
+        .unwrap_err();
+        assert!(err.contains("t1.is_dir"), "unexpected error: {}", err);
+    }
+
+    #[test]
+    fn negated_contradiction_is_a_tautology_not_an_error() {
+        // `not (is_file and is_dir)` is true for every entry; only the
+        // un-negated form can never match.
+        let query = parse_query("select name from /test where not (is_file and is_dir)")
+            .unwrap_or_else(|e| panic!("negated contradiction rejected: {}", e));
+        let expr = query.expr.unwrap();
+        assert_eq!(expr.bool_prop(IS_FILE), None);
+        assert_eq!(expr.bool_prop(IS_DIR), None);
+
+        assert!(parse_query("select name from /test where not (size > 0 and (is_file and is_dir)) and is_file").is_ok());
+        assert!(parse_query("select name from /test as t1 where not (t1.is_file and is_dir)").is_ok());
+        assert!(parse_query("select name from /test where not not (is_file and is_dir)").is_err());
     }
 
     #[test]

@@ -3521,7 +3521,8 @@ mod tests {
         fs::write(tmp.join("sub").join("deep").join("c.txt"), "").unwrap();
 
         let rows = run_query_against_dir("select name, depth from __DIR__ where is_file order by depth", &tmp);
-        let level_two = run_query_against_dir("select name from __DIR__ where depth = 2", &tmp);
+        let mut level_two = run_query_against_dir("select name from __DIR__ where depth = 2", &tmp);
+        level_two.sort();
         let mut capped = run_query_against_dir("select name, depth from __DIR__ depth 1", &tmp);
         capped.sort();
         let _ = fs::remove_dir_all(&tmp);

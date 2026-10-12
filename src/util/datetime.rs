@@ -6,7 +6,8 @@ use chrono_english::{parse_date_string, Dialect};
 use regex::Regex;
 
 static DATE_REGEX: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new("^(\\d{4})(-|:)(\\d{1,2})(-|:)(\\d{1,2})(?: (\\d{1,2})(?::(\\d{1,2})(?::(\\d{1,2}))?)?)?$").unwrap()
+    // The date and time parts may be separated by a space or an ISO 8601 `T`
+    Regex::new("^(\\d{4})(-|:)(\\d{1,2})(-|:)(\\d{1,2})(?:[ Tt](\\d{1,2})(?::(\\d{1,2})(?::(\\d{1,2}))?)?)?$").unwrap()
 });
 
 static US_DATES: Mutex<bool> = Mutex::new(false);
@@ -304,6 +305,27 @@ mod tests {
 
         assert_eq!(result.0, start);
         assert_eq!(result.1, finish);
+    }
+
+    #[test]
+    fn iso_t_separator_matches_the_same_range_as_the_space_form() {
+        let date = NaiveDate::from_ymd_opt(2026, 10, 9).unwrap();
+
+        let minute = parse_datetime("2026-10-09T10:09").unwrap();
+        assert_eq!(minute, parse_datetime("2026-10-09 10:09").unwrap());
+        assert_eq!(minute.0, date.and_hms_opt(10, 9, 0).unwrap());
+        assert_eq!(minute.1, date.and_hms_opt(10, 9, 59).unwrap());
+
+        let hour = parse_datetime("2026-10-09T10").unwrap();
+        assert_eq!(hour.0, date.and_hms_opt(10, 0, 0).unwrap());
+        assert_eq!(hour.1, date.and_hms_opt(10, 59, 59).unwrap());
+
+        let second = parse_datetime("2026-10-09T10:09:05").unwrap();
+        assert_eq!(second.0, date.and_hms_opt(10, 9, 5).unwrap());
+        assert_eq!(second.1, second.0);
+
+        let lowercase = parse_datetime("2026-10-09t10:09").unwrap();
+        assert_eq!(lowercase, minute);
     }
 
     #[test]

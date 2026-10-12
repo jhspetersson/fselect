@@ -1033,7 +1033,10 @@ or
 .B us_dates = true
 in the config file to switch to US format.
 The safest representation is ISO 8601:
-.BR "YYYY-MM-DD HH:MM:SS" .
+.BR "YYYY-MM-DD HH:MM:SS" ,
+with either a space or a
+.B T
+between the date and the time.
 .SH REGULAR EXPRESSIONS
 Rust-flavor regular expressions are used (see
 .BR regex (7)

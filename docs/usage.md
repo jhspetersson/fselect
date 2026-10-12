@@ -851,7 +851,7 @@ Or simply use relative offsets as days:
 
 To change this behavior, supply `--us-dates` option to the `fselect` command, or put `us_dates = true` into the configuration file.
 
-The safest way to specify dates is to use ISO 8601 format: `YYYY-MM-DD HH:MM:SS`.
+The safest way to specify dates is to use ISO 8601 format: `YYYY-MM-DD HH:MM:SS`. The date and time parts may be separated by a space or a `T`, so `2017-05-01T15:10` is the same 1-minute interval as `2017-05-01 15:10`.
 
 ### Regular expressions
 

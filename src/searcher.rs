@@ -3406,6 +3406,29 @@ mod tests {
     }
 
     #[test]
+    fn uppercase_root_alias_resolves_like_lowercase() {
+        let tmp = std::env::temp_dir().join("fselect_test_uppercase_alias");
+        make_outer_inner_dirs(
+            &tmp,
+            &[("a.txt", 100), ("b.txt", 300)],
+            &[("m100.dat", 100), ("m999.dat", 999)],
+        );
+
+        let mut plain = run_query_against_dir("select T1.name from __DIR__/outer as T1 where T1.size > 200", &tmp);
+        plain.sort();
+        assert_eq!(plain, vec!["b.txt"], "uppercase alias on a plain query");
+
+        let mut mixed = run_query_against_dir(
+            "select name from __DIR__/outer as T1              where exists(select t2.name from __DIR__/inner as T2 where T2.size = t1.size)",
+            &tmp,
+        );
+        mixed.sort();
+
+        let _ = fs::remove_dir_all(&tmp);
+        assert_eq!(mixed, vec!["a.txt"], "mixed-case aliases in a correlated subquery");
+    }
+
+    #[test]
     fn correlated_select_list_subquery_via_where_resolves_per_row() {
         // Same call-site gap, exercised through a SELECT-list subquery whose
         // WHERE references the outer alias. Confirms the fix is not specific to

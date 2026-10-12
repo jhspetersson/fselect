@@ -480,7 +480,9 @@ impl <'a> Parser<'a> {
                             }
                         }
                         RootParsingMode::Alias => {
-                            alias = Some(s.to_string());
+                            // Field::parse_field lowercases `T1.size`, so the
+                            // declared alias must match case-insensitively.
+                            alias = Some(s.to_lowercase());
                             mode = RootParsingMode::Options;
                         }
                     },
@@ -3760,6 +3762,25 @@ mod tests {
                 RootOptions::from(0, 0, false, false, None, None, None, Bfs, false, None),
             )]
         );
+    }
+
+    #[test]
+    fn root_alias_is_case_insensitive() {
+        // `T1.size` is lowercased by Field::parse_field, so the declared alias
+        // must be stored lowercased too or `as T1` can never be referenced.
+        for query in [
+            "select T1.name from /test as T1 where T1.size > 0",
+            "select t1.name from /test as T1",
+            "select Src.name from (select path from /a) as SRC",
+        ] {
+            let mut lexer = Lexer::new(vec![query.to_string()]);
+            let mut p = Parser::new(&mut lexer);
+            let parsed = p.parse(false).unwrap_or_else(|e| panic!("{}: {}", query, e));
+            assert!(!p.there_are_remaining_lexemes(), "{}: leftover lexemes", query);
+            let alias = parsed.roots[0].options.alias.as_deref().unwrap();
+            assert_eq!(alias, alias.to_lowercase(), "{}: alias stored verbatim", query);
+            assert_eq!(parsed.fields[0].root_alias.as_deref(), Some(alias), "{}: field alias != root alias", query);
+        }
     }
 
     #[test]

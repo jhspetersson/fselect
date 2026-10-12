@@ -786,7 +786,7 @@ impl <'a> Parser<'a> {
             if should_wrap {
                 let expr = result.unwrap().unwrap();
                 result = Ok(Some(Expr::op(
-                    Expr::field(expr.field.unwrap()),
+                    Expr::field_with_root_alias(expr.field.unwrap(), expr.root_alias),
                     Op::Eq,
                     Expr::value(String::from("true")),
                 )));
@@ -3752,6 +3752,22 @@ mod tests {
                 RootOptions::from(0, 0, false, false, None, None, None, Bfs, false, None),
             )]
         );
+    }
+
+    #[test]
+    fn bare_aliased_boolean_field_keeps_its_root_alias() {
+        let expr = parse_where("select name from /test as t1 where t1.is_file");
+        let left = expr.left.as_ref().unwrap();
+        assert_eq!(left.field, Some(Field::IsFile));
+        assert_eq!(left.root_alias.as_deref(), Some("t1"), "root alias dropped on implicit `= true`");
+        assert_eq!(expr.op, Some(Op::Eq));
+        assert_eq!(expr.right.as_ref().unwrap().val.as_deref(), Some("true"));
+
+        let negated = parse_where("select name from /test as t1 where not t1.is_dir");
+        let left = negated.left.as_ref().unwrap();
+        assert_eq!(left.field, Some(Field::IsDir));
+        assert_eq!(left.root_alias.as_deref(), Some("t1"), "root alias dropped under NOT");
+        assert_eq!(negated.op, Some(Op::Ne));
     }
 
     #[test]

@@ -3484,6 +3484,34 @@ mod tests {
     }
 
     #[test]
+    fn bare_aliased_boolean_in_correlated_subquery_tests_the_outer_entry() {
+        let tmp = std::env::temp_dir().join("fselect_test_bare_aliased_boolean");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(tmp.join("outer").join("sub")).unwrap();
+        fs::create_dir_all(tmp.join("inner")).unwrap();
+        fs::write(tmp.join("outer").join("f.txt"), "").unwrap();
+        fs::write(tmp.join("inner").join("g.txt"), "").unwrap();
+
+        let bare = run_query_against_dir(
+            "select name from __DIR__/outer as t1 where exists(select name from __DIR__/inner as t2 where t1.is_dir)",
+            &tmp,
+        );
+        let explicit = run_query_against_dir(
+            "select name from __DIR__/outer as t1 where exists(select name from __DIR__/inner as t2 where t1.is_dir = true)",
+            &tmp,
+        );
+        let negated = run_query_against_dir(
+            "select name from __DIR__/outer as t1 where exists(select name from __DIR__/inner as t2 where not t1.is_dir)",
+            &tmp,
+        );
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(explicit, vec!["sub"]);
+        assert_eq!(bare, explicit, "bare `t1.is_dir` should behave like `t1.is_dir = true`");
+        assert_eq!(negated, vec!["f.txt"]);
+    }
+
+    #[test]
     fn numeric_field_compared_to_non_numeric_runtime_value_matches_nothing() {
         // Literals like `size > 'abc'` are rejected by the parser; operands the
         // parser can't see (fields, functions) used to coerce to 0 at runtime

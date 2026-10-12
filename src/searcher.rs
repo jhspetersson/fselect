@@ -1004,7 +1004,7 @@ impl<'a> Searcher<'a> {
 
                     match entry {
                         Ok(entry) => {
-                            let mut path = entry.path();
+                            let path = entry.path();
                             let pass_ignores = if self.current_apply_gitignore || self.current_apply_hgignore || self.current_apply_dockerignore {
                                 let canonical_entry_path = PathBuf::from(canonical_path.as_ref().unwrap()).join(entry.file_name());
 
@@ -1094,21 +1094,7 @@ impl<'a> Searcher<'a> {
                                             let mut ok = false;
 
                                             if file_type.is_symlink() && self.current_follow_symlinks {
-                                                if let Ok(resolved) = fs::read_link(&path) {
-                                                    let resolved_path = if resolved.is_relative() {
-                                                        if let Some(parent) = path.parent() {
-                                                            parent.join(&resolved)
-                                                        } else {
-                                                            resolved
-                                                        }
-                                                    } else {
-                                                        resolved
-                                                    };
-                                                    if resolved_path.is_dir() {
-                                                        ok = true;
-                                                        path = resolved_path;
-                                                    }
-                                                }
+                                                ok = path.is_dir();
                                             } else if file_type.is_dir() {
                                                 ok = true;
                                             }
@@ -3509,6 +3495,26 @@ mod tests {
         assert_eq!(explicit, vec!["sub"]);
         assert_eq!(bare, explicit, "bare `t1.is_dir` should behave like `t1.is_dir = true`");
         assert_eq!(negated, vec!["f.txt"]);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn followed_symlink_entries_report_the_link_path_not_the_target() {
+        use std::os::unix::fs::symlink;
+
+        let tmp = std::env::temp_dir().join("fselect_test_symlink_reports_link_path");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(tmp.join("root")).unwrap();
+        fs::create_dir_all(tmp.join("hidden")).unwrap();
+        fs::write(tmp.join("hidden").join("file.txt"), "hello").unwrap();
+        symlink("../hidden", tmp.join("root").join("link")).unwrap();
+
+        let paths = run_query_against_dir("select path from __DIR__/root symlinks where is_file", &tmp);
+        let dirs = run_query_against_dir("select dir from __DIR__/root symlinks where is_file", &tmp);
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(paths, vec!["link/file.txt"]);
+        assert_eq!(dirs, vec!["link"]);
     }
 
     #[test]

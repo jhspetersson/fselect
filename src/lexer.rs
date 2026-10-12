@@ -225,18 +225,27 @@ impl Lexer {
                     break;
                 }
                 LexingMode::RawString => {
-                    let is_date = c == '-' && !self.state.after_arithmetic && looks_like_date(&s) && {
-                        let next_char = chars_buf.get(self.char_index + 1).copied()
-                            .or_else(|| self.input.get(self.input_index + 1)
-                                .and_then(|p| p.chars().next()));
-                        matches!(next_char, Some('0'..='9'))
-                    };
+                    let rest = rest_of_word(&chars_buf, self.char_index + 1);
+                    // `2018-1-1` / `2018-01-01` glue into one date token; a year
+                    // followed by a single number (`2000-5`) is subtraction.
+                    let is_date = c == '-'
+                        && !self.state.after_arithmetic
+                        && looks_like_date(&s)
+                        && date_tail_follows(&s, &rest);
                     if !is_date {
                         if self.is_arithmetic_op_char(c) {
                             let maybe_expr = looks_like_expression(&s);
                             if maybe_expr {
                                 break;
                             }
+                        } else if self.state.after_operator
+                            && is_arithmetic_char(c)
+                            && continues_arithmetic(&s, c, &rest, chars_buf.get(self.char_index + 1).copied())
+                        {
+                            // `size > 2*4`: after a comparison operator `*`, `/`, `%`,
+                            // `+` and `-` are literal characters (paths, LIKE patterns,
+                            // negative numbers) unless the whole word is an expression.
+                            break;
                         } else if c == ','
                             || ((self.input.len() == 1
                                 || (self.input.len() > 1 && !self.state.possible_search_root))
@@ -383,6 +392,49 @@ fn is_paren_char(c: char) -> bool {
     c == '(' || c == ')' || c == '{' || c == '}'
 }
 
+fn is_arithmetic_char(c: char) -> bool {
+    matches!(c, '+' | '-' | '*' | '/' | '%')
+}
+
+/// The remainder of the current word starting at `from`: everything up to
+/// whitespace, a comma, a paren or a comparison-operator character.
+fn rest_of_word(chars: &[char], from: usize) -> String {
+    chars
+        .iter()
+        .skip(from)
+        .take_while(|&&c| !(c.is_ascii_whitespace() || c == ',' || is_paren_char(c) || matches!(c, '=' | '!' | '<' | '>' | '~')))
+        .collect()
+}
+
+/// One or two ASCII digits at the start of `s`; returns what follows them.
+fn strip_day_or_month(s: &str) -> Option<&str> {
+    let digits = s.bytes().take_while(|b| b.is_ascii_digit()).count();
+    (1..=2).contains(&digits).then(|| &s[digits..])
+}
+
+/// Does the rest of the word complete a `YYYY-M(M)-D(D)` date? At the first
+/// hyphen (`s` = year) a month, hyphen and day must follow; at the second
+/// hyphen (`s` = year-month) a day must follow.
+fn date_tail_follows(s: &str, rest: &str) -> bool {
+    let after = if s.contains('-') {
+        strip_day_or_month(rest)
+    } else {
+        strip_day_or_month(rest)
+            .and_then(|r| r.strip_prefix('-'))
+            .and_then(strip_day_or_month)
+    };
+    matches!(after, Some(r) if !r.starts_with(|c: char| c.is_ascii_digit()))
+}
+
+/// Does `s` + `c` + `rest` read as an arithmetic expression over numbers,
+/// fields and functions (`2*4`, `10-5*2`, `2*size`), or as `1+(`?
+fn continues_arithmetic(s: &str, c: char, rest: &str, next_char: Option<char>) -> bool {
+    if rest.is_empty() {
+        return next_char == Some('(');
+    }
+    looks_like_expression(&format!("{}{}{}", s, c, rest))
+}
+
 static DATE_ALIKE_REGEX: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new("^(\\d{4})-?(\\d{2})?").unwrap()
 });
@@ -495,6 +547,97 @@ c'");
         }
         assert!(lexemes.contains(&Lexeme::String(String::from("a	b
 c"))), "lexemes were {:?}", lexemes);
+    }
+
+    fn collect(lexer: &mut Lexer) -> Vec<Lexeme> {
+        let mut lexemes = vec![];
+        while let Some(lexeme) = lexer.next_lexeme() {
+            lexemes.push(lexeme);
+        }
+        lexemes
+    }
+
+    fn rhs_of(query: &str) -> Vec<Lexeme> {
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let lexemes = collect(&mut lexer);
+        let pos = lexemes.iter().position(|l| matches!(l, Lexeme::Operator(_))).expect("comparison operator");
+        lexemes[pos + 1..].to_vec()
+    }
+
+    fn raw(s: &str) -> Lexeme { Lexeme::RawString(s.to_string()) }
+    fn arith(s: &str) -> Lexeme { Lexeme::ArithmeticOperator(s.to_string()) }
+
+    #[test]
+    fn unspaced_arithmetic_after_comparison_is_split() {
+        assert_eq!(rhs_of("select name from . where size > 2*4"), vec![raw("2"), arith("*"), raw("4")]);
+        assert_eq!(rhs_of("select name from . where size > 10-5"), vec![raw("10"), arith("-"), raw("5")]);
+        assert_eq!(rhs_of("select name from . where size > 2+4"), vec![raw("2"), arith("+"), raw("4")]);
+        assert_eq!(rhs_of("select name from . where size > 16/2"), vec![raw("16"), arith("/"), raw("2")]);
+        assert_eq!(rhs_of("select name from . where size > 10%3"), vec![raw("10"), arith("%"), raw("3")]);
+        assert_eq!(rhs_of("select name from . where size > 1.5*2"), vec![raw("1.5"), arith("*"), raw("2")]);
+        assert_eq!(rhs_of("select name from . where size > 10-5*2"), vec![raw("10"), arith("-"), raw("5"), arith("*"), raw("2")]);
+        assert_eq!(rhs_of("select name from . where size > 2*size"), vec![raw("2"), arith("*"), raw("size")]);
+        assert_eq!(
+            rhs_of("select name from . where size > 1+(2*2)"),
+            vec![raw("1"), arith("+"), Lexeme::Open, raw("2"), arith("*"), raw("2"), Lexeme::Close]
+        );
+    }
+
+    #[test]
+    fn unspaced_arithmetic_split_does_not_touch_literals() {
+        // negative literal, paths, hyphenated names and LIKE patterns keep working unquoted
+        assert_eq!(rhs_of("select name from . where size > -5"), vec![raw("-5")]);
+        assert_eq!(rhs_of("select name from . where name = -test"), vec![raw("-test")]);
+        assert_eq!(rhs_of("select name from . where name = 10-2.txt"), vec![raw("10-2.txt")]);
+        assert_eq!(rhs_of("select name from . where name = 2024-report"), vec![raw("2024-report")]);
+        assert_eq!(rhs_of("select name from . where absdir = /home/user/docs"), vec![raw("/home/user/docs")]);
+        assert_eq!(rhs_of("select name from . where name like 2%abc"), vec![raw("2%abc")]);
+        assert_eq!(rhs_of("select name from . where name like %size%"), vec![raw("%size%")]);
+        assert_eq!(rhs_of("select name from . where name = foo*bar"), vec![raw("foo*bar")]);
+        // dates stay glued in WHERE, including single-digit components
+        assert_eq!(rhs_of("select name from . where modified > 2018-01-01"), vec![raw("2018-01-01")]);
+        assert_eq!(rhs_of("select name from . where modified > 2018-1-1"), vec![raw("2018-1-1")]);
+        assert_eq!(rhs_of("select name from . where modified > 2018-1-01"), vec![raw("2018-1-01")]);
+        assert_eq!(
+            rhs_of("select name from . where modified > 2018-01-01 00:00:00"),
+            vec![raw("2018-01-01"), raw("00:00:00")]
+        );
+    }
+
+    #[test]
+    fn year_minus_number_in_where_is_arithmetic_unless_full_date_follows() {
+        // only `YYYY-M(M)-D(D)` is a date; a year followed by one number is subtraction
+        assert_eq!(rhs_of("select name from . where size > 2000-5"), vec![raw("2000"), arith("-"), raw("5")]);
+        assert_eq!(rhs_of("select name from . where size > 2000-05"), vec![raw("2000"), arith("-"), raw("05")]);
+        assert_eq!(rhs_of("select name from . where size > 2000-500"), vec![raw("2000"), arith("-"), raw("500")]);
+        assert_eq!(
+            rhs_of("select name from . where size > 2000-5*2"),
+            vec![raw("2000"), arith("-"), raw("5"), arith("*"), raw("2")]
+        );
+        assert_eq!(rhs_of("select name from . where size > 2000-5 and size < 3000-5").iter().filter(|l| **l == arith("-")).count(), 2);
+        // and in SELECT a year-month is subtraction too
+        let mut lexer = lexer!("select 2000-05 from .");
+        assert_eq!(
+            collect(&mut lexer),
+            vec![Lexeme::Select, raw("2000"), arith("-"), raw("05"), Lexeme::From, raw(".")]
+        );
+    }
+
+    #[test]
+    fn year_minus_number_in_select_is_arithmetic_not_date() {
+        let mut lexer = lexer!("select 2000-1 from .");
+        assert_eq!(
+            collect(&mut lexer),
+            vec![Lexeme::Select, raw("2000"), arith("-"), raw("1"), Lexeme::From, raw(".")]
+        );
+        let mut lexer = lexer!("select 2000-123 from .");
+        assert_eq!(
+            collect(&mut lexer),
+            vec![Lexeme::Select, raw("2000"), arith("-"), raw("123"), Lexeme::From, raw(".")]
+        );
+        // a full date literal in SELECT is still one token
+        let mut lexer = lexer!("select 2018-01-01 from .");
+        assert_eq!(collect(&mut lexer), vec![Lexeme::Select, raw("2018-01-01"), Lexeme::From, raw(".")]);
     }
 
     #[test]

@@ -1561,6 +1561,30 @@ mod tests {
     use super::*;
     use crate::expr::{IS_DIR, IS_FILE, IS_PIPE, IS_SOCKET};
 
+    fn parse_where(query: &str) -> Expr {
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
+        let query = p.parse(false).unwrap();
+        assert!(!p.there_are_remaining_lexemes(), "leftover lexemes in {:?}", query);
+        query.expr.unwrap()
+    }
+
+    #[test]
+    fn unspaced_arithmetic_on_comparison_rhs_parses_like_spaced() {
+        assert_eq!(
+            parse_where("select name from . where size > 2*4"),
+            parse_where("select name from . where size > 2 * 4")
+        );
+        assert_eq!(
+            parse_where("select name from . where size > 10-5"),
+            parse_where("select name from . where size > 10 - 5")
+        );
+        assert_eq!(
+            parse_where("select name from . where size > 1+(2*2)"),
+            parse_where("select name from . where size > 1 + (2 * 2)")
+        );
+    }
+
     #[test]
     fn simple_query() {
         let query = "select name, path ,size , fsize from /";

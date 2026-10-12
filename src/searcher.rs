@@ -612,11 +612,11 @@ impl<'a> Searcher<'a> {
 
                 let mut first = true;
                 let mut stdout = std::io::stdout().lock();
-                for items in grouped_results.iter_values().skip(self.query.offset as usize) {
+                for (index, items) in grouped_results.iter_values().enumerate() {
                     let mut buf = WritableBuffer::new();
                     self.results_writer.write_row(&mut buf, items.clone())?;
                     let rendered = String::from(buf);
-                    if !self.silent_mode {
+                    if !self.silent_mode && index >= self.query.offset as usize {
                         if !first {
                             try_output!(self.results_writer.write_row_separator(&mut stdout), Ok(()));
                         }
@@ -3172,6 +3172,29 @@ mod tests {
 
         let _ = fs::remove_dir_all(&tmp);
         assert_eq!(rows, vec![String::from("medium.txt")]);
+    }
+
+    #[test]
+    fn grouped_subquery_applies_offset_once() {
+        let tmp = std::env::temp_dir().join("fselect_test_grouped_subquery_offset");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        for name in ["a.md", "b.rs", "c.rs", "d.txt", "e.txt", "f.txt"] {
+            fs::write(tmp.join(name), "").unwrap();
+        }
+
+        let offset_only = run_query_against_dir(
+            "select name from __DIR__ where ext in (select ext from __DIR__ group by ext order by ext offset 1) order by name",
+            &tmp,
+        );
+        let limit_and_offset = run_query_against_dir(
+            "select name from __DIR__ where ext in (select ext from __DIR__ group by ext order by ext limit 1 offset 1) order by name",
+            &tmp,
+        );
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(offset_only, vec!["b.rs", "c.rs", "d.txt", "e.txt", "f.txt"]);
+        assert_eq!(limit_and_offset, vec!["b.rs", "c.rs"]);
     }
 
     #[test]

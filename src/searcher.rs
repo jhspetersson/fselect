@@ -3205,7 +3205,7 @@ mod tests {
         fs::write(tmp.join("a.md"), "").unwrap();
 
         let plain = run_query_against_dir(
-            "select ext, size * 2 as dbl, upper(name), size + 1 from __DIR__ where ext = md into json",
+            "select ext, size * 2 as DBL, upper(name), size + 1 from __DIR__ where ext = md into json",
             &tmp,
         );
         let grouped = run_query_against_dir(

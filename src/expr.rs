@@ -808,7 +808,7 @@ impl Expr {
 
     pub fn column_name(&self) -> String {
         match self.alias {
-            Some(ref alias) => alias.clone(),
+            Some(ref alias) => alias.to_lowercase(),
             None => self.to_string().to_lowercase(),
         }
     }
@@ -997,14 +997,14 @@ mod tests {
 
         let mut aliased = doubled.clone();
         aliased.alias = Some("Dbl".to_string());
-        assert_eq!(aliased.column_name(), "Dbl", "alias on an arithmetic expression");
+        assert_eq!(aliased.column_name(), "dbl", "alias on an arithmetic expression");
 
         let upper = Expr::function_left(Function::Upper, Some(Box::new(Expr::field(Field::Name))));
         assert_eq!(upper.column_name(), "upper(name)");
 
         let mut aliased_field = Expr::field(Field::Extension);
         aliased_field.alias = Some("E".to_string());
-        assert_eq!(aliased_field.column_name(), "E");
+        assert_eq!(aliased_field.column_name(), "e");
     }
     use crate::field::Field;
     use crate::function::Function;

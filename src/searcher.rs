@@ -290,7 +290,10 @@ impl<'a> Searcher<'a> {
     }
 
     fn limit_reached(&self) -> bool {
-        !self.is_buffered() && self.query.limit > 0 && self.query.limit <= self.found
+        self.query.limit > 0
+            && !self.query.is_ordered()
+            && !self.query.is_aggregated()
+            && self.found >= self.query.limit.saturating_add(self.query.offset)
     }
 
     /// Searches directories based on configured query and outputs results to stdout.
@@ -3098,6 +3101,37 @@ mod tests {
         let searcher = search_dir("select name from __DIR__ bfs where is_file limit 60", &tmp, Config::default(), false);
         assert_eq!(searcher.found, 51);
         assert_eq!(searcher.dirs_opened, 51, "without a reached limit every directory is still visited");
+
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn buffered_unordered_queries_stop_at_the_limit_as_subqueries_do() {
+        let tmp = std::env::temp_dir().join("fselect_test_silent_limit");
+        let _ = fs::remove_dir_all(&tmp);
+        for k in 0..30 {
+            let sub = tmp.join(format!("d{:02}", k));
+            fs::create_dir_all(&sub).unwrap();
+            fs::write(sub.join("inner.txt"), "x").unwrap();
+        }
+        fs::write(tmp.join("zzz.txt"), "x").unwrap();
+
+        let searcher = search_dir("select name from __DIR__ bfs where is_file limit 1", &tmp, Config::default(), true);
+        assert_eq!(searcher.found, 1);
+        assert_eq!(searcher.dirs_opened, 1, "silent (subquery) mode must stop at the limit like printed output does");
+        assert_eq!(searcher.output_buffer.iter_values().count(), 1);
+
+        let searcher = search_dir("select name from __DIR__ bfs where is_file limit 1 offset 1", &tmp, Config::default(), true);
+        assert_eq!(searcher.found, 2, "offset rows still have to be collected before stopping");
+        assert_eq!(searcher.dirs_opened, 2);
+        assert_eq!(searcher.output_buffer.iter_values().skip(1).count(), 1);
+
+        let searcher = search_dir("select name from __DIR__ bfs where is_file order by name limit 1", &tmp, Config::default(), true);
+        assert_eq!(searcher.found, 31, "ordered queries must still see every row");
+        assert_eq!(searcher.dirs_opened, 31);
+
+        let searcher = search_dir("select count(*) from __DIR__ bfs where is_file limit 1", &tmp, Config::default(), true);
+        assert_eq!(searcher.found, 31, "aggregates must still see every row");
 
         let _ = fs::remove_dir_all(&tmp);
     }

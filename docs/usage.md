@@ -465,6 +465,8 @@ Used for detecting Japanese symbols in file names and such.
 | CONTAINS_KATAKANA or KATAKANA | Check if string value contains katakana symbols | `select katakana(name) from /home/user/Downloads`          |
 | CONTAINS_KANJI or KANJI       | Check if string value contains kanji symbols    | `select kanji(name) from /home/user/Downloads`             |
 
+KATAKANA also matches half-width katakana. KANJI covers every CJK ideograph block, including the extension blocks and the marks 々, 〆 and 〇.
+
 #### Greek string functions
 
 Used for detecting Greek symbols in file names and such.

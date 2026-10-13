@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 
 use crate::field::context::FieldContext;
@@ -55,10 +56,45 @@ fn relative_entry_path(ctx: &FieldContext) -> PathBuf {
     }
 }
 
+thread_local! {
+    static CANONICAL_DIR: RefCell<Option<(PathBuf, PathBuf)>> = const { RefCell::new(None) };
+    #[cfg(test)]
+    static CANONICALIZE_CALLS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+#[cfg(test)]
+fn canonicalize_calls() -> usize {
+    CANONICALIZE_CALLS.with(|calls| calls.get())
+}
+
+fn canonicalize(path: &Path) -> Result<PathBuf, String> {
+    #[cfg(test)]
+    CANONICALIZE_CALLS.with(|calls| calls.set(calls.get() + 1));
+    canonical_path(&path.to_path_buf()).map(PathBuf::from)
+}
+
+fn canonical_dir(dir: &Path) -> Result<PathBuf, String> {
+    CANONICAL_DIR.with(|cache| {
+        if let Some((cached_dir, canonical)) = &*cache.borrow()
+            && cached_dir == dir {
+                return Ok(canonical.clone());
+            }
+        let canonical = canonicalize(dir)?;
+        *cache.borrow_mut() = Some((dir.to_path_buf(), canonical.clone()));
+        Ok(canonical)
+    })
+}
+
 fn absolute_entry_path(ctx: &FieldContext) -> Result<PathBuf, SearchError> {
-    canonical_path(&ctx.entry.path())
-        .map(PathBuf::from)
-        .map_err(|e| format!("could not get absolute path: {}", e).into())
+    let path = ctx.entry.path();
+    let is_symlink = ctx.entry.file_type().is_ok_and(|file_type| file_type.is_symlink());
+    let canonical = match path.parent() {
+        Some(parent) if !is_symlink && !parent.as_os_str().is_empty() => {
+            canonical_dir(parent).map(|dir| dir.join(ctx.entry.file_name()))
+        }
+        _ => canonicalize(&path),
+    };
+    canonical.map_err(|e| format!("could not get absolute path: {}", e).into())
 }
 
 fn join_archived(archive: PathBuf, inner: &str) -> PathBuf {
@@ -111,8 +147,8 @@ pub fn handle_depth(ctx: &mut FieldContext) -> Result<Variant, SearchError> {
 pub fn handle_absdir(ctx: &mut FieldContext) -> Result<Variant, SearchError> {
     match ctx.file_info {
         Some(file_info) => Ok(parent_string(&join_archived(absolute_entry_path(ctx)?, &file_info.name))),
-        _ => match ctx.entry.path().parent().map(|parent| canonical_path(&parent.to_path_buf())) {
-            Some(Ok(path)) => Ok(Variant::from_string(&path)),
+        _ => match ctx.entry.path().parent().map(canonical_dir) {
+            Some(Ok(path)) => Ok(path_string(&path)),
             _ => Ok(Variant::empty(VariantType::String)),
         },
     }
@@ -131,7 +167,11 @@ mod tests {
     use crate::util::canonical_path;
 
     fn archived_field(entry: &fs::DirEntry, inner: &str, root: &std::path::Path, field: &Field) -> String {
-        let file_info = Some(FileInfo { name: inner.to_string(), size: 0, mode: None, modified: None });
+        field_value(entry, Some(inner), root, field)
+    }
+
+    fn field_value(entry: &fs::DirEntry, inner: Option<&str>, root: &std::path::Path, field: &Field) -> String {
+        let file_info = inner.map(|inner| FileInfo { name: inner.to_string(), size: 0, mode: None, modified: None });
         let config = Config::default();
         let default_config = Config::default();
         let mut fms = FileMetadataState::new();
@@ -153,6 +193,50 @@ mod tests {
             user_cache: &user_cache,
         };
         dispatch::get_field_value(&mut ctx, field).unwrap().to_string()
+    }
+
+    #[test]
+    fn abspath_canonicalizes_each_directory_once() {
+        let tmp = std::env::temp_dir().join("fselect_test_abspath_cache");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(tmp.join("sub")).unwrap();
+        for i in 0..20 {
+            fs::write(tmp.join(format!("f{:02}.txt", i)), "x").unwrap();
+        }
+        fs::write(tmp.join("sub").join("inner.txt"), "x").unwrap();
+
+        let before = super::canonicalize_calls();
+        let mut seen = 0;
+        for entry in fs::read_dir(&tmp).unwrap().flatten() {
+            let expected = canonical_path(&entry.path()).unwrap();
+            assert_eq!(field_value(&entry, None, &tmp, &Field::AbsPath), expected);
+            assert_eq!(field_value(&entry, None, &tmp, &Field::AbsDir), canonical_path(&tmp).unwrap());
+            seen += 1;
+        }
+        assert_eq!(seen, 21);
+        assert_eq!(super::canonicalize_calls() - before, 1, "every entry of one directory must share one canonicalization");
+
+        let inner = fs::read_dir(tmp.join("sub")).unwrap().next().unwrap().unwrap();
+        assert_eq!(field_value(&inner, None, &tmp, &Field::AbsPath), canonical_path(&inner.path()).unwrap());
+        assert_eq!(super::canonicalize_calls() - before, 2, "a new directory costs one more");
+
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn abspath_of_a_symlink_still_resolves_to_its_target() {
+        let tmp = std::env::temp_dir().join("fselect_test_abspath_symlink");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(tmp.join("real")).unwrap();
+        fs::write(tmp.join("real").join("target.txt"), "x").unwrap();
+        std::os::unix::fs::symlink(tmp.join("real").join("target.txt"), tmp.join("link.txt")).unwrap();
+
+        let link = fs::read_dir(&tmp).unwrap().flatten().find(|e| e.file_name() == "link.txt").unwrap();
+        let abspath = field_value(&link, None, &tmp, &Field::AbsPath);
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert!(abspath.ends_with("/real/target.txt"), "{}", abspath);
     }
 
     #[test]

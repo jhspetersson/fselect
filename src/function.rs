@@ -9,7 +9,6 @@ use std::fs::DirEntry;
 use std::fs::File;
 use std::io::prelude::*;
 use std::str::FromStr;
-use std::time::Duration;
 
 use chrono::Datelike;
 use chrono::Local;
@@ -18,14 +17,13 @@ use chrono::DateTime;
 use chrono::NaiveDate;
 use chrono::NaiveDateTime;
 use chrono::Timelike;
-use human_time::ToHumanTimeString;
 use rand::RngExt;
 use serde::ser::{Serialize, Serializer};
 #[cfg(unix)]
 use xattr::FileExt;
 
 use crate::fileinfo::FileInfo;
-use crate::util::{capitalize_initials, format_date, format_time, format_datetime, parse_datetime, parse_filesize};
+use crate::util::{capitalize_initials, format_date, format_duration, format_time, format_datetime, parse_datetime, parse_filesize};
 use std::cmp::Ordering;
 use crate::util::variant::{Variant, VariantType};
 
@@ -497,18 +495,8 @@ pub fn get_value(
 
             Ok(Variant::empty(VariantType::String))
         }
-        Function::FormatTime => {
-            if function_arg.is_empty() {
-                return Ok(Variant::empty(VariantType::String));
-            }
-
-            if let Ok(seconds) = function_arg.parse::<u64>() {
-                let formatted = Duration::from_secs(seconds).to_human_time_string();
-                return Ok(Variant::from_string(&formatted));
-            }
-
-            Ok(Variant::empty(VariantType::String))
-        }
+        Function::FormatTime => Ok(format_duration(&function_arg)
+            .map_or_else(|| Variant::empty(VariantType::String), |formatted| Variant::from_string(&formatted))),
 
         // ===== Datetime functions =====
         Function::CurrentDate => {
@@ -2061,16 +2049,16 @@ mod tests {
     
     #[test]
     fn function_format_time() {
-        let function = Function::FormatTime;
-        let function_arg = String::from("3600");
-        let function_args = vec![];
-        let entry = None;
-        let file_info = None;
-
-        let result = get_value(&function, function_arg, function_args, entry, &file_info);
-        assert_eq!(result.unwrap().to_string(), "1h");
+        let format_time = |arg: &str| {
+            get_value(&Function::FormatTime, String::from(arg), vec![], None, &None)
+                .unwrap()
+                .to_string()
+        };
+        assert_eq!(format_time("146"), "2m 26s");
+        assert_eq!(format_time("1.5"), "1s 500ms");
+        assert_eq!(format_time("abc"), "");
     }
-    
+
     #[test]
     fn function_current_date() {
         let function = Function::CurrentDate;

@@ -492,7 +492,7 @@ Used for detecting Greek symbols in file names and such.
 | CONTAINS                   | `true` if file contains string, `false` if not                                              | `select contains(TODO) from /home/user/Projects/foo/src`                                      |
 | COALESCE                   | Returns first nonempty expression value                                                     | `select name, size, COALESCE(sha256, '---') from /home/user/Downloads`                        |
 | RANDOM or RAND             | Returns random integer (from zero to max int, from zero to *arg*, or from *arg1* to *arg2*) | `select path from /home/user/Music order by RAND()`                                           |
-| FORMAT_TIME or PRETTY_TIME | Returns human-readable durations of time in seconds like *2min 26s*                         | `select format_time(duration) from /home/user/Music`                                          |
+| FORMAT_TIME or PRETTY_TIME | Returns human-readable durations of time in seconds like *2m 26s* (fractions show as milliseconds) | `select format_time(duration) from /home/user/Music`                                          |
 | FORMAT_SIZE                | Returns formatted size of a file                                                            | `select name, FORMAT_SIZE(size, '%.0') from /home/user/Downloads order by size desc limit 10` |
 
 Let's try `FORMAT_SIZE` with different format specifiers: 

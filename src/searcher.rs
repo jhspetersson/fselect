@@ -20,7 +20,7 @@ use crate::expr::Expr;
 use crate::field::Field;
 use crate::field::context::{FieldContext, FileMetadataState};
 use crate::field::dispatch;
-use crate::fileinfo::{archived_entry_levels, to_file_info, FileInfo};
+use crate::fileinfo::{archived_entry_levels, open_archive, to_file_info, ArchiveMember, FileInfo};
 use crate::function;
 use crate::ignore::docker::{
     matches_dockerignore_filter, search_upstream_dockerignore, DockerignoreFilter,
@@ -1085,26 +1085,31 @@ impl<'a> Searcher<'a> {
                                 // gets its own depth check against mindepth/maxdepth.
                                 if self.current_search_archives
                                     && self.is_zip_archive(&path.to_string_lossy())
-                                    && let Ok(file) = fs::File::open(&path)
-                                        && let Ok(mut archive) = zip::ZipArchive::new(file) {
-                                            for i in 0..archive.len() {
+                                    && let Some(archive) = open_archive(&path) {
+                                            let members = archive.len();
+                                            let archive = Rc::new(RefCell::new(archive));
+                                            for index in 0..members {
                                                 if self.limit_reached() {
                                                     break;
                                                 }
 
-                                                if let Ok(afile) = archive.by_index(i) {
-                                                    let member_depth = depth + archived_entry_levels(afile.name());
-                                                    if !self.within_depth_limits(member_depth) {
-                                                        continue;
+                                                let file_info = match archive.borrow_mut().by_index(index) {
+                                                    Ok(member) => to_file_info(
+                                                        &member,
+                                                        Some(ArchiveMember { archive: Rc::clone(&archive), index }),
+                                                    ),
+                                                    Err(_) => continue,
+                                                };
+                                                let member_depth = depth + archived_entry_levels(&file_info.name);
+                                                if !self.within_depth_limits(member_depth) {
+                                                    continue;
+                                                }
+                                                if let Err(err) = self.check_file(&entry, &root_dir, &Some(file_info), None) {
+                                                    if err.is_fatal() {
+                                                        return Err(err);
                                                     }
-                                                    let file_info = to_file_info(&afile);
-                                                    if let Err(err) = self.check_file(&entry, &root_dir, &Some(file_info), None) {
-                                                        if err.is_fatal() {
-                                                            return Err(err);
-                                                        }
-                                                        self.handle_nonfatal_error(err, &path);
-                                                        continue;
-                                                    }
+                                                    self.handle_nonfatal_error(err, &path);
+                                                    continue;
                                                 }
                                             }
                                         }
@@ -3348,6 +3353,35 @@ mod tests {
             format!("pack.zip{SEP}notes.txt\ttext/plain\ttrue\tfalse"),
         ]);
         assert_eq!(texts, vec!["notes.txt".to_string()]);
+    }
+
+    #[test]
+    fn archive_is_opened_once_per_scan_regardless_of_content_fields() {
+        use std::io::Write;
+        use crate::fileinfo::archive_opens;
+
+        let tmp = std::env::temp_dir().join("fselect_test_archive_opens");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        let mut zip = zip::ZipWriter::new(fs::File::create(tmp.join("pack.zip")).unwrap());
+        let options = zip::write::SimpleFileOptions::default();
+        for i in 0..20 {
+            zip.start_file(format!("m{i:02}.txt"), options).unwrap();
+            zip.write_all(format!("hello {i}\nworld\n").as_bytes()).unwrap();
+        }
+        zip.finish().unwrap();
+
+        let before = archive_opens();
+        let rows = run_query_against_dir(
+            "select name, line_count, mime, has_bom, contains('hello') from __DIR__ arc where ext = txt order by name",
+            &tmp,
+        );
+        let opens = archive_opens() - before;
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(rows.len(), 20);
+        assert_eq!(rows[7], "m07.txt\t2\ttext/plain\tfalse\ttrue");
+        assert_eq!(opens, 1, "the archive opened by the walk must serve every member read");
     }
 
     fn make_archive_dir(name: &str) -> std::path::PathBuf {

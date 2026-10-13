@@ -44,7 +44,7 @@ pub fn handle_has_bom(ctx: &mut FieldContext) -> Result<Variant, SearchError> {
         return Ok(Variant::from_bool(stats.has_bom));
     }
     match ctx.file_info {
-        Some(file_info) => Ok(with_archived_entry(&ctx.entry.path(), &file_info.name, has_bom_in_reader)
+        Some(file_info) => Ok(with_archived_entry(&ctx.entry.path(), file_info, has_bom_in_reader)
             .map_or_else(|| Variant::empty(VariantType::String), Variant::from_bool)),
         None => Ok(Variant::from_bool(has_bom(ctx.entry))),
     }
@@ -130,7 +130,7 @@ mod tests {
     }
 
     fn archived_field(entry: &fs::DirEntry, inner: &str, root_path: &Path, field: &Field) -> Variant {
-        let file_info = Some(FileInfo { name: inner.to_string(), size: 0, mode: None, modified: None });
+        let file_info = Some(FileInfo::named(inner));
         field_value(entry, &file_info, root_path, field)
     }
 

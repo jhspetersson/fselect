@@ -21,7 +21,7 @@ fn archived_mime_type(archive: &Path, file_info: &FileInfo) -> Option<String> {
     if file_info.name.ends_with('/') || file_info.name.ends_with('\\') {
         return None;
     }
-    with_archived_entry(archive, &file_info.name, |reader| {
+    with_archived_entry(archive, file_info, |reader| {
         let mut sample = Vec::new();
         reader.take(MIME_SAMPLE_SIZE).read_to_end(&mut sample).ok()?;
         Some(String::from(tree_magic_mini::from_u8(&sample)))
@@ -124,7 +124,7 @@ impl FileMetadataState {
         if self.content_stats.is_none() {
             self.content_stats = Some(match file_info {
                 Some(file_info) => {
-                    with_archived_entry(&entry.path(), &file_info.name, |reader| content_stats_from_reader(reader)).flatten()
+                    with_archived_entry(&entry.path(), file_info, |reader| content_stats_from_reader(reader)).flatten()
                 }
                 None => get_content_stats(entry),
             });

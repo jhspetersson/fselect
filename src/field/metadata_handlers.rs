@@ -629,12 +629,14 @@ mod tests {
             size: 0,
             mode: Some(0o100644),
             modified: None,
+            member: None,
         });
         let without_mode = Some(FileInfo {
             name: String::from("inner.txt"),
             size: 0,
             mode: None,
             modified: None,
+            member: None,
         });
 
         let user_read = test_field(&entry, &with_mode, &tmp, &Field::UserRead).to_string();
@@ -676,6 +678,7 @@ mod tests {
             size: 0,
             mode: None,
             modified: None,
+            member: None,
         });
 
         let result = test_field(&entry, &file_info, &tmp, &Field::IsFile);
@@ -696,6 +699,7 @@ mod tests {
             size: 0,
             mode: None,
             modified: None,
+            member: None,
         });
 
         let is_dir = test_field(&entry, &file_info, &tmp, &Field::IsDir);

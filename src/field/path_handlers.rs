@@ -171,7 +171,7 @@ mod tests {
     }
 
     fn field_value(entry: &fs::DirEntry, inner: Option<&str>, root: &std::path::Path, field: &Field) -> String {
-        let file_info = inner.map(|inner| FileInfo { name: inner.to_string(), size: 0, mode: None, modified: None });
+        let file_info = inner.map(FileInfo::named);
         let config = Config::default();
         let default_config = Config::default();
         let mut fms = FileMetadataState::new();

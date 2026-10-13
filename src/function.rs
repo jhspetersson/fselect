@@ -818,7 +818,7 @@ pub fn get_value(
             let needle = function_arg.as_bytes();
             let found = match (entry, file_info) {
                 (Some(entry), Some(file_info)) => {
-                    with_archived_entry(&entry.path(), &file_info.name, |reader| file_contains(reader, needle))
+                    with_archived_entry(&entry.path(), file_info, |reader| file_contains(reader, needle))
                 }
                 (Some(entry), None) => File::open(entry.path()).ok().map(|file| file_contains(file, needle)),
                 (None, _) => None,

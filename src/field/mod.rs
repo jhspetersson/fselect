@@ -849,6 +849,7 @@ fields! {
         ExifDigitalZoom,
         
         #[text = ["mime"]]
+        @for_archived = true
         @weight = 16
         @description = "Returns MIME type of the file"
         Mime,
@@ -890,11 +891,13 @@ fields! {
         LineEnding,
 
         #[text = ["is_binary"], data_type = "boolean"]
+        @for_archived = true
         @weight = 16
         @description = "Returns a boolean signifying whether the file has binary contents"
         IsBinary,
         
         #[text = ["is_text"], data_type = "boolean"]
+        @for_archived = true
         @weight = 16
         @description = "Returns a boolean signifying whether the file has text contents"
         IsText,
@@ -1009,8 +1012,9 @@ mod tests {
         let field = Field::LineCount;
         assert!(field.is_available_for_archived_files(), "content is read from inside the archive");
 
-        let field = Field::Mime;
-        assert!(!field.is_available_for_archived_files(), "mime sniffing works on real paths only");
+        for field in [Field::Mime, Field::IsText, Field::IsBinary] {
+            assert!(field.is_available_for_archived_files(), "{} is sniffed from the member's bytes", field);
+        }
     }
 
     #[test]

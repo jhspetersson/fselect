@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::fs::{DirEntry, FileType, Metadata};
+use std::io::Read;
 use std::path::Path;
 
 #[cfg(all(unix, feature = "users"))]
@@ -13,6 +14,20 @@ use crate::util::git::GitCache;
 use crate::util::audio::{AudioInfo, get_audio_info};
 use crate::util::dimensions::get_dimensions;
 use crate::util::duration::get_duration;
+
+const MIME_SAMPLE_SIZE: u64 = 64 * 1024;
+
+fn archived_mime_type(archive: &Path, file_info: &FileInfo) -> Option<String> {
+    if file_info.name.ends_with('/') || file_info.name.ends_with('\\') {
+        return None;
+    }
+    with_archived_entry(archive, &file_info.name, |reader| {
+        let mut sample = Vec::new();
+        reader.take(MIME_SAMPLE_SIZE).read_to_end(&mut sample).ok()?;
+        Some(String::from(tree_magic_mini::from_u8(&sample)))
+    })
+    .flatten()
+}
 
 pub struct FileMetadataState {
     pub(crate) file_metadata: Option<Option<Metadata>>,
@@ -147,11 +162,12 @@ impl FileMetadataState {
             .map(Variant::from_string)
     }
 
-    pub fn update_mime_type(&mut self, entry: &DirEntry) {
+    pub fn update_mime_type(&mut self, entry: &DirEntry, file_info: &Option<FileInfo>) {
         if self.mime_type.is_none() {
-            self.mime_type = Some(
-                tree_magic_mini::from_filepath(&entry.path()).map(String::from)
-            );
+            self.mime_type = Some(match file_info {
+                Some(file_info) => archived_mime_type(&entry.path(), file_info),
+                None => tree_magic_mini::from_filepath(&entry.path()).map(String::from),
+            });
         }
     }
 

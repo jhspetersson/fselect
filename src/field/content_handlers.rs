@@ -60,7 +60,7 @@ pub fn handle_line_ending(ctx: &mut FieldContext) -> Result<Variant, SearchError
 }
 
 pub fn handle_mime(ctx: &mut FieldContext) -> Result<Variant, SearchError> {
-    ctx.fms.update_mime_type(ctx.entry);
+    ctx.fms.update_mime_type(ctx.entry, ctx.file_info);
     if let Some(mime) = ctx.fms.get_mime_type() {
         return Ok(Variant::from_string(&String::from(mime)));
     }
@@ -74,7 +74,7 @@ pub fn handle_is_binary_or_text(ctx: &mut FieldContext, field: &Field) -> Result
             return Ok(Variant::from_bool(false));
         }
 
-    ctx.fms.update_mime_type(ctx.entry);
+    ctx.fms.update_mime_type(ctx.entry, ctx.file_info);
     if let Some(mime) = ctx.fms.get_mime_type() {
         let is_text = is_text_mime(mime);
         let result = matches!(field, Field::IsText) == is_text;
@@ -121,10 +121,20 @@ mod tests {
     use std::path::Path;
 
     use crate::config::Config;
+    use crate::fileinfo::FileInfo;
 
     use super::*;
 
     fn test_field(entry: &fs::DirEntry, root_path: &Path, field: &Field) -> Variant {
+        field_value(entry, &None, root_path, field)
+    }
+
+    fn archived_field(entry: &fs::DirEntry, inner: &str, root_path: &Path, field: &Field) -> Variant {
+        let file_info = Some(FileInfo { name: inner.to_string(), size: 0, mode: None, modified: None });
+        field_value(entry, &file_info, root_path, field)
+    }
+
+    fn field_value(entry: &fs::DirEntry, file_info: &Option<FileInfo>, root_path: &Path, field: &Field) -> Variant {
         let config = Config::default();
         let default_config = Config::default();
         let mut fms = crate::field::context::FileMetadataState::new();
@@ -132,10 +142,9 @@ mod tests {
         let mut git_cache = crate::util::git::GitCache::new();
         #[cfg(all(unix, feature = "users"))]
         let user_cache = uzers::UsersCache::new();
-        let none_file_info = None;
         let mut ctx = FieldContext {
             entry,
-            file_info: &none_file_info,
+            file_info,
             root_path,
             fms: &mut fms,
             #[cfg(feature = "git")]
@@ -155,6 +164,42 @@ mod tests {
             .filter_map(|e| e.ok())
             .find(|e| e.file_name() == name)
             .unwrap()
+    }
+
+    #[test]
+    fn mime_fields_of_archived_entries_are_sniffed_from_the_member() {
+        use std::io::Write;
+
+        let tmp = std::env::temp_dir().join("fselect_test_archived_mime_fields");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        let mut zip = zip::ZipWriter::new(fs::File::create(tmp.join("pack.zip")).unwrap());
+        let options = zip::write::SimpleFileOptions::default();
+        zip.start_file("notes.txt", options).unwrap();
+        zip.write_all(b"hello world\n").unwrap();
+        zip.start_file("img.png", options).unwrap();
+        zip.write_all(b"\x89PNG\r\n\x1a\n").unwrap();
+        zip.write_all(&[0u8; 64]).unwrap();
+        zip.add_directory("sub", options).unwrap();
+        zip.finish().unwrap();
+        let entry = entry_for(&tmp, "pack.zip");
+
+        let fields = [Field::Mime, Field::IsText, Field::IsBinary];
+        let values = |inner: &str| -> Vec<String> {
+            fields.iter().map(|field| archived_field(&entry, inner, &tmp, field).to_string()).collect()
+        };
+        let notes = values("notes.txt");
+        let png = values("img.png");
+        let dir = values("sub/");
+        let missing = values("absent.bin");
+        let archive = test_field(&entry, &tmp, &Field::Mime).to_string();
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(notes, ["text/plain", "true", "false"]);
+        assert_eq!(png, ["image/png", "false", "true"]);
+        assert_eq!(dir, ["", "false", "false"]);
+        assert_eq!(missing, ["", "false", "false"]);
+        assert_eq!(archive, "application/zip");
     }
 
     #[test]

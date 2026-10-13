@@ -3321,6 +3321,35 @@ mod tests {
         assert_eq!(json, vec![r#"{"name":"inner.txt","size":"5"}"#]);
     }
 
+    #[test]
+    fn archive_entries_expose_their_mime_type() {
+        use std::io::Write;
+        use std::path::MAIN_SEPARATOR_STR as SEP;
+
+        let tmp = std::env::temp_dir().join("fselect_test_archive_mime");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        let mut zip = zip::ZipWriter::new(fs::File::create(tmp.join("pack.zip")).unwrap());
+        let options = zip::write::SimpleFileOptions::default();
+        zip.start_file("notes.txt", options).unwrap();
+        zip.write_all(b"hello world\n").unwrap();
+        zip.start_file("img.png", options).unwrap();
+        zip.write_all(b"\x89PNG\r\n\x1a\n").unwrap();
+        zip.write_all(&[0u8; 64]).unwrap();
+        zip.finish().unwrap();
+
+        let rows = run_query_against_dir("select path, mime, is_text, is_binary from __DIR__ arc order by path", &tmp);
+        let texts = run_query_against_dir("select name from __DIR__ arc where is_text", &tmp);
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(rows, vec![
+            "pack.zip\tapplication/zip\tfalse\ttrue".to_string(),
+            format!("pack.zip{SEP}img.png\timage/png\tfalse\ttrue"),
+            format!("pack.zip{SEP}notes.txt\ttext/plain\ttrue\tfalse"),
+        ]);
+        assert_eq!(texts, vec!["notes.txt".to_string()]);
+    }
+
     fn make_archive_dir(name: &str) -> std::path::PathBuf {
         use std::io::Write;
 

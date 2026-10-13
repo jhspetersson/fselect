@@ -109,6 +109,7 @@ impl LexerState {
 #[derive(Clone)]
 pub struct Lexer {
     input: Vec<String>,
+    chars: Vec<Vec<char>>,
     input_index: usize,
     char_index: usize,
     between_parts: bool,
@@ -119,6 +120,7 @@ pub struct Lexer {
 impl Lexer {
     pub fn new(input: Vec<String>) -> Lexer {
         Lexer {
+            chars: input.iter().map(|part| part.chars().collect()).collect(),
             input,
             input_index: 0,
             char_index: 0,
@@ -150,17 +152,10 @@ impl Lexer {
         let mut mode = LexingMode::Undefined;
         let mut quote_closed = false;
         let search_root_ctx = self.state.possible_search_root;
-        let mut chars_buf: Vec<char> = Vec::new();
-        let mut chars_input_index: usize = usize::MAX;
 
         loop {
-            if self.input_index != chars_input_index {
-                if let Some(input_part) = self.input.get(self.input_index) {
-                    chars_buf = input_part.chars().collect();
-                    chars_input_index = self.input_index;
-                } else {
-                    break;
-                }
+            if self.input_index >= self.chars.len() {
+                break;
             }
 
             let c;
@@ -191,7 +186,7 @@ impl Lexer {
                     }
                 }
             } else {
-                match chars_buf.get(self.char_index) {
+                match self.chars[self.input_index].get(self.char_index) {
                     Some(&ch) => c = ch,
                     None => {
                         self.input_index += 1;
@@ -225,7 +220,7 @@ impl Lexer {
                     break;
                 }
                 LexingMode::RawString => {
-                    let rest = rest_of_word(&chars_buf, self.char_index + 1);
+                    let rest = rest_of_word(&self.chars[self.input_index], self.char_index + 1);
                     // `2018-1-1` / `2018-01-01` glue into one date token; a year
                     // followed by a single number (`2000-5`) is subtraction.
                     let is_date = c == '-'
@@ -240,7 +235,7 @@ impl Lexer {
                             }
                         } else if self.state.after_operator
                             && is_arithmetic_char(c)
-                            && continues_arithmetic(&s, c, &rest, chars_buf.get(self.char_index + 1).copied())
+                            && continues_arithmetic(&s, c, &rest, self.chars[self.input_index].get(self.char_index + 1).copied())
                         {
                             // `size > 2*4`: after a comparison operator `*`, `/`, `%`,
                             // `+` and `-` are literal characters (paths, LIKE patterns,
@@ -373,8 +368,8 @@ impl Lexer {
         let mut input_index = self.input_index;
         let mut char_index = self.char_index;
         let mut next = String::new();
-        while let Some(part) = self.input.get(input_index) {
-            for c in part.chars().skip(char_index) {
+        while let Some(part) = self.chars.get(input_index) {
+            for &c in part.iter().skip(char_index) {
                 if c.is_ascii_whitespace() {
                     if next.is_empty() {
                         continue;

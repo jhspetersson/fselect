@@ -90,6 +90,21 @@ fn invalid_regex_root_is_rejected_before_the_header() {
 }
 
 #[test]
+fn wrong_function_argument_counts_are_rejected_before_the_header() {
+    let dir = make_dir("fselect_test_fatal_arity");
+    let dir = dir.to_string_lossy();
+
+    assert_rejected_without_output(
+        &format!("select lower(name, 1) from {} into json", dir),
+        "Function LOWER expects 1 argument, got 2",
+    );
+    assert_rejected_without_output(
+        &format!("select name from {} where replace(name, 'a') = 'b' into html", dir),
+        "Function REPLACE expects 3 arguments, got 2",
+    );
+}
+
+#[test]
 fn valid_queries_still_produce_complete_documents() {
     let dir = make_dir("fselect_test_fatal_valid");
     let dir = dir.to_string_lossy();

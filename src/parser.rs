@@ -86,6 +86,15 @@ impl <'a> Parser<'a> {
             }
         }
 
+        let clauses = fields.iter()
+            .chain(expr.iter())
+            .chain(grouping_fields.iter())
+            .chain(having.iter())
+            .chain(ordering_fields.iter());
+        for clause in clauses {
+            clause.validate_function_arity()?;
+        }
+
         if let Some(ref having_expr) = having {
             let aggregate_context = having_expr.has_aggregate_function()
                 || !grouping_fields.is_empty()
@@ -3164,12 +3173,12 @@ mod tests {
 
     #[test]
     fn boolean_function_without_parens_does_not_eat_next_token() {
-        let query = "select name from /test where CONTAINS and size > 100";
-        let mut lexer = Lexer::new(vec![query.to_string()]);
-        let mut p = Parser::new(&mut lexer);
-        let query = p.parse(false).unwrap();
-        assert!(!p.there_are_remaining_lexemes());
+        // The bare name is a call with no arguments: the arity error proves the
+        // tokens after it were not swallowed as its arguments.
+        let err = parse_query("select name from /test where CONTAINS and size > 100").unwrap_err();
+        assert_eq!(err, "Function CONTAINS expects 1 argument, got 0");
 
+        let query = parse_query("select name from /test where contains('x') and size > 100").unwrap();
         let expr = query.expr.unwrap();
         assert_eq!(expr.logical_op, Some(LogicalOp::And));
         assert!(expr.right.is_some());
@@ -3493,18 +3502,16 @@ mod tests {
 
     #[test]
     fn unquoted_function_name_parsed_as_function() {
-        let query = "select name from /test where name = upper";
-        let mut lexer = Lexer::new(vec![query.to_string()]);
-        let mut p = Parser::new(&mut lexer);
-        let result = p.parse(false);
-        assert!(result.is_ok());
-        let query = result.unwrap();
-        assert!(query.expr.is_some());
-
+        // A bare function name is a call with no arguments. That is fine for a
+        // zero-argument function and a parse error for one that needs
+        // arguments (UPPER with none used to evaluate silently to "").
+        let query = parse_query("select name from /test where name = curdate").unwrap();
         let expr = query.expr.unwrap();
         assert_eq!(expr.op, Some(Op::Eq));
-        let right = expr.right.unwrap();
-        assert_eq!(right.function, Some(Function::Upper));
+        assert_eq!(expr.right.unwrap().function, Some(Function::CurrentDate));
+
+        let err = parse_query("select name from /test where name = upper").unwrap_err();
+        assert_eq!(err, "Function UPPER expects 1 argument, got 0");
     }
 
     #[test]
@@ -3981,6 +3988,46 @@ mod tests {
     }
 
     #[test]
+    fn function_argument_counts_are_checked_at_parse_time() {
+        let err = parse_query("select lower(name, name) from /test").unwrap_err();
+        assert_eq!(err, "Function LOWER expects 1 argument, got 2");
+
+        let err = parse_query("select name from /test where substring(name, 1, 2, 3) = 'ab'").unwrap_err();
+        assert!(err.contains("SUBSTRING expects 2 to 3 arguments, got 4"), "{}", err);
+
+        let err = parse_query("select name from /test order by length(name, 1)").unwrap_err();
+        assert!(err.contains("LENGTH"), "{}", err);
+
+        let err = parse_query("select count(*) from /test group by replace(name, 'a')").unwrap_err();
+        assert!(err.contains("REPLACE expects 3 arguments, got 2"), "{}", err);
+
+        let err = parse_query("select ext, count(*) from /test group by ext having min(size, 1) > 0").unwrap_err();
+        assert!(err.contains("MIN"), "{}", err);
+
+        let err = parse_query("select name from /test where size in (select upper(size, 1) from /other)").unwrap_err();
+        assert!(err.contains("UPPER"), "{}", err);
+
+        // A function name with no parentheses is a call with no arguments.
+        let err = parse_query("select length from /test").unwrap_err();
+        assert_eq!(err, "Function LENGTH expects 1 argument, got 0");
+
+        let err = parse_query("select pi(1) from /test").unwrap_err();
+        assert_eq!(err, "Function PI expects no arguments, got 1");
+
+        for ok in [
+            "select coalesce(name) from /test",
+            "select coalesce(name, ext, 'x'), concat_ws('-', name, ext) from /test",
+            "select count(*), count, count(name) from /test",
+            "select curdate(), now, pi(), rand(1, 10) from /test",
+            "select substring(name, 1), substring(name, 1, 2), round(size), round(size, 2) from /test",
+            "select name from /test where contains('x') and lower(name) = 'a'",
+            "select min(size * 2), max(size) from /test group by ext order by count(*)",
+        ] {
+            parse_query(ok).unwrap_or_else(|e| panic!("{}: {}", ok, e));
+        }
+    }
+
+    #[test]
     fn file_type_conditions_on_different_root_aliases_do_not_conflict() {
         // `t2` is the subquery's own root, `t1` the outer entry: a directory
         // in the outer query can be paired with files in the inner one.
@@ -4083,8 +4130,11 @@ mod tests {
         assert_eq!(query.fields[1].args.as_ref().map(|a| a.len()), Some(2));
         assert_eq!(format!("{}", query.expr.unwrap()), "Length(Name) Gt 3");
 
-        // A bare function name without parentheses is still accepted as before
-        let query = parse_query("select name from /test where name = year").unwrap();
+        // A bare function name without parentheses is still a call, so a
+        // zero-argument function works and one that needs arguments errors.
+        let query = parse_query("select name from /test where name = now").unwrap();
         assert!(query.expr.unwrap().right.unwrap().function.is_some());
+        let err = parse_query("select name from /test where name = year").unwrap_err();
+        assert_eq!(err, "Function YEAR expects 1 argument, got 0");
     }
 }

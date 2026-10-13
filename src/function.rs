@@ -35,6 +35,7 @@ macro_rules! functions {
             $(
                 #[text = [$($text:literal),*]$(,)? $(data_type = $data_type:literal)?]
                 $(@is_aggregate = $is_aggregate:literal)?
+                $(@args = $args:literal)?
                 $(@weight = $weight:literal)?
                 $(@group = $group:literal)?
                 $(@description = $description:literal)?
@@ -117,6 +118,27 @@ macro_rules! functions {
                         $enum_name::$variant => {
                             stringify!($($is_aggregate)?) == "true"
                         }
+                    )*
+                }
+            }
+
+            /// How many arguments the function accepts; exactly one unless
+            /// the declaration says otherwise with `@args`.
+            pub fn arity(&self) -> Arity {
+                match self {
+                    $(
+                        $(#[$variant_attrs])*
+                        $enum_name::$variant => Arity::parse(stringify!($($args)?)),
+                    )*
+                }
+            }
+
+            /// The first spelling of the function name, as used in messages.
+            pub fn canonical_name(&self) -> &'static str {
+                match self {
+                    $(
+                        $(#[$variant_attrs])*
+                        $enum_name::$variant => [$($text),*][0],
                     )*
                 }
             }
@@ -245,6 +267,64 @@ fn position_of(needle: &str, haystack: &str, start: Option<&String>, function_na
         .unwrap_or(0);
 
     Ok(Variant::from_int(position))
+}
+
+/// The number of arguments a function accepts: `max` is `None` for
+/// variadic functions.
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub struct Arity {
+    pub min: usize,
+    pub max: Option<usize>,
+}
+
+impl Arity {
+    /// Reads an `@args` spec as the macro stringifies it: `"3"` for exactly
+    /// three, `"1..3"` for a range, `"1.."` for at least one, and an empty
+    /// spec for the default of exactly one.
+    fn parse(spec: &str) -> Arity {
+        let spec = spec.trim().trim_matches('"');
+        if spec.is_empty() {
+            return Arity { min: 1, max: Some(1) };
+        }
+        let bound = |s: &str| s.parse::<usize>().unwrap_or_else(|_| panic!("bad @args spec {:?}", spec));
+        match spec.split_once("..") {
+            Some((min, "")) => Arity { min: bound(min), max: None },
+            Some((min, max)) => Arity { min: bound(min), max: Some(bound(max)) },
+            None => Arity { min: bound(spec), max: Some(bound(spec)) },
+        }
+    }
+
+    fn accepts(&self, given: usize) -> bool {
+        given >= self.min && self.max.is_none_or(|max| given <= max)
+    }
+}
+
+impl Display for Arity {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+        let plural = |n: usize| if n == 1 { "argument" } else { "arguments" };
+        match self.max {
+            Some(max) if max == self.min && max == 0 => write!(f, "no arguments"),
+            Some(max) if max == self.min => write!(f, "{} {}", max, plural(max)),
+            Some(max) => write!(f, "{} to {} arguments", self.min, max),
+            None => write!(f, "at least {} {}", self.min, plural(self.min)),
+        }
+    }
+}
+
+impl Function {
+    pub fn check_argument_count(&self, given: usize) -> Result<(), String> {
+        let arity = self.arity();
+        if arity.accepts(given) {
+            Ok(())
+        } else {
+            Err(format!(
+                "Function {} expects {}, got {}",
+                self.canonical_name().to_uppercase(),
+                arity,
+                given
+            ))
+        }
+    }
 }
 
 fn unary_float(arg: &str, f: impl FnOnce(f64) -> Result<Variant, String>) -> Result<Variant, String> {
@@ -1125,31 +1205,37 @@ functions! {
         FromBase64,
 
         #[text = ["concat"]]
+        @args = "1.."
         @group = "String"
         @description = "Concatenate the value with the arguments"
         Concat,
 
         #[text = ["concat_ws"]]
+        @args = "2.."
         @group = "String"
         @description = "Concatenate the arguments, separated by the value"
         ConcatWs,
 
         #[text = ["locate", "position"], data_type = "numeric"]
+        @args = "2..3"
         @group = "String"
         @description = "Get the position of the value (a substring) in the second argument, MySQL argument order"
         Locate,
 
         #[text = ["strpos"], data_type = "numeric"]
+        @args = "2..3"
         @group = "String"
         @description = "Get the position of the second argument (a substring) in the value, PostgreSQL argument order"
         Strpos,
 
-        #[text = ["substr", "substring"]]
+        #[text = ["substring", "substr"]]
+        @args = "2..3"
         @group = "String"
         @description = "Get a substring of the value, from a position and length"
         Substring,
 
         #[text = ["replace"]]
+        @args = "3"
         @group = "String"
         @description = "Replace a substring in the value with another string"
         Replace,
@@ -1190,6 +1276,7 @@ functions! {
         Abs,
 
         #[text = ["power", "pow"], data_type = "numeric"]
+        @args = "2"
         @group = "Numeric"
         @description = "Raise the value to the power of another value"
         Power,
@@ -1200,6 +1287,7 @@ functions! {
         Sqrt,
 
         #[text = ["log"], data_type = "numeric"]
+        @args = "1..2"
         @group = "Numeric"
         @description = "Get the logarithm of the value with a specific base"
         Log,
@@ -1215,16 +1303,19 @@ functions! {
         Exp,
 
         #[text = ["least"], data_type = "numeric"]
+        @args = "1.."
         @group = "Numeric"
         @description = "Get the smallest value"
         Least,
 
         #[text = ["greatest"], data_type = "numeric"]
+        @args = "1.."
         @group = "Numeric"
         @description = "Get the largest value"
         Greatest,
 
         #[text = ["pi"], data_type = "numeric"]
+        @args = "0"
         @weight = 1
         @group = "Numeric"
         @description = "Get the value of Pi (π)"
@@ -1241,6 +1332,7 @@ functions! {
         Ceil,
 
         #[text = ["round"], data_type = "numeric"]
+        @args = "1..2"
         @group = "Numeric"
         @description = "Round to the nearest integer, or to a given number of decimal places"
         Round,
@@ -1276,6 +1368,7 @@ functions! {
         ContainsGreek,
 
         #[text = ["format_size", "format_filesize"]]
+        @args = "1..2"
         @group = "Other"
         @description = "Format a file size in human-readable format"
         FormatSize,
@@ -1286,18 +1379,21 @@ functions! {
         FormatTime,
 
         #[text = ["current_date", "cur_date", "curdate"]]
+        @args = "0"
         @weight = 1
         @group = "Datetime"
         @description = "Get the current date"
         CurrentDate,
 
         #[text = ["current_time", "cur_time", "curtime"]]
+        @args = "0"
         @weight = 1
         @group = "Datetime"
         @description = "Get the current time (HH:MM:SS)"
         CurrentTime,
 
         #[text = ["current_timestamp", "now"]]
+        @args = "0"
         @weight = 1
         @group = "Datetime"
         @description = "Get the current timestamp (YYYY-MM-DD HH:MM:SS)"
@@ -1334,16 +1430,19 @@ functions! {
         DayOfYear,
 
         #[text = ["date_add", "dateadd"]]
+        @args = "2"
         @group = "Datetime"
         @description = "Add days to a date and return the resulting date"
         DateAdd,
 
         #[text = ["date_sub", "datesub"]]
+        @args = "2"
         @group = "Datetime"
         @description = "Subtract days from a date and return the resulting date"
         DateSub,
 
         #[text = ["date_diff", "datediff"], data_type = "numeric"]
+        @args = "2"
         @group = "Datetime"
         @description = "Get the number of days between two dates"
         DateDiff,
@@ -1359,16 +1458,19 @@ functions! {
         LastDay,
 
         #[text = ["extract"], data_type = "numeric"]
+        @args = "2"
         @group = "Datetime"
         @description = "Extract a date/time part (year, month, day, hour, minute, second, week, quarter, dow, doy, epoch) from a date. Usage: EXTRACT('year', date)"
         Extract,
 
         #[text = ["date_trunc", "datetrunc"]]
+        @args = "2"
         @group = "Datetime"
         @description = "Truncate a date to a unit (year, quarter, month, week, day, hour, minute, second). Usage: DATE_TRUNC('day', date)"
         DateTrunc,
 
         #[text = ["current_uid"], data_type = "numeric"]
+        @args = "0"
         @weight = 1
         @group = "Other"
         @description = "Get the current user ID"
@@ -1376,6 +1478,7 @@ functions! {
         CurrentUid,
 
         #[text = ["current_user"]]
+        @args = "0"
         @weight = 1
         @group = "Other"
         @description = "Get the current username"
@@ -1383,6 +1486,7 @@ functions! {
         CurrentUser,
 
         #[text = ["current_gid"], data_type = "numeric"]
+        @args = "0"
         @weight = 1
         @group = "Other"
         @description = "Get the current group ID"
@@ -1390,6 +1494,7 @@ functions! {
         CurrentGid,
 
         #[text = ["current_group"]]
+        @args = "0"
         @weight = 1
         @group = "Other"
         @description = "Get the current group name"
@@ -1459,11 +1564,13 @@ functions! {
         HasCapability,
 
         #[text = ["coalesce"]]
+        @args = "1.."
         @group = "Other"
         @description = "Return the first non-empty value"
         Coalesce,
 
         #[text = ["rand", "random"], data_type = "numeric"]
+        @args = "0..2"
         @weight = 1
         @group = "Numeric"
         @description = "Gets a random number from 0 to the value, or between two values"
@@ -1495,6 +1602,7 @@ functions! {
 
         #[text = ["count"], data_type = "numeric"]
         @is_aggregate = true
+        @args = "0..1"
         @group = "Aggregate"
         @description = "Get the number of values"
         Count,
@@ -1719,6 +1827,48 @@ mod tests {
         assert_eq!(result.unwrap().to_int(), 7);
     }
     
+    #[test]
+    fn arity_specs_cover_exact_open_and_bounded_ranges() {
+        assert_eq!(Arity::parse(""), Arity { min: 1, max: Some(1) }, "unspecified means exactly one");
+        assert_eq!(Arity::parse("\"0\""), Arity { min: 0, max: Some(0) });
+        assert_eq!(Arity::parse("\"2..3\""), Arity { min: 2, max: Some(3) });
+        assert_eq!(Arity::parse("\"1..\""), Arity { min: 1, max: None });
+    }
+
+    #[test]
+    fn function_arities_match_their_implementations() {
+        for (function, min, max) in [
+            (Function::Lower, 1, Some(1)),
+            (Function::Pi, 0, Some(0)),
+            (Function::Coalesce, 1, None),
+            (Function::ConcatWs, 2, None),
+            (Function::Substring, 2, Some(3)),
+            (Function::Locate, 2, Some(3)),
+            (Function::Replace, 3, Some(3)),
+            (Function::DateAdd, 2, Some(2)),
+            (Function::Round, 1, Some(2)),
+            (Function::Random, 0, Some(2)),
+            (Function::Count, 0, Some(1)),
+            (Function::Min, 1, Some(1)),
+            (Function::CurrentTimestamp, 0, Some(0)),
+            (Function::Contains, 1, Some(1)),
+        ] {
+            assert_eq!(function.arity(), Arity { min, max }, "{}", function);
+        }
+    }
+
+    #[test]
+    fn argument_count_errors_name_the_function_and_the_expectation() {
+        assert_eq!(Function::Lower.check_argument_count(2).unwrap_err(), "Function LOWER expects 1 argument, got 2");
+        assert_eq!(Function::Pi.check_argument_count(1).unwrap_err(), "Function PI expects no arguments, got 1");
+        assert_eq!(Function::Coalesce.check_argument_count(0).unwrap_err(), "Function COALESCE expects at least 1 argument, got 0");
+        assert_eq!(Function::Substring.check_argument_count(4).unwrap_err(), "Function SUBSTRING expects 2 to 3 arguments, got 4");
+        assert_eq!(Function::Replace.check_argument_count(2).unwrap_err(), "Function REPLACE expects 3 arguments, got 2");
+        assert!(Function::Substring.check_argument_count(2).is_ok());
+        assert!(Function::Coalesce.check_argument_count(5).is_ok());
+        assert!(Function::Count.check_argument_count(0).is_ok());
+    }
+
     #[test]
     fn strpos_takes_the_haystack_first() {
         assert_eq!(Function::from_str("strpos"), Ok(Function::Strpos));

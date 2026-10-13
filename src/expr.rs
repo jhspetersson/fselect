@@ -798,6 +798,23 @@ impl Expr {
     /// `1kb`, `1.5 MiB`). Returns `Err` with the first offending literal so
     /// the query fails at parse time instead of silently matching nothing.
     ///
+    /// Rejects calls with the wrong number of arguments anywhere in the
+    /// expression tree, so the mistake is reported once, before the search,
+    /// instead of per file (or never, when extra arguments were ignored).
+    pub fn validate_function_arity(&self) -> Result<(), String> {
+        if let Some(ref function) = self.function {
+            let given = usize::from(self.left.is_some()) + self.args.as_ref().map_or(0, Vec::len);
+            function.check_argument_count(given)?;
+        }
+        for child in self.left.iter().chain(self.right.iter()) {
+            child.validate_function_arity()?;
+        }
+        for arg in self.args.iter().flatten() {
+            arg.validate_function_arity()?;
+        }
+        Ok(())
+    }
+
     /// Like `validate_datetime_literals`, only literals adjacent to a numeric
     /// *field* are checked; fields, functions and subqueries on the value side
     /// are data-dependent and left to runtime (`compare_variants`).
@@ -1625,7 +1642,7 @@ mod tests {
     #[test]
     fn validate_datetime_literals_ignores_function_args() {
         assert!(parse_where_expr("select name from . where modified > date_add(created, 1)").validate_datetime_literals().is_ok());
-        assert!(parse_where_expr("select name from . where modified > date_add(created, 1, 'day')").validate_datetime_literals().is_ok());
+        assert!(parse_where_expr("select name from . where modified > coalesce(created, 'not-a-date')").validate_datetime_literals().is_ok());
     }
 
     #[test]

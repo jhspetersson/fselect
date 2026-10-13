@@ -275,6 +275,8 @@ Let's see how all these are different:
 
 ### Functions
 
+Calling a function with the wrong number of arguments is a query error, reported before the search starts. A function name without parentheses is a call with no arguments, so `now` works but `upper` on its own does not.
+
 #### Aggregate functions
 
 Queries using these functions return only one result row.

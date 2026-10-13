@@ -554,6 +554,8 @@ SHA-512 digest.
 .BR sha3_512 " or " sha3
 SHA3-512 digest.
 .SH FUNCTIONS
+Calling a function with the wrong number of arguments is a query error, reported before the search starts.
+A function name without parentheses is a call with no arguments.
 .SS Aggregate functions
 Queries using these functions return a single result row.
 .TP

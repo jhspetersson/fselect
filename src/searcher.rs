@@ -31,6 +31,7 @@ use crate::output::ResultsWriter;
 use crate::query::TraversalMode::{Bfs, Dfs};
 use crate::query::{Query, Root, TraversalMode};
 use crate::util::*;
+use crate::util::dir_lookup::DirEntryLookup;
 use crate::util::error::{error_message, path_error_message, SearchError};
 
 
@@ -774,10 +775,13 @@ impl<'a> Searcher<'a> {
     }
 
     /// Treat each path produced by a FROM subselect as an input entry: resolve
-    /// it to a `DirEntry` (by reading its parent directory) and feed it through
-    /// `check_file` so the outer query's WHERE/SELECT logic can run against it
-    /// without further directory traversal.
+    /// it to a `DirEntry` and feed it through `check_file` so the outer query's
+    /// WHERE/SELECT logic can run against it without further directory
+    /// traversal. The std library cannot build a `DirEntry` from a path, so the
+    /// parent directory is read once and its entries looked up by name for as
+    /// long as consecutive paths keep coming from the same directory.
     fn visit_subquery_paths(&mut self, paths: Vec<String>) -> Result<(), SearchError> {
+        let mut lookup = DirEntryLookup::new();
         for path_str in paths {
             if path_str.is_empty() {
                 continue;
@@ -796,23 +800,16 @@ impl<'a> Searcher<'a> {
             };
             self.current_root_dir = parent.clone();
 
-            match fs::read_dir(&parent) {
-                Ok(entries) => {
-                    let mut matched_entry: Option<DirEntry> = None;
-                    for entry in entries.flatten() {
-                        if entry.file_name() == file_name {
-                            matched_entry = Some(entry);
-                            break;
+            match lookup.entry(&parent, &file_name) {
+                Ok(Some(entry)) => {
+                    if let Err(err) = self.check_file(entry, &parent, &None, None) {
+                        if err.is_fatal() {
+                            return Err(err);
                         }
+                        self.handle_nonfatal_error(err, &path);
                     }
-                    if let Some(entry) = matched_entry
-                        && let Err(err) = self.check_file(&entry, &parent, &None, None) {
-                            if err.is_fatal() {
-                                return Err(err);
-                            }
-                            self.handle_nonfatal_error(err, &path);
-                        }
                 }
+                Ok(None) => {}
                 Err(err) => {
                     self.error_count += 1;
                     path_error_message(&parent, err);
@@ -3477,6 +3474,29 @@ line3
         assert!(names.contains("alpha.rs"), "missing alpha.rs in {:?}", names);
         assert!(names.contains("beta.txt"), "missing beta.txt in {:?}", names);
         assert!(names.contains("gamma.rs"), "missing gamma.rs in {:?}", names);
+    }
+
+    #[test]
+    fn from_subselect_keeps_the_inner_order_across_directories() {
+        let tmp = std::env::temp_dir().join("fselect_test_from_subselect_order");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(tmp.join("one")).unwrap();
+        fs::create_dir_all(tmp.join("two")).unwrap();
+        fs::write(tmp.join("one").join("a.bin"), vec![0u8; 30]).unwrap();
+        fs::write(tmp.join("two").join("b.bin"), vec![0u8; 10]).unwrap();
+        fs::write(tmp.join("one").join("c.bin"), vec![0u8; 40]).unwrap();
+        fs::write(tmp.join("two").join("d.bin"), vec![0u8; 20]).unwrap();
+        fs::write(tmp.join("e.bin"), vec![0u8; 50]).unwrap();
+
+        let rows = run_query_against_dir(
+            "select name from (select path from __DIR__ where is_file order by size)",
+            &tmp,
+        );
+
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(rows, vec!["b.bin", "d.bin", "a.bin", "c.bin", "e.bin"],
+            "rows must come out in the order the subselect produced them, whatever directory they live in");
     }
 
     #[test]

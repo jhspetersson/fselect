@@ -13,6 +13,7 @@ pub(crate) mod win_attrs;
 #[cfg(windows)]
 pub(crate) mod win_xattr;
 pub(crate) mod datetime;
+pub(crate) mod dir_lookup;
 #[cfg(all(windows, feature = "everything"))]
 pub(crate) mod everything;
 #[cfg(all(unix, feature = "plocate"))]

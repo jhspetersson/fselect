@@ -22,7 +22,7 @@ use serde::ser::{Serialize, Serializer};
 #[cfg(unix)]
 use xattr::FileExt;
 
-use crate::fileinfo::FileInfo;
+use crate::fileinfo::{FileInfo, with_archived_entry};
 use crate::util::{capitalize_initials, format_date, format_duration, format_time, format_datetime, parse_datetime, parse_filesize};
 use std::cmp::Ordering;
 use crate::util::variant::{Variant, VariantType};
@@ -726,16 +726,15 @@ pub fn get_value(
         }
         // ===== File functions =====
         Function::Contains => {
-            if file_info.is_some() {
-                return Ok(Variant::empty(VariantType::Bool));
-            }
-
-            if let Some(entry) = entry
-                && let Ok(file) = File::open(entry.path()) {
-                    return Ok(Variant::from_bool(file_contains(file, function_arg.as_bytes())));
+            let needle = function_arg.as_bytes();
+            let found = match (entry, file_info) {
+                (Some(entry), Some(file_info)) => {
+                    with_archived_entry(&entry.path(), &file_info.name, |reader| file_contains(reader, needle))
                 }
-
-            Ok(Variant::empty(VariantType::Bool))
+                (Some(entry), None) => File::open(entry.path()).ok().map(|file| file_contains(file, needle)),
+                (None, _) => None,
+            };
+            Ok(found.map_or_else(|| Variant::empty(VariantType::Bool), Variant::from_bool))
         }
         #[cfg(unix)]
         Function::HasXattr => {

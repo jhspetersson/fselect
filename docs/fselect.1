@@ -878,7 +878,14 @@ Follow symbolic links. Default is not to follow.
 .TP
 .BR archives " / " arc
 Search inside archives (zip only). Default is not to search archives.
-Archived entries report BpathR, BabspathR, BdirR and BabsdirR with the archive path as a prefix, e.g. pack.zip/sub/deep.txt.
+Archived entries report \fBpath\fR, \fBabspath\fR, \fBdir\fR and \fBabsdir\fR with the archive path as a prefix, e.g. pack.zip/sub/deep.txt.
+They also report content fields such as
+.BR line_count ", " word_count ", " encoding " and " contains() ,
+as well as
+.BR depth ,
+and obey
+.BR mindepth " / " maxdepth
+counted from the search root.
 .TP
 .BR gitignore " / " git
 Respect

@@ -1,10 +1,11 @@
 use crate::field::Field;
 use crate::field::context::FieldContext;
+use crate::fileinfo::with_archived_entry;
 use crate::util::*;
 use crate::util::error::SearchError;
 
 pub fn handle_line_count(ctx: &mut FieldContext) -> Result<Variant, SearchError> {
-    ctx.fms.update_line_count(ctx.entry);
+    ctx.fms.update_line_count(ctx.entry, ctx.file_info);
     if let Some(line_count) = ctx.fms.get_line_count() {
         return Ok(Variant::from_int(line_count as i64));
     }
@@ -12,7 +13,7 @@ pub fn handle_line_count(ctx: &mut FieldContext) -> Result<Variant, SearchError>
 }
 
 pub fn handle_word_count(ctx: &mut FieldContext) -> Result<Variant, SearchError> {
-    ctx.fms.update_content_stats(ctx.entry);
+    ctx.fms.update_content_stats(ctx.entry, ctx.file_info);
     if let Some(stats) = ctx.fms.get_content_stats()
         && stats.is_text {
             return Ok(Variant::from_int(stats.word_count as i64));
@@ -21,7 +22,7 @@ pub fn handle_word_count(ctx: &mut FieldContext) -> Result<Variant, SearchError>
 }
 
 pub fn handle_char_count(ctx: &mut FieldContext) -> Result<Variant, SearchError> {
-    ctx.fms.update_content_stats(ctx.entry);
+    ctx.fms.update_content_stats(ctx.entry, ctx.file_info);
     if let Some(stats) = ctx.fms.get_content_stats()
         && stats.is_text {
             return Ok(Variant::from_int(stats.char_count as i64));
@@ -30,7 +31,7 @@ pub fn handle_char_count(ctx: &mut FieldContext) -> Result<Variant, SearchError>
 }
 
 pub fn handle_encoding(ctx: &mut FieldContext) -> Result<Variant, SearchError> {
-    ctx.fms.update_content_stats(ctx.entry);
+    ctx.fms.update_content_stats(ctx.entry, ctx.file_info);
     if let Some(stats) = ctx.fms.get_content_stats()
         && stats.is_text {
             return Ok(Variant::from_string(&stats.encoding));
@@ -42,11 +43,15 @@ pub fn handle_has_bom(ctx: &mut FieldContext) -> Result<Variant, SearchError> {
     if let Some(stats) = ctx.fms.get_content_stats() {
         return Ok(Variant::from_bool(stats.has_bom));
     }
-    Ok(Variant::from_bool(has_bom(ctx.entry)))
+    match ctx.file_info {
+        Some(file_info) => Ok(with_archived_entry(&ctx.entry.path(), &file_info.name, has_bom_in_reader)
+            .map_or_else(|| Variant::empty(VariantType::String), Variant::from_bool)),
+        None => Ok(Variant::from_bool(has_bom(ctx.entry))),
+    }
 }
 
 pub fn handle_line_ending(ctx: &mut FieldContext) -> Result<Variant, SearchError> {
-    ctx.fms.update_content_stats(ctx.entry);
+    ctx.fms.update_content_stats(ctx.entry, ctx.file_info);
     if let Some(stats) = ctx.fms.get_content_stats()
         && stats.is_text {
             return Ok(Variant::from_string(&stats.line_ending));

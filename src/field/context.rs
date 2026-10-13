@@ -6,7 +6,7 @@ use std::path::Path;
 use uzers::UsersCache;
 
 use crate::config::Config;
-use crate::fileinfo::FileInfo;
+use crate::fileinfo::{FileInfo, with_archived_entry};
 use crate::util::*;
 #[cfg(feature = "git")]
 use crate::util::git::GitCache;
@@ -93,21 +93,26 @@ impl FileMetadataState {
         self.entry_file_type.flatten()
     }
 
-    pub fn update_line_count(&mut self, entry: &DirEntry) {
+    pub fn update_line_count(&mut self, entry: &DirEntry, file_info: &Option<FileInfo>) {
         // Always derived from the content-stats pass: a raw newline-byte scan
         // disagrees with the decoded text for UTF-16/32 files (0x0A occurs
         // inside multibyte code units), which made the reported count depend
         // on which content field happened to be evaluated first.
-        self.update_content_stats(entry);
+        self.update_content_stats(entry, file_info);
     }
 
     pub fn get_line_count(&self) -> Option<usize> {
         self.get_content_stats().map(|stats| stats.line_count)
     }
 
-    pub fn update_content_stats(&mut self, entry: &DirEntry) {
+    pub fn update_content_stats(&mut self, entry: &DirEntry, file_info: &Option<FileInfo>) {
         if self.content_stats.is_none() {
-            self.content_stats = Some(get_content_stats(entry));
+            self.content_stats = Some(match file_info {
+                Some(file_info) => {
+                    with_archived_entry(&entry.path(), &file_info.name, |reader| content_stats_from_reader(reader)).flatten()
+                }
+                None => get_content_stats(entry),
+            });
         }
     }
 

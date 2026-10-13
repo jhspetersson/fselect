@@ -20,7 +20,7 @@ use crate::expr::Expr;
 use crate::field::Field;
 use crate::field::context::{FieldContext, FileMetadataState};
 use crate::field::dispatch;
-use crate::fileinfo::{to_file_info, FileInfo};
+use crate::fileinfo::{archived_entry_levels, to_file_info, FileInfo};
 use crate::function;
 use crate::ignore::docker::{
     matches_dockerignore_filter, search_upstream_dockerignore, DockerignoreFilter,
@@ -1124,31 +1124,37 @@ impl<'a> Searcher<'a> {
                                         self.handle_nonfatal_error(err, &path);
                                         continue;
                                     }
+                                }
 
-                                    if self.current_search_archives
-                                        && self.is_zip_archive(&path.to_string_lossy())
-                                        && let Ok(file) = fs::File::open(&path)
-                                            && let Ok(mut archive) = zip::ZipArchive::new(file) {
-                                                for i in 0..archive.len() {
-                                                    if !self.is_buffered() && self.query.limit > 0
-                                                        && self.query.limit <= self.found
-                                                    {
-                                                        break;
+                                // Archive members sit below the archive itself, so each one
+                                // gets its own depth check against mindepth/maxdepth.
+                                if self.current_search_archives
+                                    && self.is_zip_archive(&path.to_string_lossy())
+                                    && let Ok(file) = fs::File::open(&path)
+                                        && let Ok(mut archive) = zip::ZipArchive::new(file) {
+                                            for i in 0..archive.len() {
+                                                if !self.is_buffered() && self.query.limit > 0
+                                                    && self.query.limit <= self.found
+                                                {
+                                                    break;
+                                                }
+
+                                                if let Ok(afile) = archive.by_index(i) {
+                                                    let member_depth = depth + archived_entry_levels(afile.name());
+                                                    if !self.within_depth_limits(member_depth) {
+                                                        continue;
                                                     }
-
-                                                    if let Ok(afile) = archive.by_index(i) {
-                                                        let file_info = to_file_info(&afile);
-                                                        if let Err(err) = self.check_file(&entry, &root_dir, &Some(file_info), None) {
-                                                            if err.is_fatal() {
-                                                                return Err(err);
-                                                            }
-                                                            self.handle_nonfatal_error(err, &path);
-                                                            continue;
+                                                    let file_info = to_file_info(&afile);
+                                                    if let Err(err) = self.check_file(&entry, &root_dir, &Some(file_info), None) {
+                                                        if err.is_fatal() {
+                                                            return Err(err);
                                                         }
+                                                        self.handle_nonfatal_error(err, &path);
+                                                        continue;
                                                     }
                                                 }
                                             }
-                                }
+                                        }
 
                                 // Recursively visit subdirectories if we're not too deep
                                 if within_max_depth {
@@ -2039,6 +2045,11 @@ impl<'a> Searcher<'a> {
             file_name,
             config_ext.as_ref().unwrap_or(default_ext.as_ref().unwrap()),
         )
+    }
+
+    fn within_depth_limits(&self, depth: u32) -> bool {
+        (self.current_min_depth == 0 || depth >= self.current_min_depth)
+            && (self.current_max_depth == 0 || depth <= self.current_max_depth)
     }
 
     fn is_zip_archive(&self, file_name: &str) -> bool {
@@ -3295,6 +3306,82 @@ mod tests {
             "plain.txt,plain.txt".to_string(),
         ]);
         assert_eq!(json, vec![r#"{"name":"inner.txt","size":"5"}"#]);
+    }
+
+    fn make_archive_dir(name: &str) -> std::path::PathBuf {
+        use std::io::Write;
+
+        let tmp = std::env::temp_dir().join(name);
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        fs::write(tmp.join("plain.txt"), "hello
+plain
+").unwrap();
+        let mut zip = zip::ZipWriter::new(fs::File::create(tmp.join("pack.zip")).unwrap());
+        let options = zip::write::SimpleFileOptions::default();
+        zip.start_file("top.txt", options).unwrap();
+        zip.write_all(b"hello
+world
+").unwrap();
+        zip.start_file("sub/deep.txt", options).unwrap();
+        zip.write_all(b"hello there
+line2
+line3
+").unwrap();
+        zip.start_file("sub/sub2/deeper.txt", options).unwrap();
+        zip.write_all(b"nothing
+").unwrap();
+        zip.finish().unwrap();
+        tmp
+    }
+
+    #[test]
+    fn archive_entries_expose_their_content() {
+        use std::path::MAIN_SEPARATOR_STR as SEP;
+
+        let tmp = make_archive_dir("fselect_test_archive_content");
+        let rows = run_query_against_dir(
+            "select path, line_count, contains('hello'), word_count from __DIR__ arc where ext = txt order by path",
+            &tmp,
+        );
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(rows, vec![
+            format!("pack.zip{SEP}sub{SEP}deep.txt	3	true	4"),
+            format!("pack.zip{SEP}sub{SEP}sub2{SEP}deeper.txt	1	false	1"),
+            format!("pack.zip{SEP}top.txt	2	true	2"),
+            String::from("plain.txt	2	true	2"),
+        ]);
+    }
+
+    #[test]
+    fn archive_entries_have_a_depth_and_honour_depth_limits() {
+        use std::path::MAIN_SEPARATOR_STR as SEP;
+
+        let tmp = make_archive_dir("fselect_test_archive_depth");
+        let depths = run_query_against_dir("select path, depth from __DIR__ arc order by path", &tmp);
+        let max_one = run_query_against_dir("select path from __DIR__ arc depth 1 order by path", &tmp);
+        let max_two = run_query_against_dir("select path from __DIR__ arc depth 2 order by path", &tmp);
+        let min_three = run_query_against_dir("select path from __DIR__ arc mindepth 3 order by path", &tmp);
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(depths, vec![
+            String::from("pack.zip	1"),
+            format!("pack.zip{SEP}sub{SEP}deep.txt	3"),
+            format!("pack.zip{SEP}sub{SEP}sub2{SEP}deeper.txt	4"),
+            format!("pack.zip{SEP}top.txt	2"),
+            String::from("plain.txt	1"),
+        ]);
+        assert_eq!(max_one, vec!["pack.zip", "plain.txt"], "depth 1 must not descend into the archive");
+        assert_eq!(max_two, vec![
+            String::from("pack.zip"),
+            format!("pack.zip{SEP}top.txt"),
+            String::from("plain.txt"),
+        ]);
+        assert_eq!(min_three, vec![
+            format!("pack.zip{SEP}sub{SEP}deep.txt"),
+            format!("pack.zip{SEP}sub{SEP}sub2{SEP}deeper.txt"),
+        ]);
     }
 
     #[test]

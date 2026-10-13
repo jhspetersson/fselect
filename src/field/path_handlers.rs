@@ -1,6 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use crate::field::context::FieldContext;
+use crate::fileinfo::archived_entry_levels;
 use crate::util::*;
 use crate::util::error::SearchError;
 
@@ -100,9 +101,11 @@ pub fn handle_directory(ctx: &mut FieldContext) -> Result<Variant, SearchError> 
 }
 
 pub fn handle_depth(ctx: &mut FieldContext) -> Result<Variant, SearchError> {
-    let path = ctx.entry.path();
-    let relative = path.strip_prefix(ctx.root_path).unwrap_or(&path);
-    Ok(Variant::from_int(relative.components().count() as i64))
+    let mut depth = relative_entry_path(ctx).components().count() as i64;
+    if let Some(file_info) = ctx.file_info {
+        depth += archived_entry_levels(&file_info.name) as i64;
+    }
+    Ok(Variant::from_int(depth))
 }
 
 pub fn handle_absdir(ctx: &mut FieldContext) -> Result<Variant, SearchError> {
@@ -150,6 +153,25 @@ mod tests {
             user_cache: &user_cache,
         };
         dispatch::get_field_value(&mut ctx, field).unwrap().to_string()
+    }
+
+    #[test]
+    fn archived_entry_depth_counts_the_archive_and_its_inner_path() {
+        let tmp = std::env::temp_dir().join("fselect_test_archived_depth");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(tmp.join("nested")).unwrap();
+        fs::write(tmp.join("nested").join("pack.zip"), "").unwrap();
+        let entry = fs::read_dir(tmp.join("nested")).unwrap().next().unwrap().unwrap();
+
+        let depth = |inner: &str| archived_field(&entry, inner, &tmp, &Field::Depth);
+        let top = depth("inner.txt");
+        let deep = depth("sub/deep.txt");
+        let dir = depth("sub/");
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(top, "3", "nested (1) / pack.zip (2) / inner.txt (3)");
+        assert_eq!(deep, "4");
+        assert_eq!(dir, "3", "a directory entry's trailing slash is not a level");
     }
 
     #[test]

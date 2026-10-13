@@ -776,13 +776,20 @@ fn detect_bom(bytes: &[u8]) -> Option<(&'static str, usize)> {
 }
 
 pub fn has_bom(entry: &DirEntry) -> bool {
-    if let Ok(mut file) = File::open(entry.path()) {
-        let mut buf = [0u8; 4];
-        if let Ok(n) = file.read(&mut buf) {
-            return detect_bom(&buf[..n]).is_some();
+    File::open(entry.path()).is_ok_and(|mut file| has_bom_in_reader(&mut file))
+}
+
+pub fn has_bom_in_reader(reader: &mut dyn Read) -> bool {
+    let mut buf = [0u8; 4];
+    let mut filled = 0;
+    while filled < buf.len() {
+        match reader.read(&mut buf[filled..]) {
+            Ok(0) => break,
+            Ok(n) => filled += n,
+            Err(_) => return false,
         }
     }
-    false
+    detect_bom(&buf[..filled]).is_some()
 }
 
 // The whole-buffer decoders below are the reference implementation kept as a
@@ -1102,7 +1109,7 @@ fn read_up_to_4<R: Read>(reader: &mut R, buf: &mut [u8; 4]) -> Option<usize> {
     Some(filled)
 }
 
-fn content_stats_from_reader<R: Read>(mut reader: R) -> Option<ContentStats> {
+pub fn content_stats_from_reader<R: Read>(mut reader: R) -> Option<ContentStats> {
     let mut head = [0u8; 4];
     let head_len = read_up_to_4(&mut reader, &mut head)?;
     let head = &head[..head_len];

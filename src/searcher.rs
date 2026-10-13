@@ -59,6 +59,8 @@ pub struct Searcher<'a> {
     visited_dirs: HashSet<PathBuf>,
     lscolors: LsColors,
     dir_queue: VecDeque<(PathBuf, u32)>,
+    #[cfg(test)]
+    dirs_opened: usize,
     current_follow_symlinks: bool,
     current_min_depth: u32,
     current_max_depth: u32,
@@ -258,6 +260,8 @@ impl<'a> Searcher<'a> {
             visited_dirs: HashSet::new(),
             lscolors: LsColors::from_env().unwrap_or_default(),
             dir_queue: VecDeque::new(),
+            #[cfg(test)]
+            dirs_opened: 0,
             current_follow_symlinks: false,
             current_min_depth: 0,
             current_max_depth: 0,
@@ -283,6 +287,10 @@ impl<'a> Searcher<'a> {
 
     pub fn is_buffered(&self) -> bool {
         self.query.is_ordered() || self.query.is_aggregated() || self.query.offset > 0 || self.silent_mode
+    }
+
+    fn limit_reached(&self) -> bool {
+        !self.is_buffered() && self.query.limit > 0 && self.query.limit <= self.found
     }
 
     /// Searches directories based on configured query and outputs results to stdout.
@@ -786,7 +794,7 @@ impl<'a> Searcher<'a> {
             if path_str.is_empty() {
                 continue;
             }
-            if !self.is_buffered() && self.query.limit > 0 && self.query.limit <= self.found {
+            if self.limit_reached() {
                 break;
             }
             let path = PathBuf::from(&path_str);
@@ -964,7 +972,7 @@ impl<'a> Searcher<'a> {
             match fs::read_dir(&parent) {
                 Ok(entries) => {
                     for entry in entries.flatten() {
-                        if !self.is_buffered() && self.query.limit > 0 && self.query.limit <= self.found {
+                        if self.limit_reached() {
                             return Ok(());
                         }
                         if names.contains(&entry.file_name())
@@ -1054,11 +1062,14 @@ impl<'a> Searcher<'a> {
 
         // Read the directory and process each entry
         let root_dir = self.current_root_dir.clone();
+        #[cfg(test)]
+        {
+            self.dirs_opened += 1;
+        }
         match fs::read_dir(dir) {
             Ok(entry_list) => {
                 for entry in entry_list {
-                    if !self.is_buffered() && self.query.limit > 0 && self.query.limit <= self.found
-                    {
+                    if self.limit_reached() {
                         break;
                     }
 
@@ -1130,9 +1141,7 @@ impl<'a> Searcher<'a> {
                                     && let Ok(file) = fs::File::open(&path)
                                         && let Ok(mut archive) = zip::ZipArchive::new(file) {
                                             for i in 0..archive.len() {
-                                                if !self.is_buffered() && self.query.limit > 0
-                                                    && self.query.limit <= self.found
-                                                {
+                                                if self.limit_reached() {
                                                     break;
                                                 }
 
@@ -1219,8 +1228,11 @@ impl<'a> Searcher<'a> {
         }
 
         if self.current_traversal_mode == Bfs && process_queue {
-            while !self.dir_queue.is_empty() {
-                let (path, queued_root_depth) = self.dir_queue.pop_front().unwrap();
+            while let Some((path, queued_root_depth)) = self.dir_queue.pop_front() {
+                if self.limit_reached() {
+                    self.dir_queue.clear();
+                    break;
+                }
                 #[cfg(feature = "git")]
                 let repo;
                 #[cfg(feature = "git")]
@@ -3042,6 +3054,14 @@ mod tests {
         dir: &Path,
         config: Config,
     ) -> Vec<String> {
+        search_dir(query_template, dir, config, true)
+            .output_buffer
+            .iter_values()
+            .map(|s| s.trim_end().to_string())
+            .collect()
+    }
+
+    fn search_dir(query_template: &str, dir: &Path, config: Config, silent: bool) -> Searcher<'static> {
         use crate::lexer::Lexer;
         use crate::parser::Parser;
 
@@ -3054,14 +3074,32 @@ mod tests {
         let default_config = Box::leak(Box::new(Config::default()));
 
         let mut searcher = Searcher::new(parsed, config, default_config, false);
-        searcher.silent_mode = true;
+        searcher.silent_mode = silent;
         searcher.list_search_results().expect("search failed");
-
         searcher
-            .output_buffer
-            .iter_values()
-            .map(|s| s.trim_end().to_string())
-            .collect()
+    }
+
+    #[test]
+    fn bfs_stops_opening_queued_directories_once_the_limit_is_reached() {
+        let tmp = std::env::temp_dir().join("fselect_test_bfs_limit");
+        let _ = fs::remove_dir_all(&tmp);
+        for k in 0..50 {
+            let sub = tmp.join(format!("d{:02}", k));
+            fs::create_dir_all(&sub).unwrap();
+            fs::write(sub.join("inner.txt"), "x").unwrap();
+        }
+        fs::write(tmp.join("zzz.txt"), "x").unwrap();
+
+        let searcher = search_dir("select name from __DIR__ bfs where is_file limit 1", &tmp, Config::default(), false);
+        assert_eq!(searcher.found, 1);
+        assert_eq!(searcher.dirs_opened, 1,
+            "the root yields the single wanted row, so none of the queued subdirectories should be opened");
+
+        let searcher = search_dir("select name from __DIR__ bfs where is_file limit 60", &tmp, Config::default(), false);
+        assert_eq!(searcher.found, 51);
+        assert_eq!(searcher.dirs_opened, 51, "without a reached limit every directory is still visited");
+
+        let _ = fs::remove_dir_all(&tmp);
     }
 
     #[test]

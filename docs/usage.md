@@ -475,6 +475,14 @@ Used for detecting Greek symbols in file names and such.
 |---------------------------|-----------------------------------------------|---------------------------------------------------|
 | CONTAINS_GREEK or GREEK   | Check if string value contains Greek symbols  | `select greek(name) from /home/user/Downloads`    |
 
+#### Cyrillic string functions
+
+Used for detecting Cyrillic symbols in file names and such.
+
+| Function                      | Meaning                                          | Example                                           |
+|-------------------------------|--------------------------------------------------|---------------------------------------------------|
+| CONTAINS_CYRILLIC or CYRILLIC | Check if string value contains Cyrillic symbols  | `select cyrillic(name) from /home/user/Downloads` |
+
 #### Other functions
 
 | Function                   | Meaning                                                                                     | Example                                                                                       |

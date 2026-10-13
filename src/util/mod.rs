@@ -25,6 +25,7 @@ pub(crate) mod error;
 pub(crate) mod git;
 mod glob;
 pub(crate) mod greek;
+pub(crate) mod cyrillic;
 pub(crate) mod human_duration;
 pub(crate) mod japanese;
 mod top_n;

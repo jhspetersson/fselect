@@ -563,6 +563,9 @@ pub fn get_value(
         Function::ContainsGreek => {
             Ok(Variant::from_bool(crate::util::greek::contains_greek(&function_arg)))
         }
+        Function::ContainsCyrillic => {
+            Ok(Variant::from_bool(crate::util::cyrillic::contains_cyrillic(&function_arg)))
+        }
 
         // ===== Formatting functions =====
         Function::FormatSize => {
@@ -1179,7 +1182,7 @@ pub fn get_aggregate_value(
 }
 
 functions! {
-    #[group_order = ["String", "Japanese string", "Greek string", "Numeric", "Datetime", "Aggregate", "Xattr", "Other"]]
+    #[group_order = ["String", "Japanese string", "Greek string", "Cyrillic string", "Numeric", "Datetime", "Aggregate", "Xattr", "Other"]]
     #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Hash)]
     pub enum Function {
         #[text = ["lower", "lowercase", "lcase"]]
@@ -1374,6 +1377,11 @@ functions! {
         @group = "Greek string"
         @description = "Check if the string contains Greek characters"
         ContainsGreek,
+
+        #[text = ["contains_cyrillic", "cyrillic"], data_type = "boolean"]
+        @group = "Cyrillic string"
+        @description = "Check if the string contains Cyrillic characters"
+        ContainsCyrillic,
 
         #[text = ["format_size", "format_filesize"]]
         @args = "1..2"
@@ -2230,6 +2238,16 @@ mod tests {
         assert!(result.unwrap().to_bool());
     }
     
+    #[test]
+    fn function_contains_cyrillic() {
+        for (arg, expected) in [("Привет", true), ("Ελληνικά", false), ("hello", false), ("Ёлка.txt", true)] {
+            let result = get_value(&Function::ContainsCyrillic, String::from(arg), vec![], None, &None);
+            assert_eq!(result.unwrap().to_bool(), expected, "{}", arg);
+        }
+        assert_eq!(Function::from_str("cyrillic").ok(), Some(Function::ContainsCyrillic));
+        assert_eq!(Function::from_str("contains_cyrillic").ok(), Some(Function::ContainsCyrillic));
+    }
+
     #[test]
     fn function_format_size() {
         let function = Function::FormatSize;
@@ -4071,6 +4089,15 @@ mod tests {
         assert!(groups.contains(&"Greek string"));
         let descs = Function::get_names_and_descriptions();
         assert!(descs.contains_key("Greek string"));
+    }
+
+    #[test]
+    fn cyrillic_string_group_in_help() {
+        let groups = Function::get_groups();
+        let greek = groups.iter().position(|g| *g == "Greek string").unwrap();
+        assert_eq!(groups.get(greek + 1), Some(&"Cyrillic string"));
+        let descs = Function::get_names_and_descriptions();
+        assert!(descs.get("Cyrillic string").is_some_and(|names| names.iter().any(|(n, _)| n.contains(&"cyrillic"))));
     }
 
     #[test]

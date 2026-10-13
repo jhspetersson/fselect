@@ -902,7 +902,7 @@ pub fn get_value(
                     if let Ok(Some(acl_data)) = file.get_xattr("system.posix_acl_access") {
                         if let Some(entries) = crate::util::acl::parse_acl(&acl_data) {
                             return Ok(Variant::from_bool(
-                                crate::util::acl::find_entry(&entries, &function_arg).is_some(),
+                                crate::util::acl::with_shared_names(|names| crate::util::acl::find_entry(&entries, &function_arg, names).is_some()),
                             ));
                         }
                     }
@@ -927,8 +927,12 @@ pub fn get_value(
                 if let Ok(file) = File::open(entry.path()) {
                     if let Ok(Some(acl_data)) = file.get_xattr("system.posix_acl_access") {
                         if let Some(entries) = crate::util::acl::parse_acl(&acl_data) {
-                            if let Some(acl_entry) = crate::util::acl::find_entry(&entries, &function_arg) {
-                                return Ok(Variant::from_string(&crate::util::acl::format_entry(acl_entry)));
+                            let formatted = crate::util::acl::with_shared_names(|names| {
+                                crate::util::acl::find_entry(&entries, &function_arg, names)
+                                    .map(|acl_entry| crate::util::acl::format_entry(acl_entry, names))
+                            });
+                            if let Some(formatted) = formatted {
+                                return Ok(Variant::from_string(&formatted));
                             }
                         }
                     }
@@ -956,7 +960,7 @@ pub fn get_value(
                         if let Ok(Some(acl_data)) = file.get_xattr("system.posix_acl_default") {
                             if let Some(entries) = crate::util::acl::parse_acl(&acl_data) {
                                 return Ok(Variant::from_bool(
-                                    crate::util::acl::find_entry(&entries, &function_arg).is_some(),
+                                    crate::util::acl::with_shared_names(|names| crate::util::acl::find_entry(&entries, &function_arg, names).is_some()),
                                 ));
                             }
                         }
@@ -985,8 +989,12 @@ pub fn get_value(
                     if let Ok(file) = File::open(entry.path()) {
                         if let Ok(Some(acl_data)) = file.get_xattr("system.posix_acl_default") {
                             if let Some(entries) = crate::util::acl::parse_acl(&acl_data) {
-                                if let Some(acl_entry) = crate::util::acl::find_entry(&entries, &function_arg) {
-                                    return Ok(Variant::from_string(&crate::util::acl::format_entry(acl_entry)));
+                                let formatted = crate::util::acl::with_shared_names(|names| {
+                                    crate::util::acl::find_entry(&entries, &function_arg, names)
+                                        .map(|acl_entry| crate::util::acl::format_entry(acl_entry, names))
+                                });
+                                if let Some(formatted) = formatted {
+                                    return Ok(Variant::from_string(&formatted));
                                 }
                             }
                         }

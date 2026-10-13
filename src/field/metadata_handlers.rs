@@ -432,7 +432,7 @@ pub fn handle_acl(ctx: &mut FieldContext) -> Result<Variant, SearchError> {
     {
         if let Some(acl_data) = read_xattr(ctx.entry, "system.posix_acl_access") {
             if let Some(entries) = crate::util::acl::parse_acl(&acl_data) {
-                return Ok(Variant::from_string(&crate::util::acl::format_acl(&entries)));
+                return Ok(Variant::from_string(&crate::util::acl::with_shared_names(|names| crate::util::acl::format_acl(&entries, names))));
             }
         }
     }
@@ -474,7 +474,7 @@ pub fn handle_default_acl(ctx: &mut FieldContext) -> Result<Variant, SearchError
         if ctx.entry.path().is_dir() {
             if let Some(acl_data) = read_xattr(ctx.entry, "system.posix_acl_default") {
                 if let Some(entries) = crate::util::acl::parse_acl(&acl_data) {
-                    return Ok(Variant::from_string(&crate::util::acl::format_acl(&entries)));
+                    return Ok(Variant::from_string(&crate::util::acl::with_shared_names(|names| crate::util::acl::format_acl(&entries, names))));
                 }
             }
         }

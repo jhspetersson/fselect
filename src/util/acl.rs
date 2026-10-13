@@ -51,30 +51,69 @@ fn format_permissions(perm: u16) -> String {
     format!("{}{}{}", r, w, x)
 }
 
-fn resolve_uid(uid: u32) -> String {
-    #[cfg(all(unix, feature = "users"))]
-    {
-        use uzers::Users;
-        let cache = uzers::UsersCache::new();
-        if let Some(user) = cache.get_user_by_uid(uid) {
-            return user.name().to_string_lossy().to_string();
-        }
-    }
-    #[allow(unreachable_code)]
-    uid.to_string()
+pub trait NameResolver {
+    fn user_name(&self, uid: u32) -> Option<String>;
+    fn group_name(&self, gid: u32) -> Option<String>;
 }
 
-fn resolve_gid(gid: u32) -> String {
-    #[cfg(all(unix, feature = "users"))]
-    {
-        use uzers::Groups;
-        let cache = uzers::UsersCache::new();
-        if let Some(group) = cache.get_group_by_gid(gid) {
-            return group.name().to_string_lossy().to_string();
-        }
+#[cfg(any(test, not(feature = "users")))]
+pub struct NumericNames;
+
+#[cfg(any(test, not(feature = "users")))]
+impl NameResolver for NumericNames {
+    fn user_name(&self, _uid: u32) -> Option<String> {
+        None
     }
-    #[allow(unreachable_code)]
-    gid.to_string()
+
+    fn group_name(&self, _gid: u32) -> Option<String> {
+        None
+    }
+}
+
+#[cfg(feature = "users")]
+impl NameResolver for uzers::UsersCache {
+    fn user_name(&self, uid: u32) -> Option<String> {
+        uzers::Users::get_user_by_uid(self, uid).map(|user| user.name().to_string_lossy().to_string())
+    }
+
+    fn group_name(&self, gid: u32) -> Option<String> {
+        uzers::Groups::get_group_by_gid(self, gid).map(|group| group.name().to_string_lossy().to_string())
+    }
+}
+
+#[cfg(all(test, feature = "users"))]
+impl NameResolver for uzers::mock::MockUsers {
+    fn user_name(&self, uid: u32) -> Option<String> {
+        uzers::Users::get_user_by_uid(self, uid).map(|user| user.name().to_string_lossy().to_string())
+    }
+
+    fn group_name(&self, gid: u32) -> Option<String> {
+        uzers::Groups::get_group_by_gid(self, gid).map(|group| group.name().to_string_lossy().to_string())
+    }
+}
+
+#[cfg(feature = "users")]
+thread_local! {
+    static SHARED_NAMES: uzers::UsersCache = uzers::UsersCache::new();
+}
+
+pub fn with_shared_names<R>(f: impl FnOnce(&dyn NameResolver) -> R) -> R {
+    #[cfg(feature = "users")]
+    {
+        SHARED_NAMES.with(|names| f(names))
+    }
+    #[cfg(not(feature = "users"))]
+    {
+        f(&NumericNames)
+    }
+}
+
+fn resolve_uid(uid: u32, names: &dyn NameResolver) -> String {
+    names.user_name(uid).unwrap_or_else(|| uid.to_string())
+}
+
+fn resolve_gid(gid: u32, names: &dyn NameResolver) -> String {
+    names.group_name(gid).unwrap_or_else(|| gid.to_string())
 }
 
 pub fn parse_acl(data: &[u8]) -> Option<Vec<AclEntry>> {
@@ -120,23 +159,23 @@ pub fn has_extended_acl(entries: &[AclEntry]) -> bool {
     entries.iter().any(|e| matches!(e.tag, AclTag::User(_) | AclTag::Group(_) | AclTag::Mask))
 }
 
-pub fn format_entry(entry: &AclEntry) -> String {
+pub fn format_entry(entry: &AclEntry, names: &dyn NameResolver) -> String {
     let perms = format_permissions(entry.permissions);
     match &entry.tag {
         AclTag::UserObj => format!("user::{}", perms),
-        AclTag::User(uid) => format!("user:{}:{}", resolve_uid(*uid), perms),
+        AclTag::User(uid) => format!("user:{}:{}", resolve_uid(*uid, names), perms),
         AclTag::GroupObj => format!("group::{}", perms),
-        AclTag::Group(gid) => format!("group:{}:{}", resolve_gid(*gid), perms),
+        AclTag::Group(gid) => format!("group:{}:{}", resolve_gid(*gid, names), perms),
         AclTag::Mask => format!("mask::{}", perms),
         AclTag::Other => format!("other::{}", perms),
     }
 }
 
-pub fn format_acl(entries: &[AclEntry]) -> String {
-    entries.iter().map(format_entry).collect::<Vec<_>>().join(",")
+pub fn format_acl(entries: &[AclEntry], names: &dyn NameResolver) -> String {
+    entries.iter().map(|entry| format_entry(entry, names)).collect::<Vec<_>>().join(",")
 }
 
-pub fn find_entry<'a>(entries: &'a [AclEntry], spec: &str) -> Option<&'a AclEntry> {
+pub fn find_entry<'a>(entries: &'a [AclEntry], spec: &str, names: &dyn NameResolver) -> Option<&'a AclEntry> {
     let parts: Vec<&str> = spec.splitn(2, ':').collect();
     let tag_type = parts[0];
     let qualifier = if parts.len() > 1 { parts[1] } else { "" };
@@ -148,7 +187,7 @@ pub fn find_entry<'a>(entries: &'a [AclEntry], spec: &str) -> Option<&'a AclEntr
             } else {
                 entries.iter().find(|e| match &e.tag {
                     AclTag::User(uid) => {
-                        resolve_uid(*uid) == qualifier
+                        resolve_uid(*uid, names) == qualifier
                             || uid.to_string() == qualifier
                     }
                     _ => false,
@@ -161,7 +200,7 @@ pub fn find_entry<'a>(entries: &'a [AclEntry], spec: &str) -> Option<&'a AclEntr
             } else {
                 entries.iter().find(|e| match &e.tag {
                     AclTag::Group(gid) => {
-                        resolve_gid(*gid) == qualifier
+                        resolve_gid(*gid, names) == qualifier
                             || gid.to_string() == qualifier
                     }
                     _ => false,
@@ -243,19 +282,54 @@ mod tests {
     #[test]
     fn test_format_entry_owner() {
         let entry = AclEntry { tag: AclTag::UserObj, permissions: 0x07 };
-        assert_eq!(format_entry(&entry), "user::rwx");
+        assert_eq!(format_entry(&entry, &NumericNames), "user::rwx");
     }
 
     #[test]
     fn test_format_entry_other() {
         let entry = AclEntry { tag: AclTag::Other, permissions: 0x04 };
-        assert_eq!(format_entry(&entry), "other::r--");
+        assert_eq!(format_entry(&entry, &NumericNames), "other::r--");
     }
 
     #[test]
     fn test_format_entry_mask() {
         let entry = AclEntry { tag: AclTag::Mask, permissions: 0x07 };
-        assert_eq!(format_entry(&entry), "mask::rwx");
+        assert_eq!(format_entry(&entry, &NumericNames), "mask::rwx");
+    }
+
+    #[cfg(feature = "users")]
+    fn mock_names() -> uzers::mock::MockUsers {
+        use uzers::{Group, User};
+        let mut names = uzers::mock::MockUsers::with_current_uid(4242);
+        names.add_user(User::new(4242, "mockuser", 4343));
+        names.add_group(Group::new(4343, "mockgroup"));
+        names
+    }
+
+    #[test]
+    #[cfg(feature = "users")]
+    fn named_entries_are_resolved_through_the_given_cache() {
+        let entries = vec![
+            AclEntry { tag: AclTag::User(4242), permissions: 0x06 },
+            AclEntry { tag: AclTag::Group(4343), permissions: 0x04 },
+            AclEntry { tag: AclTag::User(4244), permissions: 0x04 },
+        ];
+        assert_eq!(format_acl(&entries, &mock_names()), "user:mockuser:rw-,group:mockgroup:r--,user:4244:r--");
+        assert_eq!(format_acl(&entries, &NumericNames), "user:4242:rw-,group:4343:r--,user:4244:r--");
+    }
+
+    #[test]
+    #[cfg(feature = "users")]
+    fn find_entry_matches_names_through_the_given_cache() {
+        let entries = vec![
+            AclEntry { tag: AclTag::User(4242), permissions: 0x06 },
+            AclEntry { tag: AclTag::Group(4343), permissions: 0x04 },
+        ];
+        let names = mock_names();
+        assert_eq!(find_entry(&entries, "user:mockuser", &names).map(|e| e.permissions), Some(0x06));
+        assert_eq!(find_entry(&entries, "group:mockgroup", &names).map(|e| e.permissions), Some(0x04));
+        assert_eq!(find_entry(&entries, "user:4242", &names).map(|e| e.permissions), Some(0x06));
+        assert!(find_entry(&entries, "user:mockuser", &NumericNames).is_none());
     }
 
     #[test]
@@ -265,7 +339,7 @@ mod tests {
             AclEntry { tag: AclTag::GroupObj, permissions: 0x05 },
             AclEntry { tag: AclTag::Other, permissions: 0x04 },
         ];
-        assert_eq!(format_acl(&entries), "user::rwx,group::r-x,other::r--");
+        assert_eq!(format_acl(&entries, &NumericNames), "user::rwx,group::r-x,other::r--");
     }
 
     #[test]
@@ -279,25 +353,25 @@ mod tests {
             AclEntry { tag: AclTag::Other, permissions: 0x04 },
         ];
 
-        let e = find_entry(&entries, "user:").unwrap();
+        let e = find_entry(&entries, "user:", &NumericNames).unwrap();
         assert_eq!(e.tag, AclTag::UserObj);
 
-        let e = find_entry(&entries, "user:1000").unwrap();
+        let e = find_entry(&entries, "user:1000", &NumericNames).unwrap();
         assert_eq!(e.tag, AclTag::User(1000));
 
-        let e = find_entry(&entries, "group:").unwrap();
+        let e = find_entry(&entries, "group:", &NumericNames).unwrap();
         assert_eq!(e.tag, AclTag::GroupObj);
 
-        let e = find_entry(&entries, "group:100").unwrap();
+        let e = find_entry(&entries, "group:100", &NumericNames).unwrap();
         assert_eq!(e.tag, AclTag::Group(100));
 
-        let e = find_entry(&entries, "mask").unwrap();
+        let e = find_entry(&entries, "mask", &NumericNames).unwrap();
         assert_eq!(e.tag, AclTag::Mask);
 
-        let e = find_entry(&entries, "other").unwrap();
+        let e = find_entry(&entries, "other", &NumericNames).unwrap();
         assert_eq!(e.tag, AclTag::Other);
 
-        assert!(find_entry(&entries, "user:9999").is_none());
+        assert!(find_entry(&entries, "user:9999", &NumericNames).is_none());
     }
 
     #[test]

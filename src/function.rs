@@ -222,6 +222,31 @@ fn least_or_greatest(first: &str, rest: &[String], pick: Ordering) -> Variant {
     }
 }
 
+/// 1-based character position of `needle` in `haystack`, searching from the
+/// 1-based `start` when given; 0 when absent. Shared by LOCATE (needle first,
+/// as in MySQL) and STRPOS (haystack first, as in PostgreSQL).
+fn position_of(needle: &str, haystack: &str, start: Option<&String>, function_name: &str) -> Result<Variant, String> {
+    let skip: usize = match start {
+        Some(start) => match start.parse::<i32>() {
+            Ok(start) => start.saturating_sub(1).max(0) as usize,
+            Err(_) => return Err(format!("Could not parse position argument of {} function: {}", function_name, start)),
+        },
+        None => 0,
+    };
+
+    if skip > haystack.chars().count() {
+        return Ok(Variant::from_int(0));
+    }
+
+    let searched: String = haystack.chars().skip(skip).collect();
+    let position = searched
+        .find(needle)
+        .map(|byte_index| (searched[..byte_index].chars().count() + skip + 1) as i64)
+        .unwrap_or(0);
+
+    Ok(Variant::from_int(position))
+}
+
 fn unary_float(arg: &str, f: impl FnOnce(f64) -> Result<Variant, String>) -> Result<Variant, String> {
     match arg.parse::<f64>() {
         Ok(val) => f(val),
@@ -274,35 +299,16 @@ pub fn get_value(
         }
         Function::ConcatWs => Ok(Variant::from_string(&function_args.join(&function_arg))),
         Function::Locate => {
-            if function_args.is_empty() {
-                return Err("LOCATE requires a search substring argument".to_string());
-            }
-            let string = String::from(&function_arg);
-            let substring = &function_args[0];
-            let original_length = string.chars().count();
-            let pos: i32 = match &function_args.get(1) {
-                Some(pos) => match pos.parse::<i32>() {
-                    Ok(p) => p.saturating_sub(1).max(0),
-                    Err(_) => return Err(format!("Could not parse position argument of LOCATE function: {}", pos)),
-                },
-                _ => 0,
-            };
-
-            if pos as usize > original_length {
-                return Ok(Variant::from_int(0));
-            }
-
-            let string: String = string.chars().skip(pos as usize).collect();
-
-            let result = string
-                .find(substring)
-                .map(|byte_index| {
-                    let char_index = string[..byte_index].chars().count();
-                    char_index as i64 + pos as i64 + 1
-                })
-                .unwrap_or(0);
-
-            Ok(Variant::from_int(result))
+            let haystack = function_args
+                .first()
+                .ok_or_else(|| "LOCATE requires the string to search in as its second argument".to_string())?;
+            position_of(&function_arg, haystack, function_args.get(1), "LOCATE")
+        },
+        Function::Strpos => {
+            let needle = function_args
+                .first()
+                .ok_or_else(|| "STRPOS requires a search substring argument".to_string())?;
+            position_of(needle, &function_arg, function_args.get(1), "STRPOS")
         },
         Function::Substring => {
             let string = String::from(&function_arg);
@@ -1130,8 +1136,13 @@ functions! {
 
         #[text = ["locate", "position"], data_type = "numeric"]
         @group = "String"
-        @description = "Get the position of a substring in the value"
+        @description = "Get the position of the value (a substring) in the second argument, MySQL argument order"
         Locate,
+
+        #[text = ["strpos"], data_type = "numeric"]
+        @group = "String"
+        @description = "Get the position of the second argument (a substring) in the value, PostgreSQL argument order"
+        Strpos,
 
         #[text = ["substr", "substring"]]
         @group = "String"
@@ -1699,8 +1710,8 @@ mod tests {
     #[test]
     fn function_locate() {
         let function = Function::Locate;
-        let function_arg = String::from("hello world");
-        let function_args = vec![String::from("world"), String::from("1")];
+        let function_arg = String::from("world");
+        let function_args = vec![String::from("hello world"), String::from("1")];
         let entry = None;
         let file_info = None;
 
@@ -1708,6 +1719,33 @@ mod tests {
         assert_eq!(result.unwrap().to_int(), 7);
     }
     
+    #[test]
+    fn strpos_takes_the_haystack_first() {
+        assert_eq!(Function::from_str("strpos"), Ok(Function::Strpos));
+
+        let strpos = |haystack: &str, rest: &[&str]| {
+            get_value(&Function::Strpos, String::from(haystack), rest.iter().map(|s| s.to_string()).collect(), None, &None)
+        };
+        assert_eq!(strpos("hello world", &["world"]).unwrap().to_int(), 7);
+        assert_eq!(strpos("hello world", &["o", "6"]).unwrap().to_int(), 8);
+        assert_eq!(strpos("hello world", &["xyz"]).unwrap().to_int(), 0);
+        assert_eq!(strpos("aéb", &["b"]).unwrap().to_int(), 3);
+        assert!(strpos("hello", &[]).is_err());
+        assert!(strpos("hello", &["l", "abc"]).is_err());
+    }
+
+    #[test]
+    fn locate_and_strpos_are_mirror_images() {
+        let locate = get_value(&Function::Locate, String::from("o"), vec![String::from("hello")], None, &None);
+        let strpos = get_value(&Function::Strpos, String::from("hello"), vec![String::from("o")], None, &None);
+        assert_eq!(locate.unwrap().to_int(), 5);
+        assert_eq!(strpos.unwrap().to_int(), 5);
+
+        // The documented MySQL example: the substring comes first.
+        let documented = get_value(&Function::Locate, String::from("foo"), vec![String::from("barfoo")], None, &None);
+        assert_eq!(documented.unwrap().to_int(), 4);
+    }
+
     #[test]
     fn function_substring() {
         let function = Function::Substring;
@@ -2886,8 +2924,8 @@ mod tests {
     fn locate_wrong_position_for_multibyte() {
         let result = get_value(
             &Function::Locate,
-            String::from("aéb"),
-            vec![String::from("b")],
+            String::from("b"),
+            vec![String::from("aéb")],
             None,
             &None,
         ).unwrap();
@@ -3104,8 +3142,8 @@ mod tests {
     fn locate_errors_on_non_numeric_position() {
         let result = get_value(
             &Function::Locate,
-            String::from("hello"),
-            vec![String::from("l"), String::from("abc")],
+            String::from("l"),
+            vec![String::from("hello"), String::from("abc")],
             None,
             &None,
         );
@@ -3308,8 +3346,8 @@ mod tests {
     fn locate_position_zero_finds_match() {
         let result = get_value(
             &Function::Locate,
-            String::from("hello"),
-            vec![String::from("h"), String::from("0")],
+            String::from("h"),
+            vec![String::from("hello"), String::from("0")],
             None,
             &None,
         );
@@ -3825,8 +3863,8 @@ mod tests {
     fn locate_empty_substring_beyond_string_length() {
         let result = get_value(
             &Function::Locate,
-            String::from("hello"),
-            vec![String::from(""), String::from("100")],
+            String::from(""),
+            vec![String::from("hello"), String::from("100")],
             None,
             &None,
         );
@@ -3837,8 +3875,8 @@ mod tests {
     fn locate_beyond_string_length_returns_zero() {
         let result = get_value(
             &Function::Locate,
-            String::from("hello"),
-            vec![String::from("o"), String::from("100")],
+            String::from("o"),
+            vec![String::from("hello"), String::from("100")],
             None,
             &None,
         );
@@ -3849,8 +3887,8 @@ mod tests {
     fn locate_empty_substring_at_end_plus_one() {
         let result = get_value(
             &Function::Locate,
-            String::from("hello"),
-            vec![String::from(""), String::from("6")],
+            String::from(""),
+            vec![String::from("hello"), String::from("6")],
             None,
             &None,
         );
@@ -3861,8 +3899,8 @@ mod tests {
     fn locate_empty_substring_past_end_plus_one() {
         let result = get_value(
             &Function::Locate,
-            String::from("hello"),
-            vec![String::from(""), String::from("7")],
+            String::from(""),
+            vec![String::from("hello"), String::from("7")],
             None,
             &None,
         );
@@ -3881,8 +3919,8 @@ mod tests {
     fn locate_i32_min_position_no_overflow() {
         let result = get_value(
             &Function::Locate,
-            String::from("hello"),
-            vec![String::from("l"), String::from("-2147483648")],
+            String::from("l"),
+            vec![String::from("hello"), String::from("-2147483648")],
             None,
             &None,
         );

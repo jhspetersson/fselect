@@ -684,11 +684,17 @@ Concatenate expression values.
 .B CONCAT_WS
 Concatenate expression values with a delimiter.
 .TP
-.BR LOCATE " / " POSITION "(str, substr [, pos])"
+.BR LOCATE " / " POSITION "(substr, str [, pos])"
 Position of
 .I substr
 in
-.IR str .
+.IR str ,
+with the substring first as in MySQL.
+.TP
+.BR STRPOS "(str, substr [, pos])"
+Same as
+.BR LOCATE ,
+with the string to search first as in PostgreSQL.
 .TP
 .BR SUBSTRING " / " SUBSTR "(str, pos [, len])"
 Substring starting at

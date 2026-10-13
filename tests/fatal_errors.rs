@@ -105,6 +105,21 @@ fn wrong_function_argument_counts_are_rejected_before_the_header() {
 }
 
 #[test]
+fn malformed_in_lists_are_rejected_before_the_header() {
+    let dir = make_dir("fselect_test_fatal_in_list");
+    let dir = dir.to_string_lossy();
+
+    assert_rejected_without_output(
+        &format!("select name from {} where ext in () into json", dir),
+        "IN list cannot be empty",
+    );
+    assert_rejected_without_output(
+        &format!("select name from {} where ext in ('txt' 'md') into html", dir),
+        "Expected ',' or closing parenthesis in IN list",
+    );
+}
+
+#[test]
 fn valid_queries_still_produce_complete_documents() {
     let dir = make_dir("fselect_test_fatal_valid");
     let dir = dir.to_string_lossy();

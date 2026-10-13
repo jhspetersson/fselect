@@ -1012,8 +1012,7 @@ impl <'a> Parser<'a> {
                     } else {
                         self.drop_lexeme();
                         let mut result = Expr::new();
-                        let args = self.parse_args()?;
-                        result.set_args(args.unwrap());
+                        result.set_args(self.parse_args()?);
                         result
                     }
                 };
@@ -1037,8 +1036,7 @@ impl <'a> Parser<'a> {
                     } else {
                         self.drop_lexeme();
                         let mut result = Expr::new();
-                        let args = self.parse_args()?;
-                        result.set_args(args.unwrap());
+                        result.set_args(self.parse_args()?);
                         result
                     }
                 };
@@ -1057,25 +1055,45 @@ impl <'a> Parser<'a> {
         }
     }
 
-    fn parse_args(&mut self) -> Result<Option<Vec<Expr>>, String> {
+    fn parse_args(&mut self) -> Result<Vec<Expr>, String> {
         let mut args = vec![];
 
         loop {
+            let lexeme = self.next_lexeme();
+            self.drop_lexeme();
+            match lexeme {
+                Some(Lexeme::Close) | Some(Lexeme::CurlyClose) | None if args.is_empty() => {
+                    return Err("IN list cannot be empty".to_string());
+                }
+                Some(Lexeme::Close) | Some(Lexeme::CurlyClose) | None => {
+                    return Err("Missing value after ',' in IN list".to_string());
+                }
+                Some(Lexeme::Comma) if args.is_empty() => {
+                    return Err("Missing value before ',' in IN list".to_string());
+                }
+                Some(Lexeme::Comma) => {
+                    return Err("Missing value after ',' in IN list".to_string());
+                }
+                _ => {}
+            }
+
+            match self.parse_expr()? {
+                Some(expr) => args.push(expr),
+                None => return Err("Expected a value in IN list".to_string()),
+            }
+
             match self.next_lexeme() {
                 Some(Lexeme::Comma) => {}
-                _ => {
+                Some(Lexeme::Close) | Some(Lexeme::CurlyClose) | None => {
                     self.drop_lexeme();
-                    match self.parse_expr() {
-                        Ok(Some(expr)) => args.push(expr),
-                        _ => {
-                            break
-                        }
-                    }
+                    return Ok(args);
+                }
+                Some(_) => {
+                    self.drop_lexeme();
+                    return Err("Expected ',' or closing parenthesis in IN list".to_string());
                 }
             }
         }
-
-        Ok(Some(args))
     }
 
     fn parse_func_scalar(&mut self) -> Result<Option<Expr>, String> {
@@ -4114,6 +4132,46 @@ mod tests {
                 "{}: unexpected error: {}", sql, err
             );
         }
+    }
+
+    #[test]
+    fn malformed_in_lists_are_rejected() {
+        for (query, expected) in [
+            ("select name from /test where ext in ()", "IN list cannot be empty"),
+            ("select name from /test where ext not in {}", "IN list cannot be empty"),
+            ("select name from /test where ext in ('txt' 'md')", "Expected ',' or closing parenthesis in IN list"),
+            ("select name from /test where ext in ('txt' 'md', 'rs')", "Expected ',' or closing parenthesis in IN list"),
+            ("select name from /test where ext in ('txt',)", "Missing value after ',' in IN list"),
+            ("select name from /test where ext in ('txt', , 'md')", "Missing value after ',' in IN list"),
+            ("select name from /test where ext in (, 'txt')", "Missing value before ',' in IN list"),
+            ("select name from /test where ext in {'txt',}", "Missing value after ',' in IN list"),
+        ] {
+            let err = parse_err(query);
+            assert!(err.contains(expected), "{}
+expected {:?}, got {:?}", query, expected, err);
+        }
+    }
+
+    #[test]
+    fn well_formed_in_lists_still_parse() {
+        for (query, members) in [
+            ("select name from /test where ext in ('txt')", 1),
+            ("select name from /test where ext in ('txt', 'md')", 2),
+            ("select name from /test where ext in {'txt', 'md', 'rs'}", 3),
+            ("select name from /test where ext not in ('txt' , 'md')", 2),
+            ("select name from /test where size in (1, -2, 3 * 4)", 3),
+            ("select name from /test where ext in (lower(name), upper(ext), 'x')", 3),
+            ("select name from /test where ext in ('txt', 'md') and size > 0", 2),
+        ] {
+            let query = parse_query(query).unwrap_or_else(|e| panic!("{}: {}", query, e));
+            let expr = query.expr.as_ref().unwrap();
+            let list = if expr.logical_op.is_some() { expr.left.as_ref().unwrap() } else { expr };
+            let args = list.right.as_ref().unwrap().args.as_ref().unwrap();
+            assert_eq!(args.len(), members, "{:?}", list);
+        }
+
+        let query = parse_query("select name from /test where name in (select name from /other)").unwrap();
+        assert!(query.expr.unwrap().right.unwrap().subquery.is_some());
     }
 
     #[test]

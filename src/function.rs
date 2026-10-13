@@ -1327,7 +1327,6 @@ functions! {
 
         #[text = ["pi"], data_type = "numeric"]
         @args = "0"
-        @weight = 1
         @group = "Numeric"
         @description = "Get the value of Pi (π)"
         Pi,
@@ -1396,21 +1395,18 @@ functions! {
 
         #[text = ["current_date", "cur_date", "curdate"]]
         @args = "0"
-        @weight = 1
         @group = "Datetime"
         @description = "Get the current date"
         CurrentDate,
 
         #[text = ["current_time", "cur_time", "curtime"]]
         @args = "0"
-        @weight = 1
         @group = "Datetime"
         @description = "Get the current time (HH:MM:SS)"
         CurrentTime,
 
         #[text = ["current_timestamp", "now"]]
         @args = "0"
-        @weight = 1
         @group = "Datetime"
         @description = "Get the current timestamp (YYYY-MM-DD HH:MM:SS)"
         CurrentTimestamp,
@@ -1487,7 +1483,6 @@ functions! {
 
         #[text = ["current_uid"], data_type = "numeric"]
         @args = "0"
-        @weight = 1
         @group = "Other"
         @description = "Get the current user ID"
         #[cfg(all(unix, feature = "users"))]
@@ -1495,7 +1490,6 @@ functions! {
 
         #[text = ["current_user"]]
         @args = "0"
-        @weight = 1
         @group = "Other"
         @description = "Get the current username"
         #[cfg(all(unix, feature = "users"))]
@@ -1503,7 +1497,6 @@ functions! {
 
         #[text = ["current_gid"], data_type = "numeric"]
         @args = "0"
-        @weight = 1
         @group = "Other"
         @description = "Get the current group ID"
         #[cfg(all(unix, feature = "users"))]
@@ -1511,7 +1504,6 @@ functions! {
 
         #[text = ["current_group"]]
         @args = "0"
-        @weight = 1
         @group = "Other"
         @description = "Get the current group name"
         #[cfg(all(unix, feature = "users"))]
@@ -1587,7 +1579,6 @@ functions! {
 
         #[text = ["rand", "random"], data_type = "numeric"]
         @args = "0..2"
-        @weight = 1
         @group = "Numeric"
         @description = "Gets a random number from 0 to the value, or between two values"
         Random,
@@ -2238,6 +2229,25 @@ mod tests {
         assert!(result.unwrap().to_bool());
     }
     
+    #[test]
+    fn constant_functions_have_no_weight() {
+        let constants = vec![
+            Function::Pi, Function::CurrentDate, Function::CurrentTime, Function::CurrentTimestamp, Function::Random,
+            #[cfg(all(unix, feature = "users"))]
+            Function::CurrentUid,
+            #[cfg(all(unix, feature = "users"))]
+            Function::CurrentUser,
+            #[cfg(all(unix, feature = "users"))]
+            Function::CurrentGid,
+            #[cfg(all(unix, feature = "users"))]
+            Function::CurrentGroup,
+        ];
+        for function in constants {
+            assert_eq!(function.get_weight(), 0, "{}", function);
+        }
+        assert_eq!(Function::Contains.get_weight(), 1024);
+    }
+
     #[test]
     fn function_contains_cyrillic() {
         for (arg, expected) in [("Привет", true), ("Ελληνικά", false), ("hello", false), ("Ёлка.txt", true)] {

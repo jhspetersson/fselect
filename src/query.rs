@@ -58,6 +58,42 @@ impl Query {
         !self.ordering_fields.is_empty()
     }
 
+    pub fn own_root_aliases(&self) -> HashSet<String> {
+        self.roots
+            .iter()
+            .filter_map(|r| r.options.alias.clone())
+            .collect()
+    }
+
+    /// The first root alias referenced anywhere in the query (nested scopes
+    /// included) that neither the query nor an enclosing scope (`own`) declares.
+    pub fn find_external_alias(&self, own: &HashSet<String>) -> Option<String> {
+        if let Some(ref expr) = self.expr
+            && let Some(alias) = expr.find_external_alias(own) { return Some(alias); }
+        let clauses = self.fields.iter()
+            .chain(self.ordering_fields.iter())
+            .chain(self.grouping_fields.iter())
+            .chain(self.having.iter());
+        for expr in clauses {
+            if let Some(alias) = expr.find_external_alias(own) {
+                return Some(alias);
+            }
+        }
+        self.roots.iter().find_map(|root| {
+            root.subquery.as_ref().and_then(|sub| {
+                let nested_own: HashSet<String> = sub.own_root_aliases()
+                    .into_iter()
+                    .chain(own.iter().cloned())
+                    .collect();
+                sub.find_external_alias(&nested_own)
+            })
+        })
+    }
+
+    pub fn is_correlated(&self) -> bool {
+        self.find_external_alias(&self.own_root_aliases()).is_some()
+    }
+
     pub fn has_aggregate_column(&self) -> bool {
         self.fields.iter().any(|f| f.has_aggregate_function())
     }

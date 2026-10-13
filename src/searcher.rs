@@ -118,63 +118,7 @@ fn apply_minus(column_expr: &Expr, value: Variant) -> Variant {
 }
 
 fn is_subquery_cacheable(query: &Query) -> bool {
-    find_external_alias(query, &own_root_aliases(query)).is_none()
-}
-
-fn own_root_aliases(query: &Query) -> HashSet<String> {
-    query
-        .roots
-        .iter()
-        .filter_map(|r| r.options.alias.clone())
-        .collect()
-}
-
-/// The first root alias referenced anywhere in `query` (nested scopes
-/// included) that neither the query nor an enclosing scope (`own`) declares.
-fn find_external_alias(query: &Query, own: &HashSet<String>) -> Option<String> {
-    if let Some(ref expr) = query.expr
-        && let Some(alias) = expr_find_external_alias(expr, own) { return Some(alias); }
-    let clauses = query.fields.iter()
-        .chain(query.ordering_fields.iter())
-        .chain(query.grouping_fields.iter())
-        .chain(query.having.iter());
-    for expr in clauses {
-        if let Some(alias) = expr_find_external_alias(expr, own) {
-            return Some(alias);
-        }
-    }
-    query.roots.iter().find_map(|root| {
-        root.subquery.as_ref().and_then(|sub| {
-            let nested_own: HashSet<String> = own_root_aliases(sub)
-                .into_iter()
-                .chain(own.iter().cloned())
-                .collect();
-            find_external_alias(sub, &nested_own)
-        })
-    })
-}
-
-fn expr_find_external_alias(expr: &Expr, own: &HashSet<String>) -> Option<String> {
-    if let Some(ref alias) = expr.root_alias
-        && !own.contains(alias) {
-            return Some(alias.clone());
-        }
-    if let Some(ref left) = expr.left
-        && let Some(alias) = expr_find_external_alias(left, own) { return Some(alias); }
-    if let Some(ref right) = expr.right
-        && let Some(alias) = expr_find_external_alias(right, own) { return Some(alias); }
-    if let Some(ref args) = expr.args
-        && let Some(alias) = args.iter().find_map(|a| expr_find_external_alias(a, own)) { return Some(alias); }
-    if let Some(ref sub) = expr.subquery {
-        let nested_own: HashSet<String> = own_root_aliases(sub)
-            .into_iter()
-            .chain(own.iter().cloned())
-            .collect();
-        if let Some(alias) = find_external_alias(sub, &nested_own) {
-            return Some(alias);
-        }
-    }
-    None
+    !query.is_correlated()
 }
 
 /// Compiles one regex component of a `regexp` root path.
@@ -326,7 +270,7 @@ impl<'a> Searcher<'a> {
         // The top-level walk descends into every subquery scope, so a nested
         // searcher (which may reference enclosing aliases) skips this check.
         if !self.is_nested
-            && let Some(alias) = find_external_alias(self.query, &own_root_aliases(self.query)) {
+            && let Some(alias) = self.query.find_external_alias(&self.query.own_root_aliases()) {
                 return Err(SearchError::fatal(format!("Invalid root alias: {}", alias)).with_source("query"));
             }
 

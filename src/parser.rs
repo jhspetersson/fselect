@@ -580,33 +580,23 @@ impl <'a> Parser<'a> {
     fn parse_expr(&mut self) -> Result<Option<Expr>, String> {
         let left = self.parse_and()?;
 
-        let mut right: Option<Expr> = None;
+        let mut operands: Vec<Expr> = vec![];
         loop {
             let lexeme = self.next_lexeme();
             match lexeme {
                 Some(Lexeme::Or) => {
                     let expr = self.parse_and()?;
-                    right = match right {
-                        Some(right) => {
-                            let expr = expr.ok_or_else(|| "Expected expression after OR".to_string())?;
-                            Some(self.logical_op(right, LogicalOp::Or, expr)?)
-                        }
-                        None => expr,
-                    };
+                    operands.push(expr.ok_or_else(|| "Expected expression after OR".to_string())?);
                 }
                 _ => {
                     self.drop_lexeme();
 
-                    let mut result = match right {
-                        Some(right) => {
-                            let left = left.ok_or_else(|| "Expected expression before OR".to_string())?;
-                            if left.weight <= right.weight {
-                                Ok(Some(self.logical_op(left, LogicalOp::Or, right)?))
-                            } else {
-                                Ok(Some(self.logical_op(right, LogicalOp::Or, left)?))
-                            }
-                        }
-                        None => Ok(left),
+                    let mut result = if operands.is_empty() {
+                        Ok(left)
+                    } else {
+                        let left = left.ok_or_else(|| "Expected expression before OR".to_string())?;
+                        operands.insert(0, left);
+                        self.fold_by_weight(operands, LogicalOp::Or).map(Some)
                     };
 
                     if let Ok(Some(ref mut result)) = result {
@@ -638,37 +628,36 @@ impl <'a> Parser<'a> {
     fn parse_and(&mut self) -> Result<Option<Expr>, String> {
         let left = self.parse_cond()?;
 
-        let mut right: Option<Expr> = None;
+        let mut operands: Vec<Expr> = vec![];
         loop {
             let lexeme = self.next_lexeme();
             match lexeme {
                 Some(Lexeme::And) => {
                     let expr = self.parse_cond()?;
-                    right = match right {
-                        Some(right) => {
-                            let expr = expr.ok_or_else(|| "Expected expression after AND".to_string())?;
-                            Some(self.logical_op(right, LogicalOp::And, expr)?)
-                        }
-                        None => expr,
-                    };
+                    operands.push(expr.ok_or_else(|| "Expected expression after AND".to_string())?);
                 }
                 _ => {
                     self.drop_lexeme();
 
-                    return match right {
-                        Some(right) => {
-                            let left = left.ok_or_else(|| "Expected expression before AND".to_string())?;
-                            if left.weight <= right.weight {
-                                Ok(Some(self.logical_op(left, LogicalOp::And, right)?))
-                            } else {
-                                Ok(Some(self.logical_op(right, LogicalOp::And, left)?))
-                            }
-                        }
-                        None => Ok(left),
-                    };
+                    if operands.is_empty() {
+                        return Ok(left);
+                    }
+                    let left = left.ok_or_else(|| "Expected expression before AND".to_string())?;
+                    operands.insert(0, left);
+                    return self.fold_by_weight(operands, LogicalOp::And).map(Some);
                 }
             }
         }
+    }
+
+    fn fold_by_weight(&self, mut operands: Vec<Expr>, logical_op: LogicalOp) -> Result<Expr, String> {
+        operands.sort_by_key(|operand| operand.weight);
+        let mut operands = operands.into_iter();
+        let mut result = operands.next().expect("a chain has at least one operand");
+        for operand in operands {
+            result = self.logical_op(result, logical_op.clone(), operand)?;
+        }
+        Ok(result)
     }
 
     fn parse_cond(&mut self) -> Result<Option<Expr>, String> {
@@ -4132,6 +4121,93 @@ mod tests {
                 "{}: unexpected error: {}", sql, err
             );
         }
+    }
+
+    fn has_subquery(expr: &Expr) -> bool {
+        expr.subquery.is_some()
+            || expr.left.as_deref().is_some_and(has_subquery)
+            || expr.right.as_deref().is_some_and(has_subquery)
+            || expr.args.iter().flatten().any(has_subquery)
+    }
+
+    fn leftmost_field(expr: &Expr) -> Option<Field> {
+        match expr.left.as_deref() {
+            Some(left) => leftmost_field(left),
+            None => expr.field,
+        }
+    }
+
+    #[test]
+    fn logical_chains_sort_every_operand_by_weight() {
+        let sorted = parse_query("select name from /test where name like '%.md' and size > 0 and contains('x')").unwrap();
+        for query in [
+            "select name from /test where size > 0 and contains('x') and name like '%.md'",
+            "select name from /test where contains('x') and size > 0 and name like '%.md'",
+            "select name from /test where contains('x') and name like '%.md' and size > 0",
+        ] {
+            assert_eq!(parse_query(query).unwrap().expr, sorted.expr, "{}", query);
+        }
+
+        let sorted = parse_query("select name from /test where name like '%.md' or size > 0 or contains('x')").unwrap();
+        let query = "select name from /test where size > 0 or contains('x') or name like '%.md'";
+        assert_eq!(parse_query(query).unwrap().expr, sorted.expr, "{}", query);
+    }
+
+    #[test]
+    fn equal_weights_keep_their_textual_order() {
+        let a = parse_query("select name from /test where name = 'a' and ext = 'b' and path = 'c'").unwrap().expr.unwrap();
+        let b = parse_query("select name from /test where ext = 'b' and name = 'a' and path = 'c'").unwrap().expr.unwrap();
+        assert_ne!(a, b);
+        assert_eq!(leftmost_field(&a), Some(Field::Name));
+        assert_eq!(leftmost_field(&b), Some(Field::Extension));
+    }
+
+    #[test]
+    fn parenthesized_groups_are_sorted_as_one_operand() {
+        let expr = parse_query("select name from /test where (contains('x') or name like '%.md') and size > 0").unwrap().expr.unwrap();
+        assert_eq!(expr.logical_op, Some(LogicalOp::And));
+        assert_eq!(leftmost_field(&expr), Some(Field::Size), "the stat comparison must come before the content-reading group");
+        let group = expr.right.unwrap();
+        assert_eq!(group.logical_op, Some(LogicalOp::Or));
+        assert_eq!(leftmost_field(&group), Some(Field::Name), "inside the group the name test must come before contains()");
+    }
+
+    #[test]
+    fn subqueries_sort_after_cheap_conditions() {
+        let correlated = "(select count(*) from /inner as t2 where t2.name = t1.name) > 0";
+        for query in [
+            format!("select name from /outer as t1 where {} and t1.name like '%.md'", correlated),
+            format!("select name from /outer as t1 where t1.name like '%.md' and {}", correlated),
+        ] {
+            let expr = parse_query(&query).unwrap().expr.unwrap();
+            assert_eq!(leftmost_field(&expr), Some(Field::Name), "{}", query);
+            assert!(!has_subquery(expr.left.as_ref().unwrap()), "{}", query);
+            assert!(has_subquery(expr.right.as_ref().unwrap()), "{}", query);
+        }
+
+        let c = parse_query(&format!("select name from /outer as t1 where {} and contains('x')", correlated)).unwrap().expr.unwrap();
+        assert!(!has_subquery(c.left.as_ref().unwrap()), "a correlated subquery is dearer than reading the file");
+
+        for query in [
+            "select name from /test where name in (select name from /inner) and size > 0",
+            "select name from /test where size > 0 and name in (select name from /inner)",
+        ] {
+            let expr = parse_query(query).unwrap().expr.unwrap();
+            assert_eq!(leftmost_field(&expr), Some(Field::Size), "{}", query);
+            assert!(has_subquery(expr.right.as_ref().unwrap()), "{}", query);
+        }
+    }
+
+    #[test]
+    fn subquery_weight_covers_the_scan_and_correlation() {
+        let weight_of = |query: &str| parse_query(query).unwrap().expr.unwrap().right.unwrap().weight;
+        let plain = weight_of("select name from /t where name in (select name from /inner)");
+        let filtered = weight_of("select name from /t where name in (select name from /inner where size > 0)");
+        let correlated = weight_of("select name from /t as t1 where name in (select name from /inner as t2 where t2.size = t1.size)");
+        assert_eq!(plain, Expr::SUBQUERY_SCAN_WEIGHT);
+        assert_eq!(filtered, Expr::SUBQUERY_SCAN_WEIGHT + 1);
+        assert_eq!(correlated, Expr::CORRELATED_SUBQUERY_WEIGHT + Expr::SUBQUERY_SCAN_WEIGHT + 2);
+        assert!(Expr::CORRELATED_SUBQUERY_WEIGHT > 100 * Function::Contains.get_weight());
     }
 
     #[test]

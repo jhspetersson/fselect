@@ -426,11 +426,37 @@ impl Expr {
         }
     }
     
+    pub const SUBQUERY_SCAN_WEIGHT: i32 = 1024;
+    pub const CORRELATED_SUBQUERY_WEIGHT: i32 = 1 << 20;
+
+    pub fn find_external_alias(&self, own: &HashSet<String>) -> Option<String> {
+        if let Some(ref alias) = self.root_alias
+            && !own.contains(alias) {
+                return Some(alias.clone());
+            }
+        if let Some(ref left) = self.left
+            && let Some(alias) = left.find_external_alias(own) { return Some(alias); }
+        if let Some(ref right) = self.right
+            && let Some(alias) = right.find_external_alias(own) { return Some(alias); }
+        if let Some(ref args) = self.args
+            && let Some(alias) = args.iter().find_map(|a| a.find_external_alias(own)) { return Some(alias); }
+        if let Some(ref sub) = self.subquery {
+            let nested_own: HashSet<String> = sub.own_root_aliases()
+                .into_iter()
+                .chain(own.iter().cloned())
+                .collect();
+            if let Some(alias) = sub.find_external_alias(&nested_own) {
+                return Some(alias);
+            }
+        }
+        None
+    }
+
     pub fn subquery(subquery: Query) -> Expr {
-        let weight = match subquery.expr {
-            Some(ref expr) => expr.weight,
-            None => 0,
-        };
+        let mut weight = Self::SUBQUERY_SCAN_WEIGHT + subquery.expr.as_ref().map_or(0, |expr| expr.weight);
+        if subquery.is_correlated() {
+            weight += Self::CORRELATED_SUBQUERY_WEIGHT;
+        }
         
         Expr {
             left: None,
@@ -1741,9 +1767,9 @@ mod tests {
         assert_eq!(map, HashMap::from([(Field::Modified, String::from("Modified")), (Field::Size, String::from("Size"))]));
         let map = expr.clone().right.unwrap().subquery.unwrap().expr.unwrap().get_fields_required_in_subqueries("t2", false);
         assert!(map.is_empty(), "Expected no required fields for t2 in correlated subquery");
-        let map = expr.clone().right.unwrap().subquery.unwrap().expr.unwrap().left.unwrap().right.unwrap().subquery.unwrap().expr.unwrap().get_fields_required_in_subqueries("t3", false);
+        let map = expr.clone().right.unwrap().subquery.unwrap().expr.unwrap().right.unwrap().right.unwrap().subquery.unwrap().expr.unwrap().get_fields_required_in_subqueries("t3", false);
         assert!(map.is_empty(), "Expected no required fields for t3 in correlated subquery");
-        let map = expr.right.unwrap().subquery.unwrap().expr.unwrap().left.unwrap().right.unwrap().subquery.unwrap().expr.unwrap().get_fields_required_in_subqueries("t1", false);
+        let map = expr.right.unwrap().subquery.unwrap().expr.unwrap().right.unwrap().right.unwrap().subquery.unwrap().expr.unwrap().get_fields_required_in_subqueries("t1", false);
         assert!(map.is_empty(), "Expected no required fields for t1 in correlated subquery");
     }
 

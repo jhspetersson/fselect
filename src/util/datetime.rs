@@ -16,7 +16,19 @@ pub fn set_us_dates(us: bool) {
     *US_DATES.lock().unwrap() = us;
 }
 
+#[cfg(test)]
+thread_local! {
+    static DATETIME_PARSES: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+#[cfg(test)]
+pub fn datetime_parses() -> usize {
+    DATETIME_PARSES.with(|parses| parses.get())
+}
+
 pub fn parse_datetime(s: &str) -> Result<(NaiveDateTime, NaiveDateTime), String> {
+    #[cfg(test)]
+    DATETIME_PARSES.with(|parses| parses.set(parses.get() + 1));
     if s == "today" {
         let date = Local::now().date_naive();
         let start = date.and_hms_opt(0, 0, 0).unwrap();

@@ -72,14 +72,39 @@ pub use audio::AudioInfo;
 pub use dimensions::Dimensions;
 pub use duration::Duration;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
+enum SortKey {
+    Direct,
+    Number(Option<f64>),
+    DateTime(NaiveDateTime),
+}
+
+impl SortKey {
+    fn new(field: &Expr, value: &str) -> SortKey {
+        static EPOCH: LazyLock<NaiveDateTime> = LazyLock::new(|| {
+            NaiveDate::from_ymd_opt(1970, 1, 1)
+                .unwrap()
+                .and_hms_opt(0, 0, 0)
+                .unwrap()
+        });
+        if field.contains_numeric() {
+            SortKey::Number(numeric_sort_key(value))
+        } else if field.contains_datetime() {
+            SortKey::DateTime(parse_datetime(value).map(|(from, _)| from).unwrap_or(*EPOCH))
+        } else {
+            SortKey::Direct
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct Criteria<T>
 where
     T: Display + ToString,
 {
-    fields: Rc<Vec<Expr>>,
     /// Values of current row to sort with, placed in order of significance.
     values: Vec<T>,
+    keys: Vec<SortKey>,
     /// Shared smart reference to Vector of boolean where each index corresponds to whether the
     /// field at that index should be ordered in ascending order `true` or descending order `false`.
     orderings: Rc<Vec<bool>>,
@@ -93,9 +118,15 @@ where
         debug_assert_eq!(fields.len(), values.len());
         debug_assert_eq!(values.len(), orderings.len());
 
+        let keys = fields
+            .iter()
+            .zip(&values)
+            .map(|(field, value)| SortKey::new(field, &value.to_string()))
+            .collect();
+
         Criteria {
-            fields,
             values,
+            keys,
             orderings,
         }
     }
@@ -105,15 +136,19 @@ where
     where
         T: Ord,
     {
-        let field = &self.fields[i];
-        let comparison;
-        if field.contains_numeric() {
-            comparison = self.cmp_at_numbers(other, i);
-        } else if field.contains_datetime() {
-            comparison = self.cmp_at_datetimes(other, i);
-        } else {
-            comparison = self.cmp_at_direct(other, i);
-        }
+        let comparison = match (&self.keys[i], &other.keys[i]) {
+            (SortKey::Number(Some(a)), SortKey::Number(Some(b))) => a.partial_cmp(b).unwrap_or(Ordering::Equal),
+            // Numbers sort before non-numbers, so missing values land last
+            // in ascending order.
+            (SortKey::Number(Some(_)), SortKey::Number(None)) => Ordering::Less,
+            (SortKey::Number(None), SortKey::Number(Some(_))) => Ordering::Greater,
+            (SortKey::DateTime(a), SortKey::DateTime(b)) => a.cmp(b),
+            // Neither side is numeric: fall back to plain string order. This
+            // keeps datetime values produced by numeric expressions (e.g.
+            // `max(modified)`, formatted as fixed-width YYYY-MM-DD HH:MM:SS)
+            // in chronological order instead of collapsing every key to zero.
+            _ => self.values[i].cmp(&other.values[i]),
+        };
 
         if self.orderings[i] {
             comparison
@@ -121,59 +156,15 @@ where
             comparison.reverse()
         }
     }
+}
 
-    #[inline]
-    fn cmp_at_direct(&self, other: &Self, i: usize) -> Ordering
-    where
-        T: Ord,
-    {
-        self.values[i].cmp(&other.values[i])
-    }
-
-    #[inline]
-    fn cmp_at_numbers(&self, other: &Self, i: usize) -> Ordering
-    where
-        T: Ord,
-    {
-        let a_str = self.values[i].to_string();
-        let b_str = other.values[i].to_string();
-
-        match (numeric_sort_key(&a_str), numeric_sort_key(&b_str)) {
-            (Some(a), Some(b)) => a.partial_cmp(&b).unwrap_or(Ordering::Equal),
-            // Numbers sort before non-numbers, so missing values land last
-            // in ascending order.
-            (Some(_), None) => Ordering::Less,
-            (None, Some(_)) => Ordering::Greater,
-            // Neither side is numeric: fall back to plain string order. This
-            // keeps datetime values produced by numeric expressions (e.g.
-            // `max(modified)`, formatted as fixed-width YYYY-MM-DD HH:MM:SS)
-            // in chronological order instead of collapsing every key to zero.
-            (None, None) => a_str.cmp(&b_str),
-        }
-    }
-
-    #[inline]
-    fn cmp_at_datetimes(&self, other: &Self, i: usize) -> Ordering
-    where
-        T: Ord,
-    {
-        static EPOCH: LazyLock<NaiveDateTime> = LazyLock::new(|| {
-            NaiveDate::from_ymd_opt(1970, 1, 1)
-                .unwrap()
-                .and_hms_opt(0, 0, 0)
-                .unwrap()
-        });
-        let default = *EPOCH;
-        let a = parse_datetime(&self.values[i].to_string())
-            .unwrap_or((default, default))
-            .0;
-        let b = parse_datetime(&other.values[i].to_string())
-            .unwrap_or((default, default))
-            .0;
-
-        a.cmp(&b)
+impl<T: Display + Ord> PartialEq for Criteria<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.cmp(other) == Ordering::Equal
     }
 }
+
+impl<T: Display + Ord> Eq for Criteria<T> {}
 
 impl<T: Display + Ord> PartialOrd for Criteria<T> {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
@@ -194,9 +185,21 @@ impl<T: Display + Ord> Ord for Criteria<T> {
     }
 }
 
+#[cfg(test)]
+thread_local! {
+    static NUMERIC_KEY_PARSES: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+#[cfg(test)]
+pub fn numeric_key_parses() -> usize {
+    NUMERIC_KEY_PARSES.with(|parses| parses.get())
+}
+
 /// Numeric sort key for ORDER BY comparisons: a plain integer or float, or a
 /// file size with a unit suffix ("1k", "5mb"). `None` for anything else.
 fn numeric_sort_key(s: &str) -> Option<f64> {
+    #[cfg(test)]
+    NUMERIC_KEY_PARSES.with(|parses| parses.set(parses.get() + 1));
     if let Ok(num) = s.parse::<f64>()
         && num.is_finite() {
             return Some(num);
@@ -2034,6 +2037,27 @@ mod tests {
         assert_eq!(is_dir_empty(&dir_entry_for(&non_empty)), Some(false));
 
         let _ = fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn sort_keys_are_parsed_once_per_row_not_per_comparison() {
+        use crate::util::datetime::datetime_parses;
+
+        let fields = Rc::new(vec![Expr::field(Field::Modified), Expr::field(Field::Size)]);
+        let orderings = Rc::new(vec![true, false]);
+        let before = (datetime_parses(), numeric_key_parses());
+        let mut top: TopN<Criteria<String>, usize> = TopN::new(10);
+        for i in 0..64 {
+            let values = vec![
+                format!("2024-01-{:02} 10:00:00", (i % 28) + 1),
+                format!("{}", (i * 7919) % 1000),
+            ];
+            top.insert(Criteria::new(fields.clone(), values, orderings.clone()), i);
+        }
+        let parses = (datetime_parses() - before.0, numeric_key_parses() - before.1);
+
+        assert_eq!(top.iter_values().count(), 10);
+        assert_eq!(parses, (64, 64), "every sort key must be parsed exactly once, when the row is built");
     }
 
     fn numeric_criteria(value: &str, asc: bool) -> Criteria<String> {

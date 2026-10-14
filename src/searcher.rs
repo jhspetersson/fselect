@@ -50,7 +50,7 @@ pub struct Searcher<'a> {
     ordering_fields_rc: Rc<Vec<Expr>>,
     ordering_asc_rc: Rc<Vec<bool>>,
 
-    record_context: Rc<RefCell<HashMap<String, HashMap<String, String>>>>,
+    record_context: Rc<RefCell<HashMap<String, HashMap<String, Variant>>>>,
     current_alias: Option<String>,
     subquery_required_fields: Option<HashMap<Field, String>>,
 
@@ -117,6 +117,21 @@ fn apply_minus(column_expr: &Expr, value: Variant) -> Variant {
         .unwrap_or(value)
 }
 
+fn typed_variant(field: Option<&Field>, text: &str) -> Variant {
+    let as_string = || Variant::from_string(&text.to_string());
+    match field {
+        Some(field) if field.is_numeric_field() => text
+            .parse::<i64>()
+            .map(Variant::from_int)
+            .or_else(|_| text.parse::<f64>().map(Variant::from_float))
+            .unwrap_or_else(|_| as_string()),
+        Some(field) if field.is_datetime_field() => parse_datetime(text)
+            .map(|(from, _)| Variant::from_datetime(from))
+            .unwrap_or_else(|_| as_string()),
+        _ => as_string(),
+    }
+}
+
 fn is_subquery_cacheable(query: &Query) -> bool {
     !query.is_correlated()
 }
@@ -169,7 +184,7 @@ impl<'a> Searcher<'a> {
 
     pub fn new_with_context(
         query: &'a Query,
-        record_context: Rc<RefCell<HashMap<String, HashMap<String, String>>>>,
+        record_context: Rc<RefCell<HashMap<String, HashMap<String, Variant>>>>,
         config: &'a Config,
         default_config: &'a Config,
         use_colors: bool,
@@ -1259,7 +1274,7 @@ impl<'a> Searcher<'a> {
                 let context = self.record_context.borrow();
                 if let Some(ctx) = context.get(column_expr_context_name) {
                     if let Some(val) = ctx.get(captures.get(2).unwrap().as_str()) {
-                        return Ok(Variant::from_string(val));
+                        return Ok(val.clone());
                     } else {
                         //TODO: this should be propagated up to the higher context
                         return Ok(Variant::empty(VariantType::String));
@@ -1283,7 +1298,7 @@ impl<'a> Searcher<'a> {
                 let mut context = self.record_context.borrow_mut();
                 let context_key = self.current_alias.clone().unwrap_or_else(|| String::from(""));
                 let context_entry = context.entry(context_key).or_default();
-                context_entry.insert(entry_key, file_map[&cache_key].clone());
+                context_entry.insert(entry_key, typed_variant(column_expr.field.as_ref(), &file_map[&cache_key]));
             }
             return Ok(Variant::from_string(&file_map[&cache_key]));
         }
@@ -1319,7 +1334,7 @@ impl<'a> Searcher<'a> {
                 let context_key = self.current_alias.clone().unwrap_or_else(|| String::from(""));
                 let context_entry = context.entry(context_key).or_default();
                 let entry_key = if let Some(alias) = column_expr.alias.clone() { alias } else { field.to_string() };
-                context_entry.insert(entry_key, raw.to_string());
+                context_entry.insert(entry_key, raw);
                 return Ok(result);
             } else if let Some(val) = file_map.get(&field.to_string()) {
                 return Ok(apply_minus(column_expr, Variant::from_string(val)));
@@ -1472,7 +1487,7 @@ impl<'a> Searcher<'a> {
                 let mut context = self.record_context.borrow_mut();
                 let context_entry = context.entry(current_alias.to_string()).or_default();
                 for (field, field_value) in field_values {
-                    context_entry.insert(field, field_value.to_string());
+                    context_entry.insert(field, field_value);
                 }
             }
         }
@@ -1804,6 +1819,13 @@ impl<'a> Searcher<'a> {
     }
 
     fn compare_variants(&mut self, op: &Op, field_value: &Variant, value: &Variant) -> Result<bool, SearchError> {
+        if *field_value.get_type() == VariantType::String
+            && *value.get_type() != VariantType::String
+            && let Some(mirrored) = op.mirrored()
+        {
+            return self.compare_variants(&mirrored, value, field_value);
+        }
+
         let result;
         {
             result = match field_value.get_type() {
@@ -2247,7 +2269,7 @@ mod tests {
             let mut ctx = searcher.record_context.borrow_mut();
             use crate::field::Field;
             let key = Field::Name.to_string();
-            ctx.insert("a".to_string(), HashMap::from([(key, String::from("foo.txt"))]));
+            ctx.insert("a".to_string(), HashMap::from([(key, Variant::from_string(&String::from("foo.txt")))]));
         }
 
         // Build an expression that references a bound column from a different root alias
@@ -2350,7 +2372,7 @@ mod tests {
         {
             let mut ctx = searcher.record_context.borrow_mut();
             let key = Field::Name.to_string();
-            ctx.insert("a".to_string(), HashMap::from([(key, String::from("outer.txt"))]));
+            ctx.insert("a".to_string(), HashMap::from([(key, Variant::from_string(&String::from("outer.txt")))]));
         }
 
         let mut bound_expr = Expr::field(Field::Name);
@@ -3204,6 +3226,64 @@ mod tests {
         assert_eq!(function_alias_vs_field, vec![String::from("A.TXT\t0")]);
         assert_eq!(grouped_alias, vec![String::from("txt\t0\t1\t3")]);
         assert_eq!(ordered_alias, vec![String::from("a.txt\t0")]);
+    }
+
+    #[test]
+    fn comparisons_use_the_typed_operand_whichever_side_it_is_on() {
+        let tmp = std::env::temp_dir().join("fselect_test_typed_comparison_sides");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        fs::write(tmp.join("ten.txt"), "x".repeat(10)).unwrap();
+        fs::write(tmp.join("three.txt"), "xxx").unwrap();
+        fs::write(tmp.join("zero.txt"), "").unwrap();
+        let year_2020 = std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_600_000_000);
+        fs::File::options().write(true).open(tmp.join("ten.txt")).unwrap().set_modified(year_2020).unwrap();
+
+        let run = |condition: &str| {
+            run_query_against_dir(&format!("select name from __DIR__ where {condition} order by name"), &tmp)
+        };
+        let literal_left = run("2 < size");
+        let literal_left_gt = run("5 > size");
+        let quoted_left = run("'5' <= size");
+        let size_suffix_left = run("1kb > size");
+        let arithmetic_right = run("2 < size + 0");
+        let date_left = run("yesterday < modified");
+        let correlated = |condition: &str| {
+            run_query_against_dir(
+                &format!("select name from __DIR__ as t1 where exists (select name from __DIR__ where {condition} and name = t1.name) order by name"),
+                &tmp,
+            )
+        };
+        let correlated_gt = correlated("t1.size > 2");
+        let correlated_lt = correlated("5 > t1.size");
+        let correlated_date = correlated("t1.modified > yesterday");
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(literal_left, vec!["ten.txt", "three.txt"]);
+        assert_eq!(literal_left_gt, vec!["three.txt", "zero.txt"]);
+        assert_eq!(quoted_left, vec!["ten.txt"]);
+        assert_eq!(size_suffix_left, vec!["ten.txt", "three.txt", "zero.txt"]);
+        assert_eq!(arithmetic_right, vec!["ten.txt", "three.txt"]);
+        assert_eq!(date_left, vec!["three.txt", "zero.txt"]);
+        assert_eq!(correlated_gt, vec!["ten.txt", "three.txt"]);
+        assert_eq!(correlated_lt, vec!["three.txt", "zero.txt"]);
+        assert_eq!(correlated_date, vec!["three.txt", "zero.txt"]);
+    }
+
+    #[test]
+    fn compare_variants_mirrors_when_only_the_right_side_is_typed() {
+        let mut searcher = create_test_searcher();
+        let two = Variant::from_string(&String::from("2"));
+        let ten = Variant::from_int(10);
+
+        assert!(searcher.compare_variants(&Op::Lt, &two, &ten).unwrap());
+        assert!(searcher.compare_variants(&Op::Lte, &two, &ten).unwrap());
+        assert!(!searcher.compare_variants(&Op::Gt, &two, &ten).unwrap());
+        assert!(!searcher.compare_variants(&Op::Gte, &two, &ten).unwrap());
+        assert!(!searcher.compare_variants(&Op::Eq, &two, &ten).unwrap());
+        assert!(searcher.compare_variants(&Op::Ne, &two, &ten).unwrap());
+        assert!(searcher.compare_variants(&Op::Eq, &Variant::from_string(&String::from("10")), &ten).unwrap());
+        assert!(searcher.compare_variants(&Op::Gt, &two, &Variant::from_string(&String::from("10"))).unwrap());
     }
 
     #[test]

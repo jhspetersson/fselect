@@ -41,6 +41,17 @@ pub enum Op {
 }
 
 impl Op {
+    pub fn mirrored(&self) -> Option<Op> {
+        match self {
+            Op::Gt => Some(Op::Lt),
+            Op::Gte => Some(Op::Lte),
+            Op::Lt => Some(Op::Gt),
+            Op::Lte => Some(Op::Gte),
+            Op::Eq | Op::Ne | Op::Eeq | Op::Ene => Some(*self),
+            _ => None,
+        }
+    }
+
     pub fn from(text: &str) -> Option<Op> {
         match text.to_lowercase().as_str() {
             "=" | "==" | "eq" => Some(Op::Eq),

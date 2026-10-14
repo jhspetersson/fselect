@@ -8,6 +8,8 @@ use std::io::{ErrorKind, Write};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::LazyLock;
+
+use chrono::NaiveDateTime;
 #[cfg(feature = "git")]
 use git2::Repository;
 use lscolors::{LsColors, Style};
@@ -61,6 +63,8 @@ pub struct Searcher<'a> {
     dir_queue: VecDeque<(PathBuf, u32)>,
     #[cfg(test)]
     dirs_opened: usize,
+    #[cfg(test)]
+    in_list_comparisons: usize,
     current_follow_symlinks: bool,
     current_min_depth: u32,
     current_max_depth: u32,
@@ -77,6 +81,7 @@ pub struct Searcher<'a> {
     file_map: HashMap<String, String>,
     conforms_map: HashMap<String, String>,
     subquery_cache: HashMap<String, Vec<String>>,
+    membership_cache: HashMap<(String, VariantType), Rc<Membership>>,
     silent_mode: bool,
     /// Runs a subquery on behalf of an enclosing searcher, whose aliases it
     /// may legitimately reference.
@@ -129,6 +134,46 @@ fn typed_variant(field: Option<&Field>, text: &str) -> Variant {
             .map(|(from, _)| Variant::from_datetime(from))
             .unwrap_or_else(|_| as_string()),
         _ => as_string(),
+    }
+}
+
+enum Membership {
+    Strings(HashSet<String>),
+    Ints(HashSet<i64>),
+    Floats(Vec<f64>),
+    Bools { has_true: bool, has_false: bool },
+    DateTimes(Vec<(NaiveDateTime, NaiveDateTime)>),
+}
+
+impl Membership {
+    fn new(values: &[String], field_type: &VariantType) -> Membership {
+        let variants = values.iter().map(Variant::from_string);
+        match field_type {
+            VariantType::String => Membership::Strings(values.iter().cloned().collect()),
+            VariantType::Int => Membership::Ints(variants.filter_map(|v| v.to_int_opt()).collect()),
+            VariantType::Float => Membership::Floats(variants.filter_map(|v| v.to_float_opt()).collect()),
+            VariantType::Bool => {
+                let mut bools = (false, false);
+                for variant in variants {
+                    if variant.to_bool() { bools.0 = true } else { bools.1 = true }
+                }
+                Membership::Bools { has_true: bools.0, has_false: bools.1 }
+            }
+            VariantType::DateTime => Membership::DateTimes(variants.filter_map(|v| v.to_datetime().ok()).collect()),
+        }
+    }
+
+    fn contains(&self, field_value: &Variant) -> bool {
+        match self {
+            Membership::Strings(set) => set.contains(field_value.to_string().as_str()),
+            Membership::Ints(set) => set.contains(&field_value.to_int()),
+            Membership::Floats(list) => list.contains(&field_value.to_float()),
+            Membership::Bools { has_true, has_false } => if field_value.to_bool() { *has_true } else { *has_false },
+            Membership::DateTimes(intervals) => match field_value.to_datetime() {
+                Ok((dt, _)) => intervals.iter().any(|(start, finish)| dt >= *start && dt <= *finish),
+                Err(_) => false,
+            },
+        }
     }
 }
 
@@ -221,6 +266,8 @@ impl<'a> Searcher<'a> {
             dir_queue: VecDeque::new(),
             #[cfg(test)]
             dirs_opened: 0,
+            #[cfg(test)]
+            in_list_comparisons: 0,
             current_follow_symlinks: false,
             current_min_depth: 0,
             current_max_depth: 0,
@@ -237,6 +284,7 @@ impl<'a> Searcher<'a> {
             file_map: HashMap::new(),
             conforms_map: HashMap::new(),
             subquery_cache: HashMap::new(),
+            membership_cache: HashMap::new(),
             silent_mode: false,
             is_nested: false,
 
@@ -1613,24 +1661,23 @@ impl<'a> Searcher<'a> {
         negate: bool,
     ) -> Result<bool, SearchError> {
         let right = expr.right.as_ref().unwrap();
-        let owned_args;
         let args: &[Expr] = match &right.args {
             Some(args) => args,
             None => {
-                owned_args = if let Some(subquery) = &right.subquery {
-                    self.get_list_from_subquery(*subquery.clone())?
-                        .iter()
-                        .map(|s| Expr::value(s.to_string()))
-                        .collect()
-                } else {
-                    vec![]
+                let found = match &right.subquery {
+                    Some(subquery) => self.subquery_membership(subquery, field_value.get_type())?.contains(field_value),
+                    None => false,
                 };
-                &owned_args
+                return Ok(if negate { !found } else { found });
             }
         };
         let field_type = field_value.get_type();
         let mut found = false;
         for arg in args {
+            #[cfg(test)]
+            {
+                self.in_list_comparisons += 1;
+            }
             arg_map.clear();
             let arg_val = self.get_column_expr_value(
                 Some(entry), file_info, root_path, arg_map, None, arg,
@@ -1659,6 +1706,19 @@ impl<'a> Searcher<'a> {
             }
         }
         Ok(if negate { !found } else { found })
+    }
+
+    fn subquery_membership(&mut self, subquery: &Query, field_type: &VariantType) -> Result<Rc<Membership>, SearchError> {
+        let key = (format!("{:?}", subquery), field_type.clone());
+        if let Some(membership) = self.membership_cache.get(&key) {
+            return Ok(Rc::clone(membership));
+        }
+        let values = self.get_list_from_subquery(subquery.clone())?;
+        let membership = Rc::new(Membership::new(&values, field_type));
+        if is_subquery_cacheable(subquery) {
+            self.membership_cache.insert(key, Rc::clone(&membership));
+        }
+        Ok(membership)
     }
 
     fn match_pattern(
@@ -3170,6 +3230,49 @@ mod tests {
             format!("link_sib{SEP}deep{SEP}e.log\t3"),
             format!("realsub{SEP}x{SEP}deepfile.txt\t3"),
         ]);
+    }
+
+    #[test]
+    fn in_subquery_membership_is_a_lookup_not_a_scan() {
+        let tmp = std::env::temp_dir().join("fselect_test_in_membership");
+        let _ = fs::remove_dir_all(&tmp);
+        let a = tmp.join("a");
+        let b = tmp.join("b");
+        fs::create_dir_all(&a).unwrap();
+        fs::create_dir_all(&b).unwrap();
+        for i in 0..20 {
+            fs::write(a.join(format!("f{i:02}.txt")), "x".repeat(i)).unwrap();
+            fs::write(b.join(format!("f{:02}.txt", i + 10)), "x".repeat(i + 10)).unwrap();
+        }
+        let b_root = b.to_string_lossy().to_string();
+
+        let by_name = search_dir(
+            &format!("select name from __DIR__ where name in (select name from {b_root}) order by name"),
+            &a, Config::default(), true,
+        );
+        let by_size = search_dir(
+            &format!("select name from __DIR__ where size not in (select size from {b_root}) order by name"),
+            &a, Config::default(), true,
+        );
+        let by_bool = search_dir(
+            &format!("select name from __DIR__ where is_dir in (select is_dir from {b_root})"),
+            &a, Config::default(), true,
+        );
+        let literal_list = search_dir(
+            "select name from __DIR__ where name in ('f03.txt', 'f04.txt')",
+            &a, Config::default(), true,
+        );
+        let _ = fs::remove_dir_all(&tmp);
+
+        let names = |searcher: &Searcher| searcher.output_buffer.iter_values().map(|row| row.trim_end().to_string()).collect::<Vec<_>>();
+        assert_eq!(names(&by_name), (10..20).map(|i| format!("f{i:02}.txt")).collect::<Vec<_>>());
+        assert_eq!(names(&by_size), (0..10).map(|i| format!("f{i:02}.txt")).collect::<Vec<_>>());
+        assert_eq!(by_bool.output_buffer.iter_values().count(), 20);
+        assert_eq!(literal_list.output_buffer.iter_values().count(), 2);
+        assert_eq!(by_name.in_list_comparisons, 0, "subquery members must not be compared one by one per row");
+        assert_eq!(by_size.in_list_comparisons, 0);
+        assert_eq!(by_bool.in_list_comparisons, 0);
+        assert!(literal_list.in_list_comparisons > 0, "literal lists keep the per-argument evaluation");
     }
 
     #[test]

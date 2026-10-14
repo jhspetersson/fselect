@@ -645,11 +645,8 @@ pub fn get_value(
             };
             match parse_datetime(&function_arg) {
                 Ok(date) => {
-                    match chrono::Duration::try_days(days) {
-                        Some(duration) => {
-                            let result = date.0 + duration;
-                            Ok(Variant::from_string(&format_datetime(&result)))
-                        }
+                    match chrono::Duration::try_days(days).and_then(|duration| date.0.checked_add_signed(duration)) {
+                        Some(result) => Ok(Variant::from_string(&format_datetime(&result))),
                         None => Err(format!("Number of days out of range: {}", days)),
                     }
                 }
@@ -666,11 +663,8 @@ pub fn get_value(
             };
             match parse_datetime(&function_arg) {
                 Ok(date) => {
-                    match chrono::Duration::try_days(days) {
-                        Some(duration) => {
-                            let result = date.0 - duration;
-                            Ok(Variant::from_string(&format_datetime(&result)))
-                        }
+                    match chrono::Duration::try_days(days).and_then(|duration| date.0.checked_sub_signed(duration)) {
+                        Some(result) => Ok(Variant::from_string(&format_datetime(&result))),
                         None => Err(format!("Number of days out of range: {}", days)),
                     }
                 }
@@ -4144,6 +4138,22 @@ mod tests {
             &None,
         );
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn date_add_and_sub_beyond_the_calendar_report_an_error() {
+        for function in [Function::DateAdd, Function::DateSub] {
+            for days in ["100000000", "-100000000", "106751991167300"] {
+                let result = get_value(&function, String::from("2024-01-01"), vec![String::from(days)], None, &None);
+                assert_eq!(
+                    result,
+                    Err(format!("Number of days out of range: {}", days)),
+                    "{} {}",
+                    function,
+                    days
+                );
+            }
+        }
     }
 
     fn write_temp_file(name: &str, bytes: &[u8]) -> std::path::PathBuf {

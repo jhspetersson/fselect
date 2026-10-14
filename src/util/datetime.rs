@@ -105,7 +105,9 @@ pub fn parse_datetime(s: &str) -> Result<(NaiveDateTime, NaiveDateTime), String>
                 && (s.starts_with("+") || s.starts_with("-"))
                 && let Ok(days) = s.parse::<i64>()
             {
-                let date = Local::now().date_naive() + Duration::days(days);
+                let date = Duration::try_days(days)
+                    .and_then(|offset| Local::now().date_naive().checked_add_signed(offset))
+                    .ok_or_else(|| "Error parsing date/time value: ".to_string() + s)?;
                 let start = date.and_hms_opt(0, 0, 0).unwrap();
                 let finish = date.and_hms_opt(23, 59, 59).unwrap();
 
@@ -409,6 +411,18 @@ mod tests {
         }
         for t in times {
             let _ = system_time_to_naive_local(t);
+        }
+    }
+
+    #[test]
+    fn relative_day_offsets_beyond_the_calendar_are_errors() {
+        for s in ["-100000000", "+100000000", "+99999999999999999", "-9223372036854775808", "+9223372036854775807"] {
+            let result = parse_datetime(s);
+            assert!(result.is_err(), "{} should be rejected, got {:?}", s, result);
+            assert_eq!(result.unwrap_err(), format!("Error parsing date/time value: {}", s));
+        }
+        for s in ["-1", "+0", "+3", "-36500"] {
+            assert!(parse_datetime(s).is_ok(), "{} should still parse", s);
         }
     }
 

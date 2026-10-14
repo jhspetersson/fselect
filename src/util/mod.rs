@@ -204,16 +204,6 @@ fn numeric_sort_key(s: &str) -> Option<f64> {
     parse_filesize(s).map(|size| size as f64)
 }
 
-#[cfg(windows)]
-pub fn calc_depth(s: &str) -> u32 {
-    s.matches("\\").count() as u32
-}
-
-#[cfg(not(windows))]
-pub fn calc_depth(s: &str) -> u32 {
-    s.matches("/").count() as u32
-}
-
 pub fn get_extension(s: &str) -> String {
     match Path::new(s).extension() {
         Some(ext) => ext.to_string_lossy().to_string(),

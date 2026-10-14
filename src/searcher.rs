@@ -998,25 +998,8 @@ impl<'a> Searcher<'a> {
             }
         }
 
-        // `depth` is this directory's level (root == 1); `child_root_depth` is
-        // passed to children/queued dirs so they can derive their own depth.
-        // With a canonical path we keep the original separator-counting scheme
-        // to preserve behavior; otherwise traversal descends exactly one real
-        // directory per level, so an explicit counter is equivalent.
-        let (depth, child_root_depth) = match &canonical_path {
-            Some(canonical_path) => {
-                let canonical_depth = calc_depth(canonical_path);
-                let base_depth = match root_depth {
-                    0 => canonical_depth,
-                    _ => root_depth,
-                };
-                (canonical_depth.saturating_sub(base_depth) + 1, base_depth)
-            }
-            None => {
-                let depth = root_depth + 1;
-                (depth, depth)
-            }
-        };
+        let depth = root_depth + 1;
+        let child_root_depth = depth;
 
         // Read the directory and process each entry
         let root_dir = self.current_root_dir.clone();
@@ -2512,14 +2495,6 @@ mod tests {
         assert_eq!(result, u32::MAX);
     }
 
-    #[test]
-    fn test_depth_underflow_protection() {
-        let canonical_depth: u32 = 2;
-        let base_depth: u32 = 5;
-        let depth = canonical_depth.saturating_sub(base_depth) + 1;
-        assert_eq!(depth, 1, "depth should not underflow");
-    }
-
     #[cfg(unix)]
     #[test]
     fn test_visited_dirs_uses_canonical_path() {
@@ -3142,6 +3117,59 @@ mod tests {
                 result
             );
         }
+    }
+
+    fn link_directory(link: &Path, target: &Path) {
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(target, link).unwrap();
+        #[cfg(windows)]
+        {
+            let status = std::process::Command::new("cmd")
+                .args(["/C", "mklink", "/J", &link.to_string_lossy(), &target.to_string_lossy()])
+                .stdout(std::process::Stdio::null())
+                .status()
+                .unwrap();
+            assert!(status.success(), "mklink /J failed");
+        }
+    }
+
+    #[test]
+    fn depth_limits_count_traversal_levels_through_directory_links() {
+        use std::path::MAIN_SEPARATOR_STR as SEP;
+
+        let tmp = std::env::temp_dir().join("fselect_test_link_depth");
+        let _ = fs::remove_dir_all(&tmp);
+        let root = tmp.join("root");
+        fs::create_dir_all(root.join("realsub").join("x")).unwrap();
+        fs::create_dir_all(tmp.join("target").join("deep").join("deeper")).unwrap();
+        fs::create_dir_all(tmp.join("far").join("a").join("b").join("c")).unwrap();
+        fs::write(root.join("top.txt"), "").unwrap();
+        fs::write(root.join("realsub").join("x").join("deepfile.txt"), "").unwrap();
+        fs::write(tmp.join("target").join("deep").join("e.log"), "").unwrap();
+        fs::write(tmp.join("target").join("deep").join("deeper").join("f.txt"), "").unwrap();
+        fs::write(tmp.join("far").join("a").join("b").join("c").join("leaf.txt"), "").unwrap();
+        link_directory(&root.join("link_sib"), &tmp.join("target"));
+        link_directory(&root.join("link_far"), &tmp.join("far").join("a").join("b").join("c"));
+
+        let shallow = run_query_against_dir("select path, depth from __DIR__ sym maxdepth 2 order by path", &root);
+        let deep = run_query_against_dir("select path, depth from __DIR__ sym mindepth 3 order by path", &root);
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(shallow, vec![
+            String::from("link_far\t1"),
+            format!("link_far{SEP}leaf.txt\t2"),
+            String::from("link_sib\t1"),
+            format!("link_sib{SEP}deep\t2"),
+            String::from("realsub\t1"),
+            format!("realsub{SEP}x\t2"),
+            String::from("top.txt\t1"),
+        ]);
+        assert_eq!(deep, vec![
+            format!("link_sib{SEP}deep{SEP}deeper\t3"),
+            format!("link_sib{SEP}deep{SEP}deeper{SEP}f.txt\t4"),
+            format!("link_sib{SEP}deep{SEP}e.log\t3"),
+            format!("realsub{SEP}x{SEP}deepfile.txt\t3"),
+        ]);
     }
 
     #[test]

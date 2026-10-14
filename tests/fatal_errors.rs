@@ -148,6 +148,23 @@ fn a_failed_first_row_leaves_no_separator_and_keeps_the_limit() {
 }
 
 #[test]
+fn aggregate_errors_are_reported_with_a_well_formed_document() {
+    let dir = make_dir("fselect_test_aggregate_error_output");
+    let root = dir.display();
+
+    let json = fselect(&format!("select sum(size) / 0 from {root} into json"));
+    let columns = fselect(&format!("select sum(size), sum(size) / 0, count(*) from {root}"));
+    let _ = fs::remove_dir_all(&dir);
+
+    assert_eq!(json.code, Some(1), "{}", json.stderr);
+    assert!(json.stderr.contains("Division by zero"), "{}", json.stderr);
+    assert_eq!(json.stdout.trim(), "[]");
+
+    assert_eq!(columns.code, Some(1), "{}", columns.stderr);
+    assert_eq!(columns.stdout, "", "no misaligned row may be printed");
+}
+
+#[test]
 fn valid_queries_still_produce_complete_documents() {
     let dir = make_dir("fselect_test_fatal_valid");
     let dir = dir.to_string_lossy();

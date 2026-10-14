@@ -609,11 +609,10 @@ impl<'a> Searcher<'a> {
                         }
                     let mut items: Vec<(String, String)> = Vec::new();
                     for column_expr in &self.query.fields {
-                        if let Ok(value) = self.get_column_expr_value(
+                        let value = self.get_column_expr_value(
                             None, &None, Path::new(""), &mut file_map, Some(group_acc), column_expr,
-                        ) {
-                            items.push((column_expr.column_name(), value.to_string()));
-                        }
+                        )?;
+                        items.push((column_expr.column_name(), value.to_string()));
                     }
                     let mut criteria_values: Vec<String> =
                         Vec::with_capacity(sorting_indices.len());
@@ -637,9 +636,8 @@ impl<'a> Searcher<'a> {
                                     &mut file_map,
                                     Some(group_acc),
                                     ordering_expr,
-                                )
-                                .map(|v| v.to_string())
-                                .unwrap_or_default(),
+                                )?
+                                .to_string(),
                         };
                         criteria_values.push(value);
                     }
@@ -681,16 +679,15 @@ impl<'a> Searcher<'a> {
                         self.group_conforms(&mut HashMap::new(), ungrouped_acc, having_expr)?;
                 }
                 for column_expr in &self.query.fields {
-                    if let Ok(value) = self.get_column_expr_value(
+                    let value = self.get_column_expr_value(
                         None,
                         &None,
                         Path::new(""),
                         &mut HashMap::new(),
                         Some(ungrouped_acc),
                         column_expr
-                    ) {
-                        items.push((column_expr.column_name(), value.to_string()));
-                    }
+                    )?;
+                    items.push((column_expr.column_name(), value.to_string()));
                 }
 
                 if passes_having {
@@ -3101,6 +3098,50 @@ mod tests {
         assert_eq!(all.found, 2, "a row that failed to render was never found");
         assert_eq!(all.error_count, 1);
         assert_eq!(limited.output_buffer.iter_values().count(), 2, "the failed row must not use up a LIMIT slot");
+    }
+
+    fn run_query_result(query_template: &str, dir: &Path) -> Result<(), SearchError> {
+        use crate::lexer::Lexer;
+        use crate::parser::Parser;
+
+        let query_string = query_template.replace("__DIR__", &dir.to_string_lossy());
+        let mut lexer = Lexer::new(vec![query_string]);
+        let parsed = Box::leak(Box::new(Parser::new(&mut lexer).parse(false).expect("parse failed")));
+        let config = Box::leak(Box::new(Config::default()));
+        let default_config = Box::leak(Box::new(Config::default()));
+        let mut searcher = Searcher::new(parsed, config, default_config, false);
+        searcher.silent_mode = true;
+        searcher.list_search_results()
+    }
+
+    #[test]
+    fn aggregate_evaluation_errors_fail_the_query() {
+        let tmp = std::env::temp_dir().join("fselect_test_aggregate_errors");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        fs::write(tmp.join("a.txt"), "x").unwrap();
+        fs::write(tmp.join("b.txt"), "xxx").unwrap();
+
+        let queries = [
+            "select sum(size) / 0 from __DIR__",
+            "select sum(size), sum(size) / 0, count(*) from __DIR__",
+            "select ext, sum(size) / 0 from __DIR__ group by ext",
+            "select ext from __DIR__ group by ext order by sum(size) / 0",
+        ];
+        let results: Vec<_> = queries
+            .iter()
+            .map(|query| (*query, run_query_result(query, &tmp).map_err(|err| err.description)))
+            .collect();
+        let _ = fs::remove_dir_all(&tmp);
+
+        for (query, result) in results {
+            assert!(
+                matches!(&result, Err(description) if description.contains("Division by zero")),
+                "{}: {:?}",
+                query,
+                result
+            );
+        }
     }
 
     #[test]

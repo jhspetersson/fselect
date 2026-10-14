@@ -556,7 +556,7 @@ impl<'a> Searcher<'a> {
                     .query
                     .grouping_fields
                     .iter()
-                    .map(|f| f.to_string())
+                    .map(|f| f.cache_key())
                     .collect();
                 let accumulators = std::mem::take(&mut self.accumulators);
 
@@ -1244,17 +1244,17 @@ impl<'a> Searcher<'a> {
         accumulator: Option<&function::GroupAccumulator>,
         column_expr: &Expr,
     ) -> Result<Variant, SearchError> {
-        let column_expr_str = column_expr.to_string();
+        let cache_key = column_expr.cache_key();
 
-        let mut should_update_context = false;
+        let mut context_field: Option<String> = None;
 
         // Cheap guard: the alias regex requires a dot, and most column
         // expressions have none, so skip the regex in the per-file hot path.
-        if column_expr_str.contains('.')
-            && let Some(captures) = FIELD_WITH_ALIAS.captures(&column_expr_str) {
+        if cache_key.contains('.')
+            && let Some(captures) = FIELD_WITH_ALIAS.captures(&column_expr.to_string()) {
             let column_expr_context_name = captures.get(1).unwrap().as_str();
             if self.current_alias.as_deref() == Some(column_expr_context_name) {
-                should_update_context = true;
+                context_field = Some(captures.get(2).unwrap().as_str().to_string());
             } else {
                 let context = self.record_context.borrow();
                 if let Some(ctx) = context.get(column_expr_context_name) {
@@ -1278,15 +1278,14 @@ impl<'a> Searcher<'a> {
             }
         }
 
-        if file_map.contains_key(&column_expr_str) {
-            if should_update_context {
+        if file_map.contains_key(&cache_key) {
+            if let Some(entry_key) = context_field {
                 let mut context = self.record_context.borrow_mut();
                 let context_key = self.current_alias.clone().unwrap_or_else(|| String::from(""));
                 let context_entry = context.entry(context_key).or_default();
-                let entry_key = column_expr_str.split('.').nth(1).unwrap().to_string();
-                context_entry.insert(entry_key, file_map[&column_expr_str].clone());
+                context_entry.insert(entry_key, file_map[&cache_key].clone());
             }
-            return Ok(Variant::from_string(&file_map[&column_expr_str]));
+            return Ok(Variant::from_string(&file_map[&cache_key]));
         }
 
         if let Some(ref subquery) = column_expr.subquery {
@@ -1305,7 +1304,7 @@ impl<'a> Searcher<'a> {
             let result =
                 self.get_function_value(entry, file_info, root_path, file_map, accumulator, column_expr)?;
             let result = apply_minus(column_expr, result);
-            file_map.insert(column_expr_str, result.to_string());
+            file_map.insert(cache_key, result.to_string());
             return Ok(result);
         }
 
@@ -1315,7 +1314,7 @@ impl<'a> Searcher<'a> {
                 // The record context feeds correlated subqueries and must hold
                 // the raw field value; only the returned value is negated.
                 let result = apply_minus(column_expr, raw.clone());
-                file_map.insert(column_expr_str, result.to_string());
+                file_map.insert(cache_key, result.to_string());
                 let mut context = self.record_context.borrow_mut();
                 let context_key = self.current_alias.clone().unwrap_or_else(|| String::from(""));
                 let context_entry = context.entry(context_key).or_default();
@@ -1344,7 +1343,7 @@ impl<'a> Searcher<'a> {
                     let right_result =
                         self.get_column_expr_value(entry, file_info, root_path, file_map, accumulator, right)?;
                         result = op.calc(&left_result, &right_result).map(|v| apply_minus(column_expr, v));
-                        file_map.insert(column_expr_str, result.clone()?.to_string());
+                        file_map.insert(cache_key, result.clone()?.to_string());
                 } else {
                     result = Ok(apply_minus(column_expr, left_result));
                 }
@@ -1379,7 +1378,11 @@ impl<'a> Searcher<'a> {
 
         if function.is_aggregate_function() {
             let _ = self.get_column_expr_value(entry, file_info, root_path, file_map, accumulator, left_expr)?;
-            let buffer_key = left_expr.to_string();
+            let buffer_key = if left_expr.is_literal() && matches!(left_expr.val.as_deref(), Some("*") | Some("")) {
+                String::from("*")
+            } else {
+                left_expr.cache_key()
+            };
             let empty_acc = function::GroupAccumulator::default();
             let aggr_result = function::get_aggregate_value(
                 function,
@@ -1406,7 +1409,7 @@ impl<'a> Searcher<'a> {
                 entry,
                 file_info,
             )?;
-            file_map.insert(column_expr.to_string(), result.to_string());
+            file_map.insert(column_expr.cache_key(), result.to_string());
 
             Ok(result)
         }
@@ -1501,19 +1504,19 @@ impl<'a> Searcher<'a> {
                 .flat_map(|column_expr| column_expr.get_aggregate_exprs())
                 .filter_map(|aggregate| {
                     let left = aggregate.left.as_ref()?;
-                    (!file_map.contains_key(&left.to_string())).then(|| left.as_ref().clone())
+                    (!file_map.contains_key(&left.cache_key())).then(|| left.as_ref().clone())
                 })
                 .collect();
             for left in &aggregate_inner_exprs {
                 self.get_column_expr_value(Some(entry), file_info, root_path, file_map, None, left)?;
             }
             for field in self.query.grouping_fields.iter() {
-                if file_map.get(&field.to_string()).is_none() {
+                if file_map.get(&field.cache_key()).is_none() {
                     self.get_column_expr_value(Some(entry), file_info, root_path, file_map, None, field)?;
                 }
             }
             let group_key: Vec<String> = self.query.grouping_fields.iter()
-                .map(|f| file_map.get(&f.to_string()).cloned().unwrap_or_default())
+                .map(|f| file_map.get(&f.cache_key()).cloned().unwrap_or_default())
                 .collect();
             let accumulator = self.accumulators.entry(group_key).or_default();
             accumulator.increment_count();
@@ -1548,7 +1551,7 @@ impl<'a> Searcher<'a> {
 
         let mut criteria = vec!["".to_string(); self.query.ordering_fields.len()];
         for (idx, field) in self.query.ordering_fields.iter().enumerate() {
-            criteria[idx] = match file_map.get(&field.to_string()) {
+            criteria[idx] = match file_map.get(&field.cache_key()) {
                 Some(record) => record.clone(),
                 None => self
                     .get_column_expr_value(Some(entry), file_info, root_path, file_map, None, field)?
@@ -3175,6 +3178,32 @@ mod tests {
         assert_eq!(function_arg, vec![String::from("74")]);
         assert_eq!(two_aggregates, vec![String::from("txt\t18")]);
         assert_eq!(ordering_only, vec![String::from("c.txt"), String::from("b.txt"), String::from("a.txt")]);
+    }
+
+    #[test]
+    fn cache_keys_distinguish_literals_fields_and_aliases() {
+        let tmp = std::env::temp_dir().join("fselect_test_cache_key_collisions");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        fs::write(tmp.join("a.txt"), "").unwrap();
+
+        let run = |query: &str| run_query_against_dir(query, &tmp);
+        let literal_vs_field = run("select length('Name'), length(name) from __DIR__ depth 1");
+        let field_vs_literal = run("select length(name), length('Name') from __DIR__ depth 1");
+        let alias_vs_literal = run("select name as n, 'n', length('n') from __DIR__ depth 1");
+        let alias_vs_field = run("select size as Name, name from __DIR__ depth 1");
+        let function_alias_vs_field = run("select upper(name) as Size, size from __DIR__ depth 1");
+        let grouped_alias = run("select ext, max(size) as size, count(*), length('Ext') from __DIR__ depth 1 group by ext");
+        let ordered_alias = run("select name as Size, size from __DIR__ depth 1 order by Size");
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(literal_vs_field, vec![String::from("4\t5")]);
+        assert_eq!(field_vs_literal, vec![String::from("5\t4")]);
+        assert_eq!(alias_vs_literal, vec![String::from("a.txt\tn\t1")]);
+        assert_eq!(alias_vs_field, vec![String::from("0\ta.txt")]);
+        assert_eq!(function_alias_vs_field, vec![String::from("A.TXT\t0")]);
+        assert_eq!(grouped_alias, vec![String::from("txt\t0\t1\t3")]);
+        assert_eq!(ordered_alias, vec![String::from("a.txt\t0")]);
     }
 
     #[test]

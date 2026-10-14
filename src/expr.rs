@@ -951,26 +951,55 @@ impl Expr {
 
 impl Display for Expr {
     fn fmt(&self, fmt: &mut Formatter) -> fmt::Result {
-        use std::fmt::Write;
+        self.render(fmt, Rendering::Display)
+    }
+}
+
+#[derive(Clone, Copy, PartialEq)]
+enum Rendering {
+    Display,
+    CacheKey,
+}
+
+impl Expr {
+    pub fn cache_key(&self) -> String {
+        let mut key = String::new();
+        self.render(&mut key, Rendering::CacheKey).expect("writing to a String cannot fail");
+        key
+    }
+
+    pub fn is_literal(&self) -> bool {
+        self.val.is_some()
+            && self.field.is_none()
+            && self.function.is_none()
+            && self.subquery.is_none()
+            && self.left.is_none()
+            && self.right.is_none()
+    }
+
+    fn render(&self, out: &mut dyn fmt::Write, mode: Rendering) -> fmt::Result {
+        let alias = match mode {
+            Rendering::Display => self.alias.as_deref(),
+            Rendering::CacheKey => None,
+        };
 
         if let Some(ref subquery) = self.subquery {
-            if let Some(ref alias) = self.alias {
+            if let Some(alias) = alias {
                 if let Some(ref root_alias) = self.root_alias {
-                    fmt.write_str(root_alias)?;
-                    fmt.write_char('.')?;
+                    out.write_str(root_alias)?;
+                    out.write_char('.')?;
                 }
-                fmt.write_str(alias)?;
+                out.write_str(alias)?;
             } else {
                 let subquery_str = format!("{:?}", subquery);
                 let mut s = DefaultHasher::new();
                 subquery_str.hash(&mut s);
-                let hash = s.finish();
-                fmt.write_str(("subquery_".to_string() + hash.to_string().as_str()).as_str())?;
+                write!(out, "subquery_{}", s.finish())?;
             }
         }
 
         if self.minus {
-            fmt.write_char('-')?;
+            out.write_char('-')?;
         }
 
         // A negated composite must keep its grouping: -(1 Add 2) and
@@ -978,66 +1007,70 @@ impl Display for Expr {
         let negated_composite = self.minus
             && (self.arithmetic_op.is_some() || self.logical_op.is_some() || self.op.is_some());
         if negated_composite {
-            fmt.write_char('(')?;
+            out.write_char('(')?;
         }
 
         if let Some(ref function) = self.function {
-            if let Some(ref alias) = self.alias {
-                fmt.write_str(alias)?;
+            if let Some(alias) = alias {
+                out.write_str(alias)?;
             } else {
-                fmt.write_str(&function.to_string())?;
-                fmt.write_char('(')?;
+                write!(out, "{}", function)?;
+                out.write_char('(')?;
                 if let Some(ref left) = self.left {
-                    fmt.write_str(&left.to_string())?;
+                    left.render(out, mode)?;
                 }
                 if let Some(ref args) = self.args {
                     for (i, arg) in args.iter().enumerate() {
                         if self.left.is_some() || i > 0 {
-                            fmt.write_str(", ")?;
+                            out.write_str(", ")?;
                         }
-                        fmt.write_str(&arg.to_string())?;
+                        arg.render(out, mode)?;
                     }
                 }
-                fmt.write_char(')')?;
+                out.write_char(')')?;
             }
         } else if let Some(ref left) = self.left {
-            write_operand(fmt, left)?;
+            write_operand(out, left, mode)?;
         }
 
         if let Some(ref op) = self.arithmetic_op {
-            fmt.write_str(&format!(" {} ", op))?;
+            write!(out, " {} ", op)?;
         }
 
         if let Some(ref op) = self.logical_op {
-            fmt.write_str(&format!(" {:?} ", op))?;
+            write!(out, " {:?} ", op)?;
         }
 
         if let Some(ref op) = self.op {
-            fmt.write_str(&format!(" {:?} ", op))?;
+            write!(out, " {:?} ", op)?;
         }
 
         if let Some(ref field) = self.field {
             if let Some(ref root_alias) = self.root_alias {
-                fmt.write_str(root_alias)?;
-                fmt.write_char('.')?;
+                out.write_str(root_alias)?;
+                out.write_char('.')?;
             }
-            if let Some(ref alias) = self.alias {
-                fmt.write_str(alias)?;
+            if let Some(alias) = alias {
+                out.write_str(alias)?;
             } else {
-                fmt.write_str(&field.to_string())?;
+                write!(out, "{}", field)?;
             }
         }
 
         if let Some(ref val) = self.val {
-            fmt.write_str(val)?;
+            if mode == Rendering::CacheKey && self.is_literal() {
+                write!(out, "'{}'", val)?;
+            } else {
+                out.write_str(val)?;
+            }
         }
 
         if let Some(ref right) = self.right {
-            write_operand(fmt, right)?;
+            write_operand(out, right, mode)?;
         }
 
         if negated_composite {
-            fmt.write_char(')')?;
+            out.write_char(')')?;
         }
 
         Ok(())
@@ -1048,19 +1081,17 @@ impl Display for Expr {
 /// expression. Without this, `(1 + 2) * 3` and `1 + (2 * 3)` render to the
 /// same string, and the rendered form is used as the per-file evaluation
 /// cache key — colliding columns would silently reuse each other's values.
-fn write_operand(fmt: &mut Formatter, operand: &Expr) -> fmt::Result {
-    use std::fmt::Write;
-
+fn write_operand(out: &mut dyn fmt::Write, operand: &Expr, mode: Rendering) -> fmt::Result {
     let composite = operand.arithmetic_op.is_some()
         || operand.logical_op.is_some()
         || operand.op.is_some();
 
     if composite {
-        fmt.write_char('(')?;
+        out.write_char('(')?;
     }
-    Display::fmt(operand, fmt)?;
+    operand.render(out, mode)?;
     if composite {
-        fmt.write_char(')')?;
+        out.write_char(')')?;
     }
 
     Ok(())
@@ -1087,6 +1118,34 @@ fn compares_numerically(field: &Field) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cache_key_separates_literals_fields_and_aliases() {
+        let literal = Expr::value(String::from("Name"));
+        let field = Expr::field(Field::Name);
+        assert_eq!(literal.to_string(), field.to_string());
+        assert_eq!(literal.cache_key(), "'Name'");
+        assert_eq!(field.cache_key(), "Name");
+
+        let mut aliased_field = Expr::field(Field::Size);
+        aliased_field.alias = Some(String::from("Name"));
+        assert_eq!(aliased_field.to_string(), "Name");
+        assert_eq!(aliased_field.cache_key(), "Size");
+
+        let mut aliased_function = Expr::function_left(Function::Upper, Some(Box::new(Expr::field(Field::Name))));
+        aliased_function.alias = Some(String::from("Size"));
+        assert_eq!(aliased_function.to_string(), "Size");
+        assert_eq!(aliased_function.cache_key(), "Upper(Name)");
+
+        let nested = Expr::function_left(Function::Length, Some(Box::new(Expr::value(String::from("n")))));
+        assert_eq!(nested.cache_key(), "Length('n')");
+
+        let computed = Expr::arithmetic_op(Expr::field(Field::Size), ArithmeticOp::Multiply, Expr::value(String::from("2")));
+        assert_eq!(computed.cache_key(), "Size * '2'");
+
+        let external = Expr::field_with_root_alias(Field::Name, Some(String::from("t1")));
+        assert_eq!(external.cache_key(), external.to_string());
+    }
 
     #[test]
     fn column_name_is_lowercase_and_honors_aliases() {

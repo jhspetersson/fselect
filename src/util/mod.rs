@@ -1101,7 +1101,19 @@ fn read_up_to_4<R: Read>(reader: &mut R, buf: &mut [u8; 4]) -> Option<usize> {
     Some(filled)
 }
 
+#[cfg(test)]
+thread_local! {
+    static CONTENT_SCANS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+#[cfg(test)]
+pub fn content_scans() -> usize {
+    CONTENT_SCANS.with(|scans| scans.get())
+}
+
 pub fn content_stats_from_reader<R: Read>(mut reader: R) -> Option<ContentStats> {
+    #[cfg(test)]
+    CONTENT_SCANS.with(|scans| scans.set(scans.get() + 1));
     let mut head = [0u8; 4];
     let head_len = read_up_to_4(&mut reader, &mut head)?;
     let head = &head[..head_len];

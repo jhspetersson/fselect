@@ -48,7 +48,8 @@ pub struct Searcher<'a> {
     regex_cache: HashMap<String, Regex>,
     found: u32,
     accumulators: HashMap<Vec<String>, function::GroupAccumulator>,
-    output_buffer: TopN<Criteria<String>, String>,
+    output_buffer: TopN<Criteria<String>, BufferedRow>,
+    deferred_columns: Vec<usize>,
     ordering_fields_rc: Rc<Vec<Expr>>,
     ordering_asc_rc: Rc<Vec<bool>>,
 
@@ -177,6 +178,39 @@ impl Membership {
     }
 }
 
+const DEFERRED_COLUMN_WEIGHT: i32 = 16;
+
+enum BufferedRow {
+    Rendered(String),
+    Pending(PendingRow),
+}
+
+struct PendingRow {
+    path: PathBuf,
+    root_path: PathBuf,
+    file_info: Option<FileInfo>,
+    follow_symlinks: bool,
+    items: Vec<(String, String)>,
+    deferred: Vec<usize>,
+}
+
+impl std::ops::Deref for BufferedRow {
+    type Target = str;
+
+    fn deref(&self) -> &str {
+        match self {
+            BufferedRow::Rendered(text) => text,
+            BufferedRow::Pending(_) => "",
+        }
+    }
+}
+
+impl std::fmt::Display for BufferedRow {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        f.write_str(self)
+    }
+}
+
 fn is_subquery_cacheable(query: &Query) -> bool {
     !query.is_correlated()
 }
@@ -248,6 +282,7 @@ impl<'a> Searcher<'a> {
             regex_cache: HashMap::new(),
             found: 0,
             accumulators: HashMap::new(),
+            deferred_columns: Self::deferred_columns(query),
             output_buffer: if limit == 0 {
                 TopN::limitless()
             } else {
@@ -610,6 +645,8 @@ impl<'a> Searcher<'a> {
                 }
         }
 
+        self.finalize_deferred()?;
+
         let compute_time = std::time::Instant::now();
 
         // ======== Compute results =========
@@ -710,7 +747,7 @@ impl<'a> Searcher<'a> {
                     }
                     self.output_buffer.insert(
                         Criteria::new(Rc::new(vec![]), vec![], Rc::new(vec![])),
-                        rendered,
+                        BufferedRow::Rendered(rendered),
                     );
                 }
                 drop(stdout);
@@ -743,7 +780,7 @@ impl<'a> Searcher<'a> {
                     let rendered = String::from(buf);
                     self.output_buffer.insert(
                         Criteria::new(Rc::new(vec![]), vec![], Rc::new(vec![])),
-                        rendered.clone(),
+                        BufferedRow::Rendered(rendered.clone()),
                     );
 
                     // An ungrouped aggregate produces a single row; any OFFSET
@@ -1270,6 +1307,104 @@ impl<'a> Searcher<'a> {
         self.current_follow_symlinks || !file_type.is_symlink()
     }
 
+    fn deferred_columns(query: &Query) -> Vec<usize> {
+        if query.limit == 0 || query.is_aggregated() {
+            return vec![];
+        }
+        let ordering_keys: HashSet<String> = query.ordering_fields.iter().map(Expr::cache_key).collect();
+        let where_fields = query.expr.as_ref().map(Expr::get_required_fields).unwrap_or_default();
+        query
+            .fields
+            .iter()
+            .enumerate()
+            .filter(|(_, field)| {
+                field.weight >= DEFERRED_COLUMN_WEIGHT
+                    && !field.needs_row_context()
+                    && !ordering_keys.contains(&field.cache_key())
+                    && field.get_required_fields().is_disjoint(&where_fields)
+            })
+            .map(|(index, _)| index)
+            .collect()
+    }
+
+    fn finalize_deferred(&mut self) -> Result<(), SearchError> {
+        if self.deferred_columns.is_empty() {
+            return Ok(());
+        }
+        let buffered = std::mem::replace(&mut self.output_buffer, TopN::limitless());
+        let mut lookup = DirEntryLookup::new();
+        let offset = self.query.offset as usize;
+        let mut position = 0;
+        for (criteria, rows) in buffered.into_entries() {
+            for row in rows {
+                let rendered = match row {
+                    BufferedRow::Rendered(text) => Some(text),
+                    BufferedRow::Pending(_) if position < offset => Some(String::new()),
+                    BufferedRow::Pending(pending) => self.render_pending(pending, &mut lookup)?,
+                };
+                position += 1;
+                if let Some(text) = rendered {
+                    self.output_buffer.insert(criteria.clone(), BufferedRow::Rendered(text));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn render_pending(&mut self, row: PendingRow, lookup: &mut DirEntryLookup) -> Result<Option<String>, SearchError> {
+        let (Some(directory), Some(file_name)) = (row.path.parent(), row.path.file_name()) else {
+            self.error_count += 1;
+            error_message(&row.path.to_string_lossy(), "cannot locate the entry again");
+            return Ok(None);
+        };
+        let mut items = row.items.clone();
+        match lookup.entry(directory, file_name) {
+            Ok(Some(entry)) => {
+                self.fms.clear();
+                let follow_symlinks = std::mem::replace(&mut self.current_follow_symlinks, row.follow_symlinks);
+                let evaluated = self.evaluate_deferred(entry, &row, &mut items);
+                self.current_follow_symlinks = follow_symlinks;
+                if let Err(err) = evaluated {
+                    if err.is_fatal() {
+                        return Err(err);
+                    }
+                    self.handle_nonfatal_error(err, &row.path);
+                    return Ok(None);
+                }
+            }
+            Ok(None) => {
+                self.error_count += 1;
+                error_message(&row.path.to_string_lossy(), "entry disappeared during the search");
+                return Ok(None);
+            }
+            Err(err) => {
+                self.error_count += 1;
+                path_error_message(&row.path, err);
+                return Ok(None);
+            }
+        }
+        let mut buf = WritableBuffer::new();
+        self.results_writer.write_row(&mut buf, items)?;
+        Ok(Some(String::from(buf)))
+    }
+
+    fn evaluate_deferred(&mut self, entry: &DirEntry, row: &PendingRow, items: &mut [(String, String)]) -> Result<(), SearchError> {
+        let query = self.query;
+        let mut file_map = HashMap::new();
+        if self.use_colors && row.deferred.iter().any(|index| query.fields[*index].contains_colorized()) {
+            self.fms.update_file_metadata(entry, self.current_follow_symlinks);
+        }
+        for &index in &row.deferred {
+            let field = &query.fields[index];
+            let record = self.get_column_expr_value(Some(entry), &row.file_info, &row.root_path, &mut file_map, None, field)?;
+            items[index].1 = match self.use_colors && field.contains_colorized() {
+                true => self.colorize(&record.to_string()),
+                false => record.to_string(),
+            };
+        }
+        Ok(())
+    }
+
     fn is_declared_root_alias(&self, alias: &str) -> bool {
         self.query
             .roots
@@ -1567,13 +1702,18 @@ impl<'a> Searcher<'a> {
             return Ok(());
         }
 
+        let defer = self.is_buffered() && !self.deferred_columns.is_empty();
         let mut items: Vec<(String, String)> = Vec::new();
 
         if self.use_colors && self.query.fields.iter().any(|f| f.contains_colorized()) {
             self.fms.update_file_metadata(entry, self.current_follow_symlinks);
         }
 
-        for field in self.query.fields.iter() {
+        for (index, field) in self.query.fields.iter().enumerate() {
+            if defer && self.deferred_columns.contains(&index) {
+                items.push((field.column_name(), String::new()));
+                continue;
+            }
             let record =
                 self.get_column_expr_value(Some(entry), file_info, root_path, file_map, None, field)?;
 
@@ -1594,23 +1734,37 @@ impl<'a> Searcher<'a> {
             }
         }
 
-        let mut buf = WritableBuffer::new();
-        if !self.is_buffered() && self.found > 0 {
-            self.results_writer.write_row_separator(&mut buf)?;
-        }
-        self.results_writer.write_row(&mut buf, items)?;
-        self.found += 1;
-
         if self.is_buffered() {
+            let row = if defer {
+                BufferedRow::Pending(PendingRow {
+                    path: entry.path(),
+                    root_path: root_path.to_path_buf(),
+                    file_info: file_info.clone(),
+                    follow_symlinks: self.current_follow_symlinks,
+                    items,
+                    deferred: self.deferred_columns.clone(),
+                })
+            } else {
+                let mut buf = WritableBuffer::new();
+                self.results_writer.write_row(&mut buf, items)?;
+                BufferedRow::Rendered(String::from(buf))
+            };
+            self.found += 1;
             self.output_buffer.insert(
                 Criteria::new(
                     self.ordering_fields_rc.clone(),
                     criteria,
                     self.ordering_asc_rc.clone(),
                 ),
-                String::from(buf),
+                row,
             );
         } else {
+            let mut buf = WritableBuffer::new();
+            if self.found > 0 {
+                self.results_writer.write_row_separator(&mut buf)?;
+            }
+            self.results_writer.write_row(&mut buf, items)?;
+            self.found += 1;
             try_output!(write!(std::io::stdout(), "{}", String::from(buf)),
                         Err(SearchError::broken_pipe()));
         }
@@ -3273,6 +3427,44 @@ mod tests {
         assert_eq!(by_size.in_list_comparisons, 0);
         assert_eq!(by_bool.in_list_comparisons, 0);
         assert!(literal_list.in_list_comparisons > 0, "literal lists keep the per-argument evaluation");
+    }
+
+    #[test]
+    fn expensive_columns_are_evaluated_only_for_rows_that_survive_the_limit() {
+        use crate::util::content_scans;
+
+        let tmp = std::env::temp_dir().join("fselect_test_deferred_columns");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        for i in 0..6 {
+            fs::write(tmp.join(format!("f{i}.txt")), "line\n".repeat(i + 1)).unwrap();
+        }
+        let rows = |searcher: &Searcher, skip: usize| {
+            searcher.output_buffer.iter_values().skip(skip).map(|row| row.trim_end().to_string()).collect::<Vec<_>>()
+        };
+        let measure = |query: &str| {
+            let before = content_scans();
+            let searcher = search_dir(query, &tmp, Config::default(), true);
+            (searcher, content_scans() - before)
+        };
+
+        let (top2, top2_scans) = measure("select name, line_count from __DIR__ order by name limit 2");
+        let (offset, offset_scans) = measure("select name, line_count from __DIR__ order by name desc limit 2 offset 1");
+        let (by_it, by_it_scans) = measure("select name, line_count from __DIR__ order by line_count desc limit 1");
+        let (unlimited, unlimited_scans) = measure("select name, line_count from __DIR__ order by name");
+        let (unordered, unordered_scans) = measure("select name, line_count from __DIR__ where line_count > 0 limit 2");
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(rows(&top2, 0), vec!["f0.txt\t1", "f1.txt\t2"]);
+        assert_eq!(top2_scans, 2, "only the two surviving rows may be scanned");
+        assert_eq!(rows(&offset, 1), vec!["f4.txt\t5", "f3.txt\t4"]);
+        assert_eq!(offset_scans, 2, "the offset row is skipped without being scanned");
+        assert_eq!(rows(&by_it, 0), vec!["f5.txt\t6"]);
+        assert_eq!(by_it_scans, 6, "an ordering column cannot be deferred");
+        assert_eq!(rows(&unlimited, 0).len(), 6);
+        assert_eq!(unlimited_scans, 6);
+        assert_eq!(rows(&unordered, 0).len(), 2);
+        assert_eq!(unordered_scans, 2, "a WHERE on the column forces the scan, but nothing beyond the limit is visited");
     }
 
     #[test]

@@ -50,6 +50,10 @@ impl<K: Ord, V> TopN<K, V> {
         self.echelons.values().flatten()
     }
 
+    pub fn into_entries(self) -> impl Iterator<Item = (K, Vec<V>)> {
+        self.echelons.into_iter()
+    }
+
     #[cfg(test)]
     pub fn values(&self) -> Vec<V>
     where

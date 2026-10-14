@@ -8,11 +8,13 @@ use zip::DateTime;
 
 pub type SharedArchive = Rc<RefCell<zip::ZipArchive<File>>>;
 
+#[derive(Clone)]
 pub struct ArchiveMember {
     pub archive: SharedArchive,
     pub index: usize,
 }
 
+#[derive(Clone)]
 pub struct FileInfo {
     pub name: String,
     pub size: u64,

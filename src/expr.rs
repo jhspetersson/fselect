@@ -921,6 +921,14 @@ impl Expr {
         Self::contains_colorized_field(self)
     }
 
+    pub fn needs_row_context(&self) -> bool {
+        self.subquery.is_some()
+            || self.root_alias.is_some()
+            || self.left.as_ref().is_some_and(|left| left.needs_row_context())
+            || self.right.as_ref().is_some_and(|right| right.needs_row_context())
+            || self.args.as_ref().is_some_and(|args| args.iter().any(Expr::needs_row_context))
+    }
+
     fn contains_colorized_field(expr: &Expr) -> bool {
         if expr.function.is_some() {
             return false;

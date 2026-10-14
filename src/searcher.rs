@@ -50,6 +50,7 @@ pub struct Searcher<'a> {
     accumulators: HashMap<Vec<String>, function::GroupAccumulator>,
     output_buffer: TopN<Criteria<String>, BufferedRow>,
     deferred_columns: Vec<usize>,
+    aggregate_plan: Option<Rc<AggregatePlan>>,
     ordering_fields_rc: Rc<Vec<Expr>>,
     ordering_asc_rc: Rc<Vec<bool>>,
 
@@ -180,6 +181,43 @@ impl Membership {
 
 const DEFERRED_COLUMN_WEIGHT: i32 = 16;
 
+struct AggregatePlan {
+    fields: Vec<(Field, String)>,
+    inner_exprs: Vec<(String, Expr)>,
+    grouping_keys: Vec<String>,
+}
+
+impl AggregatePlan {
+    fn new(query: &Query) -> Option<Rc<AggregatePlan>> {
+        if !query.is_aggregated() {
+            return None;
+        }
+        let fields: Vec<(Field, String)> = query
+            .get_all_fields()
+            .into_iter()
+            .map(|field| {
+                let key = field.to_string();
+                (field, key)
+            })
+            .collect();
+        let mut seen: HashSet<String> = fields.iter().map(|(_, key)| key.clone()).collect();
+        let inner_exprs = query
+            .fields
+            .iter()
+            .chain(query.ordering_fields.iter())
+            .chain(query.having.iter())
+            .flat_map(Expr::get_aggregate_exprs)
+            .filter_map(|aggregate| aggregate.left.as_ref())
+            .filter_map(|left| {
+                let key = left.cache_key();
+                seen.insert(key.clone()).then(|| (key, left.as_ref().clone()))
+            })
+            .collect();
+        let grouping_keys = query.grouping_fields.iter().map(Expr::cache_key).collect();
+        Some(Rc::new(AggregatePlan { fields, inner_exprs, grouping_keys }))
+    }
+}
+
 enum BufferedRow {
     Rendered(String),
     Pending(PendingRow),
@@ -283,6 +321,7 @@ impl<'a> Searcher<'a> {
             found: 0,
             accumulators: HashMap::new(),
             deferred_columns: Self::deferred_columns(query),
+            aggregate_plan: AggregatePlan::new(query),
             output_buffer: if limit == 0 {
                 TopN::limitless()
             } else {
@@ -1661,38 +1700,26 @@ impl<'a> Searcher<'a> {
             }
         }
 
-        if self.query.is_aggregated() {
+        if let Some(plan) = self.aggregate_plan.clone() {
             self.found += 1;
-            for field in self.query.get_all_fields() {
-                file_map.insert(
-                    field.to_string(),
-                    self.get_field_value(entry, file_info, root_path, &field).unwrap_or(Variant::empty(VariantType::String)).to_string(),
-                );
+            for (field, key) in &plan.fields {
+                let value = self.get_field_value(entry, file_info, root_path, field).unwrap_or(Variant::empty(VariantType::String));
+                file_map.insert(key.clone(), value.to_string());
             }
-            // Evaluate inner expressions of aggregate functions so computed values
-            // (e.g. "size * 2") are stored in file_map under the correct key.
-            // Ordering expressions are included so that aggregates appearing
-            // only in ORDER BY also accumulate data during the scan.
-            // Collect keys first to avoid cloning query.fields on every file.
-            let aggregate_inner_exprs: Vec<_> = self.query.fields.iter()
-                .chain(self.query.ordering_fields.iter())
-                .chain(self.query.having.iter())
-                .flat_map(|column_expr| column_expr.get_aggregate_exprs())
-                .filter_map(|aggregate| {
-                    let left = aggregate.left.as_ref()?;
-                    (!file_map.contains_key(&left.cache_key())).then(|| left.as_ref().clone())
-                })
-                .collect();
-            for left in &aggregate_inner_exprs {
-                self.get_column_expr_value(Some(entry), file_info, root_path, file_map, None, left)?;
+            for (key, left) in &plan.inner_exprs {
+                if !file_map.contains_key(key) {
+                    self.get_column_expr_value(Some(entry), file_info, root_path, file_map, None, left)?;
+                }
             }
-            for field in self.query.grouping_fields.iter() {
-                if file_map.get(&field.cache_key()).is_none() {
+            for (field, key) in self.query.grouping_fields.iter().zip(&plan.grouping_keys) {
+                if !file_map.contains_key(key) {
                     self.get_column_expr_value(Some(entry), file_info, root_path, file_map, None, field)?;
                 }
             }
-            let group_key: Vec<String> = self.query.grouping_fields.iter()
-                .map(|f| file_map.get(&f.cache_key()).cloned().unwrap_or_default())
+            let group_key: Vec<String> = plan
+                .grouping_keys
+                .iter()
+                .map(|key| file_map.get(key).cloned().unwrap_or_default())
                 .collect();
             let accumulator = self.accumulators.entry(group_key).or_default();
             accumulator.increment_count();

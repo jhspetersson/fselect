@@ -1495,25 +1495,13 @@ impl<'a> Searcher<'a> {
             // Ordering expressions are included so that aggregates appearing
             // only in ORDER BY also accumulate data during the scan.
             // Collect keys first to avoid cloning query.fields on every file.
-            let having_aggregate_exprs: Vec<&Expr> = self
-                .query
-                .having
-                .as_ref()
-                .map(|h| h.get_aggregate_exprs())
-                .unwrap_or_default();
             let aggregate_inner_exprs: Vec<_> = self.query.fields.iter()
                 .chain(self.query.ordering_fields.iter())
-                .chain(having_aggregate_exprs)
-                .filter_map(|column_expr| {
-                    if let Some(ref func) = column_expr.function
-                        && func.is_aggregate_function()
-                            && let Some(ref left) = column_expr.left {
-                                let left_key = left.to_string();
-                                if !file_map.contains_key(&left_key) {
-                                    return Some(left.clone());
-                                }
-                            }
-                    None
+                .chain(self.query.having.iter())
+                .flat_map(|column_expr| column_expr.get_aggregate_exprs())
+                .filter_map(|aggregate| {
+                    let left = aggregate.left.as_ref()?;
+                    (!file_map.contains_key(&left.to_string())).then(|| left.as_ref().clone())
                 })
                 .collect();
             for left in &aggregate_inner_exprs {
@@ -3160,6 +3148,33 @@ mod tests {
 
         let _ = fs::remove_dir_all(&tmp);
         assert_eq!(rows, vec![String::from("rs")]);
+    }
+
+    #[test]
+    fn aggregates_over_computed_arguments_work_inside_larger_expressions() {
+        let tmp = std::env::temp_dir().join("fselect_test_nested_computed_aggregates");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        fs::write(tmp.join("a.txt"), "x".repeat(3)).unwrap();
+        fs::write(tmp.join("b.txt"), "x".repeat(4)).unwrap();
+        fs::write(tmp.join("c.txt"), "x".repeat(6)).unwrap();
+
+        let arithmetic = run_query_against_dir("select sum(size * 2) + 1 from __DIR__ depth 1", &tmp);
+        let function_arg = run_query_against_dir("select abs(sum(size * 2) - 100) from __DIR__ depth 1", &tmp);
+        let two_aggregates = run_query_against_dir(
+            "select ext, max(size * 2) + min(size * 2) from __DIR__ depth 1 group by ext",
+            &tmp,
+        );
+        let ordering_only = run_query_against_dir(
+            "select name from __DIR__ depth 1 group by name order by max(size * 2) + 1 desc",
+            &tmp,
+        );
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(arithmetic, vec![String::from("27")]);
+        assert_eq!(function_arg, vec![String::from("74")]);
+        assert_eq!(two_aggregates, vec![String::from("txt\t18")]);
+        assert_eq!(ordering_only, vec![String::from("c.txt"), String::from("b.txt"), String::from("a.txt")]);
     }
 
     #[test]

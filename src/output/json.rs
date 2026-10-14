@@ -1,6 +1,6 @@
 //! Handles export of results in JSON format
 
-use std::collections::HashMap;
+use std::collections::HashSet;
 
 use crate::output::ResultsFormatter;
 
@@ -30,19 +30,22 @@ impl ResultsFormatter for JsonFormatter {
         // Resolve duplicate column names by suffixing repeats with `_2`,
         // `_3`, ... so the emitted object is always valid JSON with unique
         // keys. The first occurrence keeps its original name.
-        let mut counts: HashMap<&str, usize> = HashMap::new();
+        let names: HashSet<&str> = self.row.iter().map(|(name, _)| name.as_str()).collect();
+        let mut emitted: HashSet<String> = HashSet::new();
         let mut out = String::from("{");
         for (i, (name, value)) in self.row.iter().enumerate() {
             if i > 0 {
                 out.push(',');
             }
-            let n = counts.entry(name.as_str()).or_insert(0);
-            *n += 1;
-            let resolved = if *n == 1 {
-                name.clone()
+            let resolved = if emitted.contains(name) {
+                (2..)
+                    .map(|n| format!("{}_{}", name, n))
+                    .find(|candidate| !names.contains(candidate.as_str()) && !emitted.contains(candidate))
+                    .unwrap()
             } else {
-                format!("{}_{}", name, n)
+                name.clone()
             };
+            emitted.insert(resolved.clone());
             out.push_str(&serde_json::to_string(&resolved).unwrap_or_else(|_| "\"\"".to_string()));
             out.push(':');
             out.push_str(&serde_json::to_string(value).unwrap_or_else(|_| "\"\"".to_string()));
@@ -95,6 +98,29 @@ mod test {
         assert_eq!(
             out,
             r#"[{"name":"first","name_2":"second","name_3":"third"}]"#,
+        );
+    }
+
+    #[test]
+    fn generated_suffixes_never_collide_with_explicit_names() {
+        let render = |columns: &[(&str, &str)]| {
+            let mut f = JsonFormatter::default();
+            for (name, value) in columns {
+                f.format_element(name, value, false);
+            }
+            f.row_ended().unwrap()
+        };
+        assert_eq!(
+            render(&[("name", "a"), ("name", "b"), ("name_2", "c")]),
+            r#"{"name":"a","name_3":"b","name_2":"c"}"#,
+        );
+        assert_eq!(
+            render(&[("name", "a"), ("name_2", "c"), ("name", "b")]),
+            r#"{"name":"a","name_2":"c","name_3":"b"}"#,
+        );
+        assert_eq!(
+            render(&[("name", "a"), ("name", "b"), ("name_2", "c"), ("name_3", "d"), ("name", "e")]),
+            r#"{"name":"a","name_4":"b","name_2":"c","name_3":"d","name_5":"e"}"#,
         );
     }
 

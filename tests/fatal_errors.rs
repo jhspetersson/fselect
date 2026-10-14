@@ -120,6 +120,34 @@ fn malformed_in_lists_are_rejected_before_the_header() {
 }
 
 #[test]
+fn a_failed_first_row_leaves_no_separator_and_keeps_the_limit() {
+    let dir = std::env::temp_dir().join("fselect_test_failed_first_row");
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    fs::write(dir.join("a.txt"), "x").unwrap();
+    fs::write(dir.join("b.txt"), "xxx").unwrap();
+    fs::write(dir.join("c.txt"), "xxxxx").unwrap();
+    let root = dir.display();
+
+    let json = fselect(&format!("select name, 1 / (size - 1) from {root} into json"));
+    let limited = fselect(&format!("select name, 1 / (size - 1) from {root} limit 2 into json"));
+    let tabs = fselect(&format!("select name, 1 / (size - 1) from {root}"));
+    let _ = fs::remove_dir_all(&dir);
+
+    assert_eq!(json.code, Some(1), "{}", json.stderr);
+    assert!(json.stderr.contains("Division by zero"), "{}", json.stderr);
+    assert_eq!(
+        json.stdout.trim(),
+        r#"[{"name":"b.txt","1 / (size - 1)":"0.5"},{"name":"c.txt","1 / (size - 1)":"0.25"}]"#
+    );
+    assert_eq!(
+        limited.stdout.trim(),
+        r#"[{"name":"b.txt","1 / (size - 1)":"0.5"},{"name":"c.txt","1 / (size - 1)":"0.25"}]"#
+    );
+    assert_eq!(tabs.stdout, "b.txt\t0.5\nc.txt\t0.25\n");
+}
+
+#[test]
 fn valid_queries_still_produce_complete_documents() {
     let dir = make_dir("fselect_test_fatal_valid");
     let dir = dir.to_string_lossy();

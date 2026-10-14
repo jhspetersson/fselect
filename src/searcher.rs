@@ -1498,9 +1498,8 @@ impl<'a> Searcher<'a> {
             }
         }
 
-        self.found += 1;
-
         if self.query.is_aggregated() {
+            self.found += 1;
             for field in self.query.get_all_fields() {
                 file_map.insert(
                     field.to_string(),
@@ -1540,12 +1539,6 @@ impl<'a> Searcher<'a> {
             return Ok(());
         }
 
-        let mut buf = WritableBuffer::new();
-
-        if !self.is_buffered() && self.found > 1 {
-            self.results_writer.write_row_separator(&mut buf)?;
-        }
-
         let mut items: Vec<(String, String)> = Vec::new();
 
         if self.use_colors && self.query.fields.iter().any(|f| f.contains_colorized()) {
@@ -1573,7 +1566,12 @@ impl<'a> Searcher<'a> {
             }
         }
 
+        let mut buf = WritableBuffer::new();
+        if !self.is_buffered() && self.found > 0 {
+            self.results_writer.write_row_separator(&mut buf)?;
+        }
         self.results_writer.write_row(&mut buf, items)?;
+        self.found += 1;
 
         if self.is_buffered() {
             self.output_buffer.insert(
@@ -3084,6 +3082,25 @@ mod tests {
             Err(err) => assert!(err.is_fatal() && err.description.contains("regex"), "{}", err.description),
             Ok(list) => panic!("fatal subquery error was swallowed, got {:?}", list),
         }
+    }
+
+    #[test]
+    fn rows_that_fail_to_render_are_not_counted_as_found() {
+        let tmp = std::env::temp_dir().join("fselect_test_failed_rows_not_found");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        fs::write(tmp.join("a.txt"), "x").unwrap();
+        fs::write(tmp.join("b.txt"), "xxx").unwrap();
+        fs::write(tmp.join("c.txt"), "xxxxx").unwrap();
+
+        let all = search_dir("select name, 1 / (size - 1) from __DIR__", &tmp, Config::default(), true);
+        let limited = search_dir("select name, 1 / (size - 1) from __DIR__ limit 2", &tmp, Config::default(), true);
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(all.output_buffer.iter_values().count(), 2);
+        assert_eq!(all.found, 2, "a row that failed to render was never found");
+        assert_eq!(all.error_count, 1);
+        assert_eq!(limited.output_buffer.iter_values().count(), 2, "the failed row must not use up a LIMIT slot");
     }
 
     #[test]

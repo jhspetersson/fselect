@@ -455,7 +455,7 @@ impl<'a> Searcher<'a> {
             };
 
             if let Some(ref inner) = root.subquery {
-                let paths = self.collect_subquery_root_paths(inner.as_ref().clone());
+                let paths = self.collect_subquery_root_paths(inner.as_ref().clone())?;
                 self.dir_queue.clear();
                 self.visited_dirs.clear();
                 self.hgignore_filters.clear();
@@ -736,7 +736,7 @@ impl<'a> Searcher<'a> {
     /// Run a FROM-clause subselect and return the list of paths it produced.
     /// The inner query is forced to emit only the `path` field so its rows can
     /// drive the outer query as a flat list of filesystem entries.
-    fn collect_subquery_root_paths(&mut self, mut query: Query) -> Vec<String> {
+    fn collect_subquery_root_paths(&mut self, mut query: Query) -> Result<Vec<String>, SearchError> {
         // Use the absolute path so visit_subquery_paths can re-resolve each
         // result against the filesystem regardless of the inner query's root.
         query.fields = vec![Expr::field(Field::AbsPath)];
@@ -789,13 +789,13 @@ impl<'a> Searcher<'a> {
         Ok(())
     }
 
-    fn get_list_from_subquery(&mut self, query: Query) -> Vec<String> {
+    fn get_list_from_subquery(&mut self, query: Query) -> Result<Vec<String>, SearchError> {
         let query_str = format!("{:?}", query);
 
         let ok_to_cache = is_subquery_cacheable(&query);
         if ok_to_cache
             && let Some(cached) = self.subquery_cache.get(&query_str) {
-                return cached.clone();
+                return Ok(cached.clone());
             }
 
         let mut sub_searcher = Searcher::new_with_context(
@@ -809,10 +809,9 @@ impl<'a> Searcher<'a> {
         // output_buffer instead of leaking to stdout (debug mode included).
         sub_searcher.silent_mode = true;
         sub_searcher.is_nested = true;
-        if let Err(err) = sub_searcher.list_search_results() {
-            err.print();
-            return vec![];
-        }
+        let outcome = sub_searcher.list_search_results();
+        self.error_count += sub_searcher.error_count;
+        outcome?;
 
         // The buffer holds limit + offset rows; the offset rows are skipped
         // only in the print path, so they must be skipped here as well.
@@ -827,7 +826,7 @@ impl<'a> Searcher<'a> {
             self.subquery_cache.insert(query_str, result_values.clone());
         }
 
-        result_values
+        Ok(result_values)
     }
 
     #[cfg(all(windows, feature = "everything"))]
@@ -1308,7 +1307,7 @@ impl<'a> Searcher<'a> {
             if subquery.grouping_fields.is_empty() {
                 subquery.limit = 1;
             }
-            let list = self.get_list_from_subquery(*subquery);
+            let list = self.get_list_from_subquery(*subquery)?;
             if !list.is_empty() {
                 let result = list.first().unwrap().to_string();
                 return Ok(apply_minus(column_expr, Variant::from_string(&result)));
@@ -1606,19 +1605,19 @@ impl<'a> Searcher<'a> {
     }
 
 
-    fn check_exists(&mut self, expr: &Expr) -> bool {
+    fn check_exists(&mut self, expr: &Expr) -> Result<bool, SearchError> {
         let right = expr.right.as_ref().unwrap();
         match &right.args {
-            Some(args) => !args.is_empty(),
+            Some(args) => Ok(!args.is_empty()),
             None => {
                 if let Some(subquery) = &right.subquery {
                     let mut subquery = *subquery.clone();
                     if subquery.grouping_fields.is_empty() {
                         subquery.limit = 1;
                     }
-                    !self.get_list_from_subquery(subquery).is_empty()
+                    Ok(!self.get_list_from_subquery(subquery)?.is_empty())
                 } else {
-                    false
+                    Ok(false)
                 }
             }
         }
@@ -1641,7 +1640,7 @@ impl<'a> Searcher<'a> {
             Some(args) => args,
             None => {
                 owned_args = if let Some(subquery) = &right.subquery {
-                    self.get_list_from_subquery(*subquery.clone())
+                    self.get_list_from_subquery(*subquery.clone())?
                         .iter()
                         .map(|s| Expr::value(s.to_string()))
                         .collect()
@@ -1757,8 +1756,8 @@ impl<'a> Searcher<'a> {
             };
         } else if let Some(ref op) = expr.op {
             match op {
-                Op::Exists => return Ok(self.check_exists(expr)),
-                Op::NotExists => return Ok(!self.check_exists(expr)),
+                Op::Exists => return self.check_exists(expr),
+                Op::NotExists => return self.check_exists(expr).map(|exists| !exists),
                 _ => {}
             }
 
@@ -3042,6 +3041,49 @@ mod tests {
         searcher.silent_mode = silent;
         searcher.list_search_results().expect("search failed");
         searcher
+    }
+
+    #[test]
+    fn errors_inside_subqueries_count_towards_the_outer_search() {
+        let tmp = std::env::temp_dir().join("fselect_test_subquery_errors");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        fs::write(tmp.join("ten.txt"), "x".repeat(10)).unwrap();
+        fs::write(tmp.join("three.txt"), "xxx").unwrap();
+        fs::write(tmp.join("zero.txt"), "").unwrap();
+
+        let per_file_error = search_dir(
+            "select name from __DIR__ where name in (select name from __DIR__ where 1 / size > 0)",
+            &tmp,
+            Config::default(),
+            true,
+        );
+        let missing_inner_root = search_dir(
+            "select name from __DIR__ where not exists (select name from __DIR__/missing)",
+            &tmp,
+            Config::default(),
+            true,
+        );
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(per_file_error.output_buffer.iter_values().count(), 2);
+        assert_eq!(per_file_error.error_count, 1, "the inner division by zero must be counted");
+        assert_eq!(missing_inner_root.error_count, 1, "the missing inner root must be counted");
+    }
+
+    #[test]
+    fn fatal_subquery_errors_are_returned_instead_of_an_empty_list() {
+        use crate::lexer::Lexer;
+        use crate::parser::Parser;
+
+        let mut searcher = create_test_searcher();
+        let mut lexer = Lexer::new(vec![String::from("select name from ./[unclosed rx")]);
+        let subquery = Parser::new(&mut lexer).parse(false).expect("parse failed");
+
+        match searcher.get_list_from_subquery(subquery) {
+            Err(err) => assert!(err.is_fatal() && err.description.contains("regex"), "{}", err.description),
+            Ok(list) => panic!("fatal subquery error was swallowed, got {:?}", list),
+        }
     }
 
     #[test]

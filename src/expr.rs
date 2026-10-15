@@ -956,6 +956,13 @@ impl Expr {
         Self::contains_colorized_field(self)
     }
 
+    pub fn has_correlated_subquery(&self) -> bool {
+        self.subquery.as_ref().is_some_and(|subquery| subquery.is_correlated())
+            || self.left.as_ref().is_some_and(|left| left.has_correlated_subquery())
+            || self.right.as_ref().is_some_and(|right| right.has_correlated_subquery())
+            || self.args.as_ref().is_some_and(|args| args.iter().any(Expr::has_correlated_subquery))
+    }
+
     pub fn needs_row_context(&self) -> bool {
         self.subquery.is_some()
             || self.root_alias.is_some()

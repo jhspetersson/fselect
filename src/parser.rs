@@ -137,6 +137,7 @@ impl <'a> Parser<'a> {
         if limit == 0
             && grouping_fields.is_empty()
             && !fields.iter().any(|expr| expr.has_aggregate_function())
+            && !fields.iter().any(|expr| expr.has_correlated_subquery())
             && fields
                 .iter()
                 .all(|expr| expr.get_required_fields().is_empty())
@@ -2341,6 +2342,26 @@ mod tests {
         let mut p = Parser::new(&mut lexer);
         let query = p.parse(false).unwrap();
         assert_eq!(query.limit, 1, "field-less constant SELECT collapses to one row");
+    }
+
+    #[test]
+    fn no_implicit_limit_when_a_correlated_subquery_reads_the_outer_row() {
+        for query in [
+            "select (select t1.size from /other) from /test as t1",
+            "select (select name from /other where size > t1.size) from /test as t1",
+            "select upper((select t1.name from /other)) from /test as t1",
+        ] {
+            let parsed = parse_query(query).unwrap();
+            assert_eq!(parsed.limit, 0, "{}: a correlated SELECT differs per outer row", query);
+        }
+        for query in [
+            "select 1 from /test",
+            "select (select count(*) from /other) from /test",
+            "select (select name from /other where size > 1) from /test as t1",
+        ] {
+            let parsed = parse_query(query).unwrap();
+            assert_eq!(parsed.limit, 1, "{}: a constant SELECT still collapses", query);
+        }
     }
 
     #[test]

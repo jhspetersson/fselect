@@ -21,7 +21,7 @@ use crate::expr::Expr;
 use crate::field::Field;
 use crate::field::context::{FieldContext, FileMetadataState};
 use crate::field::dispatch;
-use crate::fileinfo::{archived_entry_levels, open_archive, to_file_info, ArchiveMember, FileInfo};
+use crate::fileinfo::{archived_entry_levels, open_archive, to_file_info, ArchiveMember, FileInfo, SharedArchive};
 use std::ffi::OsString;
 use crate::function;
 use crate::ignore::docker::{
@@ -36,6 +36,26 @@ use crate::util::*;
 use crate::util::dir_lookup::DirEntryLookup;
 use crate::util::error::{error_message, path_error_message, SearchError};
 
+
+#[derive(Default)]
+struct ArchiveLookup {
+    current: Option<(PathBuf, SharedArchive)>,
+}
+
+impl ArchiveLookup {
+    fn holding(&self, path: &Path) -> Option<(PathBuf, SharedArchive)> {
+        self.current
+            .as_ref()
+            .filter(|(archive_path, _)| path.strip_prefix(archive_path).is_ok_and(|rest| !rest.as_os_str().is_empty()))
+            .cloned()
+    }
+
+    fn open(&mut self, archive_path: &Path) -> Option<(PathBuf, SharedArchive)> {
+        let shared = Rc::new(RefCell::new(open_archive(archive_path)?));
+        self.current = Some((archive_path.to_path_buf(), Rc::clone(&shared)));
+        Some((archive_path.to_path_buf(), shared))
+    }
+}
 
 struct AncestorDir {
     canonical: PathBuf,
@@ -926,6 +946,7 @@ impl<'a> Searcher<'a> {
     /// long as consecutive paths keep coming from the same directory.
     fn visit_subquery_paths(&mut self, paths: Vec<String>) -> Result<(), SearchError> {
         let mut lookup = DirEntryLookup::new();
+        let mut archives = ArchiveLookup::default();
         for path_str in paths {
             if path_str.is_empty() {
                 continue;
@@ -934,7 +955,7 @@ impl<'a> Searcher<'a> {
                 break;
             }
             let path = PathBuf::from(&path_str);
-            let (entry_path, file_info) = match self.archived_member_of(&path) {
+            let (entry_path, file_info) = match self.archived_member_of(&path, &mut archives) {
                 Some((archive, file_info)) => (archive, Some(file_info)),
                 None => (path.clone(), None),
             };
@@ -967,32 +988,36 @@ impl<'a> Searcher<'a> {
         Ok(())
     }
 
-    fn archived_member_of(&self, path: &Path) -> Option<(PathBuf, FileInfo)> {
-        if path.exists() {
-            return None;
-        }
-        let archive_path = path
-            .ancestors()
-            .skip(1)
-            .find(|ancestor| ancestor.is_file() && self.is_zip_archive(&ancestor.to_string_lossy()))?;
+    fn archived_member_of(&self, path: &Path, archives: &mut ArchiveLookup) -> Option<(PathBuf, FileInfo)> {
+        let (archive_path, shared) = match archives.holding(path) {
+            Some(found) => found,
+            None => {
+                if path.exists() {
+                    return None;
+                }
+                let archive_path = path
+                    .ancestors()
+                    .skip(1)
+                    .find(|ancestor| ancestor.is_file() && self.is_zip_archive(&ancestor.to_string_lossy()))?;
+                archives.open(archive_path)?
+            }
+        };
         let member_name = path
-            .strip_prefix(archive_path)
+            .strip_prefix(&archive_path)
             .ok()?
             .components()
             .map(|component| component.as_os_str().to_string_lossy().into_owned())
             .collect::<Vec<String>>()
             .join("/");
-        let archive = open_archive(archive_path)?;
-        let index = archive
-            .index_for_name(&member_name)
-            .or_else(|| archive.index_for_name(&format!("{}/", member_name)))?;
-        let shared = Rc::new(RefCell::new(archive));
         let file_info = {
             let mut guard = shared.borrow_mut();
+            let index = guard
+                .index_for_name(&member_name)
+                .or_else(|| guard.index_for_name(&format!("{}/", member_name)))?;
             let member = guard.by_index_raw(index).ok()?;
             to_file_info(&member, Some(ArchiveMember { archive: Rc::clone(&shared), index }))
         };
-        Some((archive_path.to_path_buf(), file_info))
+        Some((archive_path, file_info))
     }
 
     fn get_list_from_subquery(&mut self, query: Query) -> Result<Vec<String>, SearchError> {
@@ -4959,6 +4984,37 @@ line3
         assert_eq!(rows, vec!["one.txt\t6\t1", "plain.txt\t6\t1", "two.txt\t12\t2"]);
         assert_eq!(searcher.error_count, 0);
         assert_eq!(paths, vec![format!("pack.zip{SEP}sub{SEP}two.txt")]);
+    }
+
+    #[test]
+    fn a_from_subselect_reopens_each_archive_once_for_all_its_members() {
+        use std::io::Write;
+        use crate::fileinfo::archive_opens;
+
+        let tmp = std::env::temp_dir().join("fselect_test_subselect_archive_opens");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        for archive in ["one.zip", "two.zip"] {
+            let mut zip = zip::ZipWriter::new(fs::File::create(tmp.join(archive)).unwrap());
+            let options = zip::write::SimpleFileOptions::default();
+            for i in 0..20 {
+                zip.start_file(format!("d{}/m{i:02}.txt", i % 3), options).unwrap();
+                zip.write_all(format!("hello {i}\nworld\n").as_bytes()).unwrap();
+            }
+            zip.finish().unwrap();
+        }
+
+        let before = archive_opens();
+        let rows = run_query_against_dir(
+            "select name, line_count from (select path from __DIR__ arc where ext = txt) where name like 'm1%' order by name",
+            &tmp,
+        );
+        let opens = archive_opens() - before;
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(rows.len(), 20);
+        assert_eq!(rows[0], "m10.txt\t2");
+        assert_eq!(opens, 4, "two archives: one open each for the inner scan and one each for the outer lookup");
     }
 
     #[test]

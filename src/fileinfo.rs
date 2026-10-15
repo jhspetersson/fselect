@@ -72,10 +72,21 @@ pub fn with_archived_entry<T>(archive: &Path, file_info: &FileInfo, read: impl F
         }
         None => {
             let mut archive = open_archive(archive)?;
-            let mut entry = archive.by_name(&file_info.name).ok()?;
+            let index = archive_member_index(&archive, &file_info.name)?;
+            let mut entry = archive.by_index(index).ok()?;
             Some(read(&mut entry))
         }
     }
+}
+
+pub fn archive_member_index<R>(archive: &zip::ZipArchive<R>, name: &str) -> Option<usize>
+where
+    R: std::io::Read + std::io::Seek
+{
+    let backslashed = name.replace('/', "\\");
+    [name.to_string(), format!("{}/", name), backslashed.clone(), format!("{}\\", backslashed)]
+        .iter()
+        .find_map(|candidate| archive.index_for_name(candidate))
 }
 
 pub fn to_file_info<R>(zipped_file: &zip::read::ZipFile<R>, member: Option<ArchiveMember>) -> FileInfo
@@ -83,7 +94,7 @@ where
     R: std::io::Read + std::io::Seek
 {
     FileInfo {
-        name: zipped_file.name().to_string(),
+        name: zipped_file.name().replace('\\', "/"),
         size: zipped_file.size(),
         mode: zipped_file.unix_mode(),
         modified: zipped_file.last_modified(),

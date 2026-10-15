@@ -730,12 +730,8 @@ pub fn is_shebang(path: &PathBuf) -> bool {
 #[allow(unused)]
 pub fn is_hidden(file_name: &str, metadata: &Option<Metadata>, archive_mode: bool) -> bool {
     if archive_mode {
-        if !file_name.contains('\\') {
-            let name = file_name.trim_end_matches('/');
-            return parse_unix_filename(name).starts_with('.');
-        } else {
-            return false;
-        }
+        let name = file_name.replace('\\', "/");
+        return parse_unix_filename(name.trim_end_matches('/')).starts_with('.');
     }
 
     #[cfg(unix)]
@@ -1994,6 +1990,14 @@ mod tests {
         assert_eq!(parse_unix_filename("path/to/file.txt"), "file.txt");
         assert_eq!(parse_unix_filename("path/to/.hidden"), ".hidden");
         assert_eq!(parse_unix_filename("/root.txt"), "root.txt");
+    }
+
+    #[test]
+    fn archive_members_with_backslash_separators_are_hidden_by_their_last_component() {
+        assert!(is_hidden("sub\\.hidden", &None, true));
+        assert!(is_hidden("sub\\deep\\.hidden\\", &None, true));
+        assert!(!is_hidden("sub\\file.txt", &None, true));
+        assert!(!is_hidden(".sub\\file.txt", &None, true));
     }
 
     #[test]

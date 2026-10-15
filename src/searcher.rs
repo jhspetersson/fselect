@@ -21,7 +21,7 @@ use crate::expr::Expr;
 use crate::field::Field;
 use crate::field::context::{FieldContext, FileMetadataState};
 use crate::field::dispatch;
-use crate::fileinfo::{archived_entry_levels, open_archive, to_file_info, ArchiveMember, FileInfo, SharedArchive};
+use crate::fileinfo::{archive_member_index, archived_entry_levels, open_archive, to_file_info, ArchiveMember, FileInfo, SharedArchive};
 use std::ffi::OsString;
 use crate::function;
 use crate::ignore::docker::{
@@ -1042,9 +1042,7 @@ impl<'a> Searcher<'a> {
             .join("/");
         let file_info = {
             let mut guard = shared.borrow_mut();
-            let index = guard
-                .index_for_name(&member_name)
-                .or_else(|| guard.index_for_name(&format!("{}/", member_name)))?;
+            let index = archive_member_index(&guard, &member_name)?;
             let member = guard.by_index_raw(index).ok()?;
             to_file_info(&member, Some(ArchiveMember { archive: Rc::clone(&shared), index }))
         };
@@ -3648,6 +3646,51 @@ mod tests {
         assert_eq!(direct.len(), 10);
         assert_eq!(through, direct);
         assert_eq!(sorted_inside, direct, "the root must travel with each row even when the inner query reorders them");
+    }
+
+    #[test]
+    fn archive_members_with_backslash_separators_behave_like_forward_slash_ones() {
+        use std::io::Write;
+
+        let tmp = std::env::temp_dir().join("fselect_test_backslash_members");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        let mut zip = zip::ZipWriter::new(fs::File::create(tmp.join("bs.zip")).unwrap());
+        let options = zip::write::SimpleFileOptions::default();
+        for (name, body) in [("sub\\.hidden", "x\n"), ("sub\\file.txt", "one\ntwo\n"), ("sub\\deep\\leaf.txt", "x\n"), ("top.txt", "x\n")] {
+            zip.start_file(name, options).unwrap();
+            zip.write_all(body.as_bytes()).unwrap();
+        }
+        zip.finish().unwrap();
+        let raw_name = zip::ZipArchive::new(fs::File::open(tmp.join("bs.zip")).unwrap()).unwrap().by_index_raw(0).unwrap().name().to_string();
+        assert!(raw_name.contains('\\'), "the fixture must keep its backslashes, got {raw_name}");
+
+        let listing = run_query_against_dir("select path, depth, is_hidden from __DIR__ archives order by path", &tmp);
+        let limited = run_query_against_dir("select path from __DIR__ archives depth 3 order by path", &tmp);
+        let hidden = run_query_against_dir("select name from __DIR__ archives where is_hidden = true", &tmp);
+        let through = search_dir(
+            "select path, line_count from (select path from __DIR__ archives where ext = txt) order by path",
+            &tmp, Config::default(), true,
+        );
+        let through_rows: Vec<String> = through.output_buffer.iter_values().map(|row| row.trim_end().to_string()).collect();
+        let _ = fs::remove_dir_all(&tmp);
+
+        let member = |parts: &[&str]| rel(&[&["bs.zip"], parts].concat());
+        assert_eq!(listing, vec![
+            "bs.zip\t1\tfalse".to_string(),
+            format!("{}\t3\ttrue", member(&["sub", ".hidden"])),
+            format!("{}\t4\tfalse", member(&["sub", "deep", "leaf.txt"])),
+            format!("{}\t3\tfalse", member(&["sub", "file.txt"])),
+            format!("{}\t2\tfalse", member(&["top.txt"])),
+        ]);
+        assert_eq!(limited, vec!["bs.zip".to_string(), member(&["sub", ".hidden"]), member(&["sub", "file.txt"]), member(&["top.txt"])]);
+        assert_eq!(hidden, vec![".hidden"]);
+        assert_eq!(through_rows, vec![
+            format!("{}\t1", member(&["sub", "deep", "leaf.txt"])),
+            format!("{}\t2", member(&["sub", "file.txt"])),
+            format!("{}\t1", member(&["top.txt"])),
+        ]);
+        assert_eq!(through.error_count, 0);
     }
 
     #[test]

@@ -1200,7 +1200,6 @@ impl<'a> Searcher<'a> {
                                             return Err(err);
                                         }
                                         self.handle_nonfatal_error(err, &path);
-                                        continue;
                                     }
                                 }
 
@@ -4148,6 +4147,29 @@ mod tests {
         assert_eq!(quoted, vec!["a.txt\tt.size", "b.txt\tt.size"]);
         assert_eq!(bare_file_name, vec!["a.txt\treadme.md", "b.txt\treadme.md"]);
         assert_eq!(column_alias, vec!["1\t2", "2\t3"]);
+    }
+
+    #[test]
+    fn a_row_error_on_a_directory_does_not_prune_its_subtree() {
+        let tmp = std::env::temp_dir().join("fselect_test_directory_row_error");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(tmp.join("sub").join("deep")).unwrap();
+        fs::write(tmp.join("top.txt"), "a
+b
+").unwrap();
+        fs::write(tmp.join("sub").join("mid.txt"), "c
+").unwrap();
+        fs::write(tmp.join("sub").join("deep").join("leaf.txt"), "d
+e
+f
+").unwrap();
+
+        let searcher = search_dir("select name, 1 / line_count from __DIR__ order by name", &tmp, Config::default(), true);
+        let rows: Vec<String> = searcher.output_buffer.iter_values().map(|row| row.trim_end().to_string()).collect();
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(rows, vec!["leaf.txt	0.3333333333333333", "mid.txt	1", "top.txt	0.5"]);
+        assert_eq!(searcher.error_count, 2, "the two directories fail to divide, nothing else");
     }
 
     #[test]

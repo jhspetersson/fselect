@@ -899,6 +899,12 @@ impl <'a> Parser<'a> {
     /// A root alias that is not one of this query's own is a correlated
     /// reference to an enclosing query. Before the roots are known (the
     /// SELECT list) every alias is taken to be local.
+    fn call_follows(&mut self) -> bool {
+        let next = self.next_lexeme();
+        self.drop_lexeme();
+        matches!(next, Some(Lexeme::Open) | Some(Lexeme::CurlyOpen))
+    }
+
     fn is_local_alias(&self, root_alias: Option<&str>) -> bool {
         match root_alias {
             Some(alias) => !self.roots_parsed || self.root_aliases.iter().any(|local| local == alias),
@@ -1187,8 +1193,10 @@ impl <'a> Parser<'a> {
                     .select_aliases
                     .iter()
                     .find(|f| f.alias.as_deref().is_some_and(|a| a.eq_ignore_ascii_case(s)))
+                    .cloned()
+                    && !self.call_follows()
                 {
-                    let mut expr = aliased.clone();
+                    let mut expr = aliased;
                     if minus {
                         expr.minus = !expr.minus;
                     }
@@ -1325,7 +1333,7 @@ impl <'a> Parser<'a> {
         // larger expression, leave it to the regular expression parser.
         let next = self.next_lexeme();
         self.drop_lexeme();
-        if matches!(next, Some(Lexeme::ArithmeticOperator(_))) {
+        if matches!(next, Some(Lexeme::ArithmeticOperator(_)) | Some(Lexeme::Open) | Some(Lexeme::CurlyOpen)) {
             return None;
         }
 
@@ -2331,6 +2339,24 @@ mod tests {
 
         let grouped = parse_query("select length(name) as len, count(*) from /d group by len % 2").unwrap();
         assert_eq!(grouped.grouping_fields[0].left.as_ref().unwrap().function, Some(Function::Length));
+    }
+
+    #[test]
+    fn an_alias_named_like_a_function_does_not_shadow_calls() {
+        let counted = parse_query("select ext, count(*) as count from /d group by ext having count(*) > 1").unwrap();
+        let having = counted.having.unwrap();
+        assert_eq!(having.left.as_ref().unwrap().function, Some(Function::Count));
+        assert!(having.left.as_ref().unwrap().alias.is_none(), "count(*) in HAVING is a fresh call, not the aliased column");
+
+        let bare = parse_query("select ext, count(*) as count from /d group by ext having count > 1").unwrap();
+        assert_eq!(bare.having.unwrap().left.unwrap().alias.as_deref(), Some("count"), "bare count is the alias");
+
+        let max = parse_query("select ext, max(size) as max from /d group by ext having max(size) >= 0 order by max(size), ext").unwrap();
+        assert_eq!(max.having.unwrap().left.unwrap().function, Some(Function::Max));
+        assert_eq!(max.ordering_fields.len(), 2, "max(size) is one ordering expression, not the alias followed by (size)");
+        assert_eq!(max.ordering_fields[0].function, Some(Function::Max));
+        assert!(max.ordering_fields[0].alias.is_none());
+        assert_eq!(max.ordering_fields[1].field, Some(Field::Extension));
     }
 
     #[test]

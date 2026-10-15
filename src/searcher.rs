@@ -3782,6 +3782,23 @@ mod tests {
     }
 
     #[test]
+    fn function_calls_are_not_shadowed_by_an_alias_of_the_same_name() {
+        let tmp = std::env::temp_dir().join("fselect_test_alias_vs_function_call");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        for name in ["a.txt", "b.txt", "c.md"] {
+            fs::write(tmp.join(name), "").unwrap();
+        }
+
+        let call = run_query_against_dir("select ext, count(*) as count from __DIR__ group by ext having count(*) > 1", &tmp);
+        let alias = run_query_against_dir("select ext, count(*) as count from __DIR__ group by ext having count > 1", &tmp);
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(call, vec!["txt	2"]);
+        assert_eq!(alias, vec!["txt	2"]);
+    }
+
+    #[test]
     fn having_aggregate_not_in_select_list() {
         let tmp = std::env::temp_dir().join("fselect_test_having_agg_not_selected");
         let _ = fs::remove_dir_all(&tmp);

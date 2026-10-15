@@ -628,12 +628,24 @@ pub fn get_value(
                 return Ok(Variant::empty(VariantType::String));
             }
 
-            if let Ok(size) = function_arg.parse::<u64>() {
+            let size = function_arg
+                .parse::<u64>()
+                .ok()
+                .or_else(|| {
+                    function_arg
+                        .parse::<f64>()
+                        .ok()
+                        .filter(|size| size.is_finite() && *size >= 0.0)
+                        .map(|size| size.round() as u64)
+                })
+                .or_else(|| crate::util::parse_filesize(&function_arg));
+
+            if let Some(size) = size {
                 let modifier = match function_args.first() {
                     Some(modifier) => modifier,
                     _ => "",
                 };
-                let file_size = crate::util::format_filesize(size, modifier).unwrap_or_default();
+                let file_size = crate::util::format_filesize(size, modifier)?;
                 return Ok(Variant::from_string(&file_size));
             }
 
@@ -2144,6 +2156,32 @@ mod tests {
         assert_eq!(log("0.125", &["2"]), -3.0);
         assert_eq!(log("27", &["3"]), 3.0);
         assert!((log("20", &["4"]) - 20f64.ln() / 4f64.ln()).abs() < 1e-15);
+    }
+
+    #[test]
+    fn function_format_size_accepts_fractional_and_suffixed_input() {
+        let format_size = |arg: &str| {
+            get_value(&Function::FormatSize, arg.to_string(), vec![], None, &None).unwrap().to_string()
+        };
+        assert_eq!(format_size("1536"), "1.50KiB");
+        assert_eq!(format_size("1536.4"), "1.50KiB");
+        assert_eq!(format_size("4.333333333333333"), "4B");
+        assert_eq!(format_size("0.5"), "1B");
+        assert_eq!(format_size("1kib"), "1KiB");
+        assert_eq!(format_size("2 MiB"), "2MiB");
+        assert_eq!(format_size("1mb"), "976.56KiB");
+        assert_eq!(format_size("-5"), "");
+        assert_eq!(format_size("abc"), "");
+        assert_eq!(format_size(""), "");
+    }
+
+    #[test]
+    fn function_format_size_rejects_an_unknown_modifier() {
+        let result = get_value(&Function::FormatSize, String::from("1536000"), vec![String::from("short")], None, &None);
+        match result {
+            Err(err) => assert!(err.contains("Invalid file size format modifier"), "{}", err),
+            Ok(value) => panic!("an unknown modifier must be an error, got {:?}", value.to_string()),
+        }
     }
 
     #[test]

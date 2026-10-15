@@ -116,6 +116,7 @@ impl <'a> Parser<'a> {
         for clause in clauses {
             clause.validate_function_arity()?;
             clause.validate_date_function_literals()?;
+            clause.validate_format_size_modifiers()?;
         }
 
         if let Some(ref having_expr) = having {
@@ -2516,6 +2517,27 @@ mod tests {
             assert!(err.starts_with("Unterminated quoted string"), "{}: {}", query, err);
         }
         assert!(parse_query("select name from /d where name = 'it''s'").is_ok());
+    }
+
+    #[test]
+    fn an_unknown_format_size_modifier_literal_is_rejected_at_parse_time() {
+        for query in [
+            "select format_size(size, 'short') from /d",
+            "select name from /d where format_size(size, 'xyz') = ''",
+            "select name from /d order by format_size(size, '%.1f')",
+        ] {
+            let err = parse_query(query).expect_err(query);
+            assert!(err.contains("Invalid file size format modifier"), "{}: {}", query, err);
+        }
+        for query in [
+            "select format_size(size) from /d",
+            "select format_size(size, '%.1 mb') from /d",
+            "select format_size(size, 'kbs') from /d",
+            "select format_size(size, ' k') from /d",
+            "select format_size(size, ext) from /d",
+        ] {
+            assert!(parse_query(query).is_ok(), "{}: {:?}", query, parse_query(query).err());
+        }
     }
 
     #[test]

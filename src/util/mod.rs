@@ -366,6 +366,7 @@ static FILE_SIZE_FORMAT_REGEX: LazyLock<Regex> = LazyLock::new(|| {
 });
 
 pub fn format_filesize(size: u64, modifier: &str) -> Result<String, String> {
+    let requested = modifier;
     let mut modifier = modifier.to_ascii_lowercase();
 
     let mut zeroes = -1;
@@ -478,7 +479,7 @@ pub fn format_filesize(size: u64, modifier: &str) -> Result<String, String> {
             format = humansize::BINARY;
         }
         _ => {
-            return Err(format!("Invalid file size format modifier: {}", modifier));
+            return Err(format!("Invalid file size format modifier: {}", requested));
         }
     };
 

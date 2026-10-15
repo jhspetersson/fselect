@@ -965,6 +965,28 @@ impl Expr {
         Ok(())
     }
 
+    pub fn validate_format_size_modifiers(&self) -> Result<(), String> {
+        if self.function == Some(Function::FormatSize)
+            && let Some(modifier) = self.args.as_ref().and_then(|args| args.first())
+            && modifier.is_literal()
+            && let Some(ref val) = modifier.val
+        {
+            crate::util::format_filesize(0, val)?;
+        }
+        for child in self.left.iter().chain(self.right.iter()) {
+            child.validate_format_size_modifiers()?;
+        }
+        for arg in self.args.iter().flatten() {
+            arg.validate_format_size_modifiers()?;
+        }
+        if let Some(ref subquery) = self.subquery {
+            for expr in subquery.fields.iter().chain(subquery.expr.iter()) {
+                expr.validate_format_size_modifiers()?;
+            }
+        }
+        Ok(())
+    }
+
     pub fn validate_function_arity(&self) -> Result<(), String> {
         if let Some(ref function) = self.function {
             let given = usize::from(self.left.is_some()) + self.args.as_ref().map_or(0, Vec::len);

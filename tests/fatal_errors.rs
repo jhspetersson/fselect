@@ -202,6 +202,17 @@ fn an_unterminated_quote_in_the_select_list_names_the_quote() {
 }
 
 #[test]
+fn an_unknown_format_size_modifier_is_rejected_before_the_header() {
+    let dir = make_dir("fselect_test_fatal_format_size_modifier");
+    let dir = dir.to_string_lossy();
+
+    assert_rejected_without_output(
+        &format!("select name, format_size(size, 'short') from {} into json", dir),
+        "Invalid file size format modifier",
+    );
+}
+
+#[test]
 fn valid_queries_still_produce_complete_documents() {
     let dir = make_dir("fselect_test_fatal_valid");
     let dir = dir.to_string_lossy();

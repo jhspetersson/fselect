@@ -138,13 +138,13 @@ fn a_failed_first_row_leaves_no_separator_and_keeps_the_limit() {
     assert!(json.stderr.contains("Division by zero"), "{}", json.stderr);
     assert_eq!(
         json.stdout.trim(),
-        r#"[{"name":"b.txt","1 / (size - 1)":"0.5"},{"name":"c.txt","1 / (size - 1)":"0.25"}]"#
+        r#"[{"name":"a.txt","1 / (size - 1)":""},{"name":"b.txt","1 / (size - 1)":"0.5"},{"name":"c.txt","1 / (size - 1)":"0.25"}]"#
     );
     assert_eq!(
         limited.stdout.trim(),
-        r#"[{"name":"b.txt","1 / (size - 1)":"0.5"},{"name":"c.txt","1 / (size - 1)":"0.25"}]"#
+        r#"[{"name":"a.txt","1 / (size - 1)":""},{"name":"b.txt","1 / (size - 1)":"0.5"}]"#
     );
-    assert_eq!(tabs.stdout, "b.txt\t0.5\nc.txt\t0.25\n");
+    assert_eq!(tabs.stdout, "a.txt\t\nb.txt\t0.5\nc.txt\t0.25\n");
 }
 
 #[test]

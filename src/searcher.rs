@@ -1779,8 +1779,15 @@ impl<'a> Searcher<'a> {
                 items.push((field.column_name(), String::new()));
                 continue;
             }
-            let record =
-                self.get_column_expr_value(Some(entry), file_info, root_path, file_map, None, field)?;
+            let record = match self.get_column_expr_value(Some(entry), file_info, root_path, file_map, None, field) {
+                Ok(record) => record,
+                Err(err) if err.is_fatal() => return Err(err),
+                Err(err) => {
+                    self.handle_nonfatal_error(err, &entry.path());
+                    items.push((field.column_name(), String::new()));
+                    continue;
+                }
+            };
 
             let value = match self.use_colors && field.contains_colorized() {
                 true => self.colorize(&record.to_string()),
@@ -2029,6 +2036,7 @@ impl<'a> Searcher<'a> {
             ) {
                 Ok(v) => v,
                 Err(e) => {
+                    temp_map.clear();
                     self.conforms_map = temp_map;
                     return Err(e);
                 }
@@ -2050,6 +2058,7 @@ impl<'a> Searcher<'a> {
                             v
                         }
                         Err(e) => {
+                            temp_map.clear();
                             self.conforms_map = temp_map;
                             return Err(e);
                         }
@@ -3340,7 +3349,7 @@ mod tests {
     }
 
     #[test]
-    fn rows_that_fail_to_render_are_not_counted_as_found() {
+    fn rows_with_a_failing_cell_are_kept_with_an_empty_cell() {
         let tmp = std::env::temp_dir().join("fselect_test_failed_rows_not_found");
         let _ = fs::remove_dir_all(&tmp);
         fs::create_dir_all(&tmp).unwrap();
@@ -3348,14 +3357,15 @@ mod tests {
         fs::write(tmp.join("b.txt"), "xxx").unwrap();
         fs::write(tmp.join("c.txt"), "xxxxx").unwrap();
 
-        let all = search_dir("select name, 1 / (size - 1) from __DIR__", &tmp, Config::default(), true);
-        let limited = search_dir("select name, 1 / (size - 1) from __DIR__ limit 2", &tmp, Config::default(), true);
+        let all = search_dir("select name, 1 / (size - 1) from __DIR__ order by name", &tmp, Config::default(), true);
+        let limited = search_dir("select name, 1 / (size - 1) from __DIR__ order by name limit 2", &tmp, Config::default(), true);
         let _ = fs::remove_dir_all(&tmp);
 
-        assert_eq!(all.output_buffer.iter_values().count(), 2);
-        assert_eq!(all.found, 2, "a row that failed to render was never found");
+        let rows: Vec<String> = all.output_buffer.iter_values().map(|row| row.trim_end().to_string()).collect();
+        assert_eq!(rows, vec!["a.txt", "b.txt\t0.5", "c.txt\t0.25"]);
+        assert_eq!(all.found, 3);
         assert_eq!(all.error_count, 1);
-        assert_eq!(limited.output_buffer.iter_values().count(), 2, "the failed row must not use up a LIMIT slot");
+        assert_eq!(limited.output_buffer.iter_values().count(), 2);
     }
 
     fn run_query_result(query_template: &str, dir: &Path) -> Result<(), SearchError> {
@@ -4201,8 +4211,35 @@ f
         let rows: Vec<String> = searcher.output_buffer.iter_values().map(|row| row.trim_end().to_string()).collect();
         let _ = fs::remove_dir_all(&tmp);
 
-        assert_eq!(rows, vec!["leaf.txt	0.3333333333333333", "mid.txt	1", "top.txt	0.5"]);
+        assert_eq!(rows, vec!["deep", "leaf.txt	0.3333333333333333", "mid.txt	1", "sub", "top.txt	0.5"], "directories keep their row with an empty cell");
         assert_eq!(searcher.error_count, 2, "the two directories fail to divide, nothing else");
+    }
+
+    #[test]
+    fn a_failing_select_cell_keeps_its_row_in_every_path() {
+        let tmp = std::env::temp_dir().join("fselect_test_failing_cell_keeps_row");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        for (name, lines) in [("a.txt", 1), ("b.txt", 2), ("c.txt", 3)] {
+            fs::write(tmp.join(name), "line\n".repeat(lines)).unwrap();
+        }
+        let rows = |searcher: &Searcher| searcher.output_buffer.iter_values().map(|row| row.trim_end().to_string()).collect::<Vec<_>>();
+
+        let deferred = search_dir("select name, 1 / (line_count - 1) from __DIR__ order by name limit 2", &tmp, Config::default(), true);
+        let eager_limited = search_dir(
+            "select name, 1 / (line_count - 1) from __DIR__ where line_count > 0 order by name limit 2",
+            &tmp, Config::default(), true,
+        );
+        let eager = search_dir("select name, 1 / (line_count - 1) from __DIR__ where line_count > 0 order by name", &tmp, Config::default(), true);
+        let failing_filter = search_dir("select name from __DIR__ where 1 / (line_count - 1) > 0 order by name", &tmp, Config::default(), true);
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(rows(&deferred), vec!["a.txt", "b.txt\t1"]);
+        assert_eq!(rows(&eager_limited), vec!["a.txt", "b.txt\t1"], "a filter that excludes nothing must not change the rows");
+        assert_eq!(rows(&eager), vec!["a.txt", "b.txt\t1", "c.txt\t0.5"]);
+        assert_eq!(eager.error_count, 1);
+        assert_eq!(rows(&failing_filter), vec!["b.txt", "c.txt"], "a row whose filter cannot be evaluated is still skipped");
+        assert_eq!(failing_filter.error_count, 1);
     }
 
     #[test]

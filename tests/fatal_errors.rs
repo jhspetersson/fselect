@@ -180,6 +180,17 @@ fn unparsable_date_function_literals_are_rejected_before_the_header() {
 }
 
 #[test]
+fn a_typo_in_the_order_direction_is_rejected_before_the_header() {
+    let dir = make_dir("fselect_test_fatal_order_by_typo");
+    let dir = dir.to_string_lossy();
+
+    assert_rejected_without_output(
+        &format!("select name from {} order by size des into json", dir),
+        "Unknown column 'des' in ORDER BY",
+    );
+}
+
+#[test]
 fn valid_queries_still_produce_complete_documents() {
     let dir = make_dir("fselect_test_fatal_valid");
     let dir = dir.to_string_lossy();

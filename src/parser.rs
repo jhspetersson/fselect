@@ -1384,7 +1384,16 @@ impl <'a> Parser<'a> {
         self.select_aliases = fields.to_vec();
         let grouping = self.parse_group_by_clause(fields);
         self.select_aliases.clear();
-        grouping
+        let grouping = grouping?;
+        Self::reject_unknown_columns(&grouping, "GROUP BY")?;
+        Ok(grouping)
+    }
+
+    fn reject_unknown_columns(exprs: &[Expr], clause: &str) -> Result<(), String> {
+        match exprs.iter().find(|expr| expr.is_literal()) {
+            Some(literal) => Err(format!("Unknown column '{}' in {}", literal.val.as_deref().unwrap_or_default(), clause)),
+            None => Ok(()),
+        }
     }
 
     fn parse_group_by_clause(&mut self, fields: &[Expr]) -> Result<Vec<Expr>, String> {
@@ -1481,7 +1490,9 @@ impl <'a> Parser<'a> {
         self.select_aliases = fields.to_vec();
         let ordering = self.parse_order_by_clause(fields);
         self.select_aliases.clear();
-        ordering
+        let ordering = ordering?;
+        Self::reject_unknown_columns(&ordering.0, "ORDER BY")?;
+        Ok(ordering)
     }
 
     fn parse_order_by_clause(&mut self, fields: &[Expr]) -> Result<(Vec<Expr>, Vec<bool>), String> {
@@ -2454,6 +2465,31 @@ mod tests {
             "select name from /d where is_dir",
             "select name from /d where is_dir = is_file",
             "select name from /d where is_dir = contains('x')",
+        ] {
+            assert!(parse_query(query).is_ok(), "{}: {:?}", query, parse_query(query).err());
+        }
+    }
+
+    #[test]
+    fn unknown_words_in_order_by_and_group_by_are_rejected() {
+        for (query, clause, word) in [
+            ("select name from /d order by size des", "ORDER BY", "des"),
+            ("select name from /d order by size dsc", "ORDER BY", "dsc"),
+            ("select name from /d order by bogus", "ORDER BY", "bogus"),
+            ("select name from /d order by size, bogus desc", "ORDER BY", "bogus"),
+            ("select name, count(*) from /d group by bogus", "GROUP BY", "bogus"),
+        ] {
+            let err = parse_query(query).expect_err(query);
+            assert!(err.contains(clause) && err.contains(word), "{}: {}", query, err);
+        }
+        for query in [
+            "select name from /d order by size desc",
+            "select name, size from /d order by 2 desc, 1",
+            "select name from /d order by 'size' desc",
+            "select name from /d order by size + 0, length(name)",
+            "select name, size as sz from /d order by sz desc",
+            "select ext, count(*) from /d group by ext",
+            "select length(name) as len, count(*) from /d group by len % 2",
         ] {
             assert!(parse_query(query).is_ok(), "{}: {:?}", query, parse_query(query).err());
         }

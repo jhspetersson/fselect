@@ -830,6 +830,38 @@ impl Expr {
     /// Rejects calls with the wrong number of arguments anywhere in the
     /// expression tree, so the mistake is reported once, before the search,
     /// instead of per file (or never, when extra arguments were ignored).
+    pub fn validate_date_function_literals(&self) -> Result<(), String> {
+        if let Some(ref function) = self.function {
+            for &position in function.datetime_argument_positions() {
+                let argument = match position {
+                    0 => self.left.as_deref(),
+                    n => self.args.as_ref().and_then(|args| args.get(n - 1)),
+                };
+                if let Some(argument) = argument
+                    && argument.is_literal()
+                    && let Some(ref val) = argument.val
+                {
+                    let text = if argument.minus { format!("-{}", val) } else { val.clone() };
+                    if crate::util::parse_datetime(&text).is_err() {
+                        return Err(format!("Can't parse datetime: {}", text));
+                    }
+                }
+            }
+        }
+        for child in self.left.iter().chain(self.right.iter()) {
+            child.validate_date_function_literals()?;
+        }
+        for arg in self.args.iter().flatten() {
+            arg.validate_date_function_literals()?;
+        }
+        if let Some(ref subquery) = self.subquery {
+            for expr in subquery.fields.iter().chain(subquery.expr.iter()) {
+                expr.validate_date_function_literals()?;
+            }
+        }
+        Ok(())
+    }
+
     pub fn validate_function_arity(&self) -> Result<(), String> {
         if let Some(ref function) = self.function {
             let given = usize::from(self.left.is_some()) + self.args.as_ref().map_or(0, Vec::len);

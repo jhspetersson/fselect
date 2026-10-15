@@ -7,7 +7,7 @@ use regex::Regex;
 
 static DATE_REGEX: LazyLock<Regex> = LazyLock::new(|| {
     // The date and time parts may be separated by a space or an ISO 8601 `T`
-    Regex::new("^(\\d{4})(-|:)(\\d{1,2})(-|:)(\\d{1,2})(?:[ Tt](\\d{1,2})(?::(\\d{1,2})(?::(\\d{1,2}))?)?)?$").unwrap()
+    Regex::new("^([0-9]{4})(-|:)([0-9]{1,2})(-|:)([0-9]{1,2})(?:[ Tt]([0-9]{1,2})(?::([0-9]{1,2})(?::([0-9]{1,2}))?)?)?$").unwrap()
 });
 
 static US_DATES: Mutex<bool> = Mutex::new(false);
@@ -51,48 +51,21 @@ pub fn parse_datetime(s: &str) -> Result<(NaiveDateTime, NaiveDateTime), String>
             if cap[2] != cap[4] {
                 return Err("Error parsing date/time value: ".to_string() + s);
             }
-            let year: i32 = cap[1].parse().unwrap();
-            let month: u32 = cap[3].parse().unwrap();
-            let day: u32 = cap[5].parse().unwrap();
-
-            let hour_start: u32;
-            let hour_finish: u32;
-            match cap.get(6) {
-                Some(val) => {
-                    hour_start = val.as_str().parse().unwrap();
-                    hour_finish = hour_start;
+            let part = |index: usize| -> Result<u32, String> {
+                cap[index].parse().map_err(|_| "Error parsing date/time value: ".to_string() + s)
+            };
+            let optional_part = |index: usize, finish_default: u32| -> Result<(u32, u32), String> {
+                match cap.get(index) {
+                    Some(_) => part(index).map(|value| (value, value)),
+                    None => Ok((0, finish_default)),
                 }
-                None => {
-                    hour_start = 0;
-                    hour_finish = 23;
-                }
-            }
-
-            let min_start: u32;
-            let min_finish: u32;
-            match cap.get(7) {
-                Some(val) => {
-                    min_start = val.as_str().parse().unwrap();
-                    min_finish = min_start;
-                }
-                None => {
-                    min_start = 0;
-                    min_finish = 59;
-                }
-            }
-
-            let sec_start: u32;
-            let sec_finish: u32;
-            match cap.get(8) {
-                Some(val) => {
-                    sec_start = val.as_str().parse().unwrap();
-                    sec_finish = sec_start;
-                }
-                None => {
-                    sec_start = 0;
-                    sec_finish = 59;
-                }
-            }
+            };
+            let year = part(1)? as i32;
+            let month = part(3)?;
+            let day = part(5)?;
+            let (hour_start, hour_finish) = optional_part(6, 23)?;
+            let (min_start, min_finish) = optional_part(7, 59)?;
+            let (sec_start, sec_finish) = optional_part(8, 59)?;
 
             // Build the naive datetime directly: a Local round-trip would fail on
             // DST-skipped or ambiguous midnights while adding nothing to the result
@@ -436,6 +409,22 @@ mod tests {
         for s in ["-1", "+0", "+3", "-36500"] {
             assert!(parse_datetime(s).is_ok(), "{} should still parse", s);
         }
+    }
+
+    #[test]
+    fn non_ascii_digits_are_rejected_without_panicking() {
+        for s in [
+            "\u{662}\u{660}\u{662}\u{666}-\u{661}\u{660}-\u{661}\u{665}",
+            "\u{FF12}\u{FF10}\u{FF12}\u{FF16}-\u{FF11}\u{FF10}-\u{FF11}\u{FF15}",
+            "2026-\u{661}\u{660}-15",
+            "2026-10-15 \u{661}\u{662}:00",
+            "2026-10-15 12:\u{663}\u{660}:\u{660}\u{660}",
+        ] {
+            let result = parse_datetime(s);
+            assert!(result.is_err(), "{:?} should be rejected, got {:?}", s, result);
+        }
+        assert!(parse_datetime("2026-10-15").is_ok());
+        assert!(parse_datetime("2026-10-15 12:30:00").is_ok());
     }
 
     #[test]

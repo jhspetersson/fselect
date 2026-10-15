@@ -312,6 +312,23 @@ impl Display for Arity {
 }
 
 impl Function {
+    pub fn datetime_argument_positions(&self) -> &'static [usize] {
+        match self {
+            Function::Year
+            | Function::Month
+            | Function::Day
+            | Function::DayOfWeek
+            | Function::DayName
+            | Function::DayOfYear
+            | Function::LastDay
+            | Function::DateAdd
+            | Function::DateSub => &[0],
+            Function::DateDiff => &[0, 1],
+            Function::Extract | Function::DateTrunc => &[1],
+            _ => &[],
+        }
+    }
+
     pub fn check_argument_count(&self, given: usize) -> Result<(), String> {
         let arity = self.arity();
         if arity.accepts(given) {

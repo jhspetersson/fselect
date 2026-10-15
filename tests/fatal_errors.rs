@@ -165,6 +165,21 @@ fn aggregate_errors_are_reported_with_a_well_formed_document() {
 }
 
 #[test]
+fn unparsable_date_function_literals_are_rejected_before_the_header() {
+    let dir = make_dir("fselect_test_fatal_date_function_literal");
+    let dir = dir.to_string_lossy();
+
+    assert_rejected_without_output(
+        &format!("select name, year('abc') from {} into json", dir),
+        "Can't parse datetime: abc",
+    );
+    assert_rejected_without_output(
+        &format!("select name from {} where month('2024-99-01') = 1 into html", dir),
+        "Can't parse datetime: 2024-99-01",
+    );
+}
+
+#[test]
 fn valid_queries_still_produce_complete_documents() {
     let dir = make_dir("fselect_test_fatal_valid");
     let dir = dir.to_string_lossy();

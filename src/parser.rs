@@ -93,6 +93,7 @@ impl <'a> Parser<'a> {
             .chain(ordering_fields.iter());
         for clause in clauses {
             clause.validate_function_arity()?;
+            clause.validate_date_function_literals()?;
         }
 
         if let Some(ref having_expr) = having {
@@ -4208,6 +4209,34 @@ mod tests {
         assert_eq!(filtered, Expr::SUBQUERY_SCAN_WEIGHT + 1);
         assert_eq!(correlated, Expr::CORRELATED_SUBQUERY_WEIGHT + Expr::SUBQUERY_SCAN_WEIGHT + 2);
         assert!(Expr::CORRELATED_SUBQUERY_WEIGHT > 100 * Function::Contains.get_weight());
+    }
+
+    #[test]
+    fn unparsable_date_literals_in_date_functions_are_rejected_at_parse_time() {
+        let rejected = [
+            "select year('\u{FF12}\u{FF10}\u{FF12}\u{FF16}-\u{FF11}\u{FF10}-\u{FF11}\u{FF15}') from /x",
+            "select year('abc') from /x",
+            "select name from /x where day('bad') > 0",
+            "select date_diff(modified, 'nope') from /x",
+            "select extract('year', 'abc') from /x",
+            "select date_trunc('day', '2024-13-45') from /x",
+            "select name from /x order by date_add('x', 1)",
+            "select ext from /x group by ext having max(year('x')) > 0",
+        ];
+        for query in rejected {
+            let err = parse_query(query).expect_err(query);
+            assert!(err.contains("Can't parse datetime"), "{}: unexpected error text {:?}", query, err);
+        }
+
+        let accepted = [
+            "select year('2024-01-01'), year(-1), year(yesterday), year(modified), year(name) from /x",
+            "select date_diff(modified, '2024-01-01'), extract('year', modified), date_trunc('day', '2024-01-01 10:00:00') from /x",
+            "select date_add('2024-01-01', 3), date_sub(modified, 3), last_day('2024-02-10') from /x",
+            "select upper('abc'), length('not a date') from /x",
+        ];
+        for query in accepted {
+            assert!(parse_query(query).is_ok(), "{} should parse", query);
+        }
     }
 
     #[test]

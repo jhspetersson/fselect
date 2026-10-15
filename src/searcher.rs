@@ -972,7 +972,7 @@ impl<'a> Searcher<'a> {
             self.record_context.clone(),
             self.config,
             self.default_config,
-            self.use_colors
+            false,
         );
         // Always run silent: is_buffered() must hold so results land in
         // output_buffer instead of leaking to stdout (debug mode included).
@@ -4390,6 +4390,35 @@ f
         for ((condition, expected), (_, actual)) in cases.iter().zip(results) {
             assert_eq!(actual, vec![expected.to_string()], "{}", condition);
         }
+    }
+
+    #[test]
+    fn coloured_output_does_not_leak_into_subquery_comparisons() {
+        use crate::lexer::Lexer;
+        use crate::parser::Parser;
+
+        let tmp = std::env::temp_dir().join("fselect_test_coloured_subqueries");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(tmp.join("sub")).unwrap();
+        fs::write(tmp.join("a.txt"), "").unwrap();
+
+        let run_coloured = |query_template: &str| {
+            let query_string = query_template.replace("__DIR__", &tmp.to_string_lossy());
+            let mut lexer = Lexer::new(vec![query_string]);
+            let parsed = Box::leak(Box::new(Parser::new(&mut lexer).parse(false).expect("parse failed")));
+            let config = Box::leak(Box::new(Config::default()));
+            let default_config = Box::leak(Box::new(Config::default()));
+            let mut searcher = Searcher::new(parsed, config, default_config, true);
+            searcher.silent_mode = true;
+            searcher.list_search_results().expect("search failed");
+            searcher.output_buffer.iter_values().count()
+        };
+        let membership = run_coloured("select name from __DIR__ where name in (select name from __DIR__)");
+        let scalar = run_coloured("select name from __DIR__ where name = (select name from __DIR__ where is_dir order by name)");
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(membership, 2, "both the file and the directory must match themselves");
+        assert_eq!(scalar, 1, "the directory must equal its own plain name");
     }
 
     #[test]

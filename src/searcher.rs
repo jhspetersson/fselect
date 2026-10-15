@@ -924,8 +924,24 @@ impl<'a> Searcher<'a> {
         // output_buffer instead of leaking to stdout (debug mode included).
         sub_searcher.silent_mode = true;
         sub_searcher.is_nested = true;
+        let shadowed: Vec<(String, Option<HashMap<String, Variant>>)> = {
+            let context = self.record_context.borrow();
+            query.own_root_aliases().into_iter().map(|alias| {
+                let saved = context.get(&alias).cloned();
+                (alias, saved)
+            }).collect()
+        };
         let outcome = sub_searcher.list_search_results();
         self.error_count += sub_searcher.error_count;
+        {
+            let mut context = self.record_context.borrow_mut();
+            for (alias, saved) in shadowed {
+                match saved {
+                    Some(entry) => context.insert(alias, entry),
+                    None => context.remove(&alias),
+                };
+            }
+        }
         outcome?;
 
         // The buffer holds limit + offset rows; the offset rows are skipped
@@ -4053,6 +4069,39 @@ mod tests {
         assert_eq!(text, vec!["10", "100", "2"]);
         assert_eq!(arithmetic, vec!["2", "10", "100"]);
         assert_eq!(descending, vec!["100", "10", "2"]);
+    }
+
+    #[test]
+    fn a_nested_query_reusing_the_outer_alias_leaves_the_outer_row_intact() {
+        let tmp = std::env::temp_dir().join("fselect_test_nested_alias_shadowing");
+        let _ = fs::remove_dir_all(&tmp);
+        let data = tmp.join("data");
+        let other = tmp.join("other");
+        fs::create_dir_all(&data).unwrap();
+        fs::create_dir_all(&other).unwrap();
+        fs::write(data.join("a.txt"), "x").unwrap();
+        fs::write(data.join("b.txt"), "xx").unwrap();
+        fs::write(data.join("c.txt"), "x".repeat(10)).unwrap();
+        fs::write(other.join("o.txt"), "x".repeat(50)).unwrap();
+        let other_root = other.to_string_lossy().to_string();
+
+        let filtered_inner = run_query_against_dir(
+            &format!("select name, (select count(*) from {other_root} as t where t.size > 0), (select t.size from {other_root}) from __DIR__ as t order by name"),
+            &data,
+        );
+        let bare_inner = run_query_against_dir(
+            &format!("select name, (select count(*) from {other_root} as t), (select t.size from {other_root}) from __DIR__ as t order by name"),
+            &data,
+        );
+        let shadowed_self_reference = run_query_against_dir(
+            &format!("select name, (select count(*) from {other_root} as t where t.size > 0 and name != t.name), (select t.size from {other_root}) from __DIR__ as t order by name"),
+            &data,
+        );
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(filtered_inner, vec!["a.txt	1	1", "b.txt	1	2", "c.txt	1	10"]);
+        assert_eq!(bare_inner, vec!["a.txt	1	1", "b.txt	1	2", "c.txt	1	10"]);
+        assert_eq!(shadowed_self_reference, vec!["a.txt	0	1", "b.txt	0	2", "c.txt	0	10"], "inside the inner query t.name is the inner row, so the count is 0");
     }
 
     #[test]

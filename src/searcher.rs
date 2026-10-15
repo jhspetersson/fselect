@@ -3736,6 +3736,24 @@ mod tests {
     }
 
     #[test]
+    fn min_and_max_of_names_follow_text_order_when_some_names_look_numeric() {
+        let tmp = std::env::temp_dir().join("fselect_test_min_max_mixed_names");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        for name in ["10", "9", "abc", "zeta", "Beta", "2x"] {
+            fs::write(tmp.join(name), "x").unwrap();
+        }
+
+        let extremes = run_query_against_dir("select min(name), max(name), min(size), max(size) from __DIR__", &tmp);
+        let ordered = run_query_against_dir("select name from __DIR__ order by name", &tmp);
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(extremes, vec!["10	zeta	1	1"]);
+        assert_eq!(ordered.first().map(String::as_str), Some("10"), "min(name) must agree with ORDER BY");
+        assert_eq!(ordered.last().map(String::as_str), Some("zeta"), "max(name) must agree with ORDER BY");
+    }
+
+    #[test]
     fn errors_inside_subqueries_count_towards_the_outer_search() {
         let tmp = std::env::temp_dir().join("fselect_test_subquery_errors");
         let _ = fs::remove_dir_all(&tmp);

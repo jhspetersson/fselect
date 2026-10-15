@@ -1156,17 +1156,20 @@ pub fn get_aggregate_value(
     match function {
         Function::Min => {
             match field_acc {
-                // Numeric values take precedence; otherwise fall back to the
-                // lexicographic minimum (datetimes, strings).
-                Some(acc) if acc.count > 0 => (acc.min + 0.0).to_string(),
-                Some(acc) => acc.min_value.clone().unwrap_or_default(),
+                // Numeric order when every value was a number, size order when
+                // every value was a file size, plain text order otherwise
+                // (datetimes, names, mixed columns).
+                Some(acc) if acc.all_numeric() => (acc.min + 0.0).to_string(),
+                Some(acc) if acc.all_sizes() => acc.min_value.clone().unwrap_or_default(),
+                Some(acc) => acc.min_text.clone().unwrap_or_default(),
                 _ => String::new(),
             }
         }
         Function::Max => {
             match field_acc {
-                Some(acc) if acc.count > 0 => (acc.max + 0.0).to_string(),
-                Some(acc) => acc.max_value.clone().unwrap_or_default(),
+                Some(acc) if acc.all_numeric() => (acc.max + 0.0).to_string(),
+                Some(acc) if acc.all_sizes() => acc.max_value.clone().unwrap_or_default(),
+                Some(acc) => acc.max_text.clone().unwrap_or_default(),
                 _ => String::new(),
             }
         }
@@ -1728,13 +1731,29 @@ pub struct FieldAccumulator {
     pub max_value: Option<String>,
     min_size: Option<u64>,
     max_size: Option<u64>,
+    numeric_like_count: usize,
+    size_count: usize,
+    min_text: Option<String>,
+    max_text: Option<String>,
 }
 
 impl FieldAccumulator {
     pub fn push(&mut self, value: &str) {
         if !value.is_empty() {
             self.non_empty_count += 1;
+            if value.parse::<f64>().is_ok() {
+                self.numeric_like_count += 1;
+            }
+            if self.min_text.as_deref().is_none_or(|current| value < current) {
+                self.min_text = Some(value.to_string());
+            }
+            if self.max_text.as_deref().is_none_or(|current| value > current) {
+                self.max_text = Some(value.to_string());
+            }
             let size = parse_filesize(value);
+            if size.is_some() {
+                self.size_count += 1;
+            }
             if matches!(Self::compare(value, size, &self.min_value, self.min_size), None | Some(Ordering::Less)) {
                 self.min_value = Some(value.to_string());
                 self.min_size = size;
@@ -1765,6 +1784,14 @@ impl FieldAccumulator {
 }
 
 impl FieldAccumulator {
+    fn all_numeric(&self) -> bool {
+        self.count > 0 && self.numeric_like_count == self.non_empty_count
+    }
+
+    fn all_sizes(&self) -> bool {
+        self.size_count == self.non_empty_count
+    }
+
     fn compare(value: &str, size: Option<u64>, current: &Option<String>, current_size: Option<u64>) -> Option<Ordering> {
         let current = current.as_ref()?;
         Some(match (size, current_size) {
@@ -3289,6 +3316,17 @@ mod tests {
     }
 
     #[test]
+    fn min_and_max_over_mixed_text_keep_every_value() {
+        let mixed = make_accumulator("val", &["10", "9", "abc", "zeta", "Beta", "2x", ""]);
+        assert_eq!(get_aggregate_value(&Function::Min, &mixed, "val".to_string(), &None), "10");
+        assert_eq!(get_aggregate_value(&Function::Max, &mixed, "val".to_string(), &None), "zeta");
+
+        let numeric = make_accumulator("val", &["10", "9", "", "100"]);
+        assert_eq!(get_aggregate_value(&Function::Min, &numeric, "val".to_string(), &None), "9");
+        assert_eq!(get_aggregate_value(&Function::Max, &numeric, "val".to_string(), &None), "100");
+    }
+
+    #[test]
     fn min_drops_fractional_values() {
         let acc = make_accumulator("val", &["1.5", "2.5"]);
         let result = get_aggregate_value(&Function::Min, &acc, "val".to_string(), &None);
@@ -3351,12 +3389,12 @@ mod tests {
     }
 
     #[test]
-    fn min_max_numeric_values_take_precedence() {
-        // A column mixing numeric and non-numeric values keeps numeric
-        // MIN/MAX semantics for the values that parse.
+    fn min_max_over_mixed_values_use_text_order() {
+        // A column mixing numeric and non-numeric values is a text column:
+        // every value takes part, in the same order ORDER BY would use.
         let acc = make_accumulator("val", &["10", "9", "abc"]);
-        assert_eq!(get_aggregate_value(&Function::Min, &acc, "val".to_string(), &None), "9");
-        assert_eq!(get_aggregate_value(&Function::Max, &acc, "val".to_string(), &None), "10");
+        assert_eq!(get_aggregate_value(&Function::Min, &acc, "val".to_string(), &None), "10");
+        assert_eq!(get_aggregate_value(&Function::Max, &acc, "val".to_string(), &None), "abc");
     }
 
     #[test]

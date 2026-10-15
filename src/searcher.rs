@@ -441,17 +441,13 @@ impl<'a> Searcher<'a> {
         if !self.query.is_aggregated() || self.query.grouping_fields.is_empty() {
             return None;
         }
-        let field_names: Vec<String> = self.query.fields.iter()
-            .map(|f| f.to_string().to_lowercase())
-            .collect();
-        let grouping_names: Vec<String> = self.query.grouping_fields.iter()
-            .map(|f| f.to_string().to_lowercase())
-            .collect();
+        let field_keys: Vec<String> = self.query.fields.iter().map(Expr::cache_key).collect();
+        let grouping_keys: Vec<String> = self.query.grouping_fields.iter().map(Expr::cache_key).collect();
         self.query.ordering_fields.iter().find(|ordering_expr| {
-            let name = ordering_expr.to_string().to_lowercase();
-            !field_names.contains(&name)
+            let key = ordering_expr.cache_key();
+            !field_keys.contains(&key)
                 && !ordering_expr.has_aggregate_function()
-                && !grouping_names.contains(&name)
+                && !grouping_keys.contains(&key)
         })
     }
 
@@ -701,16 +697,14 @@ impl<'a> Searcher<'a> {
 
                 let ordering_fields_rc = self.ordering_fields_rc.clone();
                 let ordering_asc_rc = self.ordering_asc_rc.clone();
-                let field_names: Vec<String> = self.query.fields.iter()
-                    .map(|f| f.to_string().to_lowercase())
-                    .collect();
+                let field_keys: Vec<String> = self.query.fields.iter().map(Expr::cache_key).collect();
                 // Map each ordering expression to its SELECT column when it is
                 // selected; otherwise it is evaluated per group below
                 // (`validate` has already rejected anything unsortable).
                 let sorting_indices: Vec<Option<usize>> = self.query.ordering_fields.iter()
                     .map(|ordering_expr| {
-                        let name = ordering_expr.to_string().to_lowercase();
-                        field_names.iter().position(|g| g == &name)
+                        let key = ordering_expr.cache_key();
+                        field_keys.iter().position(|field_key| field_key == &key)
                     })
                     .collect();
 
@@ -3649,6 +3643,34 @@ mod tests {
         for ((having, expected), (_, actual)) in cases.iter().zip(results) {
             assert_eq!(&actual, expected, "{}", having);
         }
+    }
+
+    #[test]
+    fn grouped_ordering_matches_select_columns_structurally() {
+        let tmp = std::env::temp_dir().join("fselect_test_grouped_ordering_match");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        for name in ["a.txt", "bb.md", "cccccc.rs"] {
+            fs::write(tmp.join(name), "").unwrap();
+        }
+
+        let by_expression = run_query_against_dir(
+            "select length('Name'), length(name) from __DIR__ group by name order by length(name) desc",
+            &tmp,
+        );
+        let by_ordinal = run_query_against_dir(
+            "select length('Name'), length(name) from __DIR__ group by name order by 2 desc",
+            &tmp,
+        );
+        let aliased = run_query_against_dir(
+            "select length(name) as size, count(*) from __DIR__ group by name order by size desc",
+            &tmp,
+        );
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(by_expression, vec!["4\t9", "4\t5", "4\t5"]);
+        assert_eq!(by_ordinal, vec!["4\t9", "4\t5", "4\t5"]);
+        assert_eq!(aliased, vec!["9\t1", "5\t1", "5\t1"]);
     }
 
     #[test]

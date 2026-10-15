@@ -3674,6 +3674,52 @@ mod tests {
     }
 
     #[test]
+    fn quoted_having_literals_compare_as_text() {
+        let tmp = std::env::temp_dir().join("fselect_test_quoted_having_literal");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        for name in ["a.txt", "b.txt", "c.md"] {
+            fs::write(tmp.join(name), "").unwrap();
+        }
+
+        let quoted = run_query_against_dir("select ext, count(*) as txt from __DIR__ group by ext having ext = 'txt'", &tmp);
+        let reversed = run_query_against_dir("select ext, count(*) as txt from __DIR__ group by ext having 'txt' = ext", &tmp);
+        let alias = run_query_against_dir("select ext, count(*) as txt from __DIR__ group by ext having txt > 1", &tmp);
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(quoted, vec!["txt\t2"]);
+        assert_eq!(reversed, vec!["txt\t2"]);
+        assert_eq!(alias, vec!["txt\t2"]);
+    }
+
+    #[test]
+    fn having_alias_edge_cases() {
+        let tmp = std::env::temp_dir().join("fselect_test_having_alias_edge_cases");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        for name in ["a.txt", "b.txt", "c.md"] {
+            fs::write(tmp.join(name), "").unwrap();
+        }
+
+        let negated = run_query_against_dir("select ext, count(*) as n from __DIR__ group by ext having -n < -1", &tmp);
+        let quoted_in_function = run_query_against_dir(
+            "select ext, count(*) as n from __DIR__ group by ext having length('n') = 1 order by ext",
+            &tmp,
+        );
+        let shadows_field = run_query_against_dir("select ext, count(*) as size from __DIR__ group by ext having size > 1", &tmp);
+        let mixed = run_query_against_dir(
+            "select ext, count(*) as n from __DIR__ group by ext having upper('n') = 'N' and n > 1",
+            &tmp,
+        );
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(negated, vec!["txt	2"]);
+        assert_eq!(quoted_in_function, vec!["md	1", "txt	2"]);
+        assert_eq!(shadows_field, vec!["txt	2"], "the alias wins over the field of the same name");
+        assert_eq!(mixed, vec!["txt	2"]);
+    }
+
+    #[test]
     fn having_aggregate_not_in_select_list() {
         let tmp = std::env::temp_dir().join("fselect_test_having_agg_not_selected");
         let _ = fs::remove_dir_all(&tmp);

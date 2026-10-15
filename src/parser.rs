@@ -33,6 +33,7 @@ pub struct Parser<'a> {
     root_aliases: Vec<String>,
     /// How many NOTs enclose the condition being parsed.
     negation_depth: usize,
+    having_aliases: Vec<Expr>,
 }
 
 impl <'a> Parser<'a> {
@@ -46,6 +47,7 @@ impl <'a> Parser<'a> {
             debug: false,
             root_aliases: vec![],
             negation_depth: 0,
+            having_aliases: vec![],
         }
     }
 
@@ -1130,6 +1132,18 @@ impl <'a> Parser<'a> {
                 Ok(Some(expr))
             }
             Some(Lexeme::RawString(ref s)) => {
+                if let Some(aliased) = self
+                    .having_aliases
+                    .iter()
+                    .find(|f| f.alias.as_deref().is_some_and(|a| a.eq_ignore_ascii_case(s)))
+                {
+                    let mut expr = aliased.clone();
+                    if minus {
+                        expr.minus = !expr.minus;
+                    }
+                    return Ok(Some(expr));
+                }
+
                 if let Ok((field, root_alias)) = Field::parse_field(s) {
                     let mut expr = match root_alias {
                         Some(alias) if !self.is_local_alias(Some(&alias)) => Expr::external_field(field, alias),
@@ -1321,41 +1335,18 @@ impl <'a> Parser<'a> {
     fn parse_having(&mut self, fields: &[Expr]) -> Result<Option<Expr>, String> {
         match self.next_lexeme() {
             Some(Lexeme::Having) => {
-                let mut having = self.parse_expr()?;
-                if having.is_none() {
-                    return Err("Expected expression after HAVING".to_string());
+                self.having_aliases = fields.to_vec();
+                let having = self.parse_expr();
+                self.having_aliases.clear();
+                match having? {
+                    Some(having) => Ok(Some(having)),
+                    None => Err("Expected expression after HAVING".to_string()),
                 }
-                if let Some(ref mut having) = having {
-                    Self::resolve_having_aliases(having, fields);
-                }
-                Ok(having)
             }
             _ => {
                 self.drop_lexeme();
                 Ok(None)
             }
-        }
-    }
-
-    fn resolve_having_aliases(expr: &mut Expr, fields: &[Expr]) {
-        if expr.is_literal()
-            && let Some(ref val) = expr.val
-            && let Some(aliased) = fields
-                .iter()
-                .find(|f| f.alias.as_deref().is_some_and(|a| a.eq_ignore_ascii_case(val)))
-        {
-            let minus = expr.minus;
-            *expr = aliased.clone();
-            if minus {
-                expr.minus = !expr.minus;
-            }
-            return;
-        }
-        for child in expr.left.iter_mut().chain(expr.right.iter_mut()) {
-            Self::resolve_having_aliases(child, fields);
-        }
-        for arg in expr.args.iter_mut().flatten() {
-            Self::resolve_having_aliases(arg, fields);
         }
     }
 
@@ -2213,6 +2204,21 @@ mod tests {
             Some(Function::Count),
             "alias 'c' must resolve to the aliased count(*) expression"
         );
+    }
+
+    #[test]
+    fn quoted_having_literals_are_never_aliases() {
+        let quoted = parse_query("select ext, count(*) as txt from /test group by ext having ext = 'txt'").unwrap();
+        let right = quoted.having.unwrap().right.unwrap();
+        assert!(right.is_literal() && right.val.as_deref() == Some("txt"), "quoted 'txt' must stay a literal, got {:?}", right);
+
+        let bare = parse_query("select ext, count(*) as txt from /test group by ext having txt > 1").unwrap();
+        let left = bare.having.unwrap().left.unwrap();
+        assert_eq!(left.function, Some(Function::Count), "the bare identifier resolves to the alias");
+
+        let function_named = parse_query("select ext, count(*) as len from /test group by ext having len > 1").unwrap();
+        let left = function_named.having.unwrap().left.unwrap();
+        assert_eq!(left.function, Some(Function::Count), "an alias wins over a function of the same name");
     }
 
     #[test]

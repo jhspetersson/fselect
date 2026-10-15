@@ -127,6 +127,8 @@ pub struct Searcher<'a> {
     /// Runs a subquery on behalf of an enclosing searcher, whose aliases it
     /// may legitimately reference.
     is_nested: bool,
+    root_depth_column: bool,
+    root_depth_cache: Option<(PathBuf, usize)>,
 
     pub error_count: i32,
 }
@@ -397,6 +399,8 @@ impl<'a> Searcher<'a> {
             membership_cache: HashMap::new(),
             silent_mode: false,
             is_nested: false,
+            root_depth_column: false,
+            root_depth_cache: None,
 
             error_count: 0,
         }
@@ -651,7 +655,6 @@ impl<'a> Searcher<'a> {
 
             if let Some(ref inner) = root.subquery {
                 let paths = self.collect_subquery_root_paths(inner.as_ref().clone())?;
-                let inner_roots = Self::effective_root_dirs(inner);
                 self.dir_queue.clear();
                 self.ancestor_dirs = None;
                 self.hgignore_filters.clear();
@@ -673,7 +676,7 @@ impl<'a> Searcher<'a> {
                     .unwrap_or(self.config.dockerignore.unwrap_or(false));
                 self.current_traversal_mode = root.options.traversal;
 
-                let result = self.visit_subquery_paths(paths, &inner_roots);
+                let result = self.visit_subquery_paths(paths);
                 if let Err(err) = result
                     && err.is_fatal() {
                         return Err(err);
@@ -931,12 +934,35 @@ impl<'a> Searcher<'a> {
     /// Run a FROM-clause subselect and return the list of paths it produced.
     /// The inner query is forced to emit only the `path` field so its rows can
     /// drive the outer query as a flat list of filesystem entries.
-    fn collect_subquery_root_paths(&mut self, mut query: Query) -> Result<Vec<String>, SearchError> {
+    fn collect_subquery_root_paths(&mut self, mut query: Query) -> Result<Vec<(String, Option<usize>)>, SearchError> {
         // Use the absolute path so visit_subquery_paths can re-resolve each
         // result against the filesystem regardless of the inner query's root.
         query.fields = vec![Expr::field(Field::AbsPath)];
         query.output_format = crate::query::OutputFormat::Tabs;
-        self.get_list_from_subquery(query)
+        let rows = self.get_list_from_subquery_with(query, true)?;
+        Ok(rows
+            .into_iter()
+            .map(|row| match row.rsplit_once('\t') {
+                Some((path, depth)) => match depth.parse::<usize>() {
+                    Ok(depth) => (path.to_string(), Some(depth)),
+                    Err(_) => (row.clone(), None),
+                },
+                None => (row, None),
+            })
+            .collect())
+    }
+
+    fn root_depth_of(&mut self, root_path: &Path) -> usize {
+        if let Some((cached_root, depth)) = &self.root_depth_cache
+            && cached_root == root_path
+        {
+            return *depth;
+        }
+        let depth = canonical_path(&root_path.to_path_buf())
+            .map(|canonical| PathBuf::from(canonical).components().count())
+            .unwrap_or_default();
+        self.root_depth_cache = Some((root_path.to_path_buf(), depth));
+        depth
     }
 
     /// Treat each path produced by a FROM subselect as an input entry: resolve
@@ -945,53 +971,10 @@ impl<'a> Searcher<'a> {
     /// traversal. The std library cannot build a `DirEntry` from a path, so the
     /// parent directory is read once and its entries looked up by name for as
     /// long as consecutive paths keep coming from the same directory.
-    fn effective_root_dirs(query: &Query) -> Vec<(PathBuf, usize)> {
-        let mut dirs = vec![];
-        for root in &query.roots {
-            if let Some(ref inner) = root.subquery {
-                dirs.extend(Self::effective_root_dirs(inner));
-                continue;
-            }
-            let (literal, matched_components) = match root.options.regexp {
-                true => {
-                    let parts: Vec<&str> = root.path.split('/').filter(|part| !part.is_empty()).collect();
-                    let literal_parts = parts.iter().take_while(|part| !looks_like_regexp(part)).count();
-                    let literal = match root.path.starts_with('/') {
-                        true => format!("/{}", parts[..literal_parts].join("/")),
-                        false => parts[..literal_parts].join("/"),
-                    };
-                    (literal, parts.len() - literal_parts)
-                }
-                false => (root.path.clone(), 0),
-            };
-            let literal = if literal.is_empty() { String::from(".") } else { literal };
-            if let Ok(canonical) = canonical_path(&PathBuf::from(literal)) {
-                dirs.push((PathBuf::from(canonical), matched_components));
-            }
-        }
-        dirs
-    }
-
-    fn root_dir_of(entry_path: &Path, inner_roots: &[(PathBuf, usize)]) -> Option<PathBuf> {
-        inner_roots
-            .iter()
-            .filter_map(|(literal, matched_components)| {
-                let rest = entry_path.strip_prefix(literal).ok()?;
-                let mut components = rest.components();
-                let mut root_dir = literal.clone();
-                for _ in 0..*matched_components {
-                    root_dir.push(components.next()?);
-                }
-                components.next()?;
-                Some(root_dir)
-            })
-            .max_by_key(|root_dir| root_dir.components().count())
-    }
-
-    fn visit_subquery_paths(&mut self, paths: Vec<String>, inner_roots: &[(PathBuf, usize)]) -> Result<(), SearchError> {
+    fn visit_subquery_paths(&mut self, paths: Vec<(String, Option<usize>)>) -> Result<(), SearchError> {
         let mut lookup = DirEntryLookup::new();
         let mut archives = ArchiveLookup::default();
-        for path_str in paths {
+        for (path_str, root_depth) in paths {
             if path_str.is_empty() {
                 continue;
             }
@@ -1011,7 +994,10 @@ impl<'a> Searcher<'a> {
                 Some(n) => n.to_os_string(),
                 None => continue,
             };
-            let root_dir = Self::root_dir_of(&entry_path, inner_roots).unwrap_or_else(|| parent.clone());
+            let root_dir = match root_depth {
+                Some(depth) if depth > 0 && depth < path.components().count() => path.components().take(depth).collect::<PathBuf>(),
+                _ => parent.clone(),
+            };
             self.current_root_dir = root_dir.clone();
 
             match lookup.entry(&parent, &file_name) {
@@ -1066,7 +1052,11 @@ impl<'a> Searcher<'a> {
     }
 
     fn get_list_from_subquery(&mut self, query: Query) -> Result<Vec<String>, SearchError> {
-        let query_str = format!("{:?}", query);
+        self.get_list_from_subquery_with(query, false)
+    }
+
+    fn get_list_from_subquery_with(&mut self, query: Query, root_depth_column: bool) -> Result<Vec<String>, SearchError> {
+        let query_str = format!("{:?}#{}", query, root_depth_column);
 
         let ok_to_cache = is_subquery_cacheable(&query);
         if ok_to_cache
@@ -1085,6 +1075,7 @@ impl<'a> Searcher<'a> {
         // output_buffer instead of leaking to stdout (debug mode included).
         sub_searcher.silent_mode = true;
         sub_searcher.is_nested = true;
+        sub_searcher.root_depth_column = root_depth_column;
         let shadowed: Vec<(String, Option<HashMap<String, Variant>>)> = {
             let context = self.record_context.borrow();
             query.own_root_aliases().into_iter().map(|alias| {
@@ -1963,6 +1954,11 @@ impl<'a> Searcher<'a> {
                 false => record.to_string(),
             };
             items.push((field.column_name(), value));
+        }
+
+        if self.root_depth_column {
+            let root_depth = self.root_depth_of(root_path);
+            items.push((String::new(), root_depth.to_string()));
         }
 
         let mut criteria = vec!["".to_string(); self.query.ordering_fields.len()];
@@ -3628,6 +3624,30 @@ mod tests {
         assert_eq!(two_roots, vec!["c".to_string(), rel(&["c", "deep.txt"]), "same.txt".to_string(), "same.txt".to_string()]);
         assert_eq!(direct_rx.len(), 4);
         assert_eq!(through_rx, direct_rx, "a regexp root expands to the matched directories, and paths are relative to those");
+    }
+
+    #[test]
+    fn from_subselects_keep_each_root_spelling_when_inner_roots_overlap() {
+        let tmp = std::env::temp_dir().join("fselect_test_subselect_overlapping_roots");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(tmp.join("a")).unwrap();
+        fs::create_dir_all(tmp.join("b").join("c")).unwrap();
+        fs::write(tmp.join("top.txt"), "x").unwrap();
+        fs::write(tmp.join("a").join("same.txt"), "x").unwrap();
+        fs::write(tmp.join("b").join("same.txt"), "x").unwrap();
+        fs::write(tmp.join("b").join("c").join("deep.txt"), "x").unwrap();
+
+        let direct = run_query_against_dir("select path, depth from __DIR__, __DIR__/b order by path, depth", &tmp);
+        let through = run_query_against_dir("select path, depth from (select path from __DIR__, __DIR__/b) order by path, depth", &tmp);
+        let sorted_inside = run_query_against_dir(
+            "select path, depth from (select path from __DIR__, __DIR__/b order by name desc) order by path, depth",
+            &tmp,
+        );
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(direct.len(), 10);
+        assert_eq!(through, direct);
+        assert_eq!(sorted_inside, direct, "the root must travel with each row even when the inner query reorders them");
     }
 
     #[test]

@@ -191,6 +191,17 @@ fn a_typo_in_the_order_direction_is_rejected_before_the_header() {
 }
 
 #[test]
+fn an_unterminated_quote_in_the_select_list_names_the_quote() {
+    let dir = make_dir("fselect_test_fatal_unterminated_quote");
+    let dir = dir.to_string_lossy();
+
+    assert_rejected_without_output(
+        &format!("select name, 'abc from {} into json", dir),
+        "Unterminated quoted string",
+    );
+}
+
+#[test]
 fn valid_queries_still_produce_complete_documents() {
     let dir = make_dir("fselect_test_fatal_valid");
     let dir = dir.to_string_lossy();

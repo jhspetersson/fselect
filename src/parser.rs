@@ -95,6 +95,10 @@ impl <'a> Parser<'a> {
         let (ordering_fields, ordering_asc) = self.parse_order_by(&fields)?;
         let (mut limit, limit_offset) = self.parse_limit()?;
         let mut offset = self.parse_offset()?;
+        match self.next_lexeme() {
+            Some(Lexeme::Error(message)) => return Err(message),
+            _ => self.drop_lexeme(),
+        }
 
         if limit_offset > 0 {
             if offset > 0 {
@@ -308,6 +312,7 @@ impl <'a> Parser<'a> {
                         _ => {}
                     }
                 }
+                Some(Lexeme::Error(ref message)) => return Err(message.clone()),
                 _ => {
                     self.drop_lexeme();
                     break;
@@ -2493,6 +2498,24 @@ mod tests {
         ] {
             assert!(parse_query(query).is_ok(), "{}: {:?}", query, parse_query(query).err());
         }
+    }
+
+    #[test]
+    fn an_unterminated_quote_is_reported_wherever_it_occurs() {
+        for query in [
+            "select 'abc from /d",
+            "select name, 'abc from /d",
+            "select upper('abc) from /d",
+            "select name from '/d",
+            "select name from /d where name = 'abc",
+            "select name from /d group by 'x",
+            "select name from /d order by 'x",
+            "select name from /d limit 1 'x",
+        ] {
+            let err = parse_query(query).expect_err(query);
+            assert!(err.starts_with("Unterminated quoted string"), "{}: {}", query, err);
+        }
+        assert!(parse_query("select name from /d where name = 'it''s'").is_ok());
     }
 
     #[test]

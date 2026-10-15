@@ -2360,6 +2360,21 @@ mod tests {
     }
 
     #[test]
+    fn correlated_column_alias_references_are_not_validated_as_literals() {
+        for query in [
+            "select name, size as sz from /d as t where exists (select name from /o where size > t.sz)",
+            "select name, size as sz from /d as t where exists (select name from /o where t.sz < size)",
+            "select name, modified as m from /d as t where exists (select name from /o where modified >= t.m)",
+            "select name, size as sz from /d as t where exists (select name from /o where size in (t.sz, 5))",
+        ] {
+            assert!(parse_query(query).is_ok(), "{}: {:?}", query, parse_query(query).err());
+        }
+        for query in ["select name from /d where size > abc", "select name from /d where modified = 'not a date'"] {
+            assert!(parse_query(query).is_err(), "{} must still be rejected", query);
+        }
+    }
+
+    #[test]
     fn having_without_aggregation_is_rejected() {
         let query = "select name from /test having name = foo";
         let mut lexer = Lexer::new(vec![query.to_string()]);

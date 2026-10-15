@@ -57,6 +57,7 @@ pub struct Searcher<'a> {
     record_context: Rc<RefCell<HashMap<String, HashMap<String, Variant>>>>,
     current_alias: Option<String>,
     subquery_required_fields: Option<HashMap<Field, HashSet<String>>>,
+    subquery_required_columns: Vec<(String, Expr)>,
 
     hgignore_filters: Vec<HgignoreFilter>,
     dockerignore_filters: Vec<DockerignoreFilter>,
@@ -328,6 +329,7 @@ impl<'a> Searcher<'a> {
             record_context,
             current_alias: None,
             subquery_required_fields: None,
+            subquery_required_columns: vec![],
 
             hgignore_filters: vec![],
             dockerignore_filters: vec![],
@@ -566,6 +568,30 @@ impl<'a> Searcher<'a> {
                     if fields.is_empty() { None } else { Some(fields) }
                 }
                 None => None,
+            };
+            self.subquery_required_columns = match &self.current_alias {
+                Some(alias) => {
+                    let mut names: HashSet<String> = HashSet::new();
+                    let clauses = self.query.fields.iter()
+                        .chain(self.query.expr.iter())
+                        .chain(self.query.ordering_fields.iter())
+                        .chain(self.query.grouping_fields.iter())
+                        .chain(self.query.having.iter());
+                    for expr in clauses {
+                        names.extend(expr.get_alias_references_in_subqueries(alias, false));
+                    }
+                    names
+                        .into_iter()
+                        .filter_map(|name| {
+                            self.query
+                                .fields
+                                .iter()
+                                .find(|column| column.alias.as_deref().is_some_and(|a| a.eq_ignore_ascii_case(&name)))
+                                .map(|column| (name, column.clone()))
+                        })
+                        .collect()
+                }
+                None => vec![],
             };
 
             if let Some(ref inner) = root.subquery {
@@ -1705,12 +1731,17 @@ impl<'a> Searcher<'a> {
 
     fn check_file_inner(&mut self, entry: &DirEntry, root_path: &Path, file_info: &Option<FileInfo>, file_map: &mut HashMap<String, String>) -> Result<(), SearchError> {
         if let Some(ref current_alias) = self.current_alias.clone() {
-            {
-                let mut context = self.record_context.borrow_mut();
-                if let Some(ctx) = context.get_mut(current_alias) {
-                    ctx.clear();
-                }
+            self.record_context.borrow_mut().entry(current_alias.to_string()).or_default().clear();
+
+            let required_columns = std::mem::take(&mut self.subquery_required_columns);
+            for (name, column) in &required_columns {
+                let mut scratch = HashMap::new();
+                let value = self
+                    .get_column_expr_value(Some(entry), file_info, root_path, &mut scratch, None, column)
+                    .unwrap_or(Variant::empty(VariantType::String));
+                self.record_context.borrow_mut().entry(current_alias.to_string()).or_default().insert(name.clone(), value);
             }
+            self.subquery_required_columns = required_columns;
 
             if let Some(required_fields) = std::mem::take(&mut self.subquery_required_fields) {
                 let mut field_values = HashMap::new();
@@ -4277,6 +4308,45 @@ f
         assert_eq!(bare, expected);
         assert_eq!(arithmetic, expected);
         assert_eq!(function, expected);
+    }
+
+    #[test]
+    fn correlated_column_aliases_compare_by_their_value() {
+        let tmp = std::env::temp_dir().join("fselect_test_correlated_alias_comparison");
+        let _ = fs::remove_dir_all(&tmp);
+        let data = tmp.join("data");
+        let other = tmp.join("other");
+        fs::create_dir_all(&data).unwrap();
+        fs::create_dir_all(&other).unwrap();
+        fs::write(data.join("a.txt"), "x").unwrap();
+        fs::write(data.join("b.txt"), "xx").unwrap();
+        fs::write(data.join("c.txt"), "x".repeat(10)).unwrap();
+        fs::write(other.join("o.txt"), "x".repeat(5)).unwrap();
+        let other_root = other.to_string_lossy().to_string();
+
+        let numeric = run_query_against_dir(
+            &format!("select name, size as sz from __DIR__ as t where exists (select name from {other_root} where size > t.sz) order by name"),
+            &data,
+        );
+        let date = run_query_against_dir(
+            &format!("select name, modified as m from __DIR__ as t where exists (select name from {other_root} where modified >= t.m) order by name"),
+            &data,
+        );
+        let computed = run_query_against_dir(
+            &format!("select name, length(name) as n from __DIR__ as t where exists (select name from {other_root} where size = t.n) order by name"),
+            &data,
+        );
+        let unknown = search_dir(
+            &format!("select name from __DIR__ as t where exists (select name from {other_root} where t.nope = 1)"),
+            &data, Config::default(), true,
+        );
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(numeric, vec!["a.txt	1", "b.txt	2"]);
+        assert_eq!(date.len(), 3);
+        assert_eq!(computed.len(), 3, "an aliased expression is snapshotted like a field");
+        assert_eq!(unknown.output_buffer.iter_values().count(), 0);
+        assert_eq!(unknown.error_count, 0, "an unknown column name under a declared alias is an empty value, not an error");
     }
 
     #[test]

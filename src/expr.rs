@@ -642,6 +642,48 @@ impl Expr {
         result
     }
 
+    pub fn get_alias_references_in_subqueries(&self, alias: &str, parent_subquery: bool) -> HashSet<String> {
+        let mut result = HashSet::new();
+        Self::collect_alias_references(self, alias, parent_subquery, &mut result);
+        result
+    }
+
+    fn collect_alias_references(expr: &Expr, alias: &str, parent_subquery: bool, result: &mut HashSet<String>) {
+        if parent_subquery
+            && let Some((root_alias, name)) = expr.alias_reference_key()
+            && root_alias == alias
+        {
+            result.insert(name.to_string());
+        }
+        if let Some(ref subquery) = expr.subquery {
+            Self::collect_alias_references_from_query(subquery, alias, result);
+        }
+        for child in expr.left.iter().chain(expr.right.iter()) {
+            Self::collect_alias_references(child, alias, parent_subquery, result);
+        }
+        for arg in expr.args.iter().flatten() {
+            Self::collect_alias_references(arg, alias, parent_subquery, result);
+        }
+    }
+
+    fn collect_alias_references_from_query(query: &Query, alias: &str, result: &mut HashSet<String>) {
+        let clauses = query
+            .fields
+            .iter()
+            .chain(query.expr.iter())
+            .chain(query.ordering_fields.iter())
+            .chain(query.grouping_fields.iter())
+            .chain(query.having.iter());
+        for expr in clauses {
+            Self::collect_alias_references(expr, alias, true, result);
+        }
+        for root in &query.roots {
+            if let Some(ref inner) = root.subquery {
+                Self::collect_alias_references_from_query(inner, alias, result);
+            }
+        }
+    }
+
     pub fn merge_required_fields(into: &mut HashMap<Field, HashSet<String>>, from: HashMap<Field, HashSet<String>>) {
         for (field, keys) in from {
             into.entry(field).or_default().extend(keys);
@@ -819,6 +861,7 @@ impl Expr {
         }
         if let Some(ref val) = expr.val
             && expr.field.is_none() && expr.function.is_none() && expr.subquery.is_none()
+                && expr.root_alias.is_none()
                 && crate::util::parse_datetime(val).is_err() {
                     return Err(format!("Can't parse datetime: {}", val));
                 }
@@ -938,6 +981,7 @@ impl Expr {
             }
         } else if let Some(ref val) = expr.val
             && expr.field.is_none() && expr.function.is_none() && expr.subquery.is_none()
+                && expr.root_alias.is_none()
                 && Variant::from_string(val).to_float_opt().is_none() {
                     return Err(format!(
                         "Can't parse number or file size '{}' for field {}",

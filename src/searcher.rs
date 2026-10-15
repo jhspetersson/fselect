@@ -3720,6 +3720,23 @@ mod tests {
     }
 
     #[test]
+    fn file_reading_functions_produce_one_row_per_file() {
+        let tmp = std::env::temp_dir().join("fselect_test_file_function_rows");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        fs::write(tmp.join("a.txt"), "x\n").unwrap();
+        fs::write(tmp.join("b.txt"), "y\n").unwrap();
+        fs::write(tmp.join("c.txt"), "x\n").unwrap();
+
+        let rows = run_query_against_dir("select contains('x') from __DIR__ order by 1", &tmp);
+        let constant = run_query_against_dir("select upper('a') from __DIR__", &tmp);
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(rows, vec!["false", "true", "true"]);
+        assert_eq!(constant, vec!["A"]);
+    }
+
+    #[test]
     fn having_aggregate_not_in_select_list() {
         let tmp = std::env::temp_dir().join("fselect_test_having_agg_not_selected");
         let _ = fs::remove_dir_all(&tmp);

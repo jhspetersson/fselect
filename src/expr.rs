@@ -960,6 +960,13 @@ impl Expr {
         Self::contains_colorized_field(self)
     }
 
+    pub fn reads_entry(&self) -> bool {
+        self.function.as_ref().is_some_and(Function::reads_entry)
+            || self.left.as_ref().is_some_and(|left| left.reads_entry())
+            || self.right.as_ref().is_some_and(|right| right.reads_entry())
+            || self.args.as_ref().is_some_and(|args| args.iter().any(Expr::reads_entry))
+    }
+
     pub fn has_correlated_subquery(&self) -> bool {
         self.subquery.as_ref().is_some_and(|subquery| subquery.is_correlated())
             || self.left.as_ref().is_some_and(|left| left.has_correlated_subquery())

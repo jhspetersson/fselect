@@ -35,6 +35,7 @@ macro_rules! functions {
             $(
                 #[text = [$($text:literal),*]$(,)? $(data_type = $data_type:literal)?]
                 $(@is_aggregate = $is_aggregate:literal)?
+                $(@reads_entry = $reads_entry:literal)?
                 $(@args = $args:literal)?
                 $(@weight = $weight:literal)?
                 $(@group = $group:literal)?
@@ -117,6 +118,17 @@ macro_rules! functions {
                         $(#[$variant_attrs])*
                         $enum_name::$variant => {
                             stringify!($($is_aggregate)?) == "true"
+                        }
+                    )*
+                }
+            }
+
+            pub fn reads_entry(&self) -> bool {
+                match self {
+                    $(
+                        $(#[$variant_attrs])*
+                        $enum_name::$variant => {
+                            stringify!($($reads_entry)?) == "true"
                         }
                     )*
                 }
@@ -1521,12 +1533,14 @@ functions! {
         CurrentGroup,
 
         #[text = ["contains"], data_type = "boolean"]
+        @reads_entry = true
         @weight = 1024
         @group = "Other"
         @description = "Checks if a file contains a substring"
         Contains,
 
         #[text = ["has_xattr"], data_type = "boolean"]
+        @reads_entry = true
         @weight = 2
         @group = "Xattr"
         @description = "Check if the file has a specific extended attribute"
@@ -1534,6 +1548,7 @@ functions! {
         HasXattr,
 
         #[text = ["xattr"]]
+        @reads_entry = true
         @weight = 2
         @group = "Xattr"
         @description = "Get the value of an extended attribute"
@@ -1541,6 +1556,7 @@ functions! {
         Xattr,
 
         #[text = ["has_extattr"], data_type = "boolean"]
+        @reads_entry = true
         @weight = 2
         @group = "Xattr"
         @description = "Check if the file has a specific extended file attribute flag"
@@ -1548,6 +1564,7 @@ functions! {
         HasExtattr,
 
         #[text = ["has_acl_entry"], data_type = "boolean"]
+        @reads_entry = true
         @weight = 2
         @group = "Xattr"
         @description = "Check if a specific POSIX ACL entry exists"
@@ -1555,6 +1572,7 @@ functions! {
         HasAclEntry,
 
         #[text = ["acl_entry"]]
+        @reads_entry = true
         @weight = 2
         @group = "Xattr"
         @description = "Get permissions of a specific POSIX ACL entry"
@@ -1562,6 +1580,7 @@ functions! {
         AclEntry,
 
         #[text = ["has_default_acl_entry"], data_type = "boolean"]
+        @reads_entry = true
         @weight = 2
         @group = "Xattr"
         @description = "Check if a specific default POSIX ACL entry exists"
@@ -2240,6 +2259,26 @@ mod tests {
         assert!(result.unwrap().to_bool());
     }
     
+    #[test]
+    fn functions_reading_the_entry_are_marked_in_metadata() {
+        assert!(Function::Contains.reads_entry());
+        #[cfg(any(unix, windows))]
+        {
+            assert!(Function::HasXattr.reads_entry());
+            assert!(Function::Xattr.reads_entry());
+        }
+        #[cfg(any(target_os = "linux", windows))]
+        {
+            assert!(Function::HasExtattr.reads_entry());
+            assert!(Function::HasAclEntry.reads_entry());
+            assert!(Function::AclEntry.reads_entry());
+            assert!(Function::HasDefaultAclEntry.reads_entry());
+        }
+        for function in [Function::Upper, Function::Length, Function::Count, Function::Year, Function::Random] {
+            assert!(!function.reads_entry(), "{}", function);
+        }
+    }
+
     #[test]
     fn constant_functions_have_no_weight() {
         let constants = vec![

@@ -140,6 +140,7 @@ impl <'a> Parser<'a> {
             && grouping_fields.is_empty()
             && !fields.iter().any(|expr| expr.has_aggregate_function())
             && !fields.iter().any(|expr| expr.has_correlated_subquery())
+            && !fields.iter().any(Expr::reads_entry)
             && fields
                 .iter()
                 .all(|expr| expr.get_required_fields().is_empty())
@@ -2366,6 +2367,22 @@ mod tests {
             "select (select count(*) from /other) from /test",
             "select (select name from /other where size > 1) from /test as t1",
         ] {
+            let parsed = parse_query(query).unwrap();
+            assert_eq!(parsed.limit, 1, "{}: a constant SELECT still collapses", query);
+        }
+    }
+
+    #[test]
+    fn no_implicit_limit_for_functions_that_read_the_file() {
+        for query in [
+            "select contains('x') from /test",
+            "select upper(contains('x')) from /test",
+            "select 1, contains('x') from /test",
+        ] {
+            let parsed = parse_query(query).unwrap();
+            assert_eq!(parsed.limit, 0, "{}: the value differs per file", query);
+        }
+        for query in ["select upper('a') from /test", "select 1 + 2, length('abc') from /test"] {
             let parsed = parse_query(query).unwrap();
             assert_eq!(parsed.limit, 1, "{}: a constant SELECT still collapses", query);
         }

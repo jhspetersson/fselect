@@ -1109,7 +1109,7 @@ impl Expr {
 
         if let Some(ref val) = self.val {
             if mode == Rendering::CacheKey && self.is_literal() {
-                write!(out, "'{}'", val)?;
+                write!(out, "{:?}", val)?;
             } else {
                 out.write_str(val)?;
             }
@@ -1170,11 +1170,23 @@ mod tests {
     use super::*;
 
     #[test]
+    fn cache_key_escapes_quotes_inside_literals() {
+        let one_literal = Expr::function_left(Function::Concat, Some(Box::new(Expr::value(String::from("a', 'b")))));
+        let mut two_literals = Expr::function_left(Function::Concat, Some(Box::new(Expr::value(String::from("a")))));
+        two_literals.set_args(vec![Expr::value(String::from("b"))]);
+        assert_ne!(one_literal.cache_key(), two_literals.cache_key(), "cache keys must not");
+
+        let backslash = Expr::value(String::from("a\\', 'b"));
+        let plain = Expr::value(String::from("a\\\\', 'b"));
+        assert_ne!(backslash.cache_key(), plain.cache_key());
+    }
+
+    #[test]
     fn cache_key_separates_literals_fields_and_aliases() {
         let literal = Expr::value(String::from("Name"));
         let field = Expr::field(Field::Name);
         assert_eq!(literal.to_string(), field.to_string());
-        assert_eq!(literal.cache_key(), "'Name'");
+        assert_eq!(literal.cache_key(), "\"Name\"");
         assert_eq!(field.cache_key(), "Name");
 
         let mut aliased_field = Expr::field(Field::Size);
@@ -1188,10 +1200,10 @@ mod tests {
         assert_eq!(aliased_function.cache_key(), "Upper(Name)");
 
         let nested = Expr::function_left(Function::Length, Some(Box::new(Expr::value(String::from("n")))));
-        assert_eq!(nested.cache_key(), "Length('n')");
+        assert_eq!(nested.cache_key(), "Length(\"n\")");
 
         let computed = Expr::arithmetic_op(Expr::field(Field::Size), ArithmeticOp::Multiply, Expr::value(String::from("2")));
-        assert_eq!(computed.cache_key(), "Size * '2'");
+        assert_eq!(computed.cache_key(), "Size * \"2\"");
 
         let external = Expr::field_with_root_alias(Field::Name, Some(String::from("t1")));
         assert_eq!(external.cache_key(), external.to_string());

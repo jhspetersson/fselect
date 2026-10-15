@@ -3958,6 +3958,22 @@ mod tests {
     }
 
     #[test]
+    fn literals_containing_quotes_do_not_share_a_cache_slot() {
+        let tmp = std::env::temp_dir().join("fselect_test_quoted_literal_keys");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        fs::write(tmp.join("a.txt"), "").unwrap();
+
+        let rows = run_query_against_dir(
+            "select concat(\"a', 'b\"), concat('a', 'b'), concat(\"a', 'b\") from __DIR__ limit 1",
+            &tmp,
+        );
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(rows, vec!["a', 'b\tab\ta', 'b"]);
+    }
+
+    #[test]
     fn having_on_grouping_column() {
         let tmp = std::env::temp_dir().join("fselect_test_having_grouping_column");
         let _ = fs::remove_dir_all(&tmp);

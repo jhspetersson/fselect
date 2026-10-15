@@ -4469,6 +4469,38 @@ f
     }
 
     #[test]
+    fn alias_references_respect_case_and_do_not_shadow_file_names() {
+        let tmp = std::env::temp_dir().join("fselect_test_alias_scope_rules");
+        let _ = fs::remove_dir_all(&tmp);
+        let data = tmp.join("data");
+        let other = tmp.join("other");
+        fs::create_dir_all(&data).unwrap();
+        fs::create_dir_all(&other).unwrap();
+        fs::write(data.join("a.txt"), "x").unwrap();
+        fs::write(data.join("t.txt"), "xx").unwrap();
+        fs::write(data.join("c.txt"), "x".repeat(10)).unwrap();
+        fs::write(other.join("o.txt"), "xx").unwrap();
+        let other_root = other.to_string_lossy().to_string();
+
+        let upper_prefix = run_query_against_dir(
+            &format!("select name from __DIR__ as t where exists (select name from {other_root} where size = T.size) order by name"),
+            &data,
+        );
+        let upper_column = run_query_against_dir(
+            &format!("select name, size as sz from __DIR__ as t where exists (select name from {other_root} where size = T.sz) order by name"),
+            &data,
+        );
+        let file_name = run_query_against_dir("select name from __DIR__ as t where name = t.txt", &data);
+        let ordered = run_query_against_dir("select name, size as sz from __DIR__ as t order by t.sz desc", &data);
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(upper_prefix, vec!["t.txt"]);
+        assert_eq!(upper_column, vec!["t.txt\t2"]);
+        assert_eq!(file_name, vec!["t.txt"]);
+        assert_eq!(ordered, vec!["c.txt\t10", "t.txt\t2", "a.txt\t1"]);
+    }
+
+    #[test]
     fn having_on_grouping_column() {
         let tmp = std::env::temp_dir().join("fselect_test_having_grouping_column");
         let _ = fs::remove_dir_all(&tmp);

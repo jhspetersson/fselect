@@ -21,6 +21,13 @@ use crate::query::{OutputFormat, RootOptions};
 #[cfg(not(feature = "git"))]
 use crate::util::error::error_message;
 
+#[derive(Clone)]
+struct AliasScope {
+    alias: String,
+    columns: Vec<(String, Expr)>,
+    own: bool,
+}
+
 pub struct Parser<'a> {
     lexer: &'a mut Lexer,
     lexemes: Vec<Lexeme>,
@@ -176,38 +183,70 @@ impl <'a> Parser<'a> {
         Ok(query)
     }
 
-    fn finalize_alias_references(query: &mut Query, enclosing: &[String]) {
-        let mut scope = enclosing.to_vec();
-        scope.extend(query.own_root_aliases());
+    fn finalize_alias_references(query: &mut Query, enclosing: &[AliasScope]) {
+        let mut scope: Vec<AliasScope> = enclosing.iter().map(|entry| AliasScope { own: false, ..entry.clone() }).collect();
+        let own_start = scope.len();
+        for alias in query.own_root_aliases() {
+            scope.push(AliasScope { alias, columns: Self::aliased_columns(&query.fields), own: true });
+        }
+
+        for expr in query.fields.iter_mut().chain(query.expr.iter_mut()) {
+            Self::finalize_expr_references(expr, &scope, false);
+        }
         for root in query.roots.iter_mut() {
             if let Some(ref mut inner) = root.subquery {
                 Self::finalize_alias_references(inner, &scope);
             }
         }
+        let columns = Self::aliased_columns(&query.fields);
+        for entry in &mut scope[own_start..] {
+            entry.columns = columns.clone();
+        }
         let clauses = query
-            .fields
+            .grouping_fields
             .iter_mut()
-            .chain(query.expr.iter_mut())
-            .chain(query.grouping_fields.iter_mut())
             .chain(query.having.iter_mut())
             .chain(query.ordering_fields.iter_mut());
         for expr in clauses {
-            Self::finalize_expr_references(expr, &scope);
+            Self::finalize_expr_references(expr, &scope, true);
         }
     }
 
-    fn finalize_expr_references(expr: &mut Expr, scope: &[String]) {
-        let out_of_scope = expr
-            .alias_reference_key()
-            .is_some_and(|(root_alias, _)| !scope.iter().any(|alias| alias.eq_ignore_ascii_case(root_alias)));
-        if out_of_scope {
-            expr.root_alias = None;
+    fn aliased_columns(fields: &[Expr]) -> Vec<(String, Expr)> {
+        fields
+            .iter()
+            .filter_map(|field| field.alias.clone().map(|alias| (alias, field.clone())))
+            .collect()
+    }
+
+    fn finalize_expr_references(expr: &mut Expr, scope: &[AliasScope], substitute: bool) {
+        if let Some((root_alias, name)) = expr.alias_reference_key() {
+            let (root_alias, name) = (root_alias.to_string(), name.to_string());
+            let entry = scope.iter().find(|entry| entry.alias.eq_ignore_ascii_case(&root_alias));
+            let column = entry.and_then(|entry| {
+                entry.columns.iter().find(|(alias, _)| alias.eq_ignore_ascii_case(&name)).map(|(_, column)| (entry, column))
+            });
+            match column {
+                Some((entry, column)) if entry.own && substitute => {
+                    let minus = expr.minus;
+                    *expr = column.clone();
+                    if minus {
+                        expr.minus = !expr.minus;
+                    }
+                    return;
+                }
+                Some((entry, _)) => {
+                    expr.val = Some(format!("{}.{}", entry.alias, name));
+                    expr.root_alias = Some(entry.alias.clone());
+                }
+                None => expr.root_alias = None,
+            }
         }
         for child in expr.left.iter_mut().chain(expr.right.iter_mut()) {
-            Self::finalize_expr_references(child, scope);
+            Self::finalize_expr_references(child, scope, substitute);
         }
         for arg in expr.args.iter_mut().flatten() {
-            Self::finalize_expr_references(arg, scope);
+            Self::finalize_expr_references(arg, scope, substitute);
         }
         if let Some(ref mut subquery) = expr.subquery {
             Self::finalize_alias_references(subquery, scope);
@@ -2309,7 +2348,7 @@ mod tests {
 
     #[test]
     fn bare_dotted_names_are_alias_references_only_inside_their_scope() {
-        let query = parse_query("select (select t.sz from /o), 't.sz', readme.md, t.sz, 1.5 from /d as t").unwrap();
+        let query = parse_query("select (select t.sz from /o), 't.sz', readme.md, t.sz, 1.5, size as sz from /d as t").unwrap();
         let inner = &query.fields[0].subquery.as_ref().unwrap().fields[0];
         assert_eq!(inner.root_alias.as_deref(), Some("t"), "bare t.sz inside the subquery references the outer alias");
         assert!(inner.field.is_none());
@@ -2322,7 +2361,7 @@ mod tests {
         let left = unknown.expr.unwrap().left.unwrap();
         assert!(left.root_alias.is_none() && left.val.as_deref() == Some("x.sz"), "x is not an alias anywhere, so x.sz is text");
 
-        let nested = parse_query("select name from /d as t where exists (select name from /o as u where u.sz = t.sz)").unwrap();
+        let nested = parse_query("select name, size as sz from /d as t where exists (select name, size as sz from /o as u where u.sz = t.sz)").unwrap();
         let inner_where = nested.expr.unwrap().right.unwrap().subquery.unwrap().expr.unwrap();
         assert_eq!(inner_where.left.unwrap().root_alias.as_deref(), Some("u"));
         assert_eq!(inner_where.right.unwrap().root_alias.as_deref(), Some("t"), "the enclosing alias is in scope");
@@ -2372,6 +2411,26 @@ mod tests {
         for query in ["select name from /d where size > abc", "select name from /d where modified = 'not a date'"] {
             assert!(parse_query(query).is_err(), "{} must still be rejected", query);
         }
+    }
+
+    #[test]
+    fn alias_references_are_normalised_and_checked_against_the_owning_select_list() {
+        let upper = parse_query("select name, size as sz from /d as t where exists (select name from /o where size = T.sz)").unwrap();
+        let inner = upper.expr.unwrap().right.unwrap().subquery.unwrap().expr.unwrap();
+        let reference = inner.right.unwrap();
+        assert_eq!(reference.root_alias.as_deref(), Some("t"), "the prefix takes the declared alias's spelling");
+        assert_eq!(reference.val.as_deref(), Some("t.sz"));
+
+        let file_name = parse_query("select name from /d as t where name = t.txt").unwrap();
+        let literal = file_name.expr.unwrap().right.unwrap();
+        assert!(literal.root_alias.is_none() && literal.val.as_deref() == Some("t.txt"), "txt is no column of t, so t.txt is text");
+
+        let unknown = parse_query("select name, size as sz from /d as t where exists (select name from /o where t.nothing = 1)").unwrap();
+        let inner = unknown.expr.unwrap().right.unwrap().subquery.unwrap().expr.unwrap();
+        assert!(inner.left.unwrap().root_alias.is_none(), "an unknown column name reverts to text");
+
+        let ordered = parse_query("select name, size as sz from /d as t order by t.sz desc").unwrap();
+        assert_eq!(ordered.ordering_fields[0].field, Some(Field::Size), "an own-query reference in ORDER BY is the aliased expression");
     }
 
     #[test]

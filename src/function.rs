@@ -367,6 +367,14 @@ impl Function {
     }
 }
 
+fn snap_to_exact_power(val: f64, base: f64, approx: f64) -> f64 {
+    let rounded = approx.round();
+    let exact = (approx - rounded).abs() < 1e-9
+        && rounded.abs() <= i32::MAX as f64
+        && base.powi(rounded as i32) == val;
+    if exact { rounded } else { approx }
+}
+
 fn unary_float(arg: &str, f: impl FnOnce(f64) -> Result<Variant, String>) -> Result<Variant, String> {
     match arg.parse::<f64>() {
         Ok(val) => f(val),
@@ -540,7 +548,14 @@ pub fn get_value(
                 return Ok(Variant::empty(VariantType::String));
             }
 
-            Ok(Variant::from_float(val.log(base)))
+            let result = if base == 10.0 {
+                val.log10()
+            } else if base == 2.0 {
+                val.log2()
+            } else {
+                snap_to_exact_power(val, base, val.ln() / base.ln())
+            };
+            Ok(Variant::from_float(result))
         }),
         Function::Ln => unary_float(&function_arg, |val| {
             if val <= 0.0 {
@@ -2115,6 +2130,22 @@ mod tests {
         assert_eq!(result.unwrap().to_int(), 2);
     }
     
+    #[test]
+    fn function_log_is_exact_for_powers_of_its_base() {
+        let log = |arg: &str, args: &[&str]| {
+            let args = args.iter().map(|a| a.to_string()).collect();
+            get_value(&Function::Log, arg.to_string(), args, None, &None).unwrap().to_float()
+        };
+        assert_eq!(log("1000", &[]), 3.0);
+        assert_eq!(log("1000", &["10"]), 3.0);
+        assert_eq!(log("1e15", &[]), 15.0);
+        assert_eq!(log("0.001", &[]), -3.0);
+        assert_eq!(log("1024", &["2"]), 10.0);
+        assert_eq!(log("0.125", &["2"]), -3.0);
+        assert_eq!(log("27", &["3"]), 3.0);
+        assert!((log("20", &["4"]) - 20f64.ln() / 4f64.ln()).abs() < 1e-15);
+    }
+
     #[test]
     fn function_ln() {
         let function = Function::Ln;

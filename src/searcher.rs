@@ -22,6 +22,7 @@ use crate::field::Field;
 use crate::field::context::{FieldContext, FileMetadataState};
 use crate::field::dispatch;
 use crate::fileinfo::{archived_entry_levels, open_archive, to_file_info, ArchiveMember, FileInfo};
+use std::ffi::OsString;
 use crate::function;
 use crate::ignore::docker::{
     matches_dockerignore_filter, search_upstream_dockerignore, DockerignoreFilter,
@@ -870,11 +871,15 @@ impl<'a> Searcher<'a> {
                 break;
             }
             let path = PathBuf::from(&path_str);
-            let parent = match path.parent() {
+            let (entry_path, file_info) = match self.archived_member_of(&path) {
+                Some((archive, file_info)) => (archive, Some(file_info)),
+                None => (path.clone(), None),
+            };
+            let parent = match entry_path.parent() {
                 Some(p) if !p.as_os_str().is_empty() => p.to_path_buf(),
                 _ => PathBuf::from("."),
             };
-            let file_name = match path.file_name() {
+            let file_name: OsString = match entry_path.file_name() {
                 Some(n) => n.to_os_string(),
                 None => continue,
             };
@@ -882,7 +887,7 @@ impl<'a> Searcher<'a> {
 
             match lookup.entry(&parent, &file_name) {
                 Ok(Some(entry)) => {
-                    if let Err(err) = self.check_file(entry, &parent, &None, None) {
+                    if let Err(err) = self.check_file(entry, &parent, &file_info, None) {
                         if err.is_fatal() {
                             return Err(err);
                         }
@@ -897,6 +902,34 @@ impl<'a> Searcher<'a> {
             }
         }
         Ok(())
+    }
+
+    fn archived_member_of(&self, path: &Path) -> Option<(PathBuf, FileInfo)> {
+        if path.exists() {
+            return None;
+        }
+        let archive_path = path
+            .ancestors()
+            .skip(1)
+            .find(|ancestor| ancestor.is_file() && self.is_zip_archive(&ancestor.to_string_lossy()))?;
+        let member_name = path
+            .strip_prefix(archive_path)
+            .ok()?
+            .components()
+            .map(|component| component.as_os_str().to_string_lossy().into_owned())
+            .collect::<Vec<String>>()
+            .join("/");
+        let archive = open_archive(archive_path)?;
+        let index = archive
+            .index_for_name(&member_name)
+            .or_else(|| archive.index_for_name(&format!("{}/", member_name)))?;
+        let shared = Rc::new(RefCell::new(archive));
+        let file_info = {
+            let mut guard = shared.borrow_mut();
+            let member = guard.by_index(index).ok()?;
+            to_file_info(&member, Some(ArchiveMember { archive: Rc::clone(&shared), index }))
+        };
+        Some((archive_path.to_path_buf(), file_info))
     }
 
     fn get_list_from_subquery(&mut self, query: Query) -> Result<Vec<String>, SearchError> {
@@ -4419,6 +4452,41 @@ line3
 ").unwrap();
         zip.finish().unwrap();
         tmp
+    }
+
+    #[test]
+    fn from_subselects_keep_archive_members() {
+        use std::io::Write;
+        use std::path::MAIN_SEPARATOR_STR as SEP;
+
+        let tmp = std::env::temp_dir().join("fselect_test_subselect_archive_members");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        fs::write(tmp.join("plain.txt"), "plain\n").unwrap();
+        let mut zip = zip::ZipWriter::new(fs::File::create(tmp.join("pack.zip")).unwrap());
+        let options = zip::write::SimpleFileOptions::default();
+        zip.start_file("one.txt", options).unwrap();
+        zip.write_all(b"hello\n").unwrap();
+        zip.start_file("sub/two.txt", options).unwrap();
+        zip.write_all(b"world\nagain\n").unwrap();
+        zip.finish().unwrap();
+
+        let searcher = search_dir(
+            "select name, size, line_count from (select path from __DIR__ archives where ext = txt) order by name",
+            &tmp,
+            Config::default(),
+            true,
+        );
+        let rows: Vec<String> = searcher.output_buffer.iter_values().map(|row| row.trim_end().to_string()).collect();
+        let paths = run_query_against_dir(
+            "select path from (select path from __DIR__ archives where name like '%two%')",
+            &tmp,
+        );
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(rows, vec!["one.txt\t6\t1", "plain.txt\t6\t1", "two.txt\t12\t2"]);
+        assert_eq!(searcher.error_count, 0);
+        assert_eq!(paths, vec![format!("pack.zip{SEP}sub{SEP}two.txt")]);
     }
 
     #[test]

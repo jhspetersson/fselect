@@ -1464,19 +1464,29 @@ impl<'a> Searcher<'a> {
 
         let mut context_field: Option<String> = None;
 
-        // Cheap guard: the alias regex requires a dot, and most column
-        // expressions have none, so skip the regex in the per-file hot path.
-        if cache_key.contains('.')
-            && let Some(captures) = FIELD_WITH_ALIAS.captures(&column_expr.to_string()) {
-            let column_expr_context_name = captures.get(1).unwrap().as_str();
-            if self.current_alias.as_deref() == Some(column_expr_context_name) {
-                context_field = Some(captures.get(2).unwrap().as_str().to_string());
+        let reference = match (&column_expr.root_alias, column_expr.field) {
+            (Some(root_alias), Some(field)) => {
+                Some((root_alias.clone(), column_expr.alias.clone().unwrap_or_else(|| field.to_string())))
+            }
+            // Cheap guard: the alias regex requires a dot, and most column
+            // expressions have none, so skip the regex in the per-file hot path.
+            _ if cache_key.contains('.') => FIELD_WITH_ALIAS
+                .captures(&column_expr.to_string())
+                .map(|captures| (captures[1].to_string(), captures[2].to_string())),
+            _ => None,
+        };
+        if let Some((context_name, field_key)) = reference {
+            if self.current_alias.as_deref() == Some(context_name.as_str()) {
+                if !column_expr.minus {
+                    context_field = Some(field_key);
+                }
             } else {
                 let context = self.record_context.borrow();
-                if let Some(ctx) = context.get(column_expr_context_name) {
-                    if let Some(val) = ctx.get(captures.get(2).unwrap().as_str()) {
-                        file_map.insert(cache_key, val.to_string());
-                        return Ok(val.clone());
+                if let Some(ctx) = context.get(&context_name) {
+                    if let Some(val) = ctx.get(&field_key) {
+                        let value = apply_minus(column_expr, val.clone());
+                        file_map.insert(cache_key, value.to_string());
+                        return Ok(value);
                     } else {
                         //TODO: this should be propagated up to the higher context
                         return Ok(Variant::empty(VariantType::String));
@@ -1487,10 +1497,8 @@ impl<'a> Searcher<'a> {
                 // alias) is a query error; any other dotted string is a plain
                 // value (e.g. the literal `readme.md`) and falls through to
                 // normal evaluation.
-                if column_expr.root_alias.is_some()
-                    || self.is_declared_root_alias(column_expr_context_name)
-                {
-                    return Err(SearchError::fatal(format!("Invalid root alias: {}", column_expr_context_name)).with_source("query"));
+                if column_expr.root_alias.is_some() || self.is_declared_root_alias(&context_name) {
+                    return Err(SearchError::fatal(format!("Invalid root alias: {}", context_name)).with_source("query"));
                 }
             }
         }
@@ -3779,6 +3787,44 @@ mod tests {
         assert_eq!(scalar, vec!["a.txt\t3", "b.txt\t7"]);
         assert_eq!(aggregate, vec!["a.txt\t3", "b.txt\t7"]);
         assert_eq!(exists, vec!["a.txt", "b.txt"]);
+    }
+
+    #[test]
+    fn negated_outer_alias_references_resolve_against_the_outer_row() {
+        let tmp = std::env::temp_dir().join("fselect_test_negated_alias");
+        let _ = fs::remove_dir_all(&tmp);
+        let data = tmp.join("data");
+        let other = tmp.join("other");
+        fs::create_dir_all(&data).unwrap();
+        fs::create_dir_all(&other).unwrap();
+        fs::write(data.join("a.txt"), "x").unwrap();
+        fs::write(data.join("b.txt"), "xx").unwrap();
+        fs::write(data.join("c.txt"), "x".repeat(10)).unwrap();
+        fs::write(other.join("o.txt"), "x".repeat(50)).unwrap();
+        let other_root = other.to_string_lossy().to_string();
+
+        let negated = run_query_against_dir(
+            &format!("select name, (select -t1.size from {other_root}) from __DIR__ as t1 order by name"),
+            &data,
+        );
+        let wrapped = run_query_against_dir(
+            &format!("select name, (select abs(-t1.size) from {other_root}) from __DIR__ as t1 order by name"),
+            &data,
+        );
+        let filtered = run_query_against_dir(
+            &format!("select name from __DIR__ as t1 where exists (select name from {other_root} where -t1.size < -5) order by name"),
+            &data,
+        );
+        let context_stays_raw = run_query_against_dir(
+            &format!("select -t1.size, (select t1.size from {other_root}) from __DIR__ as t1 where -t1.size < 0 order by name"),
+            &data,
+        );
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(negated, vec!["a.txt\t-1", "b.txt\t-2", "c.txt\t-10"]);
+        assert_eq!(wrapped, vec!["a.txt\t1", "b.txt\t2", "c.txt\t10"]);
+        assert_eq!(filtered, vec!["c.txt"]);
+        assert_eq!(context_stays_raw, vec!["-1\t1", "-2\t2", "-10\t10"]);
     }
 
     #[test]

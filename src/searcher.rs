@@ -3974,6 +3974,25 @@ mod tests {
     }
 
     #[test]
+    fn arithmetic_over_a_text_field_sorts_numerically() {
+        let tmp = std::env::temp_dir().join("fselect_test_arithmetic_sort_key");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        for name in ["2", "10", "100"] {
+            fs::write(tmp.join(name), "").unwrap();
+        }
+
+        let text = run_query_against_dir("select name from __DIR__ order by name", &tmp);
+        let arithmetic = run_query_against_dir("select name from __DIR__ order by name + 0", &tmp);
+        let descending = run_query_against_dir("select name from __DIR__ order by name * 1 desc", &tmp);
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(text, vec!["10", "100", "2"]);
+        assert_eq!(arithmetic, vec!["2", "10", "100"]);
+        assert_eq!(descending, vec!["100", "10", "2"]);
+    }
+
+    #[test]
     fn having_on_grouping_column() {
         let tmp = std::env::temp_dir().join("fselect_test_having_grouping_column");
         let _ = fs::remove_dir_all(&tmp);

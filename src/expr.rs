@@ -672,6 +672,10 @@ impl Expr {
     }
 
     fn contains_numeric_field(expr: &Expr) -> bool {
+        if expr.arithmetic_op.is_some() {
+            return true;
+        }
+
         let field = match expr.field {
             Some(ref field) => field.is_numeric_field(),
             None => false,
@@ -1553,6 +1557,13 @@ mod tests {
         assert_eq!(map, HashMap::from([(Field::Name, String::from("Name")), (Field::Size, String::from("Size"))]));
         let map = expr.right.unwrap().subquery.unwrap().expr.unwrap().get_fields_required_in_subqueries("t2", false);
         assert!(map.is_empty(), "Expected no required fields for t2 in correlated subquery");
+    }
+
+    #[test]
+    fn arithmetic_over_a_text_field_counts_as_numeric() {
+        let expr = Expr::arithmetic_op(Expr::field(Field::Name), ArithmeticOp::Add, Expr::value(String::from("0")));
+        assert!(expr.contains_numeric());
+        assert!(!Expr::field(Field::Name).contains_numeric());
     }
 
     #[test]

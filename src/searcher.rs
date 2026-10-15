@@ -651,6 +651,7 @@ impl<'a> Searcher<'a> {
 
             if let Some(ref inner) = root.subquery {
                 let paths = self.collect_subquery_root_paths(inner.as_ref().clone())?;
+                let inner_roots = Self::effective_root_dirs(inner);
                 self.dir_queue.clear();
                 self.ancestor_dirs = None;
                 self.hgignore_filters.clear();
@@ -672,7 +673,7 @@ impl<'a> Searcher<'a> {
                     .unwrap_or(self.config.dockerignore.unwrap_or(false));
                 self.current_traversal_mode = root.options.traversal;
 
-                let result = self.visit_subquery_paths(paths);
+                let result = self.visit_subquery_paths(paths, &inner_roots);
                 if let Err(err) = result
                     && err.is_fatal() {
                         return Err(err);
@@ -944,7 +945,50 @@ impl<'a> Searcher<'a> {
     /// traversal. The std library cannot build a `DirEntry` from a path, so the
     /// parent directory is read once and its entries looked up by name for as
     /// long as consecutive paths keep coming from the same directory.
-    fn visit_subquery_paths(&mut self, paths: Vec<String>) -> Result<(), SearchError> {
+    fn effective_root_dirs(query: &Query) -> Vec<(PathBuf, usize)> {
+        let mut dirs = vec![];
+        for root in &query.roots {
+            if let Some(ref inner) = root.subquery {
+                dirs.extend(Self::effective_root_dirs(inner));
+                continue;
+            }
+            let (literal, matched_components) = match root.options.regexp {
+                true => {
+                    let parts: Vec<&str> = root.path.split('/').filter(|part| !part.is_empty()).collect();
+                    let literal_parts = parts.iter().take_while(|part| !looks_like_regexp(part)).count();
+                    let literal = match root.path.starts_with('/') {
+                        true => format!("/{}", parts[..literal_parts].join("/")),
+                        false => parts[..literal_parts].join("/"),
+                    };
+                    (literal, parts.len() - literal_parts)
+                }
+                false => (root.path.clone(), 0),
+            };
+            let literal = if literal.is_empty() { String::from(".") } else { literal };
+            if let Ok(canonical) = canonical_path(&PathBuf::from(literal)) {
+                dirs.push((PathBuf::from(canonical), matched_components));
+            }
+        }
+        dirs
+    }
+
+    fn root_dir_of(entry_path: &Path, inner_roots: &[(PathBuf, usize)]) -> Option<PathBuf> {
+        inner_roots
+            .iter()
+            .filter_map(|(literal, matched_components)| {
+                let rest = entry_path.strip_prefix(literal).ok()?;
+                let mut components = rest.components();
+                let mut root_dir = literal.clone();
+                for _ in 0..*matched_components {
+                    root_dir.push(components.next()?);
+                }
+                components.next()?;
+                Some(root_dir)
+            })
+            .max_by_key(|root_dir| root_dir.components().count())
+    }
+
+    fn visit_subquery_paths(&mut self, paths: Vec<String>, inner_roots: &[(PathBuf, usize)]) -> Result<(), SearchError> {
         let mut lookup = DirEntryLookup::new();
         let mut archives = ArchiveLookup::default();
         for path_str in paths {
@@ -967,11 +1011,12 @@ impl<'a> Searcher<'a> {
                 Some(n) => n.to_os_string(),
                 None => continue,
             };
-            self.current_root_dir = parent.clone();
+            let root_dir = Self::root_dir_of(&entry_path, inner_roots).unwrap_or_else(|| parent.clone());
+            self.current_root_dir = root_dir.clone();
 
             match lookup.entry(&parent, &file_name) {
                 Ok(Some(entry)) => {
-                    if let Err(err) = self.check_file(entry, &parent, &file_info, None) {
+                    if let Err(err) = self.check_file(entry, &root_dir, &file_info, None) {
                         if err.is_fatal() {
                             return Err(err);
                         }
@@ -3556,6 +3601,33 @@ mod tests {
             assert_eq!(searcher.dirs_opened, 2, "{}: only the root and keep/ should be read, not other/ or keep/sub/", mode);
         }
         assert_eq!(direct, vec!["file.txt"]);
+    }
+
+    #[test]
+    fn from_subselects_keep_paths_relative_to_the_inner_root() {
+        let tmp = std::env::temp_dir().join("fselect_test_subselect_relative_paths");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(tmp.join("a")).unwrap();
+        fs::create_dir_all(tmp.join("b").join("c")).unwrap();
+        fs::write(tmp.join("top.txt"), "x").unwrap();
+        fs::write(tmp.join("a").join("same.txt"), "x").unwrap();
+        fs::write(tmp.join("b").join("same.txt"), "x").unwrap();
+        fs::write(tmp.join("b").join("c").join("deep.txt"), "x").unwrap();
+
+        let direct = run_query_against_dir("select path, depth, directory from __DIR__ order by path", &tmp);
+        let through = run_query_against_dir("select path, depth, directory from (select path from __DIR__) order by path", &tmp);
+        let filtered_outside = run_query_against_dir("select count(*) from (select path from __DIR__) where depth > 1", &tmp);
+        let two_roots = run_query_against_dir("select path from (select path from __DIR__/a, __DIR__/b) order by path", &tmp);
+        let direct_rx = run_query_against_dir("select path, depth from __DIR__/[ab] rx order by path", &tmp);
+        let through_rx = run_query_against_dir("select path, depth from (select path from __DIR__/[ab] rx) order by path", &tmp);
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(direct.len(), 7);
+        assert_eq!(through, direct);
+        assert_eq!(filtered_outside, vec!["4"]);
+        assert_eq!(two_roots, vec!["c".to_string(), rel(&["c", "deep.txt"]), "same.txt".to_string(), "same.txt".to_string()]);
+        assert_eq!(direct_rx.len(), 4);
+        assert_eq!(through_rx, direct_rx, "a regexp root expands to the matched directories, and paths are relative to those");
     }
 
     #[test]

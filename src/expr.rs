@@ -617,39 +617,38 @@ impl Expr {
         result
     }
     
-    pub fn get_fields_required_in_subqueries(&self, alias: &str, parent_subquery: bool) -> HashMap<Field, String> {
+    pub fn get_fields_required_in_subqueries(&self, alias: &str, parent_subquery: bool) -> HashMap<Field, HashSet<String>> {
         let mut result = HashMap::new();
 
         if let Some(ref subquery) = self.subquery {
             Self::collect_fields_required_from_query(subquery, alias, &mut result);
         }
 
-        if let Some(ref left) = self.left {
-            result.extend(left.get_fields_required_in_subqueries(alias, parent_subquery));
+        for child in self.left.iter().chain(self.right.iter()) {
+            Self::merge_required_fields(&mut result, child.get_fields_required_in_subqueries(alias, parent_subquery));
         }
-        
-        if let Some(ref right) = self.right {
-            result.extend(right.get_fields_required_in_subqueries(alias, parent_subquery));
-        }
-
-        if let Some(ref args) = self.args {
-            for arg in args {
-                result.extend(arg.get_fields_required_in_subqueries(alias, parent_subquery));
-            }
+        for arg in self.args.iter().flatten() {
+            Self::merge_required_fields(&mut result, arg.get_fields_required_in_subqueries(alias, parent_subquery));
         }
 
         if let Some(ref expr_alias) = self.root_alias
             && expr_alias == alias
                 && let Some(field) = self.field
                     && parent_subquery {
-                        let alias = if let Some(ref alias) = self.alias { alias } else { &field.to_string() };
-                        result.insert(field, alias.clone());
+                        let key = self.alias.clone().unwrap_or_else(|| field.to_string());
+                        result.entry(field).or_default().insert(key);
                     }
-        
+
         result
     }
 
-    fn collect_fields_required_from_query(query: &Query, alias: &str, result: &mut HashMap<Field, String>) {
+    pub fn merge_required_fields(into: &mut HashMap<Field, HashSet<String>>, from: HashMap<Field, HashSet<String>>) {
+        for (field, keys) in from {
+            into.entry(field).or_default().extend(keys);
+        }
+    }
+
+    fn collect_fields_required_from_query(query: &Query, alias: &str, result: &mut HashMap<Field, HashSet<String>>) {
         let clauses = query
             .fields
             .iter()
@@ -658,7 +657,7 @@ impl Expr {
             .chain(query.grouping_fields.iter())
             .chain(query.having.iter());
         for expr in clauses {
-            result.extend(expr.get_fields_required_in_subqueries(alias, true));
+            Self::merge_required_fields(result, expr.get_fields_required_in_subqueries(alias, true));
         }
         for root in &query.roots {
             if let Some(ref inner) = root.subquery {
@@ -1550,7 +1549,7 @@ mod tests {
             "select t1.name from /t1 as t1 where exists(select t2.name from /t2 as t2 where t2.name = t1.name and t2.size > t1.size)"
         );
         let map = expr.get_fields_required_in_subqueries("t1", false);
-        assert_eq!(map, HashMap::from([(Field::Name, String::from("Name")), (Field::Size, String::from("Size"))]));
+        assert_eq!(map, HashMap::from([(Field::Name, HashSet::from([String::from("Name")])), (Field::Size, HashSet::from([String::from("Size")]))]));
         let set = expr.right.unwrap().subquery.unwrap().expr.unwrap().get_fields_required_in_subqueries("t2", false);
         assert!(set.is_empty(), "Expected no required fields for t2 in correlated subquery");
     }
@@ -1561,7 +1560,7 @@ mod tests {
             "select t1.name from /t1 as t1 where not exists(select t2.name from /t2 as t2 where t2.name = t1.name and t2.size > t1.size)"
         );
         let map = expr.get_fields_required_in_subqueries("t1", false);
-        assert_eq!(map, HashMap::from([(Field::Name, String::from("Name")), (Field::Size, String::from("Size"))]));
+        assert_eq!(map, HashMap::from([(Field::Name, HashSet::from([String::from("Name")])), (Field::Size, HashSet::from([String::from("Size")]))]));
         let map = expr.right.unwrap().subquery.unwrap().expr.unwrap().get_fields_required_in_subqueries("t2", false);
         assert!(map.is_empty(), "Expected no required fields for t2 in correlated subquery");
     }
@@ -1903,7 +1902,7 @@ mod tests {
             "select t1.name from /t1 as t1 where exists(select t2.name from /t2 as t2 where t2.name in (select t3.name from /t3 as t3 where t3.modified = t1.modified) and t2.size > t1.size)"
         );
         let map = expr.get_fields_required_in_subqueries("t1", false);
-        assert_eq!(map, HashMap::from([(Field::Modified, String::from("Modified")), (Field::Size, String::from("Size"))]));
+        assert_eq!(map, HashMap::from([(Field::Modified, HashSet::from([String::from("Modified")])), (Field::Size, HashSet::from([String::from("Size")]))]));
         let map = expr.clone().right.unwrap().subquery.unwrap().expr.unwrap().get_fields_required_in_subqueries("t2", false);
         assert!(map.is_empty(), "Expected no required fields for t2 in correlated subquery");
         let map = expr.clone().right.unwrap().subquery.unwrap().expr.unwrap().right.unwrap().right.unwrap().subquery.unwrap().expr.unwrap().get_fields_required_in_subqueries("t3", false);
@@ -1924,7 +1923,7 @@ mod tests {
         let map = expr.get_fields_required_in_subqueries("t1", false);
         assert_eq!(
             map,
-            HashMap::from([(Field::Size, String::from("Size"))]),
+            HashMap::from([(Field::Size, HashSet::from([String::from("Size")]))]),
             "ORDER BY correlation on t1.size must be collected, got: {:?}", map
         );
     }
@@ -1938,7 +1937,7 @@ mod tests {
         let map = expr.get_fields_required_in_subqueries("t1", false);
         assert_eq!(
             map,
-            HashMap::from([(Field::Size, String::from("Size"))]),
+            HashMap::from([(Field::Size, HashSet::from([String::from("Size")]))]),
             "GROUP BY correlation on t1.size must be collected, got: {:?}", map
         );
     }

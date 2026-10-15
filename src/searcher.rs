@@ -56,7 +56,7 @@ pub struct Searcher<'a> {
 
     record_context: Rc<RefCell<HashMap<String, HashMap<String, Variant>>>>,
     current_alias: Option<String>,
-    subquery_required_fields: Option<HashMap<Field, String>>,
+    subquery_required_fields: Option<HashMap<Field, HashSet<String>>>,
 
     hgignore_filters: Vec<HgignoreFilter>,
     dockerignore_filters: Vec<DockerignoreFilter>,
@@ -556,16 +556,16 @@ impl<'a> Searcher<'a> {
                     // would never reach record_context.
                     let mut fields = HashMap::new();
                     for column_expr in &self.query.fields {
-                        fields.extend(column_expr.get_fields_required_in_subqueries(alias, false));
+                        Expr::merge_required_fields(&mut fields, column_expr.get_fields_required_in_subqueries(alias, false));
                     }
                     if let Some(ref expr) = self.query.expr {
-                        fields.extend(expr.get_fields_required_in_subqueries(alias, false));
+                        Expr::merge_required_fields(&mut fields, expr.get_fields_required_in_subqueries(alias, false));
                     }
                     for ordering_expr in &self.query.ordering_fields {
-                        fields.extend(ordering_expr.get_fields_required_in_subqueries(alias, false));
+                        Expr::merge_required_fields(&mut fields, ordering_expr.get_fields_required_in_subqueries(alias, false));
                     }
                     for grouping_expr in &self.query.grouping_fields {
-                        fields.extend(grouping_expr.get_fields_required_in_subqueries(alias, false));
+                        Expr::merge_required_fields(&mut fields, grouping_expr.get_fields_required_in_subqueries(alias, false));
                     }
                     if fields.is_empty() { None } else { Some(fields) }
                 }
@@ -1697,9 +1697,11 @@ impl<'a> Searcher<'a> {
 
             if let Some(required_fields) = std::mem::take(&mut self.subquery_required_fields) {
                 let mut field_values = HashMap::new();
-                for (field, alias) in &required_fields {
+                for (field, keys) in &required_fields {
                     let field_value = self.get_field_value(entry, file_info, root_path, field).unwrap_or(Variant::empty(VariantType::String));
-                    field_values.insert(alias.clone(), field_value);
+                    for key in keys {
+                        field_values.insert(key.clone(), field_value.clone());
+                    }
                 }
                 self.subquery_required_fields = Some(required_fields);
 
@@ -3891,8 +3893,8 @@ mod tests {
         let query = Parser::new(&mut lexer).parse(false).expect("parse failed");
         let scalar = query.fields[1].get_fields_required_in_subqueries("t1", false);
         let nested_root = query.fields[2].get_fields_required_in_subqueries("t1", false);
-        assert_eq!(scalar.get(&Field::Size).map(String::as_str), Some("Size"));
-        assert_eq!(nested_root.get(&Field::Modified).map(String::as_str), Some("Modified"));
+        assert!(scalar.get(&Field::Size).is_some_and(|keys| keys.contains("Size")));
+        assert!(nested_root.get(&Field::Modified).is_some_and(|keys| keys.contains("Modified")));
 
         let tmp = std::env::temp_dir().join("fselect_test_correlated_select_list");
         let _ = fs::remove_dir_all(&tmp);
@@ -4102,6 +4104,33 @@ mod tests {
         assert_eq!(filtered_inner, vec!["a.txt	1	1", "b.txt	1	2", "c.txt	1	10"]);
         assert_eq!(bare_inner, vec!["a.txt	1	1", "b.txt	1	2", "c.txt	1	10"]);
         assert_eq!(shadowed_self_reference, vec!["a.txt	0	1", "b.txt	0	2", "c.txt	0	10"], "inside the inner query t.name is the inner row, so the count is 0");
+    }
+
+    #[test]
+    fn correlated_references_under_different_aliases_all_see_the_outer_row() {
+        let tmp = std::env::temp_dir().join("fselect_test_snapshot_alias_keys");
+        let _ = fs::remove_dir_all(&tmp);
+        let data = tmp.join("data");
+        let other = tmp.join("other");
+        fs::create_dir_all(&data).unwrap();
+        fs::create_dir_all(&other).unwrap();
+        fs::write(data.join("a.txt"), "x").unwrap();
+        fs::write(data.join("b.txt"), "xx").unwrap();
+        fs::write(other.join("o.txt"), "x".repeat(50)).unwrap();
+        let other_root = other.to_string_lossy().to_string();
+
+        let plain_then_aliased = run_query_against_dir(
+            &format!("select name, (select t.size from {other_root}), (select t.size as x from {other_root}) from __DIR__ as t order by name"),
+            &data,
+        );
+        let two_aliases = run_query_against_dir(
+            &format!("select name, (select t.size as x from {other_root}), (select t.size as y from {other_root}), (select t.size from {other_root}) from __DIR__ as t order by name"),
+            &data,
+        );
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(plain_then_aliased, vec!["a.txt\t1\t1", "b.txt\t2\t2"]);
+        assert_eq!(two_aliases, vec!["a.txt\t1\t1\t1", "b.txt\t2\t2\t2"]);
     }
 
     #[test]

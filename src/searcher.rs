@@ -477,6 +477,8 @@ impl<'a> Searcher<'a> {
                             }
                         }
 
+                        let mut read_failed = false;
+
                         // Read the directory and filter entries matching the regex
                         for root in &ext_roots {
                             let mut start_from_rx_dir = false;
@@ -513,10 +515,25 @@ impl<'a> Searcher<'a> {
                                     }
                                 }
                                 Err(e) => {
+                                    read_failed = true;
                                     self.error_count += 1;
                                     path_error_message(path, e)
                                 }
                             }
+                        }
+
+                        if tmp.is_empty() {
+                            if !read_failed {
+                                let scanned = ext_roots
+                                    .iter()
+                                    .map(|root| if root.is_empty() { "." } else { root.as_str() })
+                                    .collect::<Vec<_>>()
+                                    .join(", ");
+                                let err = SearchError::normal(format!("no directory matches '{}'", part));
+                                self.handle_nonfatal_error(err, Path::new(&scanned));
+                            }
+                            ext_roots.clear();
+                            break;
                         }
 
                         ext_roots = tmp;
@@ -3361,6 +3378,27 @@ mod tests {
         searcher.silent_mode = silent;
         searcher.list_search_results().expect("search failed");
         searcher
+    }
+
+    #[test]
+    fn a_regexp_root_part_that_matches_nothing_yields_no_roots() {
+        let tmp = std::env::temp_dir().join("fselect_test_regexp_root_no_match");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(tmp.join("proj1").join("src")).unwrap();
+        fs::write(tmp.join("proj1").join("src").join("inner.txt"), "x").unwrap();
+
+        let matching = search_dir("select name from __DIR__/proj[0-9]+/src rx", &tmp, Config::default(), true);
+        let literal_after_miss = search_dir("select name from __DIR__/zzz[0-9]+/src rx", &tmp, Config::default(), true);
+        let regex_after_miss = search_dir("select name from __DIR__/zzz[0-9]+/s[a-z]+ rx", &tmp, Config::default(), true);
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(matching.output_buffer.iter_values().count(), 1);
+        assert_eq!(matching.error_count, 0);
+        for (searcher, what) in [(literal_after_miss, "literal"), (regex_after_miss, "regex")] {
+            let rows: Vec<String> = searcher.output_buffer.iter_values().map(|row| row.trim_end().to_string()).collect();
+            assert!(rows.is_empty(), "{} part after a miss restarted the search from the current directory: {:?}", what, rows);
+            assert_eq!(searcher.error_count, 1, "{} part after a miss should report the unmatched part", what);
+        }
     }
 
     #[test]

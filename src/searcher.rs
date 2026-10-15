@@ -25,7 +25,7 @@ use crate::fileinfo::{archived_entry_levels, open_archive, to_file_info, Archive
 use std::ffi::OsString;
 use crate::function;
 use crate::ignore::docker::{
-    matches_dockerignore_filter, search_upstream_dockerignore, DockerignoreFilter,
+    dockerignore_exception_may_lie_beneath, matches_dockerignore_filter, search_upstream_dockerignore, DockerignoreFilter,
 };
 use crate::ignore::hg::{matches_hgignore_filter, search_upstream_hgignore, HgignoreFilter};
 use crate::operators::{LogicalOp, Op};
@@ -1268,7 +1268,7 @@ impl<'a> Searcher<'a> {
                     match entry {
                         Ok(entry) => {
                             let path = entry.path();
-                            let pass_ignores = if self.current_apply_gitignore || self.current_apply_hgignore || self.current_apply_dockerignore {
+                            let (pass_ignores, explore_only) = if self.current_apply_gitignore || self.current_apply_hgignore || self.current_apply_dockerignore {
                                 let canonical_entry_path = PathBuf::from(canonical_path.as_ref().unwrap()).join(entry.file_name());
 
                                 // Check the path against the filters
@@ -1291,13 +1291,22 @@ impl<'a> Searcher<'a> {
                                     canonical_entry_path.to_string_lossy().as_ref(),
                                 );
 
-                                pass_gitignore && pass_hgignore && pass_dockerignore
+                                let explore_only = pass_gitignore
+                                    && pass_hgignore
+                                    && !pass_dockerignore
+                                    && entry.file_type().is_ok_and(|file_type| file_type.is_dir())
+                                    && dockerignore_exception_may_lie_beneath(
+                                        &self.dockerignore_filters,
+                                        canonical_entry_path.to_string_lossy().as_ref(),
+                                    );
+
+                                (pass_gitignore && pass_hgignore && pass_dockerignore, explore_only)
                             } else {
-                                true
-                            };                            
+                                (true, false)
+                            };
 
                             // If the path passes the filters, process it
-                            if pass_ignores {
+                            if pass_ignores || explore_only {
                                 // Compute the entry's file type once, but only
                                 // when the descent step below needs it anyway,
                                 // and hand it to check_file so type predicates
@@ -1315,7 +1324,7 @@ impl<'a> Searcher<'a> {
                                     _ => None,
                                 };
 
-                                if self.current_min_depth == 0 || depth >= self.current_min_depth {
+                                if pass_ignores && (self.current_min_depth == 0 || depth >= self.current_min_depth) {
                                     let checked = self.check_file(&entry, &root_dir, &None, file_type_hint);
                                     if let Err(err) = checked {
                                         if err.is_fatal() {
@@ -1327,7 +1336,8 @@ impl<'a> Searcher<'a> {
 
                                 // Archive members sit below the archive itself, so each one
                                 // gets its own depth check against mindepth/maxdepth.
-                                if self.current_search_archives
+                                if pass_ignores
+                                    && self.current_search_archives
                                     && self.is_zip_archive(&path.to_string_lossy())
                                     && let Some(archive) = open_archive(&path) {
                                             let members = archive.len();
@@ -3520,6 +3530,32 @@ mod tests {
             rows.sort();
             assert_eq!(rows, expected, "{}", mode);
         }
+    }
+
+    #[test]
+    fn dockerignore_exceptions_beneath_an_excluded_directory_are_found() {
+        let tmp = std::env::temp_dir().join("fselect_test_dockerignore_exception_below_excluded");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(tmp.join("keep").join("sub")).unwrap();
+        fs::create_dir_all(tmp.join("other")).unwrap();
+        fs::write(tmp.join(".dockerignore"), "*\n!keep/file.txt\n").unwrap();
+        fs::write(tmp.join("top.txt"), "x").unwrap();
+        fs::write(tmp.join("keep").join("file.txt"), "x").unwrap();
+        fs::write(tmp.join("keep").join("drop.txt"), "x").unwrap();
+        fs::write(tmp.join("keep").join("sub").join("deep.txt"), "x").unwrap();
+        fs::write(tmp.join("other").join("o.txt"), "x").unwrap();
+
+        let dfs = search_dir("select path from __DIR__ dockerignore", &tmp, Config::default(), true);
+        let bfs = search_dir("select path from __DIR__ dockerignore bfs", &tmp, Config::default(), true);
+        let direct = run_query_against_dir("select path from __DIR__/keep dockerignore", &tmp);
+        let _ = fs::remove_dir_all(&tmp);
+
+        for (mode, searcher) in [("dfs", dfs), ("bfs", bfs)] {
+            let rows: Vec<String> = searcher.output_buffer.iter_values().map(|row| row.trim_end().to_string()).collect();
+            assert_eq!(rows, vec![rel(&["keep", "file.txt"])], "{}", mode);
+            assert_eq!(searcher.dirs_opened, 2, "{}: only the root and keep/ should be read, not other/ or keep/sub/", mode);
+        }
+        assert_eq!(direct, vec!["file.txt"]);
     }
 
     #[test]

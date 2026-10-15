@@ -12,11 +12,17 @@ use regex::Regex;
 pub struct DockerignoreFilter {
     pub regex: Regex,
     pub negate: bool,
+    exception_prefix: Option<String>,
 }
 
 impl DockerignoreFilter {
     fn new(regex: Regex, negate: bool) -> DockerignoreFilter {
-        DockerignoreFilter { regex, negate }
+        DockerignoreFilter { regex, negate, exception_prefix: None }
+    }
+
+    fn with_exception_prefix(mut self, prefix: String) -> DockerignoreFilter {
+        self.exception_prefix = Some(prefix);
+        self
     }
 }
 
@@ -129,11 +135,45 @@ fn convert_dockerignore_pattern(
     }
 
     match convert_dockerignore_glob(pattern, file_path) {
-        Ok(regex) => Ok(DockerignoreFilter::new(regex, negate)),
+        Ok(regex) => {
+            let filter = DockerignoreFilter::new(regex, negate);
+            Ok(match negate {
+                true => filter.with_exception_prefix(literal_prefix(pattern, file_path)),
+                false => filter,
+            })
+        }
         _ => Err("Error creating regex while parsing .dockerignore glob: "
             .to_string()
             .add(pattern)),
     }
+}
+
+fn context_root(file_path: &Path) -> String {
+    file_path.to_string_lossy().replace("\\", "/").replace("//", "/")
+}
+
+fn literal_prefix(pattern: &str, file_path: &Path) -> String {
+    let mut prefix = context_root(file_path);
+    let trimmed = pattern.trim_start_matches(['/', '\\']).trim_end_matches('/');
+    for component in trimmed.split(['/', '\\']) {
+        if component.contains(['*', '?', '[']) {
+            break;
+        }
+        prefix.push('/');
+        prefix.push_str(component);
+    }
+    prefix
+}
+
+pub fn dockerignore_exception_may_lie_beneath(dockerignore_filters: &[DockerignoreFilter], dir: &str) -> bool {
+    let dir = dir.replace("\\", "/").replace("//", "/") + "/";
+    dockerignore_filters
+        .iter()
+        .filter_map(|filter| filter.exception_prefix.as_ref())
+        .any(|prefix| {
+            let prefix = prefix.to_string() + "/";
+            prefix.starts_with(&dir) || dir.starts_with(&prefix)
+        })
 }
 
 // Finds the index of the `]` closing the character class that starts at
@@ -248,6 +288,36 @@ mod tests {
             "pattern should preserve non-leading ! but got: {}",
             regex_str
         );
+    }
+
+    #[test]
+    fn exceptions_tell_which_excluded_directories_still_need_exploring() {
+        let ctx = Path::new("/ctx");
+        let parse = |lines: &[&str]| {
+            lines.iter().map(|line| convert_dockerignore_pattern(line, ctx).unwrap()).collect::<Vec<_>>()
+        };
+
+        let literal = parse(&["*", "!keep/file.txt"]);
+        assert!(dockerignore_exception_may_lie_beneath(&literal, "/ctx/keep"));
+        assert!(!dockerignore_exception_may_lie_beneath(&literal, "/ctx/other"));
+        assert!(!dockerignore_exception_may_lie_beneath(&literal, "/ctx/keep/sub"));
+        assert!(!dockerignore_exception_may_lie_beneath(&literal, "/ctx/keeper"));
+
+        let nested = parse(&["*", "!a/b/c/file.txt"]);
+        assert!(dockerignore_exception_may_lie_beneath(&nested, "/ctx/a"));
+        assert!(dockerignore_exception_may_lie_beneath(&nested, "/ctx/a/b"));
+        assert!(!dockerignore_exception_may_lie_beneath(&nested, "/ctx/a/x"));
+
+        let wildcard = parse(&["*", "!keep/*.txt"]);
+        assert!(dockerignore_exception_may_lie_beneath(&wildcard, "/ctx/keep"));
+        assert!(dockerignore_exception_may_lie_beneath(&wildcard, "/ctx/keep/sub"));
+        assert!(!dockerignore_exception_may_lie_beneath(&wildcard, "/ctx/other"));
+
+        let anywhere = parse(&["*", "!**/file.txt"]);
+        assert!(dockerignore_exception_may_lie_beneath(&anywhere, "/ctx/any/depth"));
+
+        let none = parse(&["*", "keep/file.txt"]);
+        assert!(!dockerignore_exception_may_lie_beneath(&none, "/ctx/keep"));
     }
 
     #[test]

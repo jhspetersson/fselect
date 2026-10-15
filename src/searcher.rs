@@ -4500,6 +4500,22 @@ f
         assert_eq!(ordered, vec!["c.txt\t10", "t.txt\t2", "a.txt\t1"]);
     }
 
+    #[cfg(any(target_os = "linux", windows))]
+    #[test]
+    fn default_acl_entry_produces_one_row_per_file() {
+        let tmp = std::env::temp_dir().join("fselect_test_default_acl_rows");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        for name in ["a.txt", "b.txt", "c.txt"] {
+            fs::write(tmp.join(name), "").unwrap();
+        }
+
+        let rows = run_query_against_dir("select default_acl_entry('Everyone') from __DIR__", &tmp);
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(rows.len(), 3);
+    }
+
     #[test]
     fn having_on_grouping_column() {
         let tmp = std::env::temp_dir().join("fselect_test_having_grouping_column");

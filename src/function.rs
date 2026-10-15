@@ -1599,6 +1599,7 @@ functions! {
         HasDefaultAclEntry,
 
         #[text = ["default_acl_entry"]]
+        @reads_entry = true
         @weight = 2
         @group = "Xattr"
         @description = "Get permissions of a specific default POSIX ACL entry"
@@ -1606,6 +1607,7 @@ functions! {
         DefaultAclEntry,
 
         #[text = ["has_capability", "has_cap"], data_type = "boolean"]
+        @reads_entry = true
         @weight = 2
         @group = "Xattr"
         @description = "Check if the file has a specific capability (security.capability xattr)"
@@ -2284,7 +2286,10 @@ mod tests {
             assert!(Function::HasAclEntry.reads_entry());
             assert!(Function::AclEntry.reads_entry());
             assert!(Function::HasDefaultAclEntry.reads_entry());
+            assert!(Function::DefaultAclEntry.reads_entry());
         }
+        #[cfg(target_os = "linux")]
+        assert!(Function::HasCapability.reads_entry());
         for function in [Function::Upper, Function::Length, Function::Count, Function::Year, Function::Random] {
             assert!(!function.reads_entry(), "{}", function);
         }

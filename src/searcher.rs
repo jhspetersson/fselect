@@ -4243,6 +4243,26 @@ f
     }
 
     #[test]
+    fn order_by_expressions_over_select_aliases_sort_by_the_aliased_value() {
+        let tmp = std::env::temp_dir().join("fselect_test_order_by_alias_expression");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        fs::write(tmp.join("a.txt"), "x").unwrap();
+        fs::write(tmp.join("b.txt"), "xx").unwrap();
+        fs::write(tmp.join("c.txt"), "x".repeat(10)).unwrap();
+
+        let bare = run_query_against_dir("select name, size as sz from __DIR__ order by sz desc", &tmp);
+        let arithmetic = run_query_against_dir("select name, size as sz from __DIR__ order by sz + 0 desc", &tmp);
+        let function = run_query_against_dir("select name, size as sz from __DIR__ order by abs(sz) desc", &tmp);
+        let _ = fs::remove_dir_all(&tmp);
+
+        let expected = vec!["c.txt\t10", "b.txt\t2", "a.txt\t1"];
+        assert_eq!(bare, expected);
+        assert_eq!(arithmetic, expected);
+        assert_eq!(function, expected);
+    }
+
+    #[test]
     fn having_on_grouping_column() {
         let tmp = std::env::temp_dir().join("fselect_test_having_grouping_column");
         let _ = fs::remove_dir_all(&tmp);

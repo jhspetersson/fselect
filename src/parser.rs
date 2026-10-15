@@ -33,7 +33,7 @@ pub struct Parser<'a> {
     root_aliases: Vec<String>,
     /// How many NOTs enclose the condition being parsed.
     negation_depth: usize,
-    having_aliases: Vec<Expr>,
+    select_aliases: Vec<Expr>,
     nested: bool,
 }
 
@@ -48,7 +48,7 @@ impl <'a> Parser<'a> {
             debug: false,
             root_aliases: vec![],
             negation_depth: 0,
-            having_aliases: vec![],
+            select_aliases: vec![],
             nested: false,
         }
     }
@@ -1184,7 +1184,7 @@ impl <'a> Parser<'a> {
             }
             Some(Lexeme::RawString(ref s)) => {
                 if let Some(aliased) = self
-                    .having_aliases
+                    .select_aliases
                     .iter()
                     .find(|f| f.alias.as_deref().is_some_and(|a| a.eq_ignore_ascii_case(s)))
                 {
@@ -1333,6 +1333,13 @@ impl <'a> Parser<'a> {
     }
 
     fn parse_group_by(&mut self, fields: &[Expr]) -> Result<Vec<Expr>, String> {
+        self.select_aliases = fields.to_vec();
+        let grouping = self.parse_group_by_clause(fields);
+        self.select_aliases.clear();
+        grouping
+    }
+
+    fn parse_group_by_clause(&mut self, fields: &[Expr]) -> Result<Vec<Expr>, String> {
         let mut group_by_fields: Vec<Expr> = vec![];
 
         if let Some(Lexeme::Group) = self.next_lexeme() {
@@ -1399,9 +1406,9 @@ impl <'a> Parser<'a> {
     fn parse_having(&mut self, fields: &[Expr]) -> Result<Option<Expr>, String> {
         match self.next_lexeme() {
             Some(Lexeme::Having) => {
-                self.having_aliases = fields.to_vec();
+                self.select_aliases = fields.to_vec();
                 let having = self.parse_expr();
-                self.having_aliases.clear();
+                self.select_aliases.clear();
                 match having? {
                     Some(having) => Ok(Some(having)),
                     None => Err("Expected expression after HAVING".to_string()),
@@ -1423,6 +1430,13 @@ impl <'a> Parser<'a> {
     }
 
     fn parse_order_by(&mut self, fields: &[Expr]) -> Result<(Vec<Expr>, Vec<bool>), String> {
+        self.select_aliases = fields.to_vec();
+        let ordering = self.parse_order_by_clause(fields);
+        self.select_aliases.clear();
+        ordering
+    }
+
+    fn parse_order_by_clause(&mut self, fields: &[Expr]) -> Result<(Vec<Expr>, Vec<bool>), String> {
         let mut order_by_fields: Vec<Expr> = vec![];
         let mut order_by_directions: Vec<bool> = vec![];
 
@@ -2304,6 +2318,19 @@ mod tests {
         let inner_where = nested.expr.unwrap().right.unwrap().subquery.unwrap().expr.unwrap();
         assert_eq!(inner_where.left.unwrap().root_alias.as_deref(), Some("u"));
         assert_eq!(inner_where.right.unwrap().root_alias.as_deref(), Some("t"), "the enclosing alias is in scope");
+    }
+
+    #[test]
+    fn select_aliases_resolve_inside_order_by_and_group_by_expressions() {
+        let ordered = parse_query("select name, size as sz from /d order by sz + 0 desc, abs(sz)").unwrap();
+        let first = &ordered.ordering_fields[0];
+        assert_eq!(first.left.as_ref().unwrap().field, Some(Field::Size), "sz inside arithmetic is the aliased size");
+        let second = &ordered.ordering_fields[1];
+        assert_eq!(second.left.as_ref().unwrap().field, Some(Field::Size), "sz as a function argument is the aliased size");
+        assert_eq!(ordered.ordering_asc, vec![false, true]);
+
+        let grouped = parse_query("select length(name) as len, count(*) from /d group by len % 2").unwrap();
+        assert_eq!(grouped.grouping_fields[0].left.as_ref().unwrap().function, Some(Function::Length));
     }
 
     #[test]

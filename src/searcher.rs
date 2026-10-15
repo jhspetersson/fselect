@@ -1717,7 +1717,8 @@ impl<'a> Searcher<'a> {
             }
             for (key, left) in &plan.inner_exprs {
                 if !file_map.contains_key(key) {
-                    self.get_column_expr_value(Some(entry), file_info, root_path, file_map, None, left)?;
+                    let value = self.get_column_expr_value(Some(entry), file_info, root_path, file_map, None, left)?;
+                    file_map.entry(key.clone()).or_insert_with(|| value.to_string());
                 }
             }
             for (field, key) in self.query.grouping_fields.iter().zip(&plan.grouping_keys) {
@@ -3825,6 +3826,25 @@ mod tests {
         assert_eq!(wrapped, vec!["a.txt\t1", "b.txt\t2", "c.txt\t10"]);
         assert_eq!(filtered, vec!["c.txt"]);
         assert_eq!(context_stays_raw, vec!["-1\t1", "-2\t2", "-10\t10"]);
+    }
+
+    #[test]
+    fn aggregates_over_literals_count_every_row() {
+        let tmp = std::env::temp_dir().join("fselect_test_literal_aggregates");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        fs::write(tmp.join("a.txt"), "").unwrap();
+        fs::write(tmp.join("b.txt"), "").unwrap();
+        fs::write(tmp.join("c.md"), "").unwrap();
+
+        let ungrouped = run_query_against_dir("select sum(1), avg(2), min(3), max(4), count(1) from __DIR__", &tmp);
+        let grouped = run_query_against_dir("select ext, sum(1), avg(10) from __DIR__ group by ext order by ext", &tmp);
+        let negative = run_query_against_dir("select sum(-1) from __DIR__", &tmp);
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(ungrouped, vec![String::from("3	2	3	4	3")]);
+        assert_eq!(grouped, vec![String::from("md	1	10"), String::from("txt	2	10")]);
+        assert_eq!(negative, vec![String::from("-3")]);
     }
 
     #[test]

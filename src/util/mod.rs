@@ -574,11 +574,24 @@ pub fn is_text_mime(mime: &str) -> bool {
     mime.starts_with("text/")
         || mime.contains("+xml")
         || mime.contains("-xml")
-        || mime.eq("application/x-awk")
-        || mime.eq("application/x-perl")
-        || mime.eq("application/x-php")
-        || mime.eq("application/x-ruby")
-        || mime.eq("application/x-shellscript")
+        || mime.contains("+json")
+        || matches!(
+            mime,
+            "application/xml"
+                | "application/json"
+                | "application/javascript"
+                | "application/ecmascript"
+                | "application/x-awk"
+                | "application/x-csh"
+                | "application/x-perl"
+                | "application/x-php"
+                | "application/x-ruby"
+                | "application/x-sh"
+                | "application/x-shellscript"
+                | "application/x-yaml"
+                | "application/toml"
+                | "application/sql"
+        )
 }
 
 pub fn canonical_path(path_buf: &PathBuf) -> Result<String, String> {
@@ -2037,6 +2050,16 @@ mod tests {
         assert_eq!(is_dir_empty(&dir_entry_for(&non_empty)), Some(false));
 
         let _ = fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn structured_text_formats_count_as_text_mime() {
+        for mime in ["application/xml", "application/json", "application/javascript", "application/x-sh", "text/plain", "image/svg+xml"] {
+            assert!(is_text_mime(mime), "{}", mime);
+        }
+        for mime in ["application/octet-stream", "image/png", "application/zip", "application/pdf"] {
+            assert!(!is_text_mime(mime), "{}", mime);
+        }
     }
 
     #[test]

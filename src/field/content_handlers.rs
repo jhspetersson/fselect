@@ -76,12 +76,19 @@ pub fn handle_is_binary_or_text(ctx: &mut FieldContext, field: &Field) -> Result
 
     ctx.fms.update_mime_type(ctx.entry, ctx.file_info);
     if let Some(mime) = ctx.fms.get_mime_type() {
-        let is_text = is_text_mime(mime);
+        let is_text = is_text_mime(mime) || (mime == "application/octet-stream" && starts_with_bom(ctx));
         let result = matches!(field, Field::IsText) == is_text;
         return Ok(Variant::from_bool(result));
     }
 
     Ok(Variant::from_bool(false))
+}
+
+fn starts_with_bom(ctx: &FieldContext) -> bool {
+    match ctx.file_info {
+        Some(file_info) => with_archived_entry(&ctx.entry.path(), file_info, has_bom_in_reader).unwrap_or(false),
+        None => has_bom(ctx.entry),
+    }
 }
 
 pub fn handle_is_type(ctx: &mut FieldContext, field: &Field) -> Result<Variant, SearchError> {
@@ -200,6 +207,43 @@ mod tests {
         assert_eq!(dir, ["", "false", "false"]);
         assert_eq!(missing, ["", "false", "false"]);
         assert_eq!(archive, "application/zip");
+    }
+
+    #[test]
+    fn bom_marked_unicode_and_xml_files_are_text() {
+        let tmp = std::env::temp_dir().join("fselect_test_is_text_unicode_xml");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        let mut utf16 = vec![0xFF, 0xFE];
+        for unit in "hello\nw\u{f6}rld\n".encode_utf16() {
+            utf16.extend_from_slice(&unit.to_le_bytes());
+        }
+        fs::write(tmp.join("utf16.txt"), &utf16).unwrap();
+        let mut utf32 = vec![0xFF, 0xFE, 0x00, 0x00];
+        for ch in "hello\n".chars() {
+            utf32.extend_from_slice(&(ch as u32).to_le_bytes());
+        }
+        fs::write(tmp.join("utf32.txt"), &utf32).unwrap();
+        fs::write(tmp.join("doc.xml"), "<?xml version=\"1.0\"?><root><a>1</a></root>\n").unwrap();
+        fs::write(tmp.join("bin.dat"), (0..=255u8).collect::<Vec<u8>>()).unwrap();
+
+        let classify = |name: &str| {
+            let entry = entry_for(&tmp, name);
+            (
+                test_field(&entry, &tmp, &Field::IsText).to_string(),
+                test_field(&entry, &tmp, &Field::IsBinary).to_string(),
+            )
+        };
+        let utf16 = classify("utf16.txt");
+        let utf32 = classify("utf32.txt");
+        let xml = classify("doc.xml");
+        let binary = classify("bin.dat");
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(utf16, (String::from("true"), String::from("false")));
+        assert_eq!(utf32, (String::from("true"), String::from("false")));
+        assert_eq!(xml, (String::from("true"), String::from("false")));
+        assert_eq!(binary, (String::from("false"), String::from("true")));
     }
 
     #[test]

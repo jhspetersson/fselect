@@ -34,6 +34,7 @@ pub struct Parser<'a> {
     /// How many NOTs enclose the condition being parsed.
     negation_depth: usize,
     having_aliases: Vec<Expr>,
+    nested: bool,
 }
 
 impl <'a> Parser<'a> {
@@ -48,7 +49,14 @@ impl <'a> Parser<'a> {
             root_aliases: vec![],
             negation_depth: 0,
             having_aliases: vec![],
+            nested: false,
         }
+    }
+
+    fn nested(lexer: &mut Lexer) -> Parser<'_> {
+        let mut parser = Parser::new(lexer);
+        parser.nested = true;
+        parser
     }
 
     pub fn parse(&mut self, debug: bool) -> Result<Query, String> {
@@ -149,7 +157,7 @@ impl <'a> Parser<'a> {
         }
 
         let raw_query = self.lexer.get_input_string();
-        Ok(Query {
+        let mut query = Query {
             fields,
             roots,
             expr,
@@ -161,7 +169,49 @@ impl <'a> Parser<'a> {
             offset,
             output_format,
             raw_query,
-        })
+        };
+        if !self.nested {
+            Self::finalize_alias_references(&mut query, &[]);
+        }
+        Ok(query)
+    }
+
+    fn finalize_alias_references(query: &mut Query, enclosing: &[String]) {
+        let mut scope = enclosing.to_vec();
+        scope.extend(query.own_root_aliases());
+        for root in query.roots.iter_mut() {
+            if let Some(ref mut inner) = root.subquery {
+                Self::finalize_alias_references(inner, &scope);
+            }
+        }
+        let clauses = query
+            .fields
+            .iter_mut()
+            .chain(query.expr.iter_mut())
+            .chain(query.grouping_fields.iter_mut())
+            .chain(query.having.iter_mut())
+            .chain(query.ordering_fields.iter_mut());
+        for expr in clauses {
+            Self::finalize_expr_references(expr, &scope);
+        }
+    }
+
+    fn finalize_expr_references(expr: &mut Expr, scope: &[String]) {
+        let out_of_scope = expr
+            .alias_reference_key()
+            .is_some_and(|(root_alias, _)| !scope.iter().any(|alias| alias.eq_ignore_ascii_case(root_alias)));
+        if out_of_scope {
+            expr.root_alias = None;
+        }
+        for child in expr.left.iter_mut().chain(expr.right.iter_mut()) {
+            Self::finalize_expr_references(child, scope);
+        }
+        for arg in expr.args.iter_mut().flatten() {
+            Self::finalize_expr_references(arg, scope);
+        }
+        if let Some(ref mut subquery) = expr.subquery {
+            Self::finalize_alias_references(subquery, scope);
+        }
     }
 
     fn parse_fields(&mut self) -> Result<Vec<Expr>, String> {
@@ -273,7 +323,7 @@ impl <'a> Parser<'a> {
                             match self.next_lexeme() {
                                 Some(Lexeme::Select) => {
                                     self.lexer.push_state();
-                                    let mut sub_parser = Parser::new(self.lexer);
+                                    let mut sub_parser = Parser::nested(self.lexer);
                                     let sub_query = sub_parser.parse(self.debug)?;
                                     self.lexer.pop_state();
                                     if curly {
@@ -998,7 +1048,7 @@ impl <'a> Parser<'a> {
                 let result = {
                     if let Some(Lexeme::Select) = self.next_lexeme() {
                         self.lexer.push_state();
-                        let mut parser = Parser::new(self.lexer);
+                        let mut parser = Parser::nested(self.lexer);
                         let query = parser.parse(self.debug)?;
                         self.lexer.pop_state();
                         self.push_lexeme(Lexeme::Close);
@@ -1022,7 +1072,7 @@ impl <'a> Parser<'a> {
                 let result = {
                     if let Some(Lexeme::Select) = self.next_lexeme() {
                         self.lexer.push_state();
-                        let mut parser = Parser::new(self.lexer);
+                        let mut parser = Parser::nested(self.lexer);
                         let query = parser.parse(self.debug)?;
                         self.lexer.pop_state();
                         self.push_lexeme(Lexeme::CurlyClose);
@@ -1183,6 +1233,19 @@ impl <'a> Parser<'a> {
                         };
                     }
                     self.drop_lexeme();
+                }
+
+                let is_identifier = |part: &str| {
+                    part.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+                        && part.chars().next().is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
+                };
+                if let Some((prefix, name)) = s.split_once('.')
+                    && is_identifier(prefix)
+                    && is_identifier(name)
+                {
+                    let mut expr = Expr::alias_reference(prefix.to_string(), s.to_string());
+                    expr.minus = minus;
+                    return Ok(Some(expr));
                 }
 
                 let mut expr = Expr::value(s.to_string());
@@ -2220,6 +2283,27 @@ mod tests {
         let function_named = parse_query("select ext, count(*) as len from /test group by ext having len > 1").unwrap();
         let left = function_named.having.unwrap().left.unwrap();
         assert_eq!(left.function, Some(Function::Count), "an alias wins over a function of the same name");
+    }
+
+    #[test]
+    fn bare_dotted_names_are_alias_references_only_inside_their_scope() {
+        let query = parse_query("select (select t.sz from /o), 't.sz', readme.md, t.sz, 1.5 from /d as t").unwrap();
+        let inner = &query.fields[0].subquery.as_ref().unwrap().fields[0];
+        assert_eq!(inner.root_alias.as_deref(), Some("t"), "bare t.sz inside the subquery references the outer alias");
+        assert!(inner.field.is_none());
+        assert!(query.fields[1].root_alias.is_none() && query.fields[1].val.as_deref() == Some("t.sz"), "quoted stays a literal");
+        assert!(query.fields[2].root_alias.is_none() && query.fields[2].val.as_deref() == Some("readme.md"), "readme is no alias");
+        assert_eq!(query.fields[3].root_alias.as_deref(), Some("t"));
+        assert!(query.fields[4].root_alias.is_none() && query.fields[4].val.as_deref() == Some("1.5"));
+
+        let unknown = parse_query("select name from /d where x.sz = 1").unwrap();
+        let left = unknown.expr.unwrap().left.unwrap();
+        assert!(left.root_alias.is_none() && left.val.as_deref() == Some("x.sz"), "x is not an alias anywhere, so x.sz is text");
+
+        let nested = parse_query("select name from /d as t where exists (select name from /o as u where u.sz = t.sz)").unwrap();
+        let inner_where = nested.expr.unwrap().right.unwrap().subquery.unwrap().expr.unwrap();
+        assert_eq!(inner_where.left.unwrap().root_alias.as_deref(), Some("u"));
+        assert_eq!(inner_where.right.unwrap().root_alias.as_deref(), Some("t"), "the enclosing alias is in scope");
     }
 
     #[test]

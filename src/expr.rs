@@ -1028,8 +1028,25 @@ impl Expr {
         key
     }
 
+    pub fn alias_reference(root_alias: String, text: String) -> Expr {
+        let mut expr = Expr::value(text);
+        expr.root_alias = Some(root_alias);
+        expr
+    }
+
+    pub fn alias_reference_key(&self) -> Option<(&str, &str)> {
+        let root_alias = self.root_alias.as_deref()?;
+        if self.field.is_some() || self.function.is_some() || self.subquery.is_some() {
+            return None;
+        }
+        let text = self.val.as_deref()?;
+        let name = text.strip_prefix(root_alias)?.strip_prefix('.')?;
+        Some((root_alias, name))
+    }
+
     pub fn is_literal(&self) -> bool {
         self.val.is_some()
+            && self.root_alias.is_none()
             && self.field.is_none()
             && self.function.is_none()
             && self.subquery.is_none()

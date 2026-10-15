@@ -7,7 +7,6 @@ use std::fs::{DirEntry, FileType};
 use std::io::{ErrorKind, Write};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
-use std::sync::LazyLock;
 
 use chrono::NaiveDateTime;
 #[cfg(feature = "git")]
@@ -91,10 +90,6 @@ pub struct Searcher<'a> {
 
     pub error_count: i32,
 }
-
-static FIELD_WITH_ALIAS: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new("^([a-zA-Z0-9_]+)\\.([a-zA-Z0-9_]+)$").unwrap()
-});
 
 macro_rules! try_output {
     ($expr:expr, $ret:expr) => {
@@ -1453,13 +1448,6 @@ impl<'a> Searcher<'a> {
         Ok(())
     }
 
-    fn is_declared_root_alias(&self, alias: &str) -> bool {
-        self.query
-            .roots
-            .iter()
-            .any(|root| root.options.alias.as_deref() == Some(alias))
-    }
-
     fn get_column_expr_value(
         &mut self,
         entry: Option<&DirEntry>,
@@ -1477,37 +1465,34 @@ impl<'a> Searcher<'a> {
             (Some(root_alias), Some(field)) => {
                 Some((root_alias.clone(), column_expr.alias.clone().unwrap_or_else(|| field.to_string())))
             }
-            // Cheap guard: the alias regex requires a dot, and most column
-            // expressions have none, so skip the regex in the per-file hot path.
-            _ if cache_key.contains('.') => FIELD_WITH_ALIAS
-                .captures(&column_expr.to_string())
-                .map(|captures| (captures[1].to_string(), captures[2].to_string())),
-            _ => None,
+            _ => column_expr
+                .alias_reference_key()
+                .map(|(root_alias, name)| (root_alias.to_string(), name.to_string())),
         };
         if let Some((context_name, field_key)) = reference {
-            if self.current_alias.as_deref() == Some(context_name.as_str()) {
+            let own_row = self.current_alias.as_deref() == Some(context_name.as_str());
+            if own_row && column_expr.field.is_some() {
                 if !column_expr.minus {
                     context_field = Some(field_key);
                 }
             } else {
                 let context = self.record_context.borrow();
-                if let Some(ctx) = context.get(&context_name) {
-                    if let Some(val) = ctx.get(&field_key) {
-                        let value = apply_minus(column_expr, val.clone());
-                        file_map.insert(cache_key, value.to_string());
-                        return Ok(value);
-                    } else {
-                        //TODO: this should be propagated up to the higher context
-                        return Ok(Variant::empty(VariantType::String));
+                match context.get(&context_name) {
+                    Some(ctx) => {
+                        return Ok(match ctx.get(&field_key) {
+                            Some(val) => {
+                                let value = apply_minus(column_expr, val.clone());
+                                file_map.insert(cache_key, value.to_string());
+                                value
+                            }
+                            //TODO: this should be propagated up to the higher context
+                            None => Variant::empty(VariantType::String),
+                        });
                     }
-                }
-                // The prefix doesn't name any known root context. An explicit
-                // `alias.field` reference (or a prefix matching a declared root
-                // alias) is a query error; any other dotted string is a plain
-                // value (e.g. the literal `readme.md`) and falls through to
-                // normal evaluation.
-                if column_expr.root_alias.is_some() || self.is_declared_root_alias(&context_name) {
-                    return Err(SearchError::fatal(format!("Invalid root alias: {}", context_name)).with_source("query"));
+                    None if own_row => return Ok(Variant::empty(VariantType::String)),
+                    None => {
+                        return Err(SearchError::fatal(format!("Invalid root alias: {}", context_name)).with_source("query"));
+                    }
                 }
             }
         }
@@ -2653,7 +2638,7 @@ mod tests {
         let default_config = Box::leak(Box::new(Config::default()));
         let mut searcher = Searcher::new(query, config, default_config, false);
 
-        let value_expr = Expr::value(String::from("a.sz"));
+        let value_expr = Expr::alias_reference(String::from("a"), String::from("a.sz"));
         let mut file_map: HashMap<String, String> = HashMap::new();
         let result = searcher.get_column_expr_value(
             None, &None, Path::new("."), &mut file_map, None, &value_expr,
@@ -4131,6 +4116,38 @@ mod tests {
 
         assert_eq!(plain_then_aliased, vec!["a.txt\t1\t1", "b.txt\t2\t2"]);
         assert_eq!(two_aliases, vec!["a.txt\t1\t1\t1", "b.txt\t2\t2\t2"]);
+    }
+
+    #[test]
+    fn quoted_dotted_literals_stay_literals_and_bare_ones_reference_column_aliases() {
+        let tmp = std::env::temp_dir().join("fselect_test_dotted_literals_in_subqueries");
+        let _ = fs::remove_dir_all(&tmp);
+        let data = tmp.join("data");
+        let other = tmp.join("other");
+        fs::create_dir_all(&data).unwrap();
+        fs::create_dir_all(&other).unwrap();
+        fs::write(data.join("a.txt"), "x").unwrap();
+        fs::write(data.join("b.txt"), "xx").unwrap();
+        fs::write(other.join("readme.md"), "x".repeat(50)).unwrap();
+        let other_root = other.to_string_lossy().to_string();
+
+        let quoted = run_query_against_dir(
+            &format!("select name, (select 't.size' from {other_root}) from __DIR__ as t order by name"),
+            &data,
+        );
+        let bare_file_name = run_query_against_dir(
+            &format!("select name, (select name from {other_root} where name = readme.md) from __DIR__ as t order by name"),
+            &data,
+        );
+        let column_alias = run_query_against_dir(
+            &format!("select size as sz, (select t.sz + 1 from {other_root}) from __DIR__ as t order by sz"),
+            &data,
+        );
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(quoted, vec!["a.txt\tt.size", "b.txt\tt.size"]);
+        assert_eq!(bare_file_name, vec!["a.txt\treadme.md", "b.txt\treadme.md"]);
+        assert_eq!(column_alias, vec!["1\t2", "2\t3"]);
     }
 
     #[test]

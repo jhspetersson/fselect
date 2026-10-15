@@ -163,6 +163,14 @@ impl Variant {
 
     /// Float value, or `None` for a string that is neither a number nor a
     /// file size with a unit suffix.
+    pub fn to_exact_int(&self) -> Option<i64> {
+        let int = self.to_int_opt()?;
+        match self.to_float_opt() {
+            Some(float) if float.fract() != 0.0 => None,
+            _ => Some(int),
+        }
+    }
+
     pub fn to_float_opt(&self) -> Option<f64> {
         if let Some(f) = self.float_value {
             return Some(f);
@@ -210,6 +218,25 @@ impl Variant {
 impl Display for Variant {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         write!(f, "{}", self.string_value)
+    }
+}
+
+#[cfg(test)]
+mod exact_int_tests {
+    use super::Variant;
+
+    #[test]
+    fn exact_int_rejects_fractions_and_keeps_whole_numbers_and_sizes() {
+        let text = |s: &str| Variant::from_string(&String::from(s));
+        assert_eq!(text("1.9").to_exact_int(), None);
+        assert_eq!(text("-0.5").to_exact_int(), None);
+        assert_eq!(text("2.0").to_exact_int(), Some(2));
+        assert_eq!(text("10").to_exact_int(), Some(10));
+        assert_eq!(text("1kb").to_exact_int(), Some(1000));
+        assert_eq!(text("1kib").to_exact_int(), Some(1024));
+        assert_eq!(text("abc").to_exact_int(), None);
+        assert_eq!(Variant::from_float(3.5).to_exact_int(), None);
+        assert_eq!(Variant::from_int(9007199254740993).to_exact_int(), Some(9007199254740993));
     }
 }
 

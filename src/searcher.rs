@@ -152,7 +152,7 @@ impl Membership {
         let variants = values.iter().map(Variant::from_string);
         match field_type {
             VariantType::String => Membership::Strings(values.iter().cloned().collect()),
-            VariantType::Int => Membership::Ints(variants.filter_map(|v| v.to_int_opt()).collect()),
+            VariantType::Int => Membership::Ints(variants.filter_map(|v| v.to_exact_int()).collect()),
             VariantType::Float => Membership::Floats(variants.filter_map(|v| v.to_float_opt()).collect()),
             VariantType::Bool => {
                 let mut bools = (false, false);
@@ -1876,7 +1876,7 @@ impl<'a> Searcher<'a> {
                 VariantType::String => arg_val.to_string() == field_value.to_string(),
                 // Unparsable numeric args (`size in ('abc')`) are skipped,
                 // not coerced to 0, like the DateTime arm below.
-                VariantType::Int => arg_val.to_int_opt() == Some(field_value.to_int()),
+                VariantType::Int => arg_val.to_exact_int() == Some(field_value.to_int()),
                 VariantType::Float => arg_val.to_float_opt() == Some(field_value.to_float()),
                 VariantType::Bool => arg_val.to_bool() == field_value.to_bool(),
                 VariantType::DateTime => {
@@ -2100,13 +2100,17 @@ impl<'a> Searcher<'a> {
                         return Ok(false);
                     };
                     let int_value = field_value.to_int();
+                    let ordering = match value.to_float_opt().filter(|float| float.fract() != 0.0) {
+                        Some(fraction) => (int_value as f64).partial_cmp(&fraction).unwrap_or(std::cmp::Ordering::Equal),
+                        None => int_value.cmp(&val),
+                    };
                     match op {
-                        Op::Eq | Op::Eeq => int_value == val,
-                        Op::Ne | Op::Ene => int_value != val,
-                        Op::Gt => int_value > val,
-                        Op::Gte => int_value >= val,
-                        Op::Lt => int_value < val,
-                        Op::Lte => int_value <= val,
+                        Op::Eq | Op::Eeq => ordering == std::cmp::Ordering::Equal,
+                        Op::Ne | Op::Ene => ordering != std::cmp::Ordering::Equal,
+                        Op::Gt => ordering == std::cmp::Ordering::Greater,
+                        Op::Gte => ordering != std::cmp::Ordering::Less,
+                        Op::Lt => ordering == std::cmp::Ordering::Less,
+                        Op::Lte => ordering != std::cmp::Ordering::Greater,
                         _ => false,
                     }
                 }
@@ -3866,6 +3870,39 @@ mod tests {
 
         assert_eq!(rows, vec!["a.txt\t\t1", "b.txt\t1\t2"], "the failed cell is empty, the other deferred cell is still filled");
         assert_eq!(searcher.error_count, 1);
+    }
+
+    #[test]
+    fn fractional_literals_compare_against_integer_fields_exactly() {
+        let tmp = std::env::temp_dir().join("fselect_test_fractional_literals");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        fs::write(tmp.join("one.txt"), "x").unwrap();
+        fs::write(tmp.join("two.txt"), "xx").unwrap();
+        fs::write(tmp.join("ten.txt"), "x".repeat(10)).unwrap();
+
+        let run = |condition: &str| {
+            run_query_against_dir(&format!("select name from __DIR__ where {condition} order by name"), &tmp)
+        };
+        let cases: Vec<(&str, Vec<&str>)> = vec![
+            ("size = 1.9", vec![]),
+            ("size < 1.9", vec!["one.txt"]),
+            ("size <= 1.9", vec!["one.txt"]),
+            ("size > 1.9", vec!["ten.txt", "two.txt"]),
+            ("size >= 1.9", vec!["ten.txt", "two.txt"]),
+            ("size != 1.9", vec!["one.txt", "ten.txt", "two.txt"]),
+            ("1.9 > size", vec!["one.txt"]),
+            ("size = 2.0", vec!["two.txt"]),
+            ("size in (1.9, 10.0)", vec!["ten.txt"]),
+            ("size not in (1.9, 2)", vec!["one.txt", "ten.txt"]),
+            ("size between 1.5 and 2.5", vec!["two.txt"]),
+        ];
+        let results: Vec<(&str, Vec<String>)> = cases.iter().map(|(condition, _)| (*condition, run(condition))).collect();
+        let _ = fs::remove_dir_all(&tmp);
+
+        for ((condition, expected), (_, actual)) in cases.iter().zip(results) {
+            assert_eq!(&actual, expected, "{}", condition);
+        }
     }
 
     #[test]

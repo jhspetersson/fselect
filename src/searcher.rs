@@ -2098,6 +2098,14 @@ impl<'a> Searcher<'a> {
             };
             self.conforms_map = temp_map;
 
+            let (field_value, value) = match (&expr.left, &expr.right) {
+                (Some(left_expr), Some(right_expr)) => (
+                    if left_expr.is_literal() { field_value } else { Self::retype_value(left_expr, right_expr, field_value) },
+                    if right_expr.is_literal() { value } else { Self::retype_value(left_expr, right_expr, value) },
+                ),
+                _ => (field_value, value),
+            };
+
             result = match op {
                 Op::In => {
                     let mut arg_map = HashMap::new();
@@ -2286,14 +2294,14 @@ impl<'a> Searcher<'a> {
             let value = self.get_column_expr_value(
                 None, &None, Path::new(""), file_map, Some(group_acc), right_expr,
             )?;
-            let field_value = Self::retype_group_value(left_expr, right_expr, field_value);
+            let field_value = Self::retype_value(left_expr, right_expr, field_value);
             return self.compare_variants(op, &field_value, &value);
         }
 
         Ok(false)
     }
 
-    fn retype_group_value(left_expr: &Expr, right_expr: &Expr, value: Variant) -> Variant {
+    fn retype_value(left_expr: &Expr, right_expr: &Expr, value: Variant) -> Variant {
         if !matches!(value.get_type(), VariantType::String) {
             return value;
         }
@@ -4347,6 +4355,41 @@ f
         assert_eq!(computed.len(), 3, "an aliased expression is snapshotted like a field");
         assert_eq!(unknown.output_buffer.iter_values().count(), 0);
         assert_eq!(unknown.error_count, 0, "an unknown column name under a declared alias is an empty value, not an error");
+    }
+
+    #[test]
+    fn function_and_subquery_results_compare_by_their_type_in_where() {
+        let tmp = std::env::temp_dir().join("fselect_test_typed_results_in_where");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        for i in 1..=10 {
+            fs::write(tmp.join(format!("f{i}.txt")), "x".repeat(i)).unwrap();
+        }
+
+        let count = |condition: &str| {
+            run_query_against_dir(&format!("select count(*) from __DIR__ where {condition}"), &tmp)
+        };
+        let cases: Vec<(&str, &str)> = vec![
+            ("(select count(*) from __DIR__) > 2", "10"),
+            ("(select count(*) from __DIR__) < 2", "0"),
+            ("2 < (select count(*) from __DIR__)", "10"),
+            ("(select count(*) from __DIR__) in (10, 20)", "10"),
+            ("date_add(modified, 30) > today", "10"),
+            ("today < date_add(modified, 30)", "10"),
+            ("date_sub(modified, 30) < yesterday", "10"),
+            ("date_trunc('day', modified) = today", "10"),
+            ("modified = today", "10"),
+            ("today = modified", "10"),
+            ("from_unixtime(mtime) = today", "10"),
+            ("coalesce(size, 0) > 9", "1"),
+            ("upper(name) > 'F5'", "5"),
+        ];
+        let results: Vec<(&str, Vec<String>)> = cases.iter().map(|(condition, _)| (*condition, count(condition))).collect();
+        let _ = fs::remove_dir_all(&tmp);
+
+        for ((condition, expected), (_, actual)) in cases.iter().zip(results) {
+            assert_eq!(actual, vec![expected.to_string()], "{}", condition);
+        }
     }
 
     #[test]

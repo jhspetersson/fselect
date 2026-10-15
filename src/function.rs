@@ -101,6 +101,17 @@ macro_rules! functions {
                 }
             }
             
+            pub fn is_datetime_function(&self) -> bool {
+                match self {
+                    $(
+                        $(#[$variant_attrs])*
+                        $enum_name::$variant => {
+                            stringify!($($data_type)?) .replace("\"", "") == "datetime"
+                        }
+                    )*
+                }
+            }
+
             pub fn is_boolean_function(&self) -> bool {
                 match self {
                     $(
@@ -1416,7 +1427,7 @@ functions! {
         @description = "Format a time duration in human-readable format"
         FormatTime,
 
-        #[text = ["current_date", "cur_date", "curdate"]]
+        #[text = ["current_date", "cur_date", "curdate"], data_type = "datetime"]
         @args = "0"
         @group = "Datetime"
         @description = "Get the current date"
@@ -1428,7 +1439,7 @@ functions! {
         @description = "Get the current time (HH:MM:SS)"
         CurrentTime,
 
-        #[text = ["current_timestamp", "now"]]
+        #[text = ["current_timestamp", "now"], data_type = "datetime"]
         @args = "0"
         @group = "Datetime"
         @description = "Get the current timestamp (YYYY-MM-DD HH:MM:SS)"
@@ -1464,13 +1475,13 @@ functions! {
         @description = "Get the day of the year from a date (1-366)"
         DayOfYear,
 
-        #[text = ["date_add", "dateadd"]]
+        #[text = ["date_add", "dateadd"], data_type = "datetime"]
         @args = "2"
         @group = "Datetime"
         @description = "Add days to a date and return the resulting date"
         DateAdd,
 
-        #[text = ["date_sub", "datesub"]]
+        #[text = ["date_sub", "datesub"], data_type = "datetime"]
         @args = "2"
         @group = "Datetime"
         @description = "Subtract days from a date and return the resulting date"
@@ -1482,12 +1493,12 @@ functions! {
         @description = "Get the number of days between two dates"
         DateDiff,
 
-        #[text = ["from_unixtime"]]
+        #[text = ["from_unixtime"], data_type = "datetime"]
         @group = "Datetime"
         @description = "Convert a Unix timestamp to a datetime string"
         FromUnixtime,
 
-        #[text = ["last_day", "last_date"]]
+        #[text = ["last_day", "last_date"], data_type = "datetime"]
         @group = "Datetime"
         @description = "Get the last day of the month for a given date"
         LastDay,
@@ -1498,7 +1509,7 @@ functions! {
         @description = "Extract a date/time part (year, month, day, hour, minute, second, week, quarter, dow, doy, epoch) from a date. Usage: EXTRACT('year', date)"
         Extract,
 
-        #[text = ["date_trunc", "datetrunc"]]
+        #[text = ["date_trunc", "datetrunc"], data_type = "datetime"]
         @args = "2"
         @group = "Datetime"
         @description = "Truncate a date to a unit (year, quarter, month, week, day, hour, minute, second). Usage: DATE_TRUNC('day', date)"

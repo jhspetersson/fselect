@@ -717,6 +717,12 @@ impl Expr {
             return true;
         }
 
+        if let Some(ref subquery) = expr.subquery
+            && let Some(column) = subquery.fields.first()
+        {
+            return Self::contains_numeric_field(column);
+        }
+
         let field = match expr.field {
             Some(ref field) => field.is_numeric_field(),
             None => false,
@@ -761,6 +767,16 @@ impl Expr {
     }
 
     fn contains_datetime_field(expr: &Expr) -> bool {
+        if let Some(ref subquery) = expr.subquery
+            && let Some(column) = subquery.fields.first()
+        {
+            return Self::contains_datetime_field(column);
+        }
+
+        if expr.function.as_ref().is_some_and(Function::is_datetime_function) {
+            return true;
+        }
+
         let field = match expr.field {
             Some(ref field) => field.is_datetime_field(),
             None => false,
@@ -1631,6 +1647,29 @@ mod tests {
         let expr = Expr::arithmetic_op(Expr::field(Field::Name), ArithmeticOp::Add, Expr::value(String::from("0")));
         assert!(expr.contains_numeric());
         assert!(!Expr::field(Field::Name).contains_numeric());
+    }
+
+    #[test]
+    fn result_types_are_inferred_for_functions_and_scalar_subqueries() {
+        fn parse(query: &str) -> crate::query::Query {
+            let mut lexer = crate::lexer::Lexer::new(vec![String::from(query)]);
+            crate::parser::Parser::new(&mut lexer).parse(false).unwrap()
+        }
+        let count = Expr::subquery(parse("select count(*) from /d"));
+        assert!(count.contains_numeric(), "count(*) subquery is numeric");
+        let latest = Expr::subquery(parse("select max(modified) from /d"));
+        assert!(latest.contains_datetime(), "max(modified) subquery is a datetime");
+        let names = Expr::subquery(parse("select name from /d"));
+        assert!(!names.contains_numeric() && !names.contains_datetime());
+
+        let shifted = parse("select date_add(modified, 30) from /d").fields.remove(0);
+        assert!(shifted.contains_datetime());
+        let from_epoch = parse("select from_unixtime(mtime) from /d").fields.remove(0);
+        assert!(from_epoch.contains_datetime(), "from_unixtime yields a datetime although its argument is numeric");
+        let now = parse("select now() from /d").fields.remove(0);
+        assert!(now.contains_datetime());
+        let fallback = parse("select coalesce(size, 0) from /d").fields.remove(0);
+        assert!(fallback.contains_numeric());
     }
 
     #[test]

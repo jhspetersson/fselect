@@ -88,6 +88,7 @@ impl <'a> Parser<'a> {
         if let Some(ref where_expr) = expr {
             where_expr.validate_datetime_literals()?;
             where_expr.validate_numeric_literals()?;
+            where_expr.validate_boolean_literals()?;
         }
         let grouping_fields = self.parse_group_by(&fields)?;
         let having = self.parse_having(&fields)?;
@@ -2431,6 +2432,31 @@ mod tests {
 
         let ordered = parse_query("select name, size as sz from /d as t order by t.sz desc").unwrap();
         assert_eq!(ordered.ordering_fields[0].field, Some(Field::Size), "an own-query reference in ORDER BY is the aliased expression");
+    }
+
+    #[test]
+    fn non_boolean_literals_against_boolean_fields_are_rejected() {
+        for query in [
+            "select name from /d where is_dir = 2",
+            "select name from /d where is_dir = 'maybe'",
+            "select name from /d where is_dir = 0.5",
+            "select name from /d where 2 = is_dir",
+            "select name from /d where is_dir != 'maybe'",
+            "select name from /d where is_file in (1, 'maybe')",
+        ] {
+            let err = parse_query(query).expect_err(query);
+            assert!(err.contains("Can't parse boolean") && (err.contains("isdir") || err.contains("isfile")), "{}: {}", query, err);
+        }
+        for query in [
+            "select name from /d where is_dir = true",
+            "select name from /d where is_dir = 1 and is_file != 'yes'",
+            "select name from /d where is_dir = yes or is_dir = off",
+            "select name from /d where is_dir",
+            "select name from /d where is_dir = is_file",
+            "select name from /d where is_dir = contains('x')",
+        ] {
+            assert!(parse_query(query).is_ok(), "{}: {:?}", query, parse_query(query).err());
+        }
     }
 
     #[test]

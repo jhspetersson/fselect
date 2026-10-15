@@ -816,6 +816,47 @@ impl Expr {
     /// against datetime-returning function results are not validated here
     /// because that would require tracking function return types. Per-file
     /// degradation in `conforms()` still catches those silently.
+    pub fn validate_boolean_literals(&self) -> Result<(), String> {
+        if self.op.is_some() {
+            let boolean_side = |side: &Option<Box<Expr>>| side.as_deref().and_then(|e| e.field).filter(Field::is_boolean_field);
+            if let Some(field) = boolean_side(&self.left)
+                && let Some(ref right) = self.right
+            {
+                Self::check_bool_value_side(right, &field)?;
+            }
+            if let Some(field) = boolean_side(&self.right)
+                && let Some(ref left) = self.left
+            {
+                Self::check_bool_value_side(left, &field)?;
+            }
+        }
+        for child in self.left.iter().chain(self.right.iter()) {
+            child.validate_boolean_literals()?;
+        }
+        for arg in self.args.iter().flatten() {
+            arg.validate_boolean_literals()?;
+        }
+        if let Some(ref subquery) = self.subquery
+            && let Some(ref inner) = subquery.expr
+        {
+            inner.validate_boolean_literals()?;
+        }
+        Ok(())
+    }
+
+    fn check_bool_value_side(expr: &Expr, field: &Field) -> Result<(), String> {
+        for arg in expr.args.iter().flatten() {
+            Self::check_bool_value_side(arg, field)?;
+        }
+        if expr.is_literal()
+            && let Some(ref val) = expr.val
+            && crate::util::str_to_bool(val).is_none()
+        {
+            return Err(format!("Can't parse boolean '{}' for field {}", val, field.to_string().to_lowercase()));
+        }
+        Ok(())
+    }
+
     pub fn validate_datetime_literals(&self) -> Result<(), String> {
         Self::validate_dt_node(self)
     }

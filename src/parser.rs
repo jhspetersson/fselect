@@ -1338,24 +1338,25 @@ impl <'a> Parser<'a> {
     }
 
     fn resolve_having_aliases(expr: &mut Expr, fields: &[Expr]) {
-        if expr.logical_op.is_some() {
-            if let Some(ref mut left) = expr.left {
-                Self::resolve_having_aliases(left, fields);
+        if expr.is_literal()
+            && let Some(ref val) = expr.val
+            && let Some(aliased) = fields
+                .iter()
+                .find(|f| f.alias.as_deref().is_some_and(|a| a.eq_ignore_ascii_case(val)))
+        {
+            let minus = expr.minus;
+            *expr = aliased.clone();
+            if minus {
+                expr.minus = !expr.minus;
             }
-            if let Some(ref mut right) = expr.right {
-                Self::resolve_having_aliases(right, fields);
-            }
-        } else if expr.op.is_some()
-            && let Some(ref mut left) = expr.left
-                && left.field.is_none()
-                    && left.function.is_none()
-                        && left.left.is_none()
-                            && let Some(ref val) = left.val.clone()
-                                && let Some(aliased) = fields
-                                    .iter()
-                                    .find(|f| f.alias.as_deref().is_some_and(|a| a.eq_ignore_ascii_case(val))) {
-                                        **left = aliased.clone();
-                                    }
+            return;
+        }
+        for child in expr.left.iter_mut().chain(expr.right.iter_mut()) {
+            Self::resolve_having_aliases(child, fields);
+        }
+        for arg in expr.args.iter_mut().flatten() {
+            Self::resolve_having_aliases(arg, fields);
+        }
     }
 
     fn contains_op_unsupported_in_having(expr: &Expr) -> bool {

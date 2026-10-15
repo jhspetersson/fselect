@@ -3622,6 +3622,36 @@ mod tests {
     }
 
     #[test]
+    fn having_aliases_resolve_in_every_position() {
+        let tmp = std::env::temp_dir().join("fselect_test_having_alias_positions");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        fs::write(tmp.join("a.txt"), "x").unwrap();
+        fs::write(tmp.join("b.txt"), "x").unwrap();
+        fs::write(tmp.join("c.txt"), "x").unwrap();
+
+        let run = |having: &str| run_query_against_dir(&format!("select count(*) as n from __DIR__ {having}"), &tmp);
+        let cases: Vec<(&str, Vec<&str>)> = vec![
+            ("having n > 10", vec![]),
+            ("having 10 < n", vec![]),
+            ("having 2 < n", vec!["3"]),
+            ("having n * 2 > 5", vec!["3"]),
+            ("having 5 < n * 2", vec!["3"]),
+            ("having abs(n) > 2", vec!["3"]),
+            ("having abs(n) > 3", vec![]),
+            ("having n between 2 and 4", vec!["3"]),
+            ("having 2 < n and n < 4", vec!["3"]),
+            ("having 10 < n or n = 3", vec!["3"]),
+        ];
+        let results: Vec<(&str, Vec<String>)> = cases.iter().map(|(having, _)| (*having, run(having))).collect();
+        let _ = fs::remove_dir_all(&tmp);
+
+        for ((having, expected), (_, actual)) in cases.iter().zip(results) {
+            assert_eq!(&actual, expected, "{}", having);
+        }
+    }
+
+    #[test]
     fn having_aggregate_not_in_select_list() {
         let tmp = std::env::temp_dir().join("fselect_test_having_agg_not_selected");
         let _ = fs::remove_dir_all(&tmp);

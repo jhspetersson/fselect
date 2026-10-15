@@ -37,6 +37,24 @@ use crate::util::dir_lookup::DirEntryLookup;
 use crate::util::error::{error_message, path_error_message, SearchError};
 
 
+struct AncestorDir {
+    canonical: PathBuf,
+    parent: Option<Rc<AncestorDir>>,
+}
+
+impl AncestorDir {
+    fn contains(chain: &Option<Rc<AncestorDir>>, canonical: &Path) -> bool {
+        let mut current = chain.as_ref();
+        while let Some(dir) = current {
+            if dir.canonical == canonical {
+                return true;
+            }
+            current = dir.parent.as_ref();
+        }
+        false
+    }
+}
+
 pub struct Searcher<'a> {
     query: &'a Query,
     config: &'a Config,
@@ -61,9 +79,9 @@ pub struct Searcher<'a> {
 
     hgignore_filters: Vec<HgignoreFilter>,
     dockerignore_filters: Vec<DockerignoreFilter>,
-    visited_dirs: HashSet<PathBuf>,
+    ancestor_dirs: Option<Rc<AncestorDir>>,
     lscolors: LsColors,
-    dir_queue: VecDeque<(PathBuf, u32)>,
+    dir_queue: VecDeque<(PathBuf, u32, Option<Rc<AncestorDir>>)>,
     #[cfg(test)]
     dirs_opened: usize,
     #[cfg(test)]
@@ -333,7 +351,7 @@ impl<'a> Searcher<'a> {
 
             hgignore_filters: vec![],
             dockerignore_filters: vec![],
-            visited_dirs: HashSet::new(),
+            ancestor_dirs: None,
             lscolors: LsColors::from_env().unwrap_or_default(),
             dir_queue: VecDeque::new(),
             #[cfg(test)]
@@ -614,7 +632,7 @@ impl<'a> Searcher<'a> {
             if let Some(ref inner) = root.subquery {
                 let paths = self.collect_subquery_root_paths(inner.as_ref().clone())?;
                 self.dir_queue.clear();
-                self.visited_dirs.clear();
+                self.ancestor_dirs = None;
                 self.hgignore_filters.clear();
                 self.dockerignore_filters.clear();
                 self.current_min_depth = 0;
@@ -661,7 +679,7 @@ impl<'a> Searcher<'a> {
             self.current_traversal_mode = root.options.traversal;
 
             self.dir_queue.clear();
-            self.visited_dirs.clear();
+            self.ancestor_dirs = None;
             self.hgignore_filters.clear();
             self.dockerignore_filters.clear();
 
@@ -1196,14 +1214,15 @@ impl<'a> Searcher<'a> {
         };
 
         // Prevents infinite loops when following symlinks
-        if self.current_follow_symlinks {
+        let child_ancestors = if self.current_follow_symlinks {
             let canonical_pathbuf = PathBuf::from(canonical_path.as_ref().unwrap());
-            if self.visited_dirs.contains(&canonical_pathbuf) {
+            if AncestorDir::contains(&self.ancestor_dirs, &canonical_pathbuf) {
                 return Ok(());
-            } else {
-                self.visited_dirs.insert(canonical_pathbuf);
             }
-        }
+            Some(Rc::new(AncestorDir { canonical: canonical_pathbuf, parent: self.ancestor_dirs.clone() }))
+        } else {
+            None
+        };
 
         let depth = root_depth + 1;
         let child_root_depth = depth;
@@ -1339,6 +1358,7 @@ impl<'a> Searcher<'a> {
                                                         },
                                                         _ => None,
                                                     };
+                                                    let parent_ancestors = std::mem::replace(&mut self.ancestor_dirs, child_ancestors.clone());
                                                     let result = self.visit_dir(
                                                         &path,
                                                         child_root_depth,
@@ -1346,6 +1366,7 @@ impl<'a> Searcher<'a> {
                                                         git_repository,
                                                         false,
                                                     );
+                                                    self.ancestor_dirs = parent_ancestors;
 
                                                     if let Err(err) = result {
                                                         if err.is_fatal() {
@@ -1354,7 +1375,7 @@ impl<'a> Searcher<'a> {
                                                         self.handle_nonfatal_error(err, &path);
                                                     }
                                                 } else {
-                                                    self.dir_queue.push_back((path, child_root_depth));
+                                                    self.dir_queue.push_back((path, child_root_depth, child_ancestors.clone()));
                                                 }
                                             }
                                         }
@@ -1380,11 +1401,12 @@ impl<'a> Searcher<'a> {
         }
 
         if self.current_traversal_mode == Bfs && process_queue {
-            while let Some((path, queued_root_depth)) = self.dir_queue.pop_front() {
+            while let Some((path, queued_root_depth, ancestors)) = self.dir_queue.pop_front() {
                 if self.limit_reached() {
                     self.dir_queue.clear();
                     break;
                 }
+                self.ancestor_dirs = ancestors;
                 #[cfg(feature = "git")]
                 let repo;
                 #[cfg(feature = "git")]
@@ -2864,7 +2886,7 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn test_visited_dirs_uses_canonical_path() {
+    fn a_link_beside_the_real_directory_is_traversed_too() {
         use std::os::unix::fs::symlink;
 
         let tmp = std::env::temp_dir().join("fselect_test_visited_canonical");
@@ -2890,8 +2912,8 @@ mod tests {
         let found = searcher.found;
         let _ = fs::remove_dir_all(&tmp);
         assert_eq!(
-            found, 4,
-            "a/ should not be re-traversed via symlink, found={}",
+            found, 5,
+            "a/ is listed both directly and through the link, found={}",
             found
         );
     }
@@ -2962,7 +2984,6 @@ mod tests {
 
         // Correct order (matching the fixed code): clear first, then load
         searcher.dir_queue.clear();
-        searcher.visited_dirs.clear();
         searcher.hgignore_filters.clear();
         searcher.dockerignore_filters.clear();
 
@@ -2977,7 +2998,7 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn test_visited_dirs_cleared_between_roots() {
+    fn symlink_targets_are_followed_under_every_root() {
         use std::os::unix::fs::symlink;
 
         let tmp = std::env::temp_dir().join("fselect_test_visited_cleared");
@@ -3007,7 +3028,6 @@ mod tests {
 
         let found_after_a = searcher.found;
 
-        searcher.visited_dirs.clear();
         searcher.current_root_dir = root_b.clone();
 
         let _ = searcher.visit_dir(
@@ -3398,6 +3418,82 @@ mod tests {
             let rows: Vec<String> = searcher.output_buffer.iter_values().map(|row| row.trim_end().to_string()).collect();
             assert!(rows.is_empty(), "{} part after a miss restarted the search from the current directory: {:?}", what, rows);
             assert_eq!(searcher.error_count, 1, "{} part after a miss should report the unmatched part", what);
+        }
+    }
+
+    fn link_dir(target: &str, link: &Path) -> bool {
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(target, link).is_ok()
+        }
+        #[cfg(windows)]
+        {
+            std::os::windows::fs::symlink_dir(target, link).is_ok()
+        }
+        #[cfg(not(any(unix, windows)))]
+        {
+            let _ = (target, link);
+            false
+        }
+    }
+
+    fn rel(parts: &[&str]) -> String {
+        parts.iter().collect::<PathBuf>().to_string_lossy().to_string()
+    }
+
+    #[test]
+    fn a_real_directory_is_listed_even_when_a_link_to_it_is_read_first() {
+        let tmp = std::env::temp_dir().join("fselect_test_sym_real_dir_kept");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(tmp.join("zreal")).unwrap();
+        fs::write(tmp.join("zreal").join("file.txt"), "x").unwrap();
+        if !link_dir("zreal", &tmp.join("alink")) {
+            let _ = fs::remove_dir_all(&tmp);
+            eprintln!("skipped: cannot create directory symlinks here");
+            return;
+        }
+
+        let dfs = run_query_against_dir("select path from __DIR__ sym", &tmp);
+        let bfs = run_query_against_dir("select path from __DIR__ sym bfs", &tmp);
+        let _ = fs::remove_dir_all(&tmp);
+
+        for (mode, mut rows) in [("dfs", dfs), ("bfs", bfs)] {
+            rows.sort();
+            let expected = vec!["alink".to_string(), rel(&["alink", "file.txt"]), "zreal".to_string(), rel(&["zreal", "file.txt"])];
+            assert_eq!(rows, expected, "{}", mode);
+        }
+    }
+
+    #[test]
+    fn symlink_cycles_are_detected_against_the_traversal_chain_only() {
+        let tmp = std::env::temp_dir().join("fselect_test_sym_cycles");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(tmp.join("a").join("b")).unwrap();
+        fs::create_dir_all(tmp.join("x")).unwrap();
+        fs::create_dir_all(tmp.join("y")).unwrap();
+        fs::write(tmp.join("a").join("b").join("file.txt"), "x").unwrap();
+        let linked = link_dir("..", &tmp.join("a").join("up"))
+            && link_dir(&rel(&["..", "y"]), &tmp.join("x").join("l1"))
+            && link_dir(&rel(&["..", "x"]), &tmp.join("y").join("l2"));
+        if !linked {
+            let _ = fs::remove_dir_all(&tmp);
+            eprintln!("skipped: cannot create directory symlinks here");
+            return;
+        }
+
+        let dfs = run_query_against_dir("select path from __DIR__ sym", &tmp);
+        let bfs = run_query_against_dir("select path from __DIR__ sym bfs", &tmp);
+        let _ = fs::remove_dir_all(&tmp);
+
+        let mut expected = vec![
+            rel(&["a"]), rel(&["a", "b"]), rel(&["a", "b", "file.txt"]), rel(&["a", "up"]),
+            rel(&["x"]), rel(&["x", "l1"]), rel(&["x", "l1", "l2"]),
+            rel(&["y"]), rel(&["y", "l2"]), rel(&["y", "l2", "l1"]),
+        ];
+        expected.sort();
+        for (mode, mut rows) in [("dfs", dfs), ("bfs", bfs)] {
+            rows.sort();
+            assert_eq!(rows, expected, "{}", mode);
         }
     }
 

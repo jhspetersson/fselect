@@ -738,11 +738,13 @@ impl<'a> Searcher<'a> {
                     };
 
                 let having_expr = self.query.having.as_ref();
+                let aliases = self.query.own_root_aliases();
                 for (group_key, group_acc) in &accumulators {
                     let mut file_map = HashMap::new();
                     for (i, k) in group_keys.iter().enumerate() {
                         file_map.insert(k.clone(), group_key.get(i).cloned().unwrap_or_default());
                     }
+                    self.bind_group_context(&aliases, group_key);
                     if let Some(having_expr) = having_expr
                         && !self.group_conforms(&mut file_map, group_acc, having_expr)? {
                             continue;
@@ -1427,6 +1429,23 @@ impl<'a> Searcher<'a> {
             })
             .map(|(index, _)| index)
             .collect()
+    }
+
+    fn bind_group_context(&self, aliases: &HashSet<String>, group_key: &[String]) {
+        let mut context = self.record_context.borrow_mut();
+        for alias in aliases {
+            let entry = context.entry(alias.clone()).or_default();
+            entry.clear();
+            for (grouping_expr, text) in self.query.grouping_fields.iter().zip(group_key) {
+                let value = typed_variant(grouping_expr.field.as_ref(), text);
+                if let Some(field) = grouping_expr.field {
+                    entry.insert(field.to_string(), value.clone());
+                }
+                if let Some(ref column_alias) = grouping_expr.alias {
+                    entry.insert(column_alias.clone(), value.clone());
+                }
+            }
+        }
     }
 
     fn finalize_deferred(&mut self) -> Result<(), SearchError> {
@@ -3835,6 +3854,34 @@ mod tests {
 
         assert_eq!(call, vec!["txt	2"]);
         assert_eq!(alias, vec!["txt	2"]);
+    }
+
+    #[test]
+    fn correlated_scalar_subqueries_in_grouped_queries_see_the_group() {
+        let tmp = std::env::temp_dir().join("fselect_test_grouped_correlated_scalar");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        for name in ["a.txt", "b.txt", "c.md", "x.bin"] {
+            fs::write(tmp.join(name), "").unwrap();
+        }
+
+        let by_field = run_query_against_dir(
+            "select ext, count(*), (select count(*) from __DIR__ as o where o.ext = t.ext) from __DIR__ as t group by ext order by ext",
+            &tmp,
+        );
+        let by_alias = run_query_against_dir(
+            "select ext as e, (select count(*) from __DIR__ as o where o.ext = t.e) from __DIR__ as t group by e order by e",
+            &tmp,
+        );
+        let in_having = run_query_against_dir(
+            "select ext from __DIR__ as t group by ext having (select count(*) from __DIR__ as o where o.ext = t.ext) > 1",
+            &tmp,
+        );
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(by_field, vec!["bin	1	1", "md	1	1", "txt	2	2"]);
+        assert_eq!(by_alias, vec!["bin	1", "md	1", "txt	2"]);
+        assert_eq!(in_having, vec!["txt"]);
     }
 
     #[test]

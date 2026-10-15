@@ -621,22 +621,7 @@ impl Expr {
         let mut result = HashMap::new();
 
         if let Some(ref subquery) = self.subquery {
-            // A correlated subquery can reference an outer field from any of its
-            // clauses, not just WHERE: ORDER BY and GROUP BY exprs are evaluated
-            // per inner row too, so their outer-alias references must also be
-            // propagated via record_context.
-            if let Some(ref expr) = subquery.expr {
-                result.extend(expr.get_fields_required_in_subqueries(alias, true));
-            }
-            for ordering_expr in &subquery.ordering_fields {
-                result.extend(ordering_expr.get_fields_required_in_subqueries(alias, true));
-            }
-            for grouping_expr in &subquery.grouping_fields {
-                result.extend(grouping_expr.get_fields_required_in_subqueries(alias, true));
-            }
-            if let Some(ref having) = subquery.having {
-                result.extend(having.get_fields_required_in_subqueries(alias, true));
-            }
+            Self::collect_fields_required_from_query(subquery, alias, &mut result);
         }
 
         if let Some(ref left) = self.left {
@@ -662,6 +647,24 @@ impl Expr {
                     }
         
         result
+    }
+
+    fn collect_fields_required_from_query(query: &Query, alias: &str, result: &mut HashMap<Field, String>) {
+        let clauses = query
+            .fields
+            .iter()
+            .chain(query.expr.iter())
+            .chain(query.ordering_fields.iter())
+            .chain(query.grouping_fields.iter())
+            .chain(query.having.iter());
+        for expr in clauses {
+            result.extend(expr.get_fields_required_in_subqueries(alias, true));
+        }
+        for root in &query.roots {
+            if let Some(ref inner) = root.subquery {
+                Self::collect_fields_required_from_query(inner, alias, result);
+            }
+        }
     }
 
     pub fn contains_numeric(&self) -> bool {

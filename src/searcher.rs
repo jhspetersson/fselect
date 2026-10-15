@@ -1475,6 +1475,7 @@ impl<'a> Searcher<'a> {
                 let context = self.record_context.borrow();
                 if let Some(ctx) = context.get(column_expr_context_name) {
                     if let Some(val) = ctx.get(captures.get(2).unwrap().as_str()) {
+                        file_map.insert(cache_key, val.to_string());
                         return Ok(val.clone());
                     } else {
                         //TODO: this should be propagated up to the higher context
@@ -3734,6 +3735,50 @@ mod tests {
         assert!(searcher.compare_variants(&Op::Ne, &two, &ten).unwrap());
         assert!(searcher.compare_variants(&Op::Eq, &Variant::from_string(&String::from("10")), &ten).unwrap());
         assert!(searcher.compare_variants(&Op::Gt, &two, &Variant::from_string(&String::from("10"))).unwrap());
+    }
+
+    #[test]
+    fn outer_fields_used_only_in_an_inner_select_list_are_captured() {
+        use crate::lexer::Lexer;
+        use crate::parser::Parser;
+
+        let mut lexer = Lexer::new(vec![String::from(
+            "select name, (select t1.size from /x), (select name from (select path from /x where t1.modified > '2020-01-01')) from /y as t1",
+        )]);
+        let query = Parser::new(&mut lexer).parse(false).expect("parse failed");
+        let scalar = query.fields[1].get_fields_required_in_subqueries("t1", false);
+        let nested_root = query.fields[2].get_fields_required_in_subqueries("t1", false);
+        assert_eq!(scalar.get(&Field::Size).map(String::as_str), Some("Size"));
+        assert_eq!(nested_root.get(&Field::Modified).map(String::as_str), Some("Modified"));
+
+        let tmp = std::env::temp_dir().join("fselect_test_correlated_select_list");
+        let _ = fs::remove_dir_all(&tmp);
+        let data = tmp.join("data");
+        let other = tmp.join("other");
+        fs::create_dir_all(&data).unwrap();
+        fs::create_dir_all(&other).unwrap();
+        fs::write(data.join("a.txt"), "xxx").unwrap();
+        fs::write(data.join("b.txt"), "xxxxxxx").unwrap();
+        fs::write(other.join("o.txt"), "x".repeat(11)).unwrap();
+        let other_root = other.to_string_lossy().to_string();
+
+        let scalar = run_query_against_dir(
+            &format!("select name, (select t1.size from {other_root}) from __DIR__ as t1 order by name"),
+            &data,
+        );
+        let aggregate = run_query_against_dir(
+            &format!("select name, (select max(t1.size) from {other_root}) from __DIR__ as t1 order by name"),
+            &data,
+        );
+        let exists = run_query_against_dir(
+            &format!("select name from __DIR__ as t1 where exists (select t1.size from {other_root}) order by name"),
+            &data,
+        );
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(scalar, vec!["a.txt\t3", "b.txt\t7"]);
+        assert_eq!(aggregate, vec!["a.txt\t3", "b.txt\t7"]);
+        assert_eq!(exists, vec!["a.txt", "b.txt"]);
     }
 
     #[test]

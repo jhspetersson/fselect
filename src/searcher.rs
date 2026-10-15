@@ -127,6 +127,7 @@ pub struct Searcher<'a> {
     /// Runs a subquery on behalf of an enclosing searcher, whose aliases it
     /// may legitimately reference.
     is_nested: bool,
+    enclosing_aliases: HashSet<String>,
     root_depth_column: bool,
     root_depth_cache: Option<(PathBuf, usize)>,
 
@@ -399,6 +400,7 @@ impl<'a> Searcher<'a> {
             membership_cache: HashMap::new(),
             silent_mode: false,
             is_nested: false,
+            enclosing_aliases: HashSet::new(),
             root_depth_column: false,
             root_depth_cache: None,
 
@@ -603,6 +605,12 @@ impl<'a> Searcher<'a> {
         for root in roots {
             self.current_follow_symlinks = root.options.symlinks;
             self.current_alias = root.options.alias.clone();
+            {
+                let mut context = self.record_context.borrow_mut();
+                for alias in self.query.own_root_aliases() {
+                    context.remove(&alias);
+                }
+            }
             self.subquery_required_fields = match &self.current_alias {
                 Some(alias) => {
                     // A correlated subquery can sit in any outer clause — the
@@ -1073,6 +1081,7 @@ impl<'a> Searcher<'a> {
         // output_buffer instead of leaking to stdout (debug mode included).
         sub_searcher.silent_mode = true;
         sub_searcher.is_nested = true;
+        sub_searcher.enclosing_aliases = self.enclosing_aliases.union(&self.query.own_root_aliases()).cloned().collect();
         sub_searcher.root_depth_column = root_depth_column;
         let shadowed: Vec<(String, Option<HashMap<String, Variant>>)> = {
             let context = self.record_context.borrow();
@@ -1674,7 +1683,9 @@ impl<'a> Searcher<'a> {
                             None => Variant::empty(VariantType::String),
                         });
                     }
-                    None if own_row => return Ok(Variant::empty(VariantType::String)),
+                    None if own_row || self.is_declared_alias(&context_name) => {
+                        return Ok(Variant::empty(VariantType::String));
+                    }
                     None => {
                         return Err(SearchError::fatal(format!("Invalid root alias: {}", context_name)).with_source("query"));
                     }
@@ -2433,6 +2444,10 @@ impl<'a> Searcher<'a> {
         Ok(false)
     }
 
+    fn is_declared_alias(&self, alias: &str) -> bool {
+        self.enclosing_aliases.contains(alias) || self.query.roots.iter().any(|root| root.options.alias.as_deref() == Some(alias))
+    }
+
     fn retype_value(left_expr: &Expr, right_expr: &Expr, value: Variant) -> Variant {
         if !matches!(value.get_type(), VariantType::String) {
             return value;
@@ -2826,11 +2841,11 @@ mod tests {
     }
 
     #[test]
-    fn declared_alias_with_unpopulated_context_errors_for_value_expr() {
+    fn declared_alias_with_unpopulated_context_is_empty_for_value_expr() {
         // `a.sz` where `sz` is not a field parses as a plain value, but when
         // `a` is declared as a root alias it is an alias.column reference;
-        // with no context registered for `a` yet it must error rather than
-        // silently evaluate to the literal string "a.sz".
+        // with no row registered for `a` it is an empty value rather than
+        // the literal string "a.sz".
         let mut alias_options = RootOptions::new();
         alias_options.alias = Some(String::from("a"));
         let query = Box::leak(Box::new(Query {
@@ -2856,11 +2871,8 @@ mod tests {
             None, &None, Path::new("."), &mut file_map, None, &value_expr,
         );
 
-        assert!(
-            matches!(result, Err(ref e) if e.description.contains("Invalid root alias: a")),
-            "declared but unpopulated alias must error, got: {:?}",
-            result.map(|v| v.to_string())
-        );
+        let value = result.expect("a declared alias without a row is not an error");
+        assert_eq!(value.to_string(), "");
     }
 
     #[cfg(unix)]
@@ -3691,6 +3703,36 @@ mod tests {
             format!("{}\t1", member(&["top.txt"])),
         ]);
         assert_eq!(through.error_count, 0);
+    }
+
+    #[test]
+    fn sibling_root_aliases_have_no_row_while_another_root_is_walked() {
+        let tmp = std::env::temp_dir().join("fselect_test_sibling_alias_rows");
+        let _ = fs::remove_dir_all(&tmp);
+        for (dir, files) in [("A", vec![("a1.txt", 1)]), ("B", vec![("b1.txt", 2), ("b2.txt", 3)]), ("C", vec![("c1.txt", 1), ("c2.txt", 2)])] {
+            fs::create_dir_all(tmp.join(dir)).unwrap();
+            for (name, size) in files {
+                fs::write(tmp.join(dir).join(name), "x".repeat(size)).unwrap();
+            }
+        }
+
+        let exists_a_first = run_query_against_dir(
+            "select path from __DIR__/A as a, __DIR__/B as b where exists (select name from __DIR__/C where size = a.size) order by path",
+            &tmp,
+        );
+        let exists_b_first = run_query_against_dir(
+            "select path from __DIR__/B as b, __DIR__/A as a where exists (select name from __DIR__/C where size = a.size) order by path",
+            &tmp,
+        );
+        let counted = run_query_against_dir(
+            "select path, (select count(*) from __DIR__/C where size = a.size) from __DIR__/A as a, __DIR__/B as b order by path",
+            &tmp,
+        );
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(exists_a_first, vec!["a1.txt"], "rows of B have no a.size to compare");
+        assert_eq!(exists_b_first, vec!["a1.txt"], "an alias whose root comes later is not an error either");
+        assert_eq!(counted, vec!["a1.txt	1", "b1.txt	0", "b2.txt	0"]);
     }
 
     #[test]

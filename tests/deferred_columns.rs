@@ -15,6 +15,27 @@ fn fselect(query: &str) -> (Option<i32>, String, String) {
 }
 
 #[test]
+fn a_failing_deferred_column_keeps_its_row_and_reports_the_error() {
+    let dir = std::env::temp_dir().join("fselect_it_deferred_column_error");
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    for (name, lines) in [("a.txt", 1), ("b.txt", 2), ("c.txt", 3)] {
+        fs::write(dir.join(name), "line\n".repeat(lines)).unwrap();
+    }
+    let root = dir.display();
+
+    let json = fselect(&format!("select name, 1 / (line_count - 1) from {root} order by name limit 2 into json"));
+    let _ = fs::remove_dir_all(&dir);
+
+    assert_eq!(json.0, Some(1), "{}", json.2);
+    assert!(json.2.contains("Division by zero"), "{}", json.2);
+    assert_eq!(
+        json.1.trim(),
+        r#"[{"name":"a.txt","1 / (linecount - 1)":""},{"name":"b.txt","1 / (linecount - 1)":"1"}]"#
+    );
+}
+
+#[test]
 fn deferred_content_columns_render_in_every_format() {
     let dir = std::env::temp_dir().join("fselect_it_deferred_columns");
     let _ = fs::remove_dir_all(&dir);

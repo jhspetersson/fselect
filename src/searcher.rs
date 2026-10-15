@@ -1403,23 +1403,15 @@ impl<'a> Searcher<'a> {
                 let follow_symlinks = std::mem::replace(&mut self.current_follow_symlinks, row.follow_symlinks);
                 let evaluated = self.evaluate_deferred(entry, &row, &mut items);
                 self.current_follow_symlinks = follow_symlinks;
-                if let Err(err) = evaluated {
-                    if err.is_fatal() {
-                        return Err(err);
-                    }
-                    self.handle_nonfatal_error(err, &row.path);
-                    return Ok(None);
-                }
+                evaluated?;
             }
             Ok(None) => {
                 self.error_count += 1;
                 error_message(&row.path.to_string_lossy(), "entry disappeared during the search");
-                return Ok(None);
             }
             Err(err) => {
                 self.error_count += 1;
                 path_error_message(&row.path, err);
-                return Ok(None);
             }
         }
         let mut buf = WritableBuffer::new();
@@ -1435,7 +1427,14 @@ impl<'a> Searcher<'a> {
         }
         for &index in &row.deferred {
             let field = &query.fields[index];
-            let record = self.get_column_expr_value(Some(entry), &row.file_info, &row.root_path, &mut file_map, None, field)?;
+            let record = match self.get_column_expr_value(Some(entry), &row.file_info, &row.root_path, &mut file_map, None, field) {
+                Ok(record) => record,
+                Err(err) if err.is_fatal() => return Err(err),
+                Err(err) => {
+                    self.handle_nonfatal_error(err, &row.path);
+                    continue;
+                }
+            };
             items[index].1 = match self.use_colors && field.contains_colorized() {
                 true => self.colorize(&record.to_string()),
                 false => record.to_string(),
@@ -3845,6 +3844,28 @@ mod tests {
         assert_eq!(ungrouped, vec![String::from("3	2	3	4	3")]);
         assert_eq!(grouped, vec![String::from("md	1	10"), String::from("txt	2	10")]);
         assert_eq!(negative, vec![String::from("-3")]);
+    }
+
+    #[test]
+    fn deferred_column_errors_keep_the_row_and_the_limit() {
+        let tmp = std::env::temp_dir().join("fselect_test_deferred_column_errors");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        for (name, lines) in [("a.txt", 1), ("b.txt", 2), ("c.txt", 3), ("d.txt", 4)] {
+            fs::write(tmp.join(name), "line\n".repeat(lines)).unwrap();
+        }
+
+        let searcher = search_dir(
+            "select name, 1 / (line_count - 1), line_count from __DIR__ order by name limit 2",
+            &tmp,
+            Config::default(),
+            true,
+        );
+        let rows: Vec<String> = searcher.output_buffer.iter_values().map(|row| row.trim_end().to_string()).collect();
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(rows, vec!["a.txt\t\t1", "b.txt\t1\t2"], "the failed cell is empty, the other deferred cell is still filled");
+        assert_eq!(searcher.error_count, 1);
     }
 
     #[test]

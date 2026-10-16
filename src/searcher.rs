@@ -1549,6 +1549,12 @@ impl<'a> Searcher<'a> {
             .collect()
     }
 
+    fn unaliased_key(expr: &Expr) -> String {
+        let mut bare = expr.clone();
+        bare.alias = None;
+        bare.cache_key()
+    }
+
     fn bind_group_context(&self, aliases: &HashSet<String>, group_key: &[String]) {
         let mut context = self.record_context.borrow_mut();
         for alias in aliases {
@@ -1561,6 +1567,14 @@ impl<'a> Searcher<'a> {
                 }
                 if let Some(ref column_alias) = grouping_expr.alias {
                     entry.insert(column_alias.clone(), value.clone());
+                }
+                let grouping_key = Self::unaliased_key(grouping_expr);
+                for column in &self.query.fields {
+                    if let Some(ref column_alias) = column.alias
+                        && Self::unaliased_key(column) == grouping_key
+                    {
+                        entry.insert(column_alias.clone(), value.clone());
+                    }
                 }
             }
         }
@@ -3961,6 +3975,41 @@ mod tests {
         let _ = fs::remove_dir_all(&tmp);
 
         assert_eq!(extremes, vec!["002	1e3	1	1"]);
+    }
+
+    #[test]
+    fn grouped_correlated_subqueries_see_select_aliases_of_grouping_expressions() {
+        let tmp = std::env::temp_dir().join("fselect_test_grouped_select_alias_binding");
+        let _ = fs::remove_dir_all(&tmp);
+        let data = tmp.join("data");
+        let refext = tmp.join("refext");
+        fs::create_dir_all(&data).unwrap();
+        fs::create_dir_all(&refext).unwrap();
+        for name in ["a.txt", "b.txt", "c.rs"] {
+            fs::write(data.join(name), "x").unwrap();
+        }
+        for name in ["r1.txt", "r2.txt", "r3.txt", "q.rs"] {
+            fs::write(refext.join(name), "x").unwrap();
+        }
+        let refext_root = refext.to_string_lossy().to_string();
+
+        let by_field = run_query_against_dir(
+            &format!("select ext as kind, (select count(*) from {refext_root} where ext = t.kind) from __DIR__ as t group by ext order by kind"),
+            &data,
+        );
+        let by_alias = run_query_against_dir(
+            &format!("select ext as kind, (select count(*) from {refext_root} where ext = t.kind) from __DIR__ as t group by kind order by kind"),
+            &data,
+        );
+        let computed = run_query_against_dir(
+            &format!("select length(name) as len, (select count(*) from {refext_root} where length(name) = t.len) from __DIR__ as t group by length(name) order by len"),
+            &data,
+        );
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(by_field, vec!["rs	1", "txt	3"]);
+        assert_eq!(by_alias, by_field);
+        assert_eq!(computed, vec!["4	1", "5	0"]);
     }
 
     #[test]

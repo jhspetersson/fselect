@@ -667,8 +667,8 @@ impl<'a> Searcher<'a> {
                 self.ancestor_dirs = None;
                 self.hgignore_filters.clear();
                 self.dockerignore_filters.clear();
-                self.current_min_depth = 0;
-                self.current_max_depth = 0;
+                self.current_min_depth = root.options.min_depth;
+                self.current_max_depth = root.options.max_depth;
                 self.current_search_archives = root.options.archives;
                 self.current_apply_gitignore = root
                     .options
@@ -983,6 +983,9 @@ impl<'a> Searcher<'a> {
     fn visit_subquery_paths(&mut self, paths: Vec<(String, Option<usize>)>) -> Result<(), SearchError> {
         let mut lookup = DirEntryLookup::new();
         let mut archives = ArchiveLookup::default();
+        let mut filters_root: Option<PathBuf> = None;
+        #[cfg(feature = "git")]
+        let mut repository: Option<Repository> = None;
         for (path_str, root_depth) in paths {
             if path_str.is_empty() {
                 continue;
@@ -1008,6 +1011,41 @@ impl<'a> Searcher<'a> {
                 _ => parent.clone(),
             };
             self.current_root_dir = root_dir.clone();
+
+            let depth = path.strip_prefix(&root_dir).map(|rest| rest.components().count()).unwrap_or(1) as u32;
+            if !self.within_depth_limits(depth) {
+                continue;
+            }
+
+            if filters_root.as_ref() != Some(&root_dir) {
+                self.hgignore_filters.clear();
+                self.dockerignore_filters.clear();
+                if self.current_apply_hgignore {
+                    search_upstream_hgignore(&mut self.hgignore_filters, &root_dir);
+                }
+                if self.current_apply_dockerignore {
+                    search_upstream_dockerignore(&mut self.dockerignore_filters, &root_dir);
+                }
+                #[cfg(feature = "git")]
+                {
+                    repository = match self.current_apply_gitignore {
+                        true => Repository::discover(&root_dir).ok(),
+                        false => None,
+                    };
+                }
+                filters_root = Some(root_dir.clone());
+            }
+            let entry_text = entry_path.to_string_lossy();
+            if self.current_apply_hgignore && matches_hgignore_filter(&self.hgignore_filters, entry_text.as_ref()) {
+                continue;
+            }
+            if self.current_apply_dockerignore && matches_dockerignore_filter(&self.dockerignore_filters, entry_text.as_ref()) {
+                continue;
+            }
+            #[cfg(feature = "git")]
+            if repository.as_ref().is_some_and(|repo| repo.is_path_ignored(&entry_path).unwrap_or(false)) {
+                continue;
+            }
 
             match lookup.entry(&parent, &file_name) {
                 Ok(Some(entry)) => {
@@ -4010,6 +4048,35 @@ mod tests {
         assert_eq!(by_field, vec!["rs	1", "txt	3"]);
         assert_eq!(by_alias, by_field);
         assert_eq!(computed, vec!["4	1", "5	0"]);
+    }
+
+    #[test]
+    fn root_options_on_a_from_subselect_apply_to_its_rows() {
+        let tmp = std::env::temp_dir().join("fselect_test_subselect_root_options");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(tmp.join("keep").join("sub")).unwrap();
+        fs::write(tmp.join("top.txt"), "x").unwrap();
+        fs::write(tmp.join("drop.log"), "x").unwrap();
+        fs::write(tmp.join("keep").join("mid.txt"), "x").unwrap();
+        fs::write(tmp.join("keep").join("sub").join("deep.txt"), "x").unwrap();
+        fs::write(tmp.join(".dockerignore"), "*.log
+").unwrap();
+
+        let plain = |options: &str| run_query_against_dir(&format!("select path from __DIR__ {options} order by path"), &tmp);
+        let wrapped = |options: &str| run_query_against_dir(&format!("select path from (select path from __DIR__) {options} order by path"), &tmp);
+        let cases = ["dockerignore", "depth 1", "mindepth 2", "mindepth 2 maxdepth 2", "dockerignore depth 1"];
+        let results: Vec<(&str, Vec<String>, Vec<String>)> = cases.iter().map(|o| (*o, plain(o), wrapped(o))).collect();
+        let inner_and_outer = run_query_against_dir(
+            "select path from (select path from __DIR__ dockerignore) depth 1 order by path",
+            &tmp,
+        );
+        let _ = fs::remove_dir_all(&tmp);
+
+        for (options, expected, actual) in results {
+            assert_eq!(actual, expected, "{}", options);
+            assert!(!expected.is_empty(), "{}: the plain root must have produced rows", options);
+        }
+        assert_eq!(inner_and_outer, vec![".dockerignore", "keep", "top.txt"]);
     }
 
     #[test]

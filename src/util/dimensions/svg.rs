@@ -11,28 +11,84 @@ pub struct SvgDimensionsExtractor;
 
 impl SvgDimensionsExtractor {}
 
-/// Parse an SVG length attribute: a number with an optional unit suffix
-/// (`144`, `144.5`, `144px`, `10cm`). Percentages are relative and have no
-/// absolute pixel value, so they yield `Ok(None)`; a value without a leading
-/// number is invalid data.
-fn parse_svg_length(value: &str) -> io::Result<Option<usize>> {
-    let value = value.trim();
-    let numeric_len = value
-        .find(|c: char| !c.is_ascii_digit() && c != '.')
-        .unwrap_or(value.len());
-    let (number, unit) = value.split_at(numeric_len);
+fn css_number_len(value: &str) -> usize {
+    let bytes = value.as_bytes();
+    let mut i = 0;
+    if matches!(bytes.first(), Some(b'+') | Some(b'-')) {
+        i += 1;
+    }
+    let int_start = i;
+    while bytes.get(i).is_some_and(u8::is_ascii_digit) {
+        i += 1;
+    }
+    let mut digits = i - int_start;
+    if bytes.get(i) == Some(&b'.') {
+        let frac_start = i + 1;
+        let mut j = frac_start;
+        while bytes.get(j).is_some_and(u8::is_ascii_digit) {
+            j += 1;
+        }
+        digits += j - frac_start;
+        i = j;
+    }
+    if digits == 0 {
+        return 0;
+    }
+    if matches!(bytes.get(i), Some(b'e') | Some(b'E')) {
+        let mut j = i + 1;
+        if matches!(bytes.get(j), Some(b'+') | Some(b'-')) {
+            j += 1;
+        }
+        let exp_start = j;
+        while bytes.get(j).is_some_and(u8::is_ascii_digit) {
+            j += 1;
+        }
+        if j > exp_start {
+            i = j;
+        }
+    }
+    i
+}
 
-    if unit.trim() == "%" {
+fn css_pixels_per_unit(unit: &str) -> Option<f64> {
+    match unit.to_ascii_lowercase().as_str() {
+        "" | "px" => Some(1.0),
+        "in" => Some(96.0),
+        "cm" => Some(96.0 / 2.54),
+        "mm" => Some(96.0 / 25.4),
+        "q" => Some(96.0 / 101.6),
+        "pt" => Some(96.0 / 72.0),
+        "pc" => Some(16.0),
+        _ => None,
+    }
+}
+
+/// Parse an SVG length attribute into CSS pixels: a number (`144`, `144.5`,
+/// `1e2`) with an optional unit suffix (`144px`, `1in`, `10cm`). Relative
+/// units (`%`, `em`, `ex`) have no absolute pixel value and yield `Ok(None)`;
+/// a value without a leading number, with an unknown unit, or that is
+/// negative is invalid data.
+fn parse_svg_length(value: &str) -> io::Result<Option<usize>> {
+    let invalid = || {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("invalid SVG length: {}", value),
+        )
+    };
+    let value = value.trim();
+    let (number, unit) = value.split_at(css_number_len(value));
+
+    if matches!(unit.to_ascii_lowercase().as_str(), "%" | "em" | "ex") {
         return Ok(None);
     }
 
-    match number.parse::<f64>() {
-        Ok(v) if v.is_finite() => Ok(Some(v.round() as usize)),
-        _ => Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            format!("invalid SVG length: {}", value),
-        )),
+    let number = number.parse::<f64>().map_err(|_| invalid())?;
+    let scale = css_pixels_per_unit(unit).ok_or_else(invalid)?;
+    let pixels = number * scale;
+    if !pixels.is_finite() || pixels < 0.0 {
+        return Err(invalid());
     }
+    Ok(Some(pixels.round() as usize))
 }
 
 /// Parse a `viewBox` attribute (`min-x min-y width height`, separated by
@@ -129,10 +185,65 @@ mod test {
         assert_eq!(parse_svg_length("144").unwrap(), Some(144));
         assert_eq!(parse_svg_length("144px").unwrap(), Some(144));
         assert_eq!(parse_svg_length("144.4").unwrap(), Some(144));
-        assert_eq!(parse_svg_length(" 10cm ").unwrap(), Some(10));
+        assert_eq!(parse_svg_length("+10").unwrap(), Some(10));
+        assert_eq!(parse_svg_length(".5").unwrap(), Some(1));
         assert_eq!(parse_svg_length("100%").unwrap(), None);
         assert!(parse_svg_length("bar").is_err());
         assert!(parse_svg_length("").is_err());
+    }
+
+    #[test]
+    fn test_absolute_units_convert_to_css_pixels() {
+        use super::parse_svg_length;
+        assert_eq!(parse_svg_length("1in").unwrap(), Some(96));
+        assert_eq!(parse_svg_length("2in").unwrap(), Some(192));
+        assert_eq!(parse_svg_length(" 10cm ").unwrap(), Some(378));
+        assert_eq!(parse_svg_length("5mm").unwrap(), Some(19));
+        assert_eq!(parse_svg_length("72pt").unwrap(), Some(96));
+        assert_eq!(parse_svg_length("6pc").unwrap(), Some(96));
+        assert_eq!(parse_svg_length("101.6Q").unwrap(), Some(96));
+        assert_eq!(parse_svg_length("1IN").unwrap(), Some(96));
+    }
+
+    #[test]
+    fn test_scientific_notation() {
+        use super::parse_svg_length;
+        assert_eq!(parse_svg_length("1e2").unwrap(), Some(100));
+        assert_eq!(parse_svg_length("2E2").unwrap(), Some(200));
+        assert_eq!(parse_svg_length("1.5e1px").unwrap(), Some(15));
+        assert_eq!(parse_svg_length("1e-2in").unwrap(), Some(1));
+        assert!(parse_svg_length("1e").is_err());
+    }
+
+    #[test]
+    fn test_relative_units_have_no_pixel_value_and_junk_is_invalid() {
+        use super::parse_svg_length;
+        assert_eq!(parse_svg_length("2em").unwrap(), None);
+        assert_eq!(parse_svg_length("3ex").unwrap(), None);
+        assert!(parse_svg_length("-5").is_err());
+        assert!(parse_svg_length("10foo").is_err());
+        assert!(parse_svg_length("10 px").is_err());
+    }
+
+    #[test]
+    fn test_unit_and_exponent_lengths_in_file() -> Result<(), Box<dyn Error>> {
+        use crate::util::dimensions::DimensionsExtractor;
+
+        let tmp = std::env::temp_dir().join("fselect_test_svg_units.svg");
+        std::fs::write(
+            &tmp,
+            r#"<svg xmlns="http://www.w3.org/2000/svg" width="1in" height="2e2"><rect/></svg>"#,
+        )?;
+        let result = SvgDimensionsExtractor.try_read_dimensions(&tmp);
+        let _ = std::fs::remove_file(&tmp);
+        assert_eq!(
+            result?,
+            Some(Dimensions {
+                width: 96,
+                height: 200
+            })
+        );
+        Ok(())
     }
 
     #[test]

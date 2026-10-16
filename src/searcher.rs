@@ -823,6 +823,11 @@ impl<'a> Searcher<'a> {
                         )?;
                         items.push((column_expr.column_name(), value.to_string()));
                     }
+                    if self.root_depth_column
+                        && let Some((own_path, root_depth)) = &group_acc.representative
+                    {
+                        Self::push_subquery_identity(&mut items, own_path, *root_depth);
+                    }
                     let mut criteria_values: Vec<String> =
                         Vec::with_capacity(sorting_indices.len());
                     for (index, ordering_expr) in
@@ -898,6 +903,11 @@ impl<'a> Searcher<'a> {
                     )?;
                     items.push((column_expr.column_name(), value.to_string()));
                 }
+                if self.root_depth_column
+                    && let Some((own_path, root_depth)) = &ungrouped_acc.representative
+                {
+                    Self::push_subquery_identity(&mut items, own_path, *root_depth);
+                }
 
                 if passes_having {
                     self.results_writer.write_row(&mut buf, items)?;
@@ -945,7 +955,12 @@ impl<'a> Searcher<'a> {
     fn collect_subquery_root_paths(&mut self, mut query: Query) -> Result<Vec<(String, Option<usize>)>, SearchError> {
         // Use the absolute path so visit_subquery_paths can re-resolve each
         // result against the filesystem regardless of the inner query's root.
-        query.fields = vec![Expr::field(Field::Name)];
+        // An aggregated query keeps its own columns: replacing them would drop
+        // the aggregate (and with it the grouping), and the outer query only
+        // reads the identity columns appended after them anyway.
+        if !query.is_aggregated() {
+            query.fields = vec![Expr::field(Field::Name)];
+        }
         query.output_format = crate::query::OutputFormat::Tabs;
         let rows = self.get_list_from_subquery_with(query, true)?;
         Ok(rows
@@ -959,6 +974,25 @@ impl<'a> Searcher<'a> {
                 }
             })
             .collect())
+    }
+
+    /// The hidden identity an outer FROM-subselect needs to re-resolve this
+    /// entry: its absolute path (archive member paths appended) and the depth
+    /// of the root it was found under.
+    fn subquery_identity(&mut self, entry: &DirEntry, file_info: &Option<FileInfo>, root_path: &Path) -> (String, usize) {
+        let own_path = crate::field::own_absolute_path(entry)
+            .map(|path| match file_info {
+                Some(info) => info.name.split('/').filter(|part| !part.is_empty()).fold(path, |path, part| path.join(part)),
+                None => path,
+            })
+            .map(|path| path.to_string_lossy().to_string())
+            .unwrap_or_default();
+        (own_path, self.root_depth_of(root_path))
+    }
+
+    fn push_subquery_identity(items: &mut Vec<(String, String)>, own_path: &str, root_depth: usize) {
+        items.push((String::new(), own_path.to_string()));
+        items.push((String::new(), root_depth.to_string()));
     }
 
     fn root_depth_of(&mut self, root_path: &Path) -> usize {
@@ -1983,7 +2017,15 @@ impl<'a> Searcher<'a> {
                 .iter()
                 .map(|key| file_map.get(key).cloned().unwrap_or_default())
                 .collect();
+            let identity = if self.root_depth_column && !self.accumulators.contains_key(&group_key) {
+                Some(self.subquery_identity(entry, file_info, root_path))
+            } else {
+                None
+            };
             let accumulator = self.accumulators.entry(group_key).or_default();
+            if identity.is_some() {
+                accumulator.representative = identity;
+            }
             accumulator.increment_count();
             for (key, value) in file_map.iter() {
                 accumulator.push(key, value);
@@ -2021,16 +2063,8 @@ impl<'a> Searcher<'a> {
         }
 
         if self.root_depth_column {
-            let own_path = crate::field::own_absolute_path(entry)
-                .map(|path| match file_info {
-                    Some(info) => info.name.split('/').filter(|part| !part.is_empty()).fold(path, |path, part| path.join(part)),
-                    None => path,
-                })
-                .map(|path| path.to_string_lossy().to_string())
-                .unwrap_or_default();
-            let root_depth = self.root_depth_of(root_path);
-            items.push((String::new(), own_path));
-            items.push((String::new(), root_depth.to_string()));
+            let (own_path, root_depth) = self.subquery_identity(entry, file_info, root_path);
+            Self::push_subquery_identity(&mut items, &own_path, root_depth);
         }
 
         let mut criteria = vec!["".to_string(); self.query.ordering_fields.len()];
@@ -5292,6 +5326,44 @@ f
         assert!(no_groups.is_empty());
         assert_eq!(null_ext, vec![String::from("\t1")]);
         assert_eq!(non_null_ext, vec![String::from("txt\t2")]);
+    }
+
+    #[test]
+    fn grouped_from_subquery_yields_one_entry_per_group() {
+        let tmp = std::env::temp_dir().join("fselect_test_grouped_from_subquery");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        fs::write(tmp.join("a.rs"), "x").unwrap();
+        fs::write(tmp.join("b.txt"), "x").unwrap();
+        fs::write(tmp.join("c.txt"), "x").unwrap();
+
+        let per_path = run_query_against_dir(
+            "select count(*) from (select path from __DIR__ depth 1 group by path)",
+            &tmp,
+        );
+        let per_ext = run_query_against_dir(
+            "select count(*) from (select ext, count(*) from __DIR__ depth 1 group by ext)",
+            &tmp,
+        );
+        let exts = run_query_against_dir(
+            "select ext from (select ext from __DIR__ depth 1 group by ext) order by ext",
+            &tmp,
+        );
+        let names = run_query_against_dir(
+            "select name from (select path from __DIR__ depth 1 group by path) order by name",
+            &tmp,
+        );
+        let ungrouped = run_query_against_dir(
+            "select count(*) from (select count(*) from __DIR__ depth 1)",
+            &tmp,
+        );
+
+        let _ = fs::remove_dir_all(&tmp);
+        assert_eq!(per_path, vec![String::from("3")]);
+        assert_eq!(per_ext, vec![String::from("2")]);
+        assert_eq!(exts, vec![String::from("rs"), String::from("txt")]);
+        assert_eq!(names, vec![String::from("a.rs"), String::from("b.txt"), String::from("c.txt")]);
+        assert_eq!(ungrouped, vec![String::from("1")]);
     }
 
     #[test]

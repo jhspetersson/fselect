@@ -1895,6 +1895,26 @@ impl<'a> Searcher<'a> {
                 &column_expr.val,
             );
             Ok(Variant::from_string(&aggr_result))
+        } else if *function == function::Function::Coalesce {
+            // COALESCE short-circuits: later arguments are evaluated only
+            // while every earlier one came back empty, so a failing or
+            // expensive fallback costs nothing once a value is found.
+            let mut candidates = std::iter::once(left_expr.as_ref())
+                .chain(column_expr.args.iter().flatten());
+            let result = loop {
+                match candidates.next() {
+                    None => break Variant::empty(VariantType::String),
+                    Some(arg) => {
+                        let value = self.get_column_expr_value(entry, file_info, root_path, file_map, accumulator, arg)?;
+                        if !value.to_string().is_empty() {
+                            break value;
+                        }
+                    }
+                }
+            };
+            file_map.insert(column_expr.cache_key(), result.to_string());
+
+            Ok(result)
         } else {
             let function_arg =
                 self.get_column_expr_value(entry, file_info, root_path, file_map, accumulator, left_expr);
@@ -5364,6 +5384,42 @@ f
         assert_eq!(exts, vec![String::from("rs"), String::from("txt")]);
         assert_eq!(names, vec![String::from("a.rs"), String::from("b.txt"), String::from("c.txt")]);
         assert_eq!(ungrouped, vec![String::from("1")]);
+    }
+
+    #[test]
+    fn coalesce_skips_fallbacks_once_a_value_is_found() {
+        let tmp = std::env::temp_dir().join("fselect_test_coalesce_lazy");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        fs::write(tmp.join("a.rs"), "xy").unwrap();
+        fs::write(tmp.join("noext"), "x").unwrap();
+
+        // A populated first argument must never evaluate the failing fallback.
+        let searcher = search_dir(
+            "select name, coalesce(size, 1 / 0) from __DIR__ depth 1 order by name",
+            &tmp,
+            Config::default(),
+            true,
+        );
+        let sizes: Vec<String> = searcher.output_buffer.iter_values().map(|s| s.trim_end().to_string()).collect();
+        let size_errors = searcher.error_count;
+
+        // An empty first argument falls through, and only as far as the first
+        // populated fallback: the failing third argument is still untouched.
+        let searcher = search_dir(
+            "select name, coalesce(ext, 'none', 1 / 0) from __DIR__ depth 1 order by name",
+            &tmp,
+            Config::default(),
+            true,
+        );
+        let exts: Vec<String> = searcher.output_buffer.iter_values().map(|s| s.trim_end().to_string()).collect();
+        let ext_errors = searcher.error_count;
+
+        let _ = fs::remove_dir_all(&tmp);
+        assert_eq!(sizes, vec![String::from("a.rs\t2"), String::from("noext\t1")]);
+        assert_eq!(size_errors, 0);
+        assert_eq!(exts, vec![String::from("a.rs\trs"), String::from("noext\tnone")]);
+        assert_eq!(ext_errors, 0);
     }
 
     #[test]

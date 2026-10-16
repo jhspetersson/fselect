@@ -5423,6 +5423,33 @@ f
     }
 
     #[test]
+    fn order_by_negated_and_numeric_leading_expressions() {
+        let tmp = std::env::temp_dir().join("fselect_test_order_by_leading_minus");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        fs::write(tmp.join("small.txt"), "x").unwrap();
+        fs::write(tmp.join("medium.txt"), "xx").unwrap();
+        fs::write(tmp.join("large.txt"), "xxx").unwrap();
+
+        let by_minus = run_query_against_dir("select name from __DIR__ depth 1 order by -size", &tmp);
+        let by_zero_minus_alias =
+            run_query_against_dir("select name, size as sz from __DIR__ depth 1 order by 0 - sz", &tmp);
+        let by_index = run_query_against_dir("select name, size from __DIR__ depth 1 order by 2 desc", &tmp);
+
+        let _ = fs::remove_dir_all(&tmp);
+        let descending = vec![String::from("large.txt"), String::from("medium.txt"), String::from("small.txt")];
+        assert_eq!(by_minus, descending);
+        assert_eq!(
+            by_zero_minus_alias,
+            vec![String::from("large.txt\t3"), String::from("medium.txt\t2"), String::from("small.txt\t1")]
+        );
+        assert_eq!(
+            by_index,
+            vec![String::from("large.txt\t3"), String::from("medium.txt\t2"), String::from("small.txt\t1")]
+        );
+    }
+
+    #[test]
     fn having_with_logical_ops_filters_both_sides() {
         let tmp = std::env::temp_dir().join("fselect_test_having_logical_ops");
         let _ = fs::remove_dir_all(&tmp);

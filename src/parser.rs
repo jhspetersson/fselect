@@ -1400,6 +1400,12 @@ impl <'a> Parser<'a> {
         Some(aliased.clone())
     }
 
+    fn followed_by_arithmetic_operator(&mut self) -> bool {
+        let next = self.next_lexeme();
+        self.drop_lexeme();
+        matches!(next, Some(Lexeme::ArithmeticOperator(_)))
+    }
+
     fn parse_group_by(&mut self, fields: &[Expr]) -> Result<Vec<Expr>, String> {
         self.select_aliases = fields.to_vec();
         let grouping = self.parse_group_by_clause(fields);
@@ -1526,6 +1532,13 @@ impl <'a> Parser<'a> {
                         Some(Lexeme::Comma) => {}
                         Some(Lexeme::RawString(ref ordering_field)) => {
                             let actual_field = match ordering_field.parse::<usize>() {
+                                Ok(_) if self.followed_by_arithmetic_operator() => {
+                                    self.drop_lexeme();
+                                    match self.parse_expr()? {
+                                        Some(expr) => expr,
+                                        None => break,
+                                    }
+                                }
                                 Ok(idx) if idx >= 1 && idx <= fields.len() => fields[idx - 1].clone(),
                                 Ok(_) => return Err(String::from("Order by field index is out of range")),
                                 _ => match self.resolve_select_alias(fields, ordering_field) {
@@ -1541,6 +1554,16 @@ impl <'a> Parser<'a> {
                             };
                             order_by_fields.push(actual_field);
                             order_by_directions.push(true);
+                        }
+                        Some(Lexeme::ArithmeticOperator(ref op)) if op == "-" => {
+                            self.drop_lexeme();
+                            match self.parse_expr()? {
+                                Some(expr) => {
+                                    order_by_fields.push(expr);
+                                    order_by_directions.push(true);
+                                }
+                                None => break,
+                            }
                         }
                         Some(Lexeme::String(ref ordering_field)) => {
                             // Ordering by a string literal is meaningless, so a
@@ -3516,6 +3539,55 @@ mod tests {
         let mut p = Parser::new(&mut lexer);
         let result = p.parse(false);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn order_by_expression_with_leading_minus() {
+        let query = "select name, size from /test order by -size, name desc";
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
+        let query = p.parse(false).unwrap();
+        assert!(!p.there_are_remaining_lexemes());
+
+        assert_eq!(query.ordering_fields.len(), 2);
+        assert_eq!(query.ordering_asc, vec![true, false]);
+        let negated = &query.ordering_fields[0];
+        assert!(negated.minus);
+        assert_eq!(negated.field, Some(Field::Size));
+        assert_eq!(query.ordering_fields[1].field, Some(Field::Name));
+    }
+
+    #[test]
+    fn order_by_expression_starting_with_a_number_is_not_a_positional_index() {
+        let query = "select name, size as sz from /test order by 0 - sz desc, 2 * size";
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
+        let query = p.parse(false).unwrap();
+        assert!(!p.there_are_remaining_lexemes());
+
+        assert_eq!(query.ordering_fields.len(), 2);
+        assert_eq!(query.ordering_asc, vec![false, true]);
+        let zero_minus_alias = &query.ordering_fields[0];
+        assert_eq!(zero_minus_alias.arithmetic_op, Some(ArithmeticOp::Subtract));
+        assert_eq!(zero_minus_alias.left.as_ref().unwrap().val.as_deref(), Some("0"));
+        assert_eq!(zero_minus_alias.right.as_ref().unwrap().field, Some(Field::Size));
+        let twice_size = &query.ordering_fields[1];
+        assert_eq!(twice_size.arithmetic_op, Some(ArithmeticOp::Multiply));
+        assert_eq!(twice_size.right.as_ref().unwrap().field, Some(Field::Size));
+    }
+
+    #[test]
+    fn order_by_bare_number_is_still_a_positional_index() {
+        let query = "select name, size from /test order by 2 desc, 1";
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let mut p = Parser::new(&mut lexer);
+        let query = p.parse(false).unwrap();
+        assert!(!p.there_are_remaining_lexemes());
+
+        assert_eq!(query.ordering_fields.len(), 2);
+        assert_eq!(query.ordering_asc, vec![false, true]);
+        assert_eq!(query.ordering_fields[0].field, Some(Field::Size));
+        assert_eq!(query.ordering_fields[1].field, Some(Field::Name));
     }
 
     #[test]

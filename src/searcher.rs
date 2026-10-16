@@ -1710,10 +1710,10 @@ impl<'a> Searcher<'a> {
                 subquery.limit = 1;
             }
             let list = self.get_list_from_subquery(*subquery)?;
-            if !list.is_empty() {
-                let result = list.first().unwrap().to_string();
-                return Ok(apply_minus(column_expr, Variant::from_string(&result)));
-            }
+            return match list.first() {
+                Some(result) => Ok(apply_minus(column_expr, Variant::from_string(result))),
+                None => Ok(Variant::empty(VariantType::String)),
+            };
         }
 
         if let Some(ref _function) = column_expr.function {
@@ -3850,6 +3850,41 @@ mod tests {
         for ((condition, expected), (_, actual)) in cases.iter().zip(results) {
             assert_eq!(actual, *expected, "{}", condition);
         }
+    }
+
+    #[test]
+    fn an_empty_scalar_subquery_never_matches_whichever_side_it_is_on() {
+        let tmp = std::env::temp_dir().join("fselect_test_empty_scalar_subquery");
+        let _ = fs::remove_dir_all(&tmp);
+        let data = tmp.join("data");
+        let empty = tmp.join("empty");
+        fs::create_dir_all(&data).unwrap();
+        fs::create_dir_all(&empty).unwrap();
+        for (name, size) in [("one.txt", 1), ("two.txt", 2), ("ten.txt", 10)] {
+            fs::write(data.join(name), "x".repeat(size)).unwrap();
+        }
+        let empty_root = empty.to_string_lossy().to_string();
+        let names = |condition: &str| {
+            let condition = condition.replace("E", &empty_root);
+            run_query_against_dir(&format!("select name from __DIR__ where {condition} order by name"), &data)
+        };
+
+        let never: Vec<(&str, Vec<String>)> = [
+            "(select size from E) < size", "size > (select size from E)",
+            "(select size from E) <= size", "size >= (select size from E)",
+            "(select size from E) = size", "size = (select size from E)",
+            "(select size from E) > size", "size < (select size from E)",
+            "(select max(size) from E) < size", "size > (select max(size) from E)",
+        ].iter().map(|condition| (*condition, names(condition))).collect();
+        let present = names("(select max(size) from __DIR__) = size");
+        let defaulted = names("coalesce((select size from E), 0) < size");
+        let _ = fs::remove_dir_all(&tmp);
+
+        for (condition, rows) in never {
+            assert!(rows.is_empty(), "{}: {:?}", condition, rows);
+        }
+        assert_eq!(present, vec!["ten.txt"]);
+        assert_eq!(defaulted, vec!["one.txt", "ten.txt", "two.txt"]);
     }
 
     #[test]

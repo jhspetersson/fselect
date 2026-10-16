@@ -2503,6 +2503,12 @@ impl<'a> Searcher<'a> {
             let left_expr = expr.left.as_ref().ok_or_else(|| {
                 SearchError::fatal("Expected expression before operator in HAVING").with_source("query")
             })?;
+            if matches!(op, Op::IsNull | Op::IsNotNull) {
+                let value = self.get_column_expr_value(
+                    None, &None, Path::new(""), file_map, Some(group_acc), left_expr,
+                )?;
+                return Ok(value.to_string().is_empty() == (*op == Op::IsNull));
+            }
             let right_expr = expr.right.as_ref().ok_or_else(|| {
                 SearchError::fatal("Expected expression after operator in HAVING").with_source("query")
             })?;
@@ -5247,6 +5253,45 @@ f
 
         let _ = fs::remove_dir_all(&tmp);
         assert_eq!(rows, vec![String::from("rs\t1")]);
+    }
+
+    #[test]
+    fn having_null_checks_on_aggregates_and_grouping_columns() {
+        let tmp = std::env::temp_dir().join("fselect_test_having_null_checks");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        fs::write(tmp.join("a.rs"), "x").unwrap();
+        fs::write(tmp.join("b.txt"), "x").unwrap();
+        fs::write(tmp.join("c.txt"), "x").unwrap();
+        fs::write(tmp.join("noext"), "x").unwrap();
+
+        let mut all_groups = run_query_against_dir(
+            "select ext, count(*) from __DIR__ depth 1 group by ext having count(*) is not null",
+            &tmp,
+        );
+        all_groups.sort();
+
+        let no_groups = run_query_against_dir(
+            "select ext, count(*) from __DIR__ depth 1 group by ext having count(*) is null",
+            &tmp,
+        );
+
+        let null_ext = run_query_against_dir(
+            "select ext, count(*) from __DIR__ depth 1 group by ext having ext is null",
+            &tmp,
+        );
+
+        let mut non_null_ext = run_query_against_dir(
+            "select ext, count(*) from __DIR__ depth 1 group by ext having ext is not null and count(*) > 1",
+            &tmp,
+        );
+        non_null_ext.sort();
+
+        let _ = fs::remove_dir_all(&tmp);
+        assert_eq!(all_groups, vec![String::from("\t1"), String::from("rs\t1"), String::from("txt\t2")]);
+        assert!(no_groups.is_empty());
+        assert_eq!(null_ext, vec![String::from("\t1")]);
+        assert_eq!(non_null_ext, vec![String::from("txt\t2")]);
     }
 
     #[test]

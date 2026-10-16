@@ -62,6 +62,14 @@ struct AncestorDir {
     parent: Option<Rc<AncestorDir>>,
 }
 
+struct QueuedDir {
+    path: PathBuf,
+    root_depth: u32,
+    ancestors: Option<Rc<AncestorDir>>,
+    #[cfg(feature = "git")]
+    repository: Option<Rc<Repository>>,
+}
+
 impl AncestorDir {
     fn contains(chain: &Option<Rc<AncestorDir>>, canonical: &Path) -> bool {
         let mut current = chain.as_ref();
@@ -101,7 +109,7 @@ pub struct Searcher<'a> {
     dockerignore_filters: Vec<DockerignoreFilter>,
     ancestor_dirs: Option<Rc<AncestorDir>>,
     lscolors: LsColors,
-    dir_queue: VecDeque<(PathBuf, u32, Option<Rc<AncestorDir>>)>,
+    dir_queue: VecDeque<QueuedDir>,
     #[cfg(test)]
     dirs_opened: usize,
     #[cfg(test)]
@@ -755,11 +763,19 @@ impl<'a> Searcher<'a> {
                 }
             }
 
+            #[cfg(feature = "git")]
+            let root_repository = match self.current_apply_gitignore {
+                true => canonical_path(&self.current_root_dir)
+                    .ok()
+                    .and_then(|root| Repository::discover(root).ok())
+                    .map(Rc::new),
+                false => None,
+            };
             let result = self.visit_dir(
                 &self.current_root_dir.clone(),
                 0,
                 #[cfg(feature = "git")]
-                Repository::discover(&self.current_root_dir).ok().as_ref(),
+                root_repository,
                 true,
             );
 
@@ -1063,7 +1079,9 @@ impl<'a> Searcher<'a> {
                 #[cfg(feature = "git")]
                 {
                     repository = match self.current_apply_gitignore {
-                        true => Repository::discover(&root_dir).ok(),
+                        true => canonical_path(&root_dir)
+                            .ok()
+                            .and_then(|root| Repository::discover(root).ok()),
                         false => None,
                     };
                 }
@@ -1318,6 +1336,19 @@ impl<'a> Searcher<'a> {
         Ok(())
     }
 
+    #[cfg(feature = "git")]
+    fn gitignore_repository(
+        &self,
+        canonical_dir: &Path,
+        inherited: Option<&Rc<Repository>>,
+    ) -> Option<Rc<Repository>> {
+        if canonical_dir.join(".git").exists()
+            && let Ok(repo) = Repository::open(canonical_dir) {
+                return Some(Rc::new(repo));
+            }
+        inherited.cloned()
+    }
+
     /// Recursively explore directories starting from a given path.
     /// Handles archives, and optionally applies filters.
     fn visit_dir(
@@ -1325,7 +1356,7 @@ impl<'a> Searcher<'a> {
         dir: &Path,
         root_depth: u32,
         #[cfg(feature = "git")]
-        git_repository: Option<&Repository>,
+        git_repository: Option<Rc<Repository>>,
         process_queue: bool,
     ) -> Result<(), SearchError> {
         // Canonicalization is comparatively expensive: it resolves every path
@@ -1391,6 +1422,7 @@ impl<'a> Searcher<'a> {
                                 #[cfg(feature = "git")]
                                 let pass_gitignore = !self.current_apply_gitignore
                                     || !git_repository
+                                        .as_ref()
                                         .is_some_and(|repo| repo.is_path_ignored(&canonical_entry_path)
                                             .unwrap_or(false));
                                 #[cfg(not(feature = "git"))]
@@ -1497,24 +1529,21 @@ impl<'a> Searcher<'a> {
                                             }
 
                                             if ok && self.ok_to_visit_dir(file_type) {
+                                                #[cfg(feature = "git")]
+                                                let child_repository = match canonical_path.as_ref() {
+                                                    Some(canonical) if self.current_apply_gitignore => self.gitignore_repository(
+                                                        &PathBuf::from(canonical).join(entry.file_name()),
+                                                        git_repository.as_ref(),
+                                                    ),
+                                                    _ => None,
+                                                };
                                                 if self.current_traversal_mode == Dfs {
-                                                    #[cfg(feature = "git")]
-                                                    let repo;
-                                                    #[cfg(feature = "git")]
-                                                    let git_repository = match git_repository {
-                                                        Some(repo) => Some(repo),
-                                                        None if self.current_apply_gitignore => {
-                                                            repo = Repository::open(&path).ok();
-                                                            repo.as_ref()
-                                                        },
-                                                        _ => None,
-                                                    };
                                                     let parent_ancestors = std::mem::replace(&mut self.ancestor_dirs, child_ancestors.clone());
                                                     let result = self.visit_dir(
                                                         &path,
                                                         child_root_depth,
                                                         #[cfg(feature = "git")]
-                                                        git_repository,
+                                                        child_repository,
                                                         false,
                                                     );
                                                     self.ancestor_dirs = parent_ancestors;
@@ -1526,7 +1555,13 @@ impl<'a> Searcher<'a> {
                                                         self.handle_nonfatal_error(err, &path);
                                                     }
                                                 } else {
-                                                    self.dir_queue.push_back((path, child_root_depth, child_ancestors.clone()));
+                                                    self.dir_queue.push_back(QueuedDir {
+                                                        path,
+                                                        root_depth: child_root_depth,
+                                                        ancestors: child_ancestors.clone(),
+                                                        #[cfg(feature = "git")]
+                                                        repository: child_repository,
+                                                    });
                                                 }
                                             }
                                         }
@@ -1552,28 +1587,18 @@ impl<'a> Searcher<'a> {
         }
 
         if self.current_traversal_mode == Bfs && process_queue {
-            while let Some((path, queued_root_depth, ancestors)) = self.dir_queue.pop_front() {
+            while let Some(queued) = self.dir_queue.pop_front() {
                 if self.limit_reached() {
                     self.dir_queue.clear();
                     break;
                 }
+                let QueuedDir { path, root_depth: queued_root_depth, ancestors, #[cfg(feature = "git")] repository } = queued;
                 self.ancestor_dirs = ancestors;
-                #[cfg(feature = "git")]
-                let repo;
-                #[cfg(feature = "git")]
-                let git_repository = match git_repository {
-                    Some(repo) => Some(repo),
-                    None if self.current_apply_gitignore => {
-                        repo = Repository::open(&path).ok();
-                        repo.as_ref()
-                    },
-                    _ => None,
-                };
                 let result = self.visit_dir(
                     &path,
                     queued_root_depth,
                     #[cfg(feature = "git")]
-                    git_repository,
+                    repository,
                     false,
                 );
 
@@ -5290,6 +5315,92 @@ f
         let _ = fs::remove_dir_all(&tmp);
 
         assert_eq!(rows.len(), 3);
+    }
+
+    #[cfg(feature = "git")]
+    fn init_repo_ignoring(dir: &Path, pattern: &str) {
+        fs::create_dir_all(dir).unwrap();
+        git2::Repository::init(dir).unwrap();
+        fs::write(dir.join(".gitignore"), format!("{pattern}
+")).unwrap();
+    }
+
+    #[cfg(feature = "git")]
+    fn file_names(rows: &[String]) -> Vec<String> {
+        rows.iter()
+            .map(|row| Path::new(row).file_name().unwrap().to_string_lossy().to_string())
+            .collect()
+    }
+
+    #[cfg(feature = "git")]
+    #[test]
+    fn gitignore_applies_below_the_top_level_of_a_nested_repository_in_bfs() {
+        let tmp = std::env::temp_dir().join("fselect_test_gitignore_nested_bfs");
+        let _ = fs::remove_dir_all(&tmp);
+        let nested = tmp.join("nested");
+        init_repo_ignoring(&nested, "*.log");
+        fs::create_dir_all(nested.join("sub")).unwrap();
+        for name in ["a.log", "sub/b.log", "sub/c.txt"] {
+            fs::write(nested.join(name), "").unwrap();
+        }
+
+        for mode in ["bfs", "dfs"] {
+            let rows = run_query_against_dir(&format!("select path from __DIR__ gitignore {mode}"), &tmp);
+            let names = file_names(&rows);
+            assert!(!names.iter().any(|n| n.ends_with(".log")), "{mode}: {rows:?}");
+            assert!(names.contains(&"c.txt".to_string()), "{mode}: {rows:?}");
+            assert!(!names.contains(&".git".to_string()), "{mode}: {rows:?}");
+        }
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
+    #[cfg(feature = "git")]
+    #[test]
+    fn gitignore_rules_of_a_nested_repository_take_precedence_over_the_enclosing_one() {
+        let tmp = std::env::temp_dir().join("fselect_test_gitignore_nested_precedence");
+        let _ = fs::remove_dir_all(&tmp);
+        init_repo_ignoring(&tmp, "*.tmp");
+        let inner = tmp.join("inner");
+        init_repo_ignoring(&inner, "*.txt");
+        fs::create_dir_all(inner.join("deep")).unwrap();
+        fs::write(tmp.join("x.tmp"), "").unwrap();
+        fs::write(tmp.join("y.txt"), "").unwrap();
+        for name in ["z.tmp", "deep/w.tmp", "deep/v.txt"] {
+            fs::write(inner.join(name), "").unwrap();
+        }
+
+        for mode in ["bfs", "dfs"] {
+            let rows = run_query_against_dir(&format!("select path from __DIR__ gitignore {mode}"), &tmp);
+            let mut names = file_names(&rows);
+            names.retain(|n| n != ".gitignore" && n != "inner" && n != "deep");
+            names.sort();
+            assert_eq!(names, vec!["w.tmp", "y.txt", "z.tmp"], "{mode}: {rows:?}");
+        }
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
+    #[cfg(all(windows, feature = "git"))]
+    #[test]
+    fn gitignore_applies_when_the_root_is_spelled_in_a_different_case() {
+        let tmp = std::env::temp_dir().join("fselect_test_gitignore_Root_Case");
+        let _ = fs::remove_dir_all(&tmp);
+        init_repo_ignoring(&tmp, "*.tmp");
+        fs::create_dir_all(tmp.join("inner").join("deep")).unwrap();
+        fs::write(tmp.join("inner").join(".gitignore"), "v.txt\n").unwrap();
+        for name in ["x.tmp", "y.txt", "inner/z.tmp", "inner/deep/w.tmp", "inner/deep/v.txt"] {
+            fs::write(tmp.join(name), "").unwrap();
+        }
+
+        let lowercase = PathBuf::from(tmp.to_string_lossy().to_lowercase());
+        let uppercase = PathBuf::from(tmp.to_string_lossy().to_uppercase());
+        for (root, mode) in [(&lowercase, "bfs"), (&uppercase, "bfs"), (&lowercase, "dfs")] {
+            let rows = run_query_against_dir(&format!("select path from __DIR__ gitignore {mode}"), root);
+            let mut names = file_names(&rows);
+            names.retain(|n| n != ".gitignore" && n != "inner" && n != "deep");
+            names.sort();
+            assert_eq!(names, vec!["y.txt"], "{root:?} {mode}: {rows:?}");
+        }
+        let _ = fs::remove_dir_all(&tmp);
     }
 
     #[test]

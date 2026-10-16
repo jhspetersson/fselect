@@ -584,6 +584,7 @@ When you put a directory to search at, you can specify some options.
 * `between`
 * `in`
 * `exists`
+* `is null` or `is not null`
 
 ### Arithmetic operators
 

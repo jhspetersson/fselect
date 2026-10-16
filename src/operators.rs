@@ -38,6 +38,8 @@ pub enum Op {
     NotIn,
     Exists,
     NotExists,
+    IsNull,
+    IsNotNull,
 }
 
 impl Op {
@@ -70,6 +72,8 @@ impl Op {
             "notin" => Some(Op::NotIn),
             "exists" => Some(Op::Exists),
             "notexists" => Some(Op::NotExists),
+            "isnull" => Some(Op::IsNull),
+            "isnotnull" => Some(Op::IsNotNull),
             _ => None,
         }
     }
@@ -100,7 +104,17 @@ impl Op {
             Op::NotIn => Op::In,
             Op::Exists => Op::NotExists,
             Op::NotExists => Op::Exists,
+            Op::IsNull => Op::IsNotNull,
+            Op::IsNotNull => Op::IsNull,
         }
+    }
+
+    pub fn checks_null(&self) -> bool {
+        matches!(self, Op::IsNull | Op::IsNotNull)
+    }
+
+    pub fn is_relational(&self) -> bool {
+        matches!(self, Op::Eq | Op::Ne | Op::Eeq | Op::Ene | Op::Gt | Op::Gte | Op::Lt | Op::Lte)
     }
 }
 

@@ -2207,6 +2207,11 @@ impl<'a> Searcher<'a> {
             match op {
                 Op::Exists => return self.check_exists(expr),
                 Op::NotExists => return self.check_exists(expr).map(|exists| !exists),
+                Op::IsNull | Op::IsNotNull => {
+                    let mut scratch = HashMap::new();
+                    let value = self.get_column_expr_value(Some(entry), file_info, root_path, &mut scratch, None, expr.left.as_ref().unwrap())?;
+                    return Ok(value.to_string().is_empty() == (*op == Op::IsNull));
+                }
                 _ => {}
             }
 
@@ -2259,6 +2264,13 @@ impl<'a> Searcher<'a> {
                 ),
                 _ => (field_value, value),
             };
+
+            if let (Some(left_expr), Some(right_expr)) = (&expr.left, &expr.right)
+                && op.is_relational()
+                && (Self::is_null_operand(left_expr, &field_value) || Self::is_null_operand(right_expr, &value))
+            {
+                return Ok(false);
+            }
 
             result = match op {
                 Op::In => {
@@ -2453,6 +2465,10 @@ impl<'a> Searcher<'a> {
         }
 
         Ok(false)
+    }
+
+    fn is_null_operand(operand: &Expr, value: &Variant) -> bool {
+        !operand.is_literal() && (operand.contains_numeric() || operand.contains_datetime()) && value.to_string().is_empty()
     }
 
     fn is_declared_alias(&self, alias: &str) -> bool {
@@ -3885,6 +3901,51 @@ mod tests {
         }
         assert_eq!(present, vec!["ten.txt"]);
         assert_eq!(defaulted, vec!["one.txt", "ten.txt", "two.txt"]);
+    }
+
+    #[test]
+    fn empty_numeric_fields_behave_like_null() {
+        let tmp = std::env::temp_dir().join("fselect_test_empty_numeric_fields_are_null");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        fs::write(tmp.join("text.txt"), "hello").unwrap();
+        fs::write(tmp.join("noext"), "x").unwrap();
+        let mut bmp = vec![b'B', b'M'];
+        bmp.extend_from_slice(&78u32.to_le_bytes());
+        bmp.extend_from_slice(&[0; 4]);
+        bmp.extend_from_slice(&54u32.to_le_bytes());
+        bmp.extend_from_slice(&40u32.to_le_bytes());
+        bmp.extend_from_slice(&3i32.to_le_bytes());
+        bmp.extend_from_slice(&2i32.to_le_bytes());
+        bmp.extend_from_slice(&1u16.to_le_bytes());
+        bmp.extend_from_slice(&24u16.to_le_bytes());
+        bmp.resize(78, 0);
+        fs::write(tmp.join("img.bmp"), bmp).unwrap();
+
+        let names = |condition: &str| {
+            run_query_against_dir(&format!("select name from __DIR__ where {condition} order by name"), &tmp)
+        };
+        let cases: Vec<(&str, Vec<&str>)> = vec![
+            ("width = 3", vec!["img.bmp"]),
+            ("width < 100", vec!["img.bmp"]),
+            ("100 > width", vec!["img.bmp"]),
+            ("width > 0", vec!["img.bmp"]),
+            ("width <= 0", vec![]),
+            ("width != 3", vec![]),
+            ("width is null", vec!["noext", "text.txt"]),
+            ("width is not null", vec!["img.bmp"]),
+            ("not width is null", vec!["img.bmp"]),
+            ("ext is null", vec!["noext"]),
+            ("ext is not null", vec!["img.bmp", "text.txt"]),
+            ("size < 100", vec!["img.bmp", "noext", "text.txt"]),
+            ("width is null and size > 1", vec!["text.txt"]),
+        ];
+        let results: Vec<(&str, Vec<String>)> = cases.iter().map(|(condition, _)| (*condition, names(condition))).collect();
+        let _ = fs::remove_dir_all(&tmp);
+
+        for ((condition, expected), (_, actual)) in cases.iter().zip(results) {
+            assert_eq!(actual, *expected, "{}", condition);
+        }
     }
 
     #[test]

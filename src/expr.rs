@@ -826,7 +826,7 @@ impl Expr {
     /// because that would require tracking function return types. Per-file
     /// degradation in `conforms()` still catches those silently.
     pub fn validate_boolean_literals(&self) -> Result<(), String> {
-        if self.op.is_some() {
+        if self.op.as_ref().is_some_and(|op| !op.checks_null()) {
             let boolean_side = |side: &Option<Box<Expr>>| side.as_deref().and_then(|e| e.field).filter(Field::is_boolean_field);
             if let Some(field) = boolean_side(&self.left)
                 && let Some(ref right) = self.right
@@ -871,7 +871,7 @@ impl Expr {
     }
 
     fn validate_dt_node(expr: &Expr) -> Result<(), String> {
-        if expr.op.is_some() {
+        if expr.op.as_ref().is_some_and(|op| !op.checks_null()) {
             let left_is_dt = expr
                 .left
                 .as_deref()
@@ -1018,7 +1018,7 @@ impl Expr {
     }
 
     fn validate_num_node(expr: &Expr) -> Result<(), String> {
-        if expr.op.is_some() {
+        if expr.op.as_ref().is_some_and(|op| !op.checks_null()) {
             let numeric_field = |side: &Option<Box<Expr>>| {
                 side.as_deref()
                     .and_then(|e| e.field.as_ref())

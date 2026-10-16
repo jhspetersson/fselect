@@ -334,7 +334,7 @@ impl Lexer {
                 "exists" | "notexists" if self.state.in_where() && !self.state.after_operator && !self.state.after_value_start && !self.state.in_value_set => Some(Lexeme::Operator(s.to_lowercase())),
                 "eq" | "ne" | "gt" | "lt" | "ge" | "le" | "gte" | "lte" | "eeq" | "ene"
                 | "regexp" | "rx" | "like" | "notlike" | "notrx"
-                | "between" | "notbetween" | "in" | "notin" if self.state.in_where() && !self.state.after_operator && !self.state.after_logical => Some(Lexeme::Operator(s.to_lowercase())),
+                | "between" | "notbetween" | "in" | "notin" | "is" if self.state.in_where() && !self.state.after_operator && !self.state.after_logical => Some(Lexeme::Operator(s.to_lowercase())),
                 "mul" | "div" | "mod" | "plus" | "minus" if self.state.in_expression() && self.state.is_keyword_position(false) => Some(Lexeme::ArithmeticOperator(s)),
                 _ => Some(Lexeme::RawString(s)),
             },

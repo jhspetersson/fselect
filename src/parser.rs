@@ -882,6 +882,20 @@ impl <'a> Parser<'a> {
                     list,
                 )))
             }
+            Some(Lexeme::Operator(s)) if s.as_str() == "is" => {
+                let mut negated = not;
+                let mut word = self.next_lexeme();
+                if matches!(word, Some(Lexeme::RawString(ref w)) if w.eq_ignore_ascii_case("not")) {
+                    negated = !negated;
+                    word = self.next_lexeme();
+                }
+                if !matches!(word, Some(Lexeme::RawString(ref w)) if w.eq_ignore_ascii_case("null")) {
+                    return Err(String::from("Expected NULL after IS"));
+                }
+                let left = left.ok_or_else(|| "Expected expression before IS NULL".to_string())?;
+                let op = if negated { Op::IsNotNull } else { Op::IsNull };
+                Ok(Some(Expr::op(left, op, Expr::value(String::new()))))
+            }
             Some(Lexeme::Operator(s)) => {
                 let right = self.parse_add_sub()?;
                 let op = Op::from_with_not(&s, not);
@@ -2538,6 +2552,26 @@ mod tests {
         ] {
             assert!(parse_query(query).is_ok(), "{}: {:?}", query, parse_query(query).err());
         }
+    }
+
+    #[test]
+    fn is_null_and_is_not_null_parse_as_operators() {
+        let is_null = parse_query("select name from /d where width is null").unwrap();
+        let expr = is_null.expr.unwrap();
+        assert_eq!(expr.op, Some(Op::IsNull));
+        assert_eq!(expr.left.unwrap().field, Some(Field::Width));
+
+        let is_not_null = parse_query("select name from /d where width is not null").unwrap();
+        assert_eq!(is_not_null.expr.unwrap().op, Some(Op::IsNotNull));
+
+        let negated = parse_query("select name from /d where not width is null").unwrap();
+        assert_eq!(negated.expr.unwrap().op, Some(Op::IsNotNull));
+
+        let combined = parse_query("select name from /d where ext is null and size > 0 or upper(name) is not null").unwrap();
+        assert!(combined.expr.unwrap().logical_op.is_some());
+
+        let err = parse_query("select name from /d where width is nul").expect_err("IS needs NULL");
+        assert!(err.contains("NULL"), "{}", err);
     }
 
     #[test]

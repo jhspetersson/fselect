@@ -3949,6 +3949,21 @@ mod tests {
     }
 
     #[test]
+    fn min_and_max_of_numeric_looking_names_return_real_names() {
+        let tmp = std::env::temp_dir().join("fselect_test_min_max_numeric_looking_names");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        for name in ["002", "010", "1e3"] {
+            fs::write(tmp.join(name), "x").unwrap();
+        }
+
+        let extremes = run_query_against_dir("select min(name), max(name), min(size), max(size) from __DIR__", &tmp);
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(extremes, vec!["002	1e3	1	1"]);
+    }
+
+    #[test]
     fn errors_inside_subqueries_count_towards_the_outer_search() {
         let tmp = std::env::temp_dir().join("fselect_test_subquery_errors");
         let _ = fs::remove_dir_all(&tmp);

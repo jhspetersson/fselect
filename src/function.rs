@@ -382,6 +382,14 @@ impl Function {
     }
 }
 
+fn numeric_extreme_text(raw: &Option<String>, value: f64) -> String {
+    match raw {
+        Some(raw) if value != 0.0 => raw.clone(),
+        Some(_) => String::from("0"),
+        None => String::new(),
+    }
+}
+
 fn snap_to_exact_power(val: f64, base: f64, approx: f64) -> f64 {
     let rounded = approx.round();
     let exact = (approx - rounded).abs() < 1e-9
@@ -1174,7 +1182,7 @@ pub fn get_aggregate_value(
                 // Numeric order when every value was a number, size order when
                 // every value was a file size, plain text order otherwise
                 // (datetimes, names, mixed columns).
-                Some(acc) if acc.all_numeric() => (acc.min + 0.0).to_string(),
+                Some(acc) if acc.all_numeric() => numeric_extreme_text(&acc.min_raw, acc.min),
                 Some(acc) if acc.all_sizes() => acc.min_value.clone().unwrap_or_default(),
                 Some(acc) => acc.min_text.clone().unwrap_or_default(),
                 _ => String::new(),
@@ -1182,7 +1190,7 @@ pub fn get_aggregate_value(
         }
         Function::Max => {
             match field_acc {
-                Some(acc) if acc.all_numeric() => (acc.max + 0.0).to_string(),
+                Some(acc) if acc.all_numeric() => numeric_extreme_text(&acc.max_raw, acc.max),
                 Some(acc) if acc.all_sizes() => acc.max_value.clone().unwrap_or_default(),
                 Some(acc) => acc.max_text.clone().unwrap_or_default(),
                 _ => String::new(),
@@ -1750,6 +1758,8 @@ pub struct FieldAccumulator {
     size_count: usize,
     min_text: Option<String>,
     max_text: Option<String>,
+    min_raw: Option<String>,
+    max_raw: Option<String>,
 }
 
 impl FieldAccumulator {
@@ -1783,11 +1793,19 @@ impl FieldAccumulator {
                 if self.count == 0 {
                     self.min = v;
                     self.max = v;
+                    self.min_raw = Some(value.to_string());
+                    self.max_raw = Some(value.to_string());
                     self.count = 1;
                     self.sum = v;
                 } else {
-                    if v < self.min { self.min = v; }
-                    if v > self.max { self.max = v; }
+                    if v < self.min {
+                        self.min = v;
+                        self.min_raw = Some(value.to_string());
+                    }
+                    if v > self.max {
+                        self.max = v;
+                        self.max_raw = Some(value.to_string());
+                    }
                     let old_mean = self.sum / self.count as f64;
                     self.count += 1;
                     self.sum += v;
@@ -3339,6 +3357,17 @@ mod tests {
         let numeric = make_accumulator("val", &["10", "9", "", "100"]);
         assert_eq!(get_aggregate_value(&Function::Min, &numeric, "val".to_string(), &None), "9");
         assert_eq!(get_aggregate_value(&Function::Max, &numeric, "val".to_string(), &None), "100");
+    }
+
+    #[test]
+    fn min_and_max_keep_the_spelling_of_numeric_looking_text() {
+        let padded = make_accumulator("val", &["002", "010", "1e3"]);
+        assert_eq!(get_aggregate_value(&Function::Min, &padded, "val".to_string(), &None), "002");
+        assert_eq!(get_aggregate_value(&Function::Max, &padded, "val".to_string(), &None), "1e3");
+
+        let plain = make_accumulator("val", &["10", "9", "100"]);
+        assert_eq!(get_aggregate_value(&Function::Min, &plain, "val".to_string(), &None), "9");
+        assert_eq!(get_aggregate_value(&Function::Max, &plain, "val".to_string(), &None), "100");
     }
 
     #[test]

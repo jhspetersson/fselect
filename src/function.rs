@@ -112,6 +112,17 @@ macro_rules! functions {
                 }
             }
 
+            pub fn is_string_function(&self) -> bool {
+                match self {
+                    $(
+                        $(#[$variant_attrs])*
+                        $enum_name::$variant => {
+                            stringify!($($data_type)?) .replace("\"", "") == "string"
+                        }
+                    )*
+                }
+            }
+
             pub fn is_boolean_function(&self) -> bool {
                 match self {
                     $(
@@ -335,6 +346,10 @@ impl Display for Arity {
 }
 
 impl Function {
+    pub fn passes_argument_type_through(&self) -> bool {
+        matches!(self, Function::Min | Function::Max)
+    }
+
     pub fn datetime_argument_positions(&self) -> &'static [usize] {
         match self {
             Function::Year
@@ -1249,17 +1264,17 @@ functions! {
     #[group_order = ["String", "Japanese string", "Greek string", "Cyrillic string", "Numeric", "Datetime", "Aggregate", "Xattr", "Other"]]
     #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Hash)]
     pub enum Function {
-        #[text = ["lower", "lowercase", "lcase"]]
+        #[text = ["lower", "lowercase", "lcase"], data_type = "string"]
         @group = "String"
         @description = "Convert the value to lowercase"
         Lower,
 
-        #[text = ["upper", "uppercase", "ucase"]]
+        #[text = ["upper", "uppercase", "ucase"], data_type = "string"]
         @group = "String"
         @description = "Convert the value to UPPERCASE"
         Upper,
 
-        #[text = ["initcap"]]
+        #[text = ["initcap"], data_type = "string"]
         @group = "String"
         @description = "Capitalize the first letter of each word (Title Case)"
         InitCap,
@@ -1269,23 +1284,23 @@ functions! {
         @description = "Get the length of the string"
         Length,
 
-        #[text = ["to_base64", "base64"]]
+        #[text = ["to_base64", "base64"], data_type = "string"]
         @group = "String"
         @description = "Convert the value to base64"
         ToBase64,
 
-        #[text = ["from_base64"]]
+        #[text = ["from_base64"], data_type = "string"]
         @group = "String"
         @description = "Read the value as base64"
         FromBase64,
 
-        #[text = ["concat"]]
+        #[text = ["concat"], data_type = "string"]
         @args = "1.."
         @group = "String"
         @description = "Concatenate the value with the arguments"
         Concat,
 
-        #[text = ["concat_ws"]]
+        #[text = ["concat_ws"], data_type = "string"]
         @args = "2.."
         @group = "String"
         @description = "Concatenate the arguments, separated by the value"
@@ -1303,44 +1318,44 @@ functions! {
         @description = "Get the position of the second argument (a substring) in the value, PostgreSQL argument order"
         Strpos,
 
-        #[text = ["substring", "substr"]]
+        #[text = ["substring", "substr"], data_type = "string"]
         @args = "2..3"
         @group = "String"
         @description = "Get a substring of the value, from a position and length"
         Substring,
 
-        #[text = ["replace"]]
+        #[text = ["replace"], data_type = "string"]
         @args = "3"
         @group = "String"
         @description = "Replace a substring in the value with another string"
         Replace,
 
-        #[text = ["trim"]]
+        #[text = ["trim"], data_type = "string"]
         @group = "String"
         @description = "Trim whitespace from the value"
         Trim,
 
-        #[text = ["ltrim"]]
+        #[text = ["ltrim"], data_type = "string"]
         @group = "String"
         @description = "Trim whitespace from the start of the value"
         LTrim,
 
-        #[text = ["rtrim"]]
+        #[text = ["rtrim"], data_type = "string"]
         @group = "String"
         @description = "Trim whitespace from the end of the value"
         RTrim,
 
-        #[text = ["bin"]]
+        #[text = ["bin"], data_type = "string"]
         @group = "Numeric"
         @description = "Get the binary representation of the value"
         Bin,
 
-        #[text = ["hex"]]
+        #[text = ["hex"], data_type = "string"]
         @group = "Numeric"
         @description = "Get the hexadecimal representation of the value"
         Hex,
 
-        #[text = ["oct"]]
+        #[text = ["oct"], data_type = "string"]
         @group = "Numeric"
         @description = "Get the octal representation of the value"
         Oct,
@@ -1446,13 +1461,13 @@ functions! {
         @description = "Check if the string contains Cyrillic characters"
         ContainsCyrillic,
 
-        #[text = ["format_size", "format_filesize"]]
+        #[text = ["format_size", "format_filesize"], data_type = "string"]
         @args = "1..2"
         @group = "Other"
         @description = "Format a file size in human-readable format"
         FormatSize,
 
-        #[text = ["format_time", "pretty_time"]]
+        #[text = ["format_time", "pretty_time"], data_type = "string"]
         @group = "Other"
         @description = "Format a time duration in human-readable format"
         FormatTime,
@@ -1463,7 +1478,7 @@ functions! {
         @description = "Get the current date"
         CurrentDate,
 
-        #[text = ["current_time", "cur_time", "curtime"]]
+        #[text = ["current_time", "cur_time", "curtime"], data_type = "string"]
         @args = "0"
         @group = "Datetime"
         @description = "Get the current time (HH:MM:SS)"
@@ -1552,7 +1567,7 @@ functions! {
         #[cfg(all(unix, feature = "users"))]
         CurrentUid,
 
-        #[text = ["current_user"]]
+        #[text = ["current_user"], data_type = "string"]
         @args = "0"
         @group = "Other"
         @description = "Get the current username"
@@ -1566,7 +1581,7 @@ functions! {
         #[cfg(all(unix, feature = "users"))]
         CurrentGid,
 
-        #[text = ["current_group"]]
+        #[text = ["current_group"], data_type = "string"]
         @args = "0"
         @group = "Other"
         @description = "Get the current group name"
@@ -1588,7 +1603,7 @@ functions! {
         #[cfg(any(unix, windows))]
         HasXattr,
 
-        #[text = ["xattr"]]
+        #[text = ["xattr"], data_type = "string"]
         @reads_entry = true
         @weight = 2
         @group = "Xattr"
@@ -1612,7 +1627,7 @@ functions! {
         #[cfg(any(target_os = "linux", windows))]
         HasAclEntry,
 
-        #[text = ["acl_entry"]]
+        #[text = ["acl_entry"], data_type = "string"]
         @reads_entry = true
         @weight = 2
         @group = "Xattr"
@@ -1628,7 +1643,7 @@ functions! {
         #[cfg(any(target_os = "linux", windows))]
         HasDefaultAclEntry,
 
-        #[text = ["default_acl_entry"]]
+        #[text = ["default_acl_entry"], data_type = "string"]
         @reads_entry = true
         @weight = 2
         @group = "Xattr"

@@ -723,21 +723,23 @@ impl Expr {
             return Self::contains_numeric_field(column);
         }
 
+        if let Some(ref function) = expr.function
+            && !function.passes_argument_type_through()
+        {
+            if function.is_numeric_function() {
+                return true;
+            }
+            if function.is_datetime_function() || function.is_string_function() || function.is_boolean_function() {
+                return false;
+            }
+        }
+
         let field = match expr.field {
             Some(ref field) => field.is_numeric_field(),
             None => false,
         };
 
         if field {
-            return true;
-        }
-
-        let function = match expr.function {
-            Some(ref function) => function.is_numeric_function(),
-            None => false,
-        };
-
-        if function {
             return true;
         }
 
@@ -773,8 +775,15 @@ impl Expr {
             return Self::contains_datetime_field(column);
         }
 
-        if expr.function.as_ref().is_some_and(Function::is_datetime_function) {
-            return true;
+        if let Some(ref function) = expr.function
+            && !function.passes_argument_type_through()
+        {
+            if function.is_datetime_function() {
+                return true;
+            }
+            if function.is_numeric_function() || function.is_string_function() || function.is_boolean_function() {
+                return false;
+            }
         }
 
         let field = match expr.field {
@@ -1736,6 +1745,23 @@ mod tests {
     }
 
     #[test]
+    fn string_functions_over_typed_fields_are_strings() {
+        let mut lexer = crate::lexer::Lexer::new(vec![String::from(
+            "select dayname(modified), concat(size, ''), upper(name), hex(size), coalesce(size, 0), coalesce(modified, ''), length(name), date_add(modified, 1) from /d",
+        )]);
+        let fields = crate::parser::Parser::new(&mut lexer).parse(false).unwrap().fields;
+        let typed: Vec<(bool, bool)> = fields.iter().map(|f| (f.contains_numeric(), f.contains_datetime())).collect();
+        assert_eq!(typed[0], (false, false), "dayname(modified) is text");
+        assert_eq!(typed[1], (false, false), "concat(size, '') is text");
+        assert_eq!(typed[2], (false, false), "upper(name) is text");
+        assert_eq!(typed[3], (false, false), "hex(size) is text");
+        assert_eq!(typed[4], (true, false), "coalesce passes the numeric type through");
+        assert_eq!(typed[5], (false, true), "coalesce passes the datetime type through");
+        assert_eq!(typed[6], (true, false), "length(name) is numeric");
+        assert_eq!(typed[7], (false, true), "date_add(modified, 1) is a datetime");
+    }
+
+    #[test]
     fn contains_numeric_right_side_of_arithmetic() {
         let expr = Expr::arithmetic_op(
             Expr::value("1".to_string()),
@@ -1776,17 +1802,23 @@ mod tests {
     }
 
     #[test]
-    fn contains_numeric_in_function_args() {
+    fn a_string_function_is_text_whatever_its_arguments_are() {
         let mut expr = Expr::function(Function::Concat);
         expr.set_args(vec![Expr::field(Field::Size)]);
-        assert!(expr.contains_numeric());
+        assert!(!expr.contains_numeric());
+        let mut expr = Expr::function(Function::Concat);
+        expr.set_args(vec![Expr::field(Field::Accessed)]);
+        assert!(!expr.contains_datetime());
     }
 
     #[test]
-    fn contains_datetime_in_function_args() {
-        let mut expr = Expr::function(Function::Concat);
-        expr.set_args(vec![Expr::field(Field::Accessed)]);
-        assert!(expr.contains_datetime());
+    fn min_and_max_take_the_type_of_their_argument() {
+        let mut latest = Expr::function(Function::Max);
+        latest.left = Some(Box::new(Expr::field(Field::Accessed)));
+        assert!(latest.contains_datetime() && !latest.contains_numeric());
+        let mut smallest = Expr::function(Function::Min);
+        smallest.left = Some(Box::new(Expr::field(Field::Size)));
+        assert!(smallest.contains_numeric() && !smallest.contains_datetime());
     }
 
     #[test]

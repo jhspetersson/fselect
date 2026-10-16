@@ -3777,6 +3777,34 @@ mod tests {
     }
 
     #[test]
+    fn like_over_string_functions_of_typed_fields_matches_the_text() {
+        let tmp = std::env::temp_dir().join("fselect_test_like_over_string_functions");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        fs::write(tmp.join("ten.txt"), "x".repeat(10)).unwrap();
+        fs::write(tmp.join("two.txt"), "xx").unwrap();
+
+        let names = |condition: &str| {
+            run_query_against_dir(&format!("select name from __DIR__ where {condition} order by name"), &tmp)
+        };
+        let cases: Vec<(&str, Vec<&str>)> = vec![
+            ("dayname(modified) like '%day'", vec!["ten.txt", "two.txt"]),
+            ("dayname(modified) not like '%day'", vec![]),
+            ("lower(dayname(modified)) like '%day'", vec!["ten.txt", "two.txt"]),
+            ("concat(size, '') like '1%'", vec!["ten.txt"]),
+            ("concat(size, '') not like '1%'", vec!["two.txt"]),
+            ("hex(size) = 'a'", vec!["ten.txt"]),
+            ("concat(size, '') = 10", vec!["ten.txt"]),
+        ];
+        let results: Vec<(&str, Vec<String>)> = cases.iter().map(|(condition, _)| (*condition, names(condition))).collect();
+        let _ = fs::remove_dir_all(&tmp);
+
+        for ((condition, expected), (_, actual)) in cases.iter().zip(results) {
+            assert_eq!(actual, *expected, "{}", condition);
+        }
+    }
+
+    #[test]
     fn errors_inside_subqueries_count_towards_the_outer_search() {
         let tmp = std::env::temp_dir().join("fselect_test_subquery_errors");
         let _ = fs::remove_dir_all(&tmp);

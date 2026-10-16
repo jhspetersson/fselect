@@ -945,17 +945,18 @@ impl<'a> Searcher<'a> {
     fn collect_subquery_root_paths(&mut self, mut query: Query) -> Result<Vec<(String, Option<usize>)>, SearchError> {
         // Use the absolute path so visit_subquery_paths can re-resolve each
         // result against the filesystem regardless of the inner query's root.
-        query.fields = vec![Expr::field(Field::AbsPath)];
+        query.fields = vec![Expr::field(Field::Name)];
         query.output_format = crate::query::OutputFormat::Tabs;
         let rows = self.get_list_from_subquery_with(query, true)?;
         Ok(rows
             .into_iter()
-            .map(|row| match row.rsplit_once('\t') {
-                Some((path, depth)) => match depth.parse::<usize>() {
-                    Ok(depth) => (path.to_string(), Some(depth)),
-                    Err(_) => (row.clone(), None),
-                },
-                None => (row, None),
+            .map(|row| {
+                let mut columns = row.rsplitn(3, '\t');
+                let depth = columns.next().and_then(|depth| depth.parse::<usize>().ok());
+                match (columns.next(), depth) {
+                    (Some(path), Some(depth)) if !path.is_empty() => (path.to_string(), Some(depth)),
+                    _ => (row.clone(), None),
+                }
             })
             .collect())
     }
@@ -1968,7 +1969,15 @@ impl<'a> Searcher<'a> {
         }
 
         if self.root_depth_column {
+            let own_path = crate::field::own_absolute_path(entry)
+                .map(|path| match file_info {
+                    Some(info) => info.name.split('/').filter(|part| !part.is_empty()).fold(path, |path, part| path.join(part)),
+                    None => path,
+                })
+                .map(|path| path.to_string_lossy().to_string())
+                .unwrap_or_default();
             let root_depth = self.root_depth_of(root_path);
+            items.push((String::new(), own_path));
             items.push((String::new(), root_depth.to_string()));
         }
 
@@ -3523,6 +3532,45 @@ mod tests {
             let _ = (target, link);
             false
         }
+    }
+
+    fn link_file(target: &str, link: &Path) -> bool {
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(target, link).is_ok()
+        }
+        #[cfg(windows)]
+        {
+            std::os::windows::fs::symlink_file(target, link).is_ok()
+        }
+        #[cfg(not(any(unix, windows)))]
+        {
+            let _ = (target, link);
+            false
+        }
+    }
+
+    #[test]
+    fn from_subselects_keep_links_as_links() {
+        let tmp = std::env::temp_dir().join("fselect_test_subselect_keeps_links");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(tmp.join("target")).unwrap();
+        fs::write(tmp.join("target").join("f.txt"), "x").unwrap();
+        fs::write(tmp.join("plain.txt"), "y").unwrap();
+        if !(link_dir("target", &tmp.join("slink")) && link_file("plain.txt", &tmp.join("flink"))) {
+            let _ = fs::remove_dir_all(&tmp);
+            eprintln!("skipped: cannot create symlinks here");
+            return;
+        }
+
+        let direct = run_query_against_dir("select path, is_symlink from __DIR__ depth 1 order by path", &tmp);
+        let through = run_query_against_dir("select path, is_symlink from (select path from __DIR__ depth 1) order by path", &tmp);
+        let links_outside = run_query_against_dir("select path from (select path from __DIR__ depth 1) where is_symlink order by path", &tmp);
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(direct, vec!["flink\ttrue", "plain.txt\tfalse", "slink\ttrue", "target\tfalse"]);
+        assert_eq!(through, direct, "a FROM subselect must hand over the links themselves, not their targets");
+        assert_eq!(links_outside, vec!["flink", "slink"]);
     }
 
     fn rel(parts: &[&str]) -> String {

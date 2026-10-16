@@ -11,6 +11,8 @@ mod metadata_handlers;
 mod mode_handlers;
 mod path_handlers;
 
+pub use path_handlers::own_absolute_path;
+
 use std::fmt::Display;
 use std::fmt::Error;
 use std::fmt::Formatter;

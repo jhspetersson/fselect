@@ -85,6 +85,14 @@ fn canonical_dir(dir: &Path) -> Result<PathBuf, String> {
     })
 }
 
+pub fn own_absolute_path(entry: &std::fs::DirEntry) -> Result<PathBuf, String> {
+    let path = entry.path();
+    match path.parent() {
+        Some(parent) if !parent.as_os_str().is_empty() => canonical_dir(parent).map(|dir| dir.join(entry.file_name())),
+        _ => canonicalize(&path),
+    }
+}
+
 fn absolute_entry_path(ctx: &FieldContext) -> Result<PathBuf, SearchError> {
     let path = ctx.entry.path();
     let is_symlink = ctx.entry.file_type().is_ok_and(|file_type| file_type.is_symlink());

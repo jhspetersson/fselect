@@ -1792,7 +1792,9 @@ impl<'a> Searcher<'a> {
         let function = column_expr.function.as_ref().unwrap();
 
         if function.is_aggregate_function() {
-            let _ = self.get_column_expr_value(entry, file_info, root_path, file_map, accumulator, left_expr)?;
+            if entry.is_some() {
+                self.get_column_expr_value(entry, file_info, root_path, file_map, accumulator, left_expr)?;
+            }
             let buffer_key = if left_expr.is_literal() && matches!(left_expr.val.as_deref(), Some("*") | Some("")) {
                 String::from("*")
             } else {
@@ -3751,6 +3753,27 @@ mod tests {
         assert_eq!(extremes, vec!["10	zeta	1	1"]);
         assert_eq!(ordered.first().map(String::as_str), Some("10"), "min(name) must agree with ORDER BY");
         assert_eq!(ordered.last().map(String::as_str), Some("zeta"), "max(name) must agree with ORDER BY");
+    }
+
+    #[test]
+    fn aggregates_over_a_division_by_a_field_use_the_accumulated_values() {
+        let tmp = std::env::temp_dir().join("fselect_test_aggregate_division_by_field");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        fs::write(tmp.join("two.txt"), "xx").unwrap();
+        fs::write(tmp.join("ten.txt"), "x".repeat(10)).unwrap();
+
+        let plain = search_dir(
+            "select sum(10 / size), avg(10 / size), count(10 / size), min(10 / size), max(10 / size) from __DIR__",
+            &tmp, Config::default(), true,
+        );
+        let grouped = run_query_against_dir("select ext, sum(10 / size) from __DIR__ group by ext having sum(10 / size) > 1", &tmp);
+        let _ = fs::remove_dir_all(&tmp);
+
+        let rows: Vec<String> = plain.output_buffer.iter_values().map(|row| row.trim_end().to_string()).collect();
+        assert_eq!(rows, vec!["6	3	2	1	5"]);
+        assert_eq!(plain.error_count, 0);
+        assert_eq!(grouped, vec!["txt	6"]);
     }
 
     #[test]

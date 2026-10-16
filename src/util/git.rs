@@ -102,8 +102,9 @@ impl GitCache {
             && cached_path == path {
                 return commit.clone();
             }
-        let commit = self.locate(path).and_then(|(idx, rel)| {
-            resolve_last_commit(&mut self.repos[idx], &to_git_path(&rel))
+        let commit = self.locate(path).and_then(|(idx, rel)| match rel.as_os_str().is_empty() {
+            true => head_commit_info(&self.repos[idx].repo),
+            false => resolve_last_commit(&mut self.repos[idx], &to_git_path(&rel)),
         });
         self.last_commit = Some((path.to_path_buf(), commit.clone()));
         commit
@@ -118,6 +119,9 @@ impl GitCache {
     /// work tree root. Only the parent directory is canonicalized (and cached),
     /// so the cost is paid once per directory rather than once per file.
     fn locate(&mut self, path: &Path) -> Option<(usize, PathBuf)> {
+        if path.join(".git").exists() {
+            return self.locate_root(path);
+        }
         let parent = path.parent()?;
         let file_name = path.file_name()?;
 
@@ -136,6 +140,18 @@ impl GitCache {
             .ok()?
             .to_path_buf();
         Some((*repo_idx, rel))
+    }
+
+    fn locate_root(&mut self, root: &Path) -> Option<(usize, PathBuf)> {
+        if !self.dirs.contains_key(root) {
+            let resolved = fs::canonicalize(root).ok().and_then(|canonical| {
+                let repo_idx = self.repo_index_for(&canonical)?;
+                Some((repo_idx, canonical))
+            });
+            self.dirs.insert(root.to_path_buf(), resolved);
+        }
+        let (repo_idx, _) = self.dirs.get(root)?.as_ref()?;
+        Some((*repo_idx, PathBuf::new()))
     }
 
     fn repo_index_for(&mut self, canonical_dir: &Path) -> Option<usize> {
@@ -204,6 +220,27 @@ fn compute_branch(repo: &Repository) -> Option<String> {
 
 /// Advances the repository's history scan until `key` resolves or the walk is
 /// exhausted (then the path was never committed).
+fn commit_info(commit: &git2::Commit) -> CommitInfo {
+    let author = commit.author();
+    let author_name = author
+        .name()
+        .ok()
+        .or_else(|| author.email().ok())
+        .map(String::from)
+        .unwrap_or_default();
+    CommitInfo {
+        hash: commit.id().to_string(),
+        // Author time, to match what `git log` displays by default.
+        time: author.when().seconds(),
+        author: author_name,
+    }
+}
+
+fn head_commit_info(repo: &Repository) -> Option<CommitInfo> {
+    let commit = repo.head().ok()?.peel_to_commit().ok()?;
+    Some(commit_info(&commit))
+}
+
 fn resolve_last_commit(entry: &mut RepoEntry, key: &str) -> Option<CommitInfo> {
     loop {
         if let Some(info) = entry.history.resolved.get(key) {
@@ -247,19 +284,7 @@ fn advance_history(entry: &mut RepoEntry) -> bool {
         return true;
     }
 
-    let author = commit.author();
-    let author_name = author
-        .name()
-        .ok()
-        .or_else(|| author.email().ok())
-        .map(String::from)
-        .unwrap_or_default();
-    let info = Rc::new(CommitInfo {
-        hash: commit.id().to_string(),
-        // Author time, to match what `git log` displays by default.
-        time: author.when().seconds(),
-        author: author_name,
-    });
+    let info = Rc::new(commit_info(&commit));
 
     for path in touched {
         entry
@@ -365,6 +390,76 @@ mod tests {
         let parents: Vec<&git2::Commit> = parent.iter().collect();
         repo.commit(Some("HEAD"), &sig, &sig, msg, &tree, &parents)
             .unwrap()
+    }
+
+    fn init_on_branch(dir: &Path, branch: &str, file: &str) -> Repository {
+        fs::create_dir_all(dir).unwrap();
+        let repo = Repository::init(dir).unwrap();
+        repo.set_head(&format!("refs/heads/{branch}")).unwrap();
+        fs::write(dir.join(file), "x").unwrap();
+        commit_all(&repo, "init", 1_000_000_000);
+        repo
+    }
+
+    #[test]
+    fn repository_directories_report_their_own_repository() {
+        let dir = std::env::temp_dir().join("fselect_test_git_repo_dirs");
+        let _ = fs::remove_dir_all(&dir);
+        let outer = dir.join("outer");
+        let nested = outer.join("nested");
+        let plain = dir.join("plain");
+        init_on_branch(&outer, "main", "top.txt");
+        init_on_branch(&nested, "feature", "in.txt");
+        init_on_branch(&plain, "solo", "p.txt");
+
+        let mut cache = GitCache::new();
+        let branches: Vec<(String, Option<String>)> = [
+            ("outer", outer.clone()),
+            ("outer/nested", nested.clone()),
+            ("plain", plain.clone()),
+            ("outer/top.txt", outer.join("top.txt")),
+            ("outer/nested/in.txt", nested.join("in.txt")),
+            ("plain/p.txt", plain.join("p.txt")),
+            ("dir", dir.clone()),
+        ]
+        .iter()
+        .map(|(label, path)| (label.to_string(), cache.branch(path)))
+        .collect();
+        let _ = fs::remove_dir_all(&dir);
+
+        let expected = [
+            ("outer", Some("main")), ("outer/nested", Some("feature")), ("plain", Some("solo")),
+            ("outer/top.txt", Some("main")), ("outer/nested/in.txt", Some("feature")), ("plain/p.txt", Some("solo")),
+            ("dir", None),
+        ];
+        for ((label, actual), (_, wanted)) in branches.iter().zip(expected) {
+            assert_eq!(actual.as_deref(), wanted, "{}", label);
+        }
+    }
+
+    #[test]
+    fn repository_root_directories_report_head_as_their_last_commit() {
+        let dir = std::env::temp_dir().join("fselect_test_git_root_last_commit");
+        let _ = fs::remove_dir_all(&dir);
+        let outer = dir.join("outer");
+        let nested = outer.join("nested");
+        let outer_repo = init_on_branch(&outer, "main", "top.txt");
+        fs::write(outer.join("later.txt"), "y").unwrap();
+        let outer_head = commit_all(&outer_repo, "later", 1_000_000_100);
+        let nested_repo = init_on_branch(&nested, "feature", "in.txt");
+        let nested_head = nested_repo.head().unwrap().peel_to_commit().unwrap().id();
+
+        let mut cache = GitCache::new();
+        let outer_commit = cache.last_commit(&outer);
+        let nested_commit = cache.last_commit(&nested);
+        let plain_dir = cache.last_commit(&dir);
+        let file_commit = cache.last_commit(&outer.join("top.txt"));
+        let _ = fs::remove_dir_all(&dir);
+
+        assert_eq!(outer_commit.map(|c| c.hash), Some(outer_head.to_string()), "the root reports HEAD");
+        assert_eq!(nested_commit.map(|c| c.hash), Some(nested_head.to_string()), "a nested root reports its own HEAD");
+        assert!(plain_dir.is_none());
+        assert_ne!(file_commit.map(|c| c.hash), Some(outer_head.to_string()), "files still resolve per path");
     }
 
     #[test]

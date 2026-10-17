@@ -76,6 +76,14 @@ fn grouped_query_errors_are_rejected_before_the_header() {
         &format!("select count(*) from {} group by ext having ext in ('txt') into json", dir),
         "not supported in the HAVING clause",
     );
+    assert_rejected_without_output(
+        &format!("select name, count(*) from {} group by ext into json", dir),
+        "Column 'name' must appear in GROUP BY or be used inside an aggregate function",
+    );
+    assert_rejected_without_output(
+        &format!("select length(name), count(*) from {} group by length(name) % 2 into html", dir),
+        "Column 'name' must appear in GROUP BY or be used inside an aggregate function",
+    );
 }
 
 #[test]

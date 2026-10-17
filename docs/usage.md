@@ -49,7 +49,10 @@ Group results with `group by` followed by one or more columns. Like `order by`, 
 accepts positional numeric shortcuts that refer to columns from the `select` list, for example
 `group by 1` or `group by 1, 2`. An aggregate function in the `select` list is not required:
 `select ext from /home/user group by ext` returns one row per distinct extension, like
-`SELECT DISTINCT` in SQL.
+ `SELECT DISTINCT` in SQL. As in SQL, every selected column of a grouped (or aggregating) query
+must be a grouping column, an expression over grouping columns, or an aggregate: a column such
+as `name` in `select name, count(*) from /home/user group by ext` has no single value per group
+and is rejected.
 
 Filter the groups themselves with `having`, which runs after aggregation
 (while `where` filters individual files before it):

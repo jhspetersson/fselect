@@ -6017,13 +6017,13 @@ line3
             &tmp,
         );
         let grouped = run_query_against_dir(
-            "select ext, size * 2 as dbl, count(*), max(size) + 1 from __DIR__ group by ext into json",
+            "select ext, length(ext) * 2 as dbl, count(*), max(size) + 1 from __DIR__ group by ext into json",
             &tmp,
         );
         let _ = fs::remove_dir_all(&tmp);
 
         assert_eq!(plain, vec![r#"{"extension":"md","dbl":"0","upper(name)":"A.MD","size + 1":"1"}"#]);
-        assert_eq!(grouped, vec![r#"{"extension":"md","dbl":"0","count(*)":"1","max(size) + 1":"1"}"#]);
+        assert_eq!(grouped, vec![r#"{"extension":"md","dbl":"4","count(*)":"1","max(size) + 1":"1"}"#]);
     }
 
     #[test]

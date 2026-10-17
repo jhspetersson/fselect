@@ -121,6 +121,8 @@ impl <'a> Parser<'a> {
             clause.validate_format_size_modifiers()?;
         }
 
+        Self::reject_non_grouped_columns(&fields, &grouping_fields)?;
+
         if let Some(ref having_expr) = having {
             let aggregate_context = having_expr.has_aggregate_function()
                 || !grouping_fields.is_empty()
@@ -1445,6 +1447,50 @@ impl <'a> Parser<'a> {
         Ok(grouping)
     }
 
+    /// SQL's grouping rule for the SELECT list: once a query aggregates (a
+    /// GROUP BY clause, or an aggregate function among the columns), every
+    /// column must be a grouping expression, an expression built only from
+    /// grouping expressions, literals and aggregates, or a subquery. A column
+    /// outside that set has no row to read from and would be rendered from an
+    /// empty one (`name` blank, `length(name)` 0), so it is rejected.
+    fn reject_non_grouped_columns(fields: &[Expr], grouping_fields: &[Expr]) -> Result<(), String> {
+        let aggregated = !grouping_fields.is_empty() || fields.iter().any(Expr::has_aggregate_function);
+        if !aggregated {
+            return Ok(());
+        }
+        let grouping_keys: Vec<String> = grouping_fields.iter().map(Expr::cache_key).collect();
+        match fields.iter().find_map(|column| Self::non_grouped_field(column, &grouping_keys)) {
+            Some(field) => {
+                let prefix = field.root_alias.as_deref().map(|alias| format!("{alias}.")).unwrap_or_default();
+                let name = field.field.map(|field| field.to_string().to_lowercase()).unwrap_or_default();
+                Err(format!(
+                    "Column '{prefix}{name}' must appear in GROUP BY or be used inside an aggregate function"
+                ))
+            }
+            None => Ok(()),
+        }
+    }
+
+    /// The first bare field inside `expr` that is read outside any grouping
+    /// expression or aggregate, if there is one.
+    fn non_grouped_field<'e>(expr: &'e Expr, grouping_keys: &[String]) -> Option<&'e Expr> {
+        if expr.is_literal() || expr.subquery.is_some() || grouping_keys.contains(&expr.cache_key()) {
+            return None;
+        }
+        if expr.function.as_ref().is_some_and(Function::is_aggregate_function) {
+            return None;
+        }
+        if expr.field.is_some() {
+            return Some(expr);
+        }
+        expr.left
+            .iter()
+            .chain(expr.right.iter())
+            .map(Box::as_ref)
+            .chain(expr.args.iter().flatten())
+            .find_map(|child| Self::non_grouped_field(child, grouping_keys))
+    }
+
     fn reject_unknown_columns(exprs: &[Expr], clause: &str) -> Result<(), String> {
         match exprs.iter().find(|expr| expr.is_literal()) {
             Some(literal) => Err(format!("Unknown column '{}' in {}", literal.val.as_deref().unwrap_or_default(), clause)),
@@ -2517,8 +2563,9 @@ mod tests {
         assert_eq!(second.left.as_ref().unwrap().field, Some(Field::Size), "sz as a function argument is the aliased size");
         assert_eq!(ordered.ordering_asc, vec![false, true]);
 
-        let grouped = parse_query("select length(name) as len, count(*) from /d group by len % 2").unwrap();
-        assert_eq!(grouped.grouping_fields[0].left.as_ref().unwrap().function, Some(Function::Length));
+        let grouped = parse_query("select length(name) as len, count(*) from /d group by len, len % 2").unwrap();
+        assert_eq!(grouped.grouping_fields[0].function, Some(Function::Length), "bare alias is the aliased expression");
+        assert_eq!(grouped.grouping_fields[1].left.as_ref().unwrap().function, Some(Function::Length), "alias inside arithmetic is the aliased expression");
     }
 
     #[test]
@@ -2618,7 +2665,51 @@ mod tests {
             "select name from /d order by size + 0, length(name)",
             "select name, size as sz from /d order by sz desc",
             "select ext, count(*) from /d group by ext",
-            "select length(name) as len, count(*) from /d group by len % 2",
+            "select length(name) as len, count(*) from /d group by len, len % 2",
+        ] {
+            assert!(parse_query(query).is_ok(), "{}: {:?}", query, parse_query(query).err());
+        }
+    }
+
+    #[test]
+    fn select_columns_outside_the_grouping_are_rejected() {
+        // SQL's rule: once a query aggregates, a column must be a grouping
+        // expression, built only from grouping expressions, literals and
+        // aggregates, or a subquery. Anything else would be rendered from an
+        // empty row (`name` blank, `length(name)` 0) and is rejected instead.
+        for (query, column) in [
+            ("select length(name), count(*) from /d group by length(name) % 2", "name"),
+            ("select name, count(*) from /d group by ext", "name"),
+            ("select ext, size, count(*) from /d group by ext", "size"),
+            ("select ext, count(*) from /d group by lower(ext)", "extension"),
+            ("select ext, size * 2 as dbl, count(*) from /d group by ext", "size"),
+            ("select ext, upper(name) from /d group by ext", "name"),
+            ("select ext, max(size), length(name) from /d group by ext", "name"),
+            ("select name, count(*) from /d", "name"),
+            ("select min(size), path from /d", "path"),
+            ("select t.name, count(*) from /d as t group by t.ext", "t.name"),
+        ] {
+            let err = parse_query(query).expect_err(query);
+            assert!(
+                err.contains(&format!("Column '{column}' must appear in GROUP BY")),
+                "{}: {}", query, err
+            );
+        }
+        for query in [
+            "select ext, count(*) from /d group by ext",
+            "select ext, count(*) from /d group by 1",
+            "select ext as e, count(*) from /d group by e",
+            "select upper(ext), count(*) from /d group by ext",
+            "select length(name) % 2, count(*) from /d group by length(name) % 2",
+            "select length(name) as len, count(*) from /d group by len, len % 2",
+            "select ext, 'label', 1 + 2, count(*) from /d group by ext",
+            "select ext, max(size) + min(size), abs(sum(size * 2) - 1) from /d group by ext",
+            "select ext, count(*) from /d group by ext, size",
+            "select t.ext, count(*) from /d as t group by t.ext",
+            "select ext, (select count(*) from /e where ext = t.ext) from /d as t group by ext",
+            "select name from /d group by name order by max(size) desc",
+            "select count(*) from /d",
+            "select name, size, length(name) from /d",
         ] {
             assert!(parse_query(query).is_ok(), "{}: {:?}", query, parse_query(query).err());
         }
@@ -2888,7 +2979,7 @@ mod tests {
 
     #[test]
     fn query_with_dfs() {
-        let query = "select name from /test dfs group by mime";
+        let query = "select mime from /test dfs group by mime";
         let mut lexer = Lexer::new(vec![query.to_string()]);
         let mut p = Parser::new(&mut lexer);
         let query = p.parse(false).unwrap();
@@ -3347,7 +3438,7 @@ mod tests {
 
     #[test]
     fn group_by_non_boolean_function_without_parens_should_not_panic() {
-        let query = "select name, mime from /test group by upper, mime";
+        let query = "select mime from /test group by upper, mime";
         let mut lexer = Lexer::new(vec![query.to_string()]);
         let mut p = Parser::new(&mut lexer);
         let result = p.parse(false);
@@ -4000,13 +4091,13 @@ mod tests {
 
     #[test]
     fn group_by_parenthesized_arithmetic() {
-        let query1 = "select count(*), size from /test group by size + 1";
+        let query1 = "select count(*), size + 1 from /test group by size + 1";
         let mut lexer1 = Lexer::new(vec![query1.to_string()]);
         let mut p1 = Parser::new(&mut lexer1);
         let q1 = p1.parse(false).unwrap();
         assert!(!p1.there_are_remaining_lexemes());
 
-        let query2 = "select count(*), size from /test group by (size + 1)";
+        let query2 = "select count(*), size + 1 from /test group by (size + 1)";
         let mut lexer2 = Lexer::new(vec![query2.to_string()]);
         let mut p2 = Parser::new(&mut lexer2);
         let q2 = p2.parse(false).unwrap();

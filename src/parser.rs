@@ -121,7 +121,7 @@ impl <'a> Parser<'a> {
             clause.validate_format_size_modifiers()?;
         }
 
-        Self::reject_non_grouped_columns(&fields, &grouping_fields)?;
+        self.reject_non_grouped_columns(&fields, &grouping_fields)?;
 
         if let Some(ref having_expr) = having {
             let aggregate_context = having_expr.has_aggregate_function()
@@ -1452,14 +1452,16 @@ impl <'a> Parser<'a> {
     /// column must be a grouping expression, an expression built only from
     /// grouping expressions, literals and aggregates, or a subquery. A column
     /// outside that set has no row to read from and would be rendered from an
-    /// empty one (`name` blank, `length(name)` 0), so it is rejected.
-    fn reject_non_grouped_columns(fields: &[Expr], grouping_fields: &[Expr]) -> Result<(), String> {
+    /// empty one (`name` blank, `length(name)` 0), so it is rejected. A
+    /// reference to an enclosing query's row (`t.size` inside a subquery) is
+    /// constant for the whole inner aggregation and passes.
+    fn reject_non_grouped_columns(&self, fields: &[Expr], grouping_fields: &[Expr]) -> Result<(), String> {
         let aggregated = !grouping_fields.is_empty() || fields.iter().any(Expr::has_aggregate_function);
         if !aggregated {
             return Ok(());
         }
         let grouping_keys: Vec<String> = grouping_fields.iter().map(Expr::cache_key).collect();
-        match fields.iter().find_map(|column| Self::non_grouped_field(column, &grouping_keys)) {
+        match fields.iter().find_map(|column| self.non_grouped_field(column, &grouping_keys)) {
             Some(field) => {
                 let prefix = field.root_alias.as_deref().map(|alias| format!("{alias}.")).unwrap_or_default();
                 let name = field.field.map(|field| field.to_string().to_lowercase()).unwrap_or_default();
@@ -1473,11 +1475,14 @@ impl <'a> Parser<'a> {
 
     /// The first bare field inside `expr` that is read outside any grouping
     /// expression or aggregate, if there is one.
-    fn non_grouped_field<'e>(expr: &'e Expr, grouping_keys: &[String]) -> Option<&'e Expr> {
+    fn non_grouped_field<'e>(&self, expr: &'e Expr, grouping_keys: &[String]) -> Option<&'e Expr> {
         if expr.is_literal() || expr.subquery.is_some() || grouping_keys.contains(&expr.cache_key()) {
             return None;
         }
         if expr.function.as_ref().is_some_and(Function::is_aggregate_function) {
+            return None;
+        }
+        if !self.is_local_alias(expr.root_alias.as_deref()) {
             return None;
         }
         if expr.field.is_some() {
@@ -1488,7 +1493,7 @@ impl <'a> Parser<'a> {
             .chain(expr.right.iter())
             .map(Box::as_ref)
             .chain(expr.args.iter().flatten())
-            .find_map(|child| Self::non_grouped_field(child, grouping_keys))
+            .find_map(|child| self.non_grouped_field(child, grouping_keys))
     }
 
     fn reject_unknown_columns(exprs: &[Expr], clause: &str) -> Result<(), String> {
@@ -2710,9 +2715,17 @@ mod tests {
             "select name from /d group by name order by max(size) desc",
             "select count(*) from /d",
             "select name, size, length(name) from /d",
+            // References to an enclosing query's row are constant within the
+            // inner aggregation, so they need no grouping there.
+            "select name, (select count(*) + t.size from /o) from /d as t",
+            "select name, (select count(*) + t.size from /o group by ext) from /d as t",
+            "select name, (select max(size) - t.size from /o where size > t.size) from /d as t",
         ] {
             assert!(parse_query(query).is_ok(), "{}: {:?}", query, parse_query(query).err());
         }
+        // ... but a reference to the inner query's own alias is still checked.
+        let err = parse_query("select name, (select o.name, count(*) from /o as o) from /d as t").expect_err("own alias");
+        assert!(err.contains("Column 'o.name' must appear in GROUP BY"), "{err}");
     }
 
     #[test]

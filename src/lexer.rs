@@ -151,6 +151,7 @@ impl Lexer {
         let mut s = String::new();
         let mut mode = LexingMode::Undefined;
         let mut quote_closed = false;
+        let mut token_starts_part = false;
         let search_root_ctx = self.state.possible_search_root;
 
         loop {
@@ -242,8 +243,7 @@ impl Lexer {
                             // negative numbers) unless the whole word is an expression.
                             break;
                         } else if c == ','
-                            || ((self.input.len() == 1
-                                || (self.input.len() > 1 && !self.state.possible_search_root))
+                            || (!(self.input.len() > 1 && self.state.possible_search_root && token_starts_part)
                                 && (c.is_ascii_whitespace() || is_paren_char(c) || self.is_op_char(c))) {
                             break;
                         }
@@ -268,6 +268,7 @@ impl Lexer {
                             } else {
                                 LexingMode::RawString
                             };
+                            token_starts_part = self.char_index == 1;
                             s.push(c);
                         }
                     }
@@ -509,6 +510,53 @@ mod tests {
                 Lexer::new(quote)
             }
         }
+    }
+
+    fn all_lexemes(mut lexer: Lexer) -> Vec<Lexeme> {
+        let mut lexemes = vec![];
+        while let Some(lexeme) = lexer.next_lexeme() {
+            lexemes.push(lexeme);
+        }
+        lexemes
+    }
+
+    #[test]
+    fn root_path_runs_to_the_end_of_its_part_only_when_it_starts_the_part() {
+        let lexemes = all_lexemes(lexer!("select name from . where ext = md", "limit 1"));
+        assert_eq!(
+            lexemes,
+            vec![
+                Lexeme::Select,
+                Lexeme::RawString(String::from("name")),
+                Lexeme::From,
+                Lexeme::RawString(String::from(".")),
+                Lexeme::Where,
+                Lexeme::RawString(String::from("ext")),
+                Lexeme::Operator(String::from("=")),
+                Lexeme::RawString(String::from("md")),
+                Lexeme::Limit,
+                Lexeme::RawString(String::from("1")),
+            ]
+        );
+
+        let lexemes = all_lexemes(lexer!("select name", "from /tmp/x where ext = md", "limit 1"));
+        assert_eq!(lexemes[3], Lexeme::RawString(String::from("/tmp/x")));
+        assert_eq!(lexemes[4], Lexeme::Where);
+        assert_eq!(lexemes[8], Lexeme::Limit);
+
+        let lexemes = all_lexemes(lexer!("select", "name", "from", "C:/dir with space", "limit", "1"));
+        assert_eq!(lexemes[3], Lexeme::RawString(String::from("C:/dir with space")));
+        assert_eq!(lexemes[4], Lexeme::Limit);
+
+        let lexemes = all_lexemes(lexer!("select name from", "C:/dir with space", "where ext = txt"));
+        assert_eq!(lexemes[3], Lexeme::RawString(String::from("C:/dir with space")));
+        assert_eq!(lexemes[4], Lexeme::Where);
+
+        let lexemes = all_lexemes(lexer!("select name from", "C:/a b,", "C:/c d", "limit 1"));
+        assert_eq!(lexemes[3], Lexeme::RawString(String::from("C:/a b")));
+        assert_eq!(lexemes[4], Lexeme::Comma);
+        assert_eq!(lexemes[5], Lexeme::RawString(String::from("C:/c d")));
+        assert_eq!(lexemes[6], Lexeme::Limit);
     }
 
     #[test]

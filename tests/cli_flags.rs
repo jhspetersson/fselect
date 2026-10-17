@@ -10,6 +10,32 @@ fn fselect(args: &[&str]) -> (bool, String) {
 }
 
 #[test]
+fn where_clause_sharing_an_argument_with_the_root_is_not_part_of_the_path() {
+    let tmp = std::env::temp_dir().join("fselect_cli_argv_split");
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::create_dir_all(tmp.join("dir with space")).unwrap();
+    std::fs::write(tmp.join("a.md"), "").unwrap();
+    std::fs::write(tmp.join("b.txt"), "").unwrap();
+    std::fs::write(tmp.join("dir with space").join("c.txt"), "").unwrap();
+    let root = tmp.to_string_lossy().to_string();
+    let spaced = tmp.join("dir with space").to_string_lossy().to_string();
+
+    let (ok, out) = fselect(&["--nocolor", &format!("select name from {root} where ext = md"), "limit 1"]);
+    assert!(ok, "{}", out);
+    assert_eq!(out.trim(), "a.md");
+
+    let (ok, out) = fselect(&["--nocolor", "select", "name", "from", &spaced, "limit", "1"]);
+    assert!(ok, "{}", out);
+    assert_eq!(out.trim(), "c.txt");
+
+    let (ok, out) = fselect(&["--nocolor", "select name from", &spaced, "where ext = txt"]);
+    assert!(ok, "{}", out);
+    assert_eq!(out.trim(), "c.txt");
+
+    let _ = std::fs::remove_dir_all(&tmp);
+}
+
+#[test]
 fn help_and_version_work_as_first_argument() {
     let (ok, out) = fselect(&["--help"]);
     assert!(ok && out.contains("Usage: fselect"), "{}", out);

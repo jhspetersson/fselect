@@ -130,23 +130,31 @@ fn parse_hgignore(file_path: &Path, dir_path: &Path) -> Result<Vec<HgignoreFilte
                                 syntax_directive
                             ),
                         }
-                    } else if let Some(rest) = line.strip_prefix("subinclude:") {
+                    } else if let Some((rest, subinclude)) = line
+                        .strip_prefix("include:")
+                        .map(|rest| (rest, false))
+                        .or_else(|| line.strip_prefix("subinclude:").map(|rest| (rest, true)))
+                    {
                         let include = rest.trim();
                         #[cfg(windows)]
                         let include = include.replace('/', "\\");
                         // Relative paths resolve against the directory of
-                        // the file containing the subinclude, and the
-                        // subincluded patterns are rooted at the subinclude
-                        // file's directory (Mercurial `subinclude:`).
+                        // the file containing the directive. Included
+                        // patterns stay rooted at the repository like the
+                        // including file's own; subincluded patterns are
+                        // rooted at the subinclude file's directory.
                         let include_path = match file_path.parent() {
                             Some(parent) => parent.join(&include),
                             None => Path::new(&include).to_path_buf(),
                         };
-                        let sub_dir_path = include_path
-                            .parent()
-                            .map(Path::to_path_buf)
-                            .unwrap_or_else(|| dir_path.to_path_buf());
-                        let mut parse_result = parse_hgignore(&include_path, &sub_dir_path);
+                        let include_dir_path = match subinclude {
+                            true => include_path
+                                .parent()
+                                .map(Path::to_path_buf)
+                                .unwrap_or_else(|| dir_path.to_path_buf()),
+                            false => dir_path.to_path_buf(),
+                        };
+                        let mut parse_result = parse_hgignore(&include_path, &include_dir_path);
                         match parse_result {
                             Ok(ref mut filters) => {
                                 result.append(filters);
@@ -740,6 +748,23 @@ mod tests {
         );
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn include_reads_the_file_relative_to_the_including_one_and_roots_patterns_at_the_repo() {
+        let dir = make_test_dir("fselect_hg_include_test");
+        let sub = dir.join("sub");
+        std::fs::create_dir_all(&sub).unwrap();
+        let file_path = dir.join(".hgignore");
+        std::fs::write(&file_path, "include: sub/extra.ignore\nsyntax: glob\n*.tmp\n").unwrap();
+        std::fs::write(sub.join("extra.ignore"), "syntax: glob\n*.o\n").unwrap();
+
+        let filters = parse_hgignore(&file_path, &dir).unwrap();
+        assert_eq!(filters.len(), 2);
+        assert!(matches_hgignore_filter(&filters, &dir.join("a.o").to_string_lossy()));
+        assert!(matches_hgignore_filter(&filters, &sub.join("a.o").to_string_lossy()));
+        assert!(matches_hgignore_filter(&filters, &dir.join("b.tmp").to_string_lossy()));
+        assert!(!matches_hgignore_filter(&filters, &dir.join("c.txt").to_string_lossy()));
     }
 
     #[test]

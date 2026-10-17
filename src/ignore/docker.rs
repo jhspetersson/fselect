@@ -133,6 +133,8 @@ fn convert_dockerignore_pattern(
         pattern = rest.trim_start();
         negate = true;
     }
+    let cleaned = clean_dockerignore_pattern(pattern);
+    let pattern = cleaned.as_str();
 
     match convert_dockerignore_glob(pattern, file_path) {
         Ok(regex) => {
@@ -145,6 +147,31 @@ fn convert_dockerignore_pattern(
         _ => Err("Error creating regex while parsing .dockerignore glob: "
             .to_string()
             .add(pattern)),
+    }
+}
+
+// Docker runs every pattern through filepath.Clean before matching, so
+// `./foo`, `a//b`, `a/./b` and `a/../b` all denote plain paths.
+fn clean_dockerignore_pattern(pattern: &str) -> String {
+    let rooted = pattern.starts_with(['/', '\\']);
+    let mut parts: Vec<&str> = Vec::new();
+    for component in pattern.split(['/', '\\']) {
+        match component {
+            "" | "." => {}
+            ".." => match parts.last() {
+                Some(&"..") => parts.push(".."),
+                Some(_) => {
+                    parts.pop();
+                }
+                None if rooted => {}
+                None => parts.push(".."),
+            },
+            _ => parts.push(component),
+        }
+    }
+    match parts.is_empty() {
+        true => pattern.to_string(),
+        false => parts.join("/"),
     }
 }
 
@@ -439,6 +466,29 @@ mod tests {
         assert!(filter.regex.is_match("/ctx/build"));
         assert!(filter.regex.is_match("/ctx/build/out/app.bin"));
         assert!(!filter.regex.is_match("/ctx/builder"));
+    }
+
+    #[test]
+    fn patterns_are_path_cleaned_like_docker_does() {
+        for (pattern, path) in [
+            ("./foo.txt", "/ctx/foo.txt"),
+            ("a//b.txt", "/ctx/a/b.txt"),
+            ("d/./e.txt", "/ctx/d/e.txt"),
+            ("a/../c.txt", "/ctx/c.txt"),
+            ("/../x.txt", "/ctx/x.txt"),
+            ("./**/*.log", "/ctx/deep/down/a.log"),
+        ] {
+            let filter = convert_dockerignore_pattern(pattern, Path::new("/ctx")).unwrap();
+            assert!(filter.regex.is_match(path), "{pattern} should match {path}: {}", filter.regex.as_str());
+        }
+
+        let filter = convert_dockerignore_pattern("!./keep/./file.txt", Path::new("/ctx")).unwrap();
+        assert!(filter.regex.is_match("/ctx/keep/file.txt"));
+        assert!(dockerignore_exception_may_lie_beneath(&[filter], "/ctx/keep"));
+
+        assert_eq!(clean_dockerignore_pattern("../../up.txt"), "../../up.txt");
+        assert_eq!(clean_dockerignore_pattern("."), ".");
+        assert!(convert_dockerignore_glob(&clean_dockerignore_pattern("///"), Path::new("/ctx")).is_err());
     }
 
     #[test]

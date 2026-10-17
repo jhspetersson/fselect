@@ -5317,6 +5317,22 @@ f
         assert_eq!(rows.len(), 3);
     }
 
+    #[test]
+    fn boolean_literal_conditions_select_all_or_nothing() {
+        let tmp = std::env::temp_dir().join("fselect_test_boolean_literal_where");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        for name in ["a.txt", "b.txt"] {
+            fs::write(tmp.join(name), "").unwrap();
+        }
+
+        assert_eq!(run_query_against_dir("select name from __DIR__ where true", &tmp).len(), 2);
+        assert_eq!(run_query_against_dir("select name from __DIR__ where not false", &tmp).len(), 2);
+        assert_eq!(run_query_against_dir("select name from __DIR__ where false", &tmp).len(), 0);
+        assert_eq!(run_query_against_dir("select name from __DIR__ where false or name = 'a.txt'", &tmp).len(), 1);
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
     #[cfg(feature = "git")]
     fn init_repo_ignoring(dir: &Path, pattern: &str) {
         fs::create_dir_all(dir).unwrap();

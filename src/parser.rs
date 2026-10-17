@@ -34,6 +34,7 @@ pub struct Parser<'a> {
     index: isize,
     roots_parsed: bool,
     where_parsed: bool,
+    in_having: bool,
     debug: bool,
     /// Aliases declared on this query's own roots; any other alias in an
     /// expression refers to an enclosing query's entry.
@@ -52,6 +53,7 @@ impl <'a> Parser<'a> {
             index: -1,
             roots_parsed: false,
             where_parsed: false,
+            in_having: false,
             debug: false,
             root_aliases: vec![],
             negation_depth: 0,
@@ -80,7 +82,7 @@ impl <'a> Parser<'a> {
         let root_options = self.parse_root_options()?;
         self.root_aliases = roots.iter().filter_map(|root| root.options.alias.clone()).collect();
         self.roots_parsed = true;
-        let expr = self.parse_where()?;
+        let expr = self.parse_where()?.map(|expr| Self::ensure_boolean_conditions(expr, "WHERE")).transpose()?;
         self.where_parsed = true;
         // Fail once, up front, on literals that can never match: a typo like
         // `modified = 'not-a-date'` or `size > 'abc'` would otherwise be
@@ -91,7 +93,7 @@ impl <'a> Parser<'a> {
             where_expr.validate_boolean_literals()?;
         }
         let grouping_fields = self.parse_group_by(&fields)?;
-        let having = self.parse_having(&fields)?;
+        let having = self.parse_having(&fields)?.map(|expr| Self::ensure_boolean_conditions(expr, "HAVING")).transpose()?;
         let (ordering_fields, ordering_asc) = self.parse_order_by(&fields)?;
         let (mut limit, limit_offset) = self.parse_limit()?;
         let mut offset = self.parse_offset()?;
@@ -919,16 +921,18 @@ impl <'a> Parser<'a> {
                 expr.left.is_none()
                     && expr.right.is_none()
                     && field.is_boolean_field()
-                    && self.roots_parsed
-                    && !self.where_parsed
+                    && self.wraps_bare_booleans()
             } else { false };
             let should_wrap_func = if let Some(ref function) = expr.function {
                 expr.right.is_none()
                     && (expr.args.is_none() || expr.args.as_ref().is_some_and(|a| a.is_empty()))
                     && function.is_boolean_function()
-                    && self.roots_parsed
-                    && !self.where_parsed
+                    && self.wraps_bare_booleans()
             } else { false };
+            let should_wrap_literal = expr.is_literal()
+                && !expr.minus
+                && expr.val.as_ref().is_some_and(|val| val.eq_ignore_ascii_case("true") || val.eq_ignore_ascii_case("false"))
+                && self.wraps_bare_booleans();
             if should_wrap {
                 // Reuse the parsed field as-is: it already carries its root
                 // alias and alias-scoped props.
@@ -942,10 +946,34 @@ impl <'a> Parser<'a> {
                     Op::Eq,
                     Expr::value(String::from("true")),
                 )));
+            } else if should_wrap_literal {
+                let expr = result.unwrap().unwrap();
+                let literal = Expr::value(expr.val.unwrap().to_ascii_lowercase());
+                result = Ok(Some(Expr::op(literal, Op::Eq, Expr::value(String::from("true")))));
             }
         }
 
         result
+    }
+
+    fn wraps_bare_booleans(&self) -> bool {
+        self.roots_parsed && (!self.where_parsed || self.in_having)
+    }
+
+    fn ensure_boolean_conditions(mut expr: Expr, clause: &str) -> Result<Expr, String> {
+        if expr.logical_op.is_some() {
+            if let Some(left) = expr.left.take() {
+                expr.left = Some(Box::new(Self::ensure_boolean_conditions(*left, clause)?));
+            }
+            if let Some(right) = expr.right.take() {
+                expr.right = Some(Box::new(Self::ensure_boolean_conditions(*right, clause)?));
+            }
+            return Ok(expr);
+        }
+        if expr.op.is_some() {
+            return Ok(expr);
+        }
+        Err(format!("Expected a comparison or boolean condition in {clause}, found '{}'", expr.to_string().to_lowercase()))
     }
 
     fn logical_op(&self, left: Expr, logical_op: LogicalOp, right: Expr) -> Result<Expr, String> {
@@ -1490,7 +1518,9 @@ impl <'a> Parser<'a> {
         match self.next_lexeme() {
             Some(Lexeme::Having) => {
                 self.select_aliases = fields.to_vec();
+                self.in_having = true;
                 let having = self.parse_expr();
+                self.in_having = false;
                 self.select_aliases.clear();
                 match having? {
                     Some(having) => Ok(Some(having)),
@@ -1804,6 +1834,60 @@ mod tests {
         let mut lexer = Lexer::new(vec![query.to_string()]);
         let mut p = Parser::new(&mut lexer);
         p.parse(false).err().unwrap_or_else(|| panic!("{} should not parse", query))
+    }
+
+    #[test]
+    fn operator_less_conditions_are_rejected() {
+        for (query, found) in [
+            ("select name from . where name", "name"),
+            ("select name from . where 1", "1"),
+            ("select name from . where and", "and"),
+            ("select name from . where (size)", "size"),
+            ("select name from . where size + 1", "size + 1"),
+            ("select name from . where lower(name)", "lower(name)"),
+            ("select name from . where not name", "name"),
+            ("select name from . where size > 100 and name", "name"),
+            ("select name from . where name = 'a' or (size)", "size"),
+            ("select name from . where size > 100 and (name)", "name"),
+            ("select name from . where name in (select name from . where size)", "size"),
+            ("select name from . where (select count(*) from .)", "subquery_"),
+        ] {
+            let err = parse_err(query);
+            assert!(
+                err.starts_with("Expected a comparison or boolean condition in WHERE, found '") && err.contains(found),
+                "{}: unexpected error text {:?}", query, err
+            );
+        }
+        let err = parse_err("select ext, count(*) from . group by ext having count(*)");
+        assert_eq!(err, "Expected a comparison or boolean condition in HAVING, found 'count(*)'");
+    }
+
+    #[test]
+    fn bare_boolean_fields_functions_and_literals_are_conditions() {
+        for query in [
+            "select name from . where is_dir",
+            "select name from . where not is_dir",
+            "select name from . where is_dir and size > 0",
+            "select name from . where contains('x')",
+            "select name from . where (size) > 100",
+            "select name from . where (size > 100)",
+            "select name from . where exists (select name from .)",
+            "select name from . where true",
+            "select name from . where TRUE or size > 0",
+            "select ext, count(*) from . group by ext having count(*) > 1",
+            "select is_dir, count(*) from . group by is_dir having is_dir",
+        ] {
+            parse_query(query).expect(query);
+        }
+
+        let expr = parse_where("select name from . where true");
+        assert_eq!(expr.op, Some(Op::Eq));
+        assert_eq!(expr.left.as_ref().unwrap().val.as_deref(), Some("true"));
+        assert_eq!(expr.right.as_ref().unwrap().val.as_deref(), Some("true"));
+
+        let expr = parse_where("select name from . where not False");
+        assert_eq!(expr.op, Some(Op::Ne));
+        assert_eq!(expr.left.as_ref().unwrap().val.as_deref(), Some("false"));
     }
 
     #[test]

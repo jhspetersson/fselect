@@ -71,10 +71,6 @@ pub fn convert_like_to_pattern(s: &str) -> Result<String, String> {
         }
     }
 
-    if string.is_empty() {
-        return Err("Error parsing LIKE expression: ".to_string() + s);
-    }
-
     Ok(format!("^(?i){}$", string))
 }
 
@@ -125,6 +121,15 @@ mod tests {
     fn test_convert_glob_to_pattern_special_chars() {
         let pattern = convert_glob_to_pattern("file[1-3].txt").unwrap();
         assert_eq!(pattern, "^(?i)file\\[1-3\\]\\.txt$");
+    }
+
+    #[test]
+    fn empty_like_pattern_matches_only_the_empty_string() {
+        let pattern = convert_like_to_pattern("").unwrap();
+        assert_eq!(pattern, "^(?i)$");
+        let regex = Regex::new(&pattern).unwrap();
+        assert!(regex.is_match(""));
+        assert!(!regex.is_match("a"));
     }
 
     #[test]

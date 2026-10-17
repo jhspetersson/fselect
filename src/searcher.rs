@@ -5318,6 +5318,24 @@ f
     }
 
     #[test]
+    fn like_with_an_empty_pattern_matches_empty_values() {
+        let tmp = std::env::temp_dir().join("fselect_test_like_empty");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(tmp.join("d")).unwrap();
+        fs::write(tmp.join("a.txt"), "").unwrap();
+        fs::write(tmp.join("noext"), "").unwrap();
+
+        let searcher = search_dir("select name from __DIR__ where ext like '' order by name", &tmp, Config::default(), true);
+        let rows: Vec<String> = searcher.output_buffer.iter_values().map(|s| s.trim_end().to_string()).collect();
+        assert_eq!(rows, vec!["d", "noext"]);
+        assert_eq!(searcher.error_count, 0);
+
+        let rows = run_query_against_dir("select name from __DIR__ where ext not like ''", &tmp);
+        assert_eq!(rows, vec!["a.txt"]);
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
     fn boolean_literal_conditions_select_all_or_nothing() {
         let tmp = std::env::temp_dir().join("fselect_test_boolean_literal_where");
         let _ = fs::remove_dir_all(&tmp);

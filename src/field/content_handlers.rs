@@ -31,10 +31,10 @@ pub fn handle_char_count(ctx: &mut FieldContext) -> Result<Variant, SearchError>
 }
 
 pub fn handle_encoding(ctx: &mut FieldContext) -> Result<Variant, SearchError> {
-    ctx.fms.update_content_stats(ctx.entry, ctx.file_info);
-    if let Some(stats) = ctx.fms.get_content_stats()
-        && stats.is_text {
-            return Ok(Variant::from_string(&stats.encoding));
+    ctx.fms.update_content_kind(ctx.entry, ctx.file_info);
+    if let Some(kind) = ctx.fms.get_content_kind()
+        && kind.is_text {
+            return Ok(Variant::from_string(&kind.encoding));
         }
     Ok(Variant::empty(VariantType::String))
 }
@@ -42,6 +42,9 @@ pub fn handle_encoding(ctx: &mut FieldContext) -> Result<Variant, SearchError> {
 pub fn handle_has_bom(ctx: &mut FieldContext) -> Result<Variant, SearchError> {
     if let Some(stats) = ctx.fms.get_content_stats() {
         return Ok(Variant::from_bool(stats.has_bom));
+    }
+    if let Some(kind) = ctx.fms.get_content_kind() {
+        return Ok(Variant::from_bool(kind.has_bom));
     }
     match ctx.file_info {
         Some(file_info) => Ok(with_archived_entry(&ctx.entry.path(), file_info, has_bom_in_reader)
@@ -244,6 +247,46 @@ mod tests {
         assert_eq!(utf32, (String::from("true"), String::from("false")));
         assert_eq!(xml, (String::from("true"), String::from("false")));
         assert_eq!(binary, (String::from("false"), String::from("true")));
+    }
+
+    #[test]
+    fn encoding_is_classified_without_the_full_content_scan() {
+        use crate::util::content_scans;
+
+        let tmp = std::env::temp_dir().join("fselect_test_encoding_without_scan_h");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        let mut utf8_bom = vec![0xEFu8, 0xBB, 0xBF];
+        utf8_bom.extend_from_slice("bom\u{e9}".as_bytes());
+        let mut utf16 = vec![0xFFu8, 0xFE];
+        utf16.extend("hi\n".encode_utf16().flat_map(u16::to_le_bytes));
+        let samples: [(&str, Vec<u8>, &str, &str); 6] = [
+            ("ascii.txt", b"plain text\n".to_vec(), "ASCII", "false"),
+            ("utf8.txt", "caf\u{e9} \u{2713}\n".as_bytes().to_vec(), "UTF-8", "false"),
+            ("latin1.txt", vec![b'c', b'a', b'f', 0xE9, b'\n'], "ISO-8859-1", "false"),
+            ("binary.bin", vec![b'M', b'Z', 0x00, 0x01, 0xFF], "", "false"),
+            ("bom.txt", utf8_bom, "UTF-8", "true"),
+            ("utf16.txt", utf16, "UTF-16LE", "true"),
+        ];
+        for (name, bytes, _, _) in &samples {
+            fs::write(tmp.join(name), bytes).unwrap();
+        }
+
+        let mut results = Vec::new();
+        for (name, _, _, _) in &samples {
+            let entry = entry_for(&tmp, name);
+            let before = content_scans();
+            let encoding = test_field(&entry, &tmp, &Field::Encoding).to_string();
+            let has_bom = test_field(&entry, &tmp, &Field::HasBom).to_string();
+            results.push((encoding, has_bom, content_scans() - before));
+        }
+        let _ = fs::remove_dir_all(&tmp);
+
+        for ((name, _, encoding, has_bom), (got_encoding, got_bom, scans)) in samples.iter().zip(results) {
+            assert_eq!(got_encoding, *encoding, "{name}");
+            assert_eq!(got_bom, *has_bom, "{name}");
+            assert_eq!(scans, 0, "{name}: encoding and has_bom must not run the char/word/line scan");
+        }
     }
 
     #[test]

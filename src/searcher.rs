@@ -399,7 +399,11 @@ impl<'a> Searcher<'a> {
             current_traversal_mode: TraversalMode::Bfs,
             current_root_dir: PathBuf::new(),
 
-            fms: FileMetadataState::new(),
+            fms: {
+                let mut fms = FileMetadataState::new();
+                fms.expect_full_content_scan(Self::needs_full_content_scan(query));
+                fms
+            },
             #[cfg(feature = "git")]
             git_cache: crate::util::git::GitCache::new(),
             file_map: HashMap::new(),
@@ -487,6 +491,22 @@ impl<'a> Searcher<'a> {
 
     /// In a GROUP BY query an ORDER BY expression must be a selected column,
     /// an aggregate, or a grouping column; anything else has no per-group value.
+    /// Whether any clause reads a column that needs the char/word/line content
+    /// scan, so classification-only columns (`encoding`, `has_bom`) can share
+    /// it instead of reading the file separately.
+    fn needs_full_content_scan(query: &Query) -> bool {
+        let mut fields = query.get_all_fields();
+        if let Some(ref expr) = query.expr {
+            fields.extend(expr.get_required_fields());
+        }
+        for grouping_expr in &query.grouping_fields {
+            fields.extend(grouping_expr.get_required_fields());
+        }
+        fields.iter().any(|field| {
+            matches!(field, Field::LineCount | Field::WordCount | Field::CharCount | Field::LineEnding)
+        })
+    }
+
     fn unsortable_grouped_ordering(&self) -> Option<&Expr> {
         if !self.query.is_aggregated() || self.query.grouping_fields.is_empty() {
             return None;
@@ -4403,6 +4423,37 @@ mod tests {
         assert_eq!(unlimited_scans, 6);
         assert_eq!(rows(&unordered, 0).len(), 2);
         assert_eq!(unordered_scans, 2, "a WHERE on the column forces the scan, but nothing beyond the limit is visited");
+    }
+
+    #[test]
+    fn encoding_reuses_the_full_scan_when_a_counting_column_needs_it() {
+        use crate::util::{content_classifications, content_scans};
+
+        let tmp = std::env::temp_dir().join("fselect_test_encoding_scan_reuse");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        fs::write(tmp.join("a.txt"), "h\u{e9}llo\n").unwrap();
+        fs::write(tmp.join("b.txt"), "plain\n").unwrap();
+        let measure = |query: &str| {
+            let (scans, classifications) = (content_scans(), content_classifications());
+            let searcher = search_dir(query, &tmp, Config::default(), true);
+            let rows: Vec<String> = searcher.output_buffer.iter_values().map(|row| row.trim_end().to_string()).collect();
+            (rows, content_scans() - scans, content_classifications() - classifications)
+        };
+
+        let both = measure("select name, encoding, line_count from __DIR__ order by name");
+        let reversed = measure("select name, line_count, encoding from __DIR__ order by name");
+        let filtered = measure("select name, encoding from __DIR__ where line_count > 0 order by name");
+        let alone = measure("select name, encoding from __DIR__ order by name");
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(both.0, vec!["a.txt\tUTF-8\t1", "b.txt\tASCII\t1"]);
+        assert_eq!((both.1, both.2), (2, 0), "a counting column is coming, so one full scan serves both");
+        assert_eq!((reversed.1, reversed.2), (2, 0));
+        assert_eq!(filtered.0, vec!["a.txt\tUTF-8", "b.txt\tASCII"]);
+        assert_eq!((filtered.1, filtered.2), (2, 0), "a WHERE on a counting column counts too");
+        assert_eq!(alone.0, vec!["a.txt\tUTF-8", "b.txt\tASCII"]);
+        assert_eq!((alone.1, alone.2), (0, 2), "encoding on its own only classifies");
     }
 
     #[test]

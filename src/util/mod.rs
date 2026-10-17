@@ -942,6 +942,132 @@ pub fn get_content_stats(entry: &DirEntry) -> Option<ContentStats> {
     content_stats_from_reader(file)
 }
 
+/// The classification part of `ContentStats`: text or binary, encoding, BOM.
+/// It is settled by a BOM alone or by a byte-level pass (NUL, ASCII, UTF-8
+/// validity), which is far cheaper than the char/word/line scan that the
+/// counting columns need, so `encoding` and `has_bom` use this instead.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ContentKind {
+    pub is_text: bool,
+    pub encoding: String,
+    pub has_bom: bool,
+}
+
+impl From<&ContentStats> for ContentKind {
+    fn from(stats: &ContentStats) -> Self {
+        ContentKind {
+            is_text: stats.is_text,
+            encoding: stats.encoding.clone(),
+            has_bom: stats.has_bom,
+        }
+    }
+}
+
+pub fn get_content_kind(entry: &DirEntry) -> Option<ContentKind> {
+    let file = File::open(entry.path()).ok()?;
+    content_kind_from_reader(file)
+}
+
+/// Classify a file's content with the same rules as `content_stats_from_reader`
+/// but without decoding or counting anything. A BOM settles the answer before
+/// the body is read; otherwise the body is checked for NUL (binary), non-ASCII
+/// bytes and UTF-8 validity, and reading stops at the first NUL.
+pub fn content_kind_from_reader<R: Read>(mut reader: R) -> Option<ContentKind> {
+    #[cfg(test)]
+    CONTENT_CLASSIFICATIONS.with(|passes| passes.set(passes.get() + 1));
+    let mut head = [0u8; 4];
+    let head_len = read_up_to_4(&mut reader, &mut head)?;
+    let head = &head[..head_len];
+
+    if let Some((encoding, _)) = detect_bom(head) {
+        return Some(ContentKind { is_text: true, encoding: String::from(encoding), has_bom: true });
+    }
+
+    let mut classifier = NoBomClassifier::new();
+    classifier.consume(head);
+    let mut buf = [0u8; CONTENT_CHUNK];
+    while !classifier.has_nul {
+        match reader.read(&mut buf) {
+            Ok(0) => break,
+            Ok(n) => classifier.consume(&buf[..n]),
+            Err(_) => return None,
+        }
+    }
+    Some(classifier.finish())
+}
+
+/// Byte-level mirror of `NoBomSink`'s classification: tracks NUL, ASCII-ness
+/// and strict UTF-8 validity, carrying an incomplete sequence across chunks.
+struct NoBomClassifier {
+    has_nul: bool,
+    is_ascii: bool,
+    utf8_valid: bool,
+    utf8_carry: Vec<u8>,
+}
+
+impl NoBomClassifier {
+    fn new() -> Self {
+        NoBomClassifier { has_nul: false, is_ascii: true, utf8_valid: true, utf8_carry: Vec::with_capacity(4) }
+    }
+
+    fn consume(&mut self, bytes: &[u8]) {
+        if memchr::memchr(0, bytes).is_some() {
+            self.has_nul = true;
+            return;
+        }
+        if self.is_ascii {
+            if bytes.is_ascii() {
+                return;
+            }
+            self.is_ascii = false;
+        }
+        if !self.utf8_valid {
+            return;
+        }
+
+        let mut rest = bytes;
+        if !self.utf8_carry.is_empty() {
+            // Complete the sequence split at the previous chunk boundary first.
+            let width = match self.utf8_carry[0] {
+                0xC0..=0xDF => 2,
+                0xE0..=0xEF => 3,
+                _ => 4,
+            };
+            let take = (width - self.utf8_carry.len()).min(rest.len());
+            self.utf8_carry.extend_from_slice(&rest[..take]);
+            rest = &rest[take..];
+            match std::str::from_utf8(&self.utf8_carry) {
+                Ok(_) => self.utf8_carry.clear(),
+                Err(e) if e.error_len().is_none() => return, // still incomplete, chunk exhausted
+                Err(_) => {
+                    self.utf8_valid = false;
+                    self.utf8_carry.clear();
+                    return;
+                }
+            }
+        }
+        if let Err(e) = std::str::from_utf8(rest) {
+            match e.error_len() {
+                None => self.utf8_carry.extend_from_slice(&rest[e.valid_up_to()..]),
+                Some(_) => self.utf8_valid = false,
+            }
+        }
+    }
+
+    fn finish(self) -> ContentKind {
+        let (is_text, encoding) = if self.has_nul {
+            (false, "")
+        } else if self.is_ascii {
+            (true, "ASCII")
+        } else if self.utf8_valid && self.utf8_carry.is_empty() {
+            (true, "UTF-8")
+        } else {
+            (true, "ISO-8859-1")
+        };
+        ContentKind { is_text, encoding: String::from(encoding), has_bom: false }
+    }
+}
+
 /// Reusable scratch buffer size for streaming reads. Large enough to amortise
 /// syscalls, small enough that peak memory stays bounded regardless of file
 /// size — the whole point of streaming these stats rather than `fs::read`.
@@ -1138,6 +1264,18 @@ thread_local! {
 #[cfg(test)]
 pub fn content_scans() -> usize {
     CONTENT_SCANS.with(|scans| scans.get())
+}
+
+#[cfg(test)]
+thread_local! {
+    static CONTENT_CLASSIFICATIONS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// Test-only: how many cheap classification passes (`content_kind_from_reader`)
+/// have run on this thread.
+#[cfg(test)]
+pub fn content_classifications() -> usize {
+    CONTENT_CLASSIFICATIONS.with(|passes| passes.get())
 }
 
 pub fn content_stats_from_reader<R: Read>(mut reader: R) -> Option<ContentStats> {
@@ -1568,6 +1706,71 @@ mod tests {
         assert_eq!(count(b"a\r\r"), 2);
         assert_eq!(count(b"\n\n"), 2);
         assert_eq!(count("h\u{e9}llo\rw\u{f6}rld".as_bytes()), 2);
+    }
+
+    #[test]
+    fn content_kind_agrees_with_the_full_scan() {
+        use std::io::Cursor;
+
+        // Chunk boundaries fall at 4 + k * CONTENT_CHUNK (four bytes are
+        // peeked for the BOM); every sample is checked at several offsets so
+        // multibyte sequences straddle a boundary at each possible split.
+        let boundary = 4 + CONTENT_CHUNK;
+        let filler = |n: usize| vec![b'a'; n];
+        let mut samples: Vec<Vec<u8>> = vec![
+            vec![],
+            b"a".to_vec(),
+            b"ab".to_vec(),
+            b"abc".to_vec(),
+            b"plain ascii\n".to_vec(),
+            "caf\u{e9} \u{2713} \u{1F600}\n".as_bytes().to_vec(),
+            vec![b'c', b'a', b'f', 0xE9],
+            vec![0xE9],
+            vec![0x00],
+            vec![b'a', 0x00, b'b'],
+            vec![0xEF, 0xBB, 0xBF],
+            vec![0xEF, 0xBB, 0xBF, b'x', 0xFF],
+            vec![0xFF, 0xFE],
+            vec![0xFF, 0xFE, b'h', 0, b'i', 0, b'!'],
+            vec![0xFE, 0xFF, 0, b'h'],
+            vec![0xFF, 0xFE, 0, 0, b'h', 0, 0, 0],
+            vec![0, 0, 0xFE, 0xFF, 0, 0, 0, b'h'],
+            vec![0xFF, 0xFE, 0, 0],
+            "\u{e9}".as_bytes()[..1].to_vec(),
+            [b"ok ".to_vec(), "\u{1F600}".as_bytes()[..3].to_vec()].concat(),
+            [vec![0xE9], vec![0x00]].concat(),
+            [vec![0xC3, 0xA9], vec![0xFF]].concat(),
+        ];
+        for shift in 0..4 {
+            let mut big = filler(boundary - 1 - shift);
+            for tail in [
+                "\u{e9}".as_bytes().to_vec(),
+                "\u{20AC}".as_bytes().to_vec(),
+                "\u{1F600}".as_bytes().to_vec(),
+                vec![0xE9, b'x'],
+                vec![0xC3],
+                vec![0xE2, 0x82],
+                vec![b'x', 0x00, b'y'],
+                [vec![0xC3, 0xA9], filler(CONTENT_CHUNK), vec![0x00]].concat(),
+                [vec![0xC3, 0xA9], filler(CONTENT_CHUNK), vec![0xFF]].concat(),
+                [vec![0xE9], filler(CONTENT_CHUNK), "\u{e9}".as_bytes().to_vec()].concat(),
+            ] {
+                let mut sample = big.clone();
+                sample.extend(tail);
+                samples.push(sample);
+            }
+            big.push(b'a');
+        }
+
+        for (i, bytes) in samples.iter().enumerate() {
+            let kind = content_kind_from_reader(Cursor::new(bytes));
+            let stats = content_stats_from_reader(Cursor::new(bytes));
+            assert_eq!(
+                kind,
+                stats.as_ref().map(ContentKind::from),
+                "sample {i} (len {}, head {:?})", bytes.len(), &bytes[..bytes.len().min(6)]
+            );
+        }
     }
 
     #[test]

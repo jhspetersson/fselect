@@ -33,6 +33,8 @@ pub struct FileMetadataState {
     pub(crate) file_metadata: Option<Option<Metadata>>,
     pub(crate) entry_file_type: Option<Option<FileType>>,
     pub(crate) content_stats: Option<Option<ContentStats>>,
+    pub(crate) content_kind: Option<Option<ContentKind>>,
+    full_content_scan_expected: bool,
     pub(crate) dimensions: Option<Option<Dimensions>>,
     pub(crate) duration: Option<Option<Duration>>,
     pub(crate) audio_info: Option<Option<AudioInfo>>,
@@ -50,6 +52,8 @@ impl FileMetadataState {
             file_metadata: None,
             entry_file_type: None,
             content_stats: None,
+            content_kind: None,
+            full_content_scan_expected: false,
             dimensions: None,
             duration: None,
             audio_info: None,
@@ -63,7 +67,16 @@ impl FileMetadataState {
     }
 
     pub fn clear(&mut self) {
+        let full_content_scan_expected = self.full_content_scan_expected;
         *self = Self::new();
+        self.full_content_scan_expected = full_content_scan_expected;
+    }
+
+    /// Tell the state, once per query, that some column or condition needs the
+    /// full char/word/line scan anyway. Classification-only fields then take
+    /// their answer from that scan instead of reading the file a second time.
+    pub fn expect_full_content_scan(&mut self, expected: bool) {
+        self.full_content_scan_expected = expected;
     }
 
     pub fn update_file_metadata(&mut self, entry: &DirEntry, follow_symlinks: bool) {
@@ -133,6 +146,32 @@ impl FileMetadataState {
 
     pub fn get_content_stats(&self) -> Option<&ContentStats> {
         self.content_stats.as_ref().and_then(|o| o.as_ref())
+    }
+
+    /// Text/binary classification, encoding and BOM. Taken from the full
+    /// content stats when those were already computed for this file, else from
+    /// the cheap byte-level pass, so `encoding` never pays for counting.
+    pub fn update_content_kind(&mut self, entry: &DirEntry, file_info: &Option<FileInfo>) {
+        if self.content_kind.is_some() {
+            return;
+        }
+        if self.full_content_scan_expected {
+            self.update_content_stats(entry, file_info);
+        }
+        if let Some(stats) = &self.content_stats {
+            self.content_kind = Some(stats.as_ref().map(ContentKind::from));
+            return;
+        }
+        self.content_kind = Some(match file_info {
+            Some(file_info) => {
+                with_archived_entry(&entry.path(), file_info, |reader| content_kind_from_reader(reader)).flatten()
+            }
+            None => get_content_kind(entry),
+        });
+    }
+
+    pub fn get_content_kind(&self) -> Option<&ContentKind> {
+        self.content_kind.as_ref().and_then(|o| o.as_ref())
     }
 
     pub fn update_audio_info(&mut self, entry: &DirEntry) {

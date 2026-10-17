@@ -4,11 +4,9 @@ use std::fs::File;
 use std::io::BufRead;
 use std::io::BufReader;
 use std::ops::Add;
-use std::ops::Index;
 use std::path::Path;
 use std::sync::LazyLock;
 
-use regex::Captures;
 use regex::Regex;
 
 #[derive(Clone, Debug)]
@@ -195,106 +193,115 @@ fn convert_hgignore_pattern(
     }
 }
 
-static HG_CONVERT_REPLACE_REGEX: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new("(\\*\\*|\\?|\\.|\\[|\\]|\\(|\\)|\\^|\\$|\\*|\\+|\\{|\\}|\\||\\\\|/)").unwrap()
-});
-
 fn convert_hgignore_glob(glob: &str, file_path: &Path, rooted: bool) -> Result<Regex, String> {
-    #[cfg(not(windows))]
-    {
-        let mut pattern = HG_CONVERT_REPLACE_REGEX
-            .replace_all(&glob, |c: &Captures| {
-                match c.index(0) {
-                    "**" => ".*",
-                    "." => "\\.",
-                    "*" => "[^/]*",
-                    "?" => "[^/]",
-                    "[" => "\\[",
-                    "]" => "\\]",
-                    "(" => "\\(",
-                    ")" => "\\)",
-                    "^" => "\\^",
-                    "$" => "\\$",
-                    "+" => "\\+",
-                    "{" => "\\{",
-                    "}" => "\\}",
-                    "|" => "\\|",
-                    "\\" => "\\\\",
-                    "/" => "/",
-                    _ => "",
-                }
-                .to_string()
-            })
-            .to_string();
-
-        if pattern.is_empty() {
-            return Err("Error parsing .hgignore pattern: ".to_string() + glob);
-        }
-
-        // `**/` matches any number of leading directories, including none
-        // (the `.*` token can only originate from `**`).
-        pattern = pattern.replace(".*/", "(?:.*/)?");
-
-        // Glob patterns are unrooted (they match at any directory level)
-        // while `rootglob` patterns anchor at the repo root; both must cover
-        // whole path components: like Mercurial itself, a match ends at a
-        // separator or the end of the path, so `foo` matches `foo` and
-        // `foo/bar` but not `foobar`.
-        pattern = String::from("^")
-            .add(&regex::escape(&file_path.to_string_lossy()))
-            .add(if rooted { "/" } else { "/([^/]+/)*" })
-            .add(&pattern)
-            .add("(?:/|$)");
-
-        Regex::new(&pattern).map_err(|_| "Error creating regex pattern: ".to_string() + pattern.as_str())
+    if glob.is_empty() {
+        return Err("Error parsing .hgignore pattern: ".to_string() + glob);
     }
 
-    #[cfg(windows)]
-    {
-        let mut pattern = HG_CONVERT_REPLACE_REGEX
-            .replace_all(glob, |c: &Captures| {
-                match c.index(0) {
-                    "**" => ".*",
-                    "." => "\\.",
-                    "*" => "[^\\\\]*",
-                    "?" => "[^\\\\]",
-                    "[" => "\\[",
-                    "]" => "\\]",
-                    "(" => "\\(",
-                    ")" => "\\)",
-                    "^" => "\\^",
-                    "$" => "\\$",
-                    "+" => "\\+",
-                    "{" => "\\{",
-                    "}" => "\\}",
-                    "|" => "\\|",
-                    "\\" => "\\\\",
-                    // Mercurial patterns always use forward slashes; paths
-                    // are matched with native separators on Windows.
-                    "/" => "\\\\",
-                    _ => "",
+    // Mercurial patterns always use forward slashes; paths are matched with
+    // native separators on Windows.
+    let sep = if cfg!(windows) { "\\\\" } else { "/" };
+
+    // Glob patterns are unrooted (they match at any directory level)
+    // while `rootglob` patterns anchor at the repo root; both must cover
+    // whole path components: like Mercurial itself, a match ends at a
+    // separator or the end of the path, so `foo` matches `foo` and
+    // `foo/bar` but not `foobar`.
+    let pattern = String::from("^")
+        .add(&regex::escape(&file_path.to_string_lossy()))
+        .add(sep)
+        .add(&if rooted { String::new() } else { format!("([^{sep}]+{sep})*") })
+        .add(&hg_glob_to_regex(glob, sep))
+        .add(&format!("(?:{sep}|$)"));
+
+    Regex::new(&pattern).map_err(|_| "Error creating regex pattern: ".to_string() + pattern.as_str())
+}
+
+fn hg_glob_to_regex(glob: &str, sep: &str) -> String {
+    let chars: Vec<char> = glob.chars().collect();
+    let n = chars.len();
+    let not_sep = format!("[^{sep}]");
+    let mut res = String::new();
+    let mut group = 0usize;
+    let mut i = 0;
+
+    while i < n {
+        let c = chars[i];
+        i += 1;
+        match c {
+            '*' => {
+                if i < n && chars[i] == '*' {
+                    i += 1;
+                    if i < n && chars[i] == '/' {
+                        i += 1;
+                        res.push_str(&format!("(?:.*{sep})?"));
+                    } else {
+                        res.push_str(".*");
+                    }
+                } else {
+                    res.push_str(&not_sep);
+                    res.push('*');
                 }
-                .to_string()
-            })
-            .to_string();
-
-        if pattern.is_empty() {
-            return Err("Error parsing .hgignore pattern: ".to_string() + glob);
+            }
+            '?' => res.push_str(&not_sep),
+            '[' => {
+                let mut j = i;
+                if j < n && (chars[j] == '!' || chars[j] == ']') {
+                    j += 1;
+                }
+                while j < n && chars[j] != ']' {
+                    j += 1;
+                }
+                if j >= n {
+                    res.push_str("\\[");
+                } else {
+                    let mut class = String::new();
+                    for &ch in &chars[i..j] {
+                        match ch {
+                            '\\' | '[' | '&' | '~' => {
+                                class.push('\\');
+                                class.push(ch);
+                            }
+                            _ => class.push(ch),
+                        }
+                    }
+                    i = j + 1;
+                    if let Some(rest) = class.strip_prefix('!') {
+                        class = format!("^{rest}");
+                    } else if class.starts_with('^') {
+                        class = format!("\\{class}");
+                    }
+                    res.push('[');
+                    res.push_str(&class);
+                    res.push(']');
+                }
+            }
+            '{' => {
+                group += 1;
+                res.push_str("(?:");
+            }
+            '}' if group > 0 => {
+                group -= 1;
+                res.push(')');
+            }
+            ',' if group > 0 => res.push('|'),
+            '\\' if i < n => {
+                let escaped = chars[i];
+                i += 1;
+                push_hg_literal(&mut res, escaped, sep);
+            }
+            _ => push_hg_literal(&mut res, c, sep),
         }
+    }
 
-        // `**/` matches any number of leading directories, including none
-        // (the `.*` token can only originate from `**`).
-        pattern = pattern.replace(".*\\\\", "(?:.*\\\\)?");
+    res
+}
 
-        // See the Unix branch: unrooted (or root-anchored for `rootglob`),
-        // but matches whole path components.
-        pattern = String::from("^")
-            .add(&regex::escape(&file_path.to_string_lossy()))
-            .add(if rooted { "\\\\" } else { "\\\\([^\\\\]+\\\\)*" })
-            .add(&pattern)
-            .add("(?:\\\\|$)");
-
-        Regex::new(&pattern).map_err(|_| "Error creating regex pattern: ".to_string() + pattern.as_str())
+fn push_hg_literal(res: &mut String, c: char, sep: &str) {
+    if c == '/' {
+        res.push_str(sep);
+    } else {
+        res.push_str(&regex::escape(&c.to_string()));
     }
 }
 
@@ -343,6 +350,83 @@ fn convert_hgignore_regexp(regexp: &str, file_path: &Path) -> Result<Regex, Stri
 mod tests {
     use super::*;
 
+    fn repo() -> &'static Path {
+        Path::new(if cfg!(windows) { "C:\\repo" } else { "/repo" })
+    }
+
+    fn in_repo(relative: &str) -> String {
+        let sep = if cfg!(windows) { "\\" } else { "/" };
+        format!("{}{sep}{}", repo().to_string_lossy(), relative.replace('/', sep))
+    }
+
+    fn glob_matches(glob: &str, relative: &str) -> bool {
+        convert_hgignore_glob(glob, repo(), false).unwrap().is_match(&in_repo(relative))
+    }
+
+    #[test]
+    fn glob_brackets_form_a_character_class() {
+        assert!(glob_matches("*.[ch]", "a.c"));
+        assert!(glob_matches("*.[ch]", "src/b.h"));
+        assert!(!glob_matches("*.[ch]", "c.log"));
+        assert!(!glob_matches("*.[ch]", "a.ch"));
+
+        assert!(glob_matches("[a-c]*.txt", "beta.txt"));
+        assert!(!glob_matches("[a-c]*.txt", "delta.txt"));
+
+        assert!(glob_matches("[!a]*.md", "z.md"));
+        assert!(!glob_matches("[!a]*.md", "a.md"));
+
+        assert!(glob_matches("[test]", "t"));
+        assert!(!glob_matches("[test]", "test"));
+
+        assert!(glob_matches("[]x]", "]"));
+        assert!(glob_matches("[]x]", "x"));
+        assert!(glob_matches("[^x]", "^"));
+        assert!(glob_matches("[^x]", "x"));
+        assert!(!glob_matches("[^x]", "y"));
+
+        assert!(glob_matches("[abc", "[abc"), "an unclosed bracket is literal");
+        assert!(glob_matches("[a&&b]", "&"));
+    }
+
+    #[test]
+    fn glob_braces_alternate() {
+        assert!(glob_matches("*.{log,tmp}", "c.log"));
+        assert!(glob_matches("*.{log,tmp}", "d.tmp"));
+        assert!(!glob_matches("*.{log,tmp}", "e.txt"));
+
+        assert!(glob_matches("sub/{x,y}.txt", "sub/x.txt"));
+        assert!(glob_matches("sub/{x,y}.txt", "deep/sub/y.txt"));
+        assert!(!glob_matches("sub/{x,y}.txt", "sub/q.txt"));
+
+        assert!(glob_matches("{a,b{1,2}}.txt", "a.txt"));
+        assert!(glob_matches("{a,b{1,2}}.txt", "b2.txt"));
+        assert!(!glob_matches("{a,b{1,2}}.txt", "b.txt"));
+
+        assert!(glob_matches("a,b", "a,b"), "a comma outside braces is literal");
+        assert!(!glob_matches("a,b", "a"));
+    }
+
+    #[test]
+    fn glob_backslash_escapes_the_next_char() {
+        assert!(glob_matches("\\*.txt", "*.txt"));
+        assert!(!glob_matches("\\*.txt", "a.txt"));
+        assert!(glob_matches("\\[x\\]", "[x]"));
+        assert!(glob_matches("a\\{b", "a{b"));
+        assert!(glob_matches("trailing\\", "trailing\\"));
+    }
+
+    #[test]
+    fn glob_star_forms_keep_their_meaning() {
+        assert!(glob_matches("*.txt", "a.txt"));
+        assert!(glob_matches("*.txt", "dir/a.txt"), "unrooted globs match in subdirectories");
+        assert!(glob_matches("a/**/b", "a/b"));
+        assert!(glob_matches("a/**/b", "a/x/y/b"));
+        assert!(glob_matches("a**b", "axb"));
+        assert!(glob_matches("a?c", "abc"));
+        assert!(!glob_matches("a?c", "ac"));
+    }
+
     #[cfg(not(windows))]
     #[test]
     fn glob_question_mark_matches_exactly_one_char() {
@@ -380,19 +464,6 @@ mod tests {
         );
     }
 
-    #[cfg(not(windows))]
-    #[test]
-    fn glob_brackets_are_escaped() {
-        let result = convert_hgignore_glob("[test]", Path::new("/tmp"), false);
-        let regex = result.unwrap();
-        let regex_str = regex.as_str();
-        assert!(
-            regex_str.contains("\\[") && regex_str.contains("\\]"),
-            "brackets should be escaped but got: {}",
-            regex_str
-        );
-    }
-
     #[cfg(windows)]
     #[test]
     fn glob_question_mark_matches_exactly_one_char_windows() {
@@ -426,19 +497,6 @@ mod tests {
         assert!(
             regex_str.contains("my\\.project"),
             "dots in path should be escaped but got: {}",
-            regex_str
-        );
-    }
-
-    #[cfg(windows)]
-    #[test]
-    fn glob_brackets_are_escaped_windows() {
-        let result = convert_hgignore_glob("[test]", Path::new("C:\\tmp"), false);
-        let regex = result.unwrap();
-        let regex_str = regex.as_str();
-        assert!(
-            regex_str.contains("\\[") && regex_str.contains("\\]"),
-            "brackets should be escaped but got: {}",
             regex_str
         );
     }

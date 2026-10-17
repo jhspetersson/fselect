@@ -37,7 +37,6 @@ use std::collections::HashMap;
 use std::fmt::Display;
 use std::fs;
 use std::fs::canonicalize;
-use std::fs::symlink_metadata;
 use std::fs::DirEntry;
 use std::fs::File;
 use std::fs::Metadata;
@@ -626,17 +625,30 @@ pub fn format_absolute_path(path_buf: &Path) -> String {
     path
 }
 
+/// Metadata of a directory entry, describing the entry itself unless
+/// `follow_symlinks` is set and the entry is a symlink.
+///
+/// `DirEntry::metadata()` never follows a link, so it has the same semantics
+/// as `symlink_metadata(entry.path())` while being far cheaper: on Windows it
+/// is answered from the directory listing without opening the file (a
+/// `CreateFile` per entry used to dominate any query touching `size`), and on
+/// Unix it is one `fstatat` relative to the directory. A path lookup is only
+/// made where the listing cannot answer: a symlink whose target is wanted, and
+/// (on Windows) a directory, whose listing entry says size 0 while a handle
+/// query reports the index allocation that fselect has always shown.
 pub fn get_metadata(entry: &DirEntry, follow_symlinks: bool) -> Option<Metadata> {
-    let metadata = match follow_symlinks {
-        true => fs::metadata(entry.path()),
-        false => symlink_metadata(entry.path()),
-    };
+    let file_type = entry.file_type().ok();
 
-    if let Ok(metadata) = metadata {
-        return Some(metadata);
+    if follow_symlinks && file_type.is_none_or(|file_type| file_type.is_symlink()) {
+        return fs::metadata(entry.path()).ok();
     }
 
-    None
+    #[cfg(windows)]
+    if file_type.is_some_and(|file_type| file_type.is_dir()) {
+        return fs::symlink_metadata(entry.path()).ok();
+    }
+
+    entry.metadata().ok()
 }
 
 
@@ -2198,5 +2210,102 @@ mod tests {
         for v in ["", "maybe", "2", "tt", "ff", "truee"] {
             assert_eq!(str_to_bool(v), None, "expected {} to be unrecognized", v);
         }
+    }
+
+    fn create_symlink(target: &Path, link: &Path, is_dir: bool) -> bool {
+        #[cfg(unix)]
+        {
+            let _ = is_dir;
+            std::os::unix::fs::symlink(target, link).is_ok()
+        }
+        #[cfg(windows)]
+        {
+            if is_dir {
+                std::os::windows::fs::symlink_dir(target, link).is_ok()
+            } else {
+                std::os::windows::fs::symlink_file(target, link).is_ok()
+            }
+        }
+    }
+
+    #[test]
+    fn get_metadata_matches_symlink_metadata_for_files_and_directories() {
+        let base = std::env::temp_dir().join("fselect_get_metadata_plain_test");
+        let _ = fs::remove_dir_all(&base);
+        fs::create_dir_all(base.join("sub")).unwrap();
+        // Enough entries that NTFS spills the directory index out of the MFT
+        // record: a handle-based query then reports the index allocation as
+        // the directory's size, where the directory listing says 0.
+        for i in 0..300 {
+            fs::write(base.join("sub").join(format!("inner_file_with_a_long_name_{i:04}.txt")), "x").unwrap();
+        }
+        fs::write(base.join("file.txt"), "hello").unwrap();
+
+        for name in ["file.txt", "sub"] {
+            let path = base.join(name);
+            let entry = dir_entry_for(&path);
+            let expected = fs::symlink_metadata(&path).unwrap();
+            for follow in [false, true] {
+                let actual = get_metadata(&entry, follow).unwrap_or_else(|| panic!("no metadata for {name}"));
+                assert_eq!(actual.len(), expected.len(), "{name} len, follow={follow}");
+                assert_eq!(actual.is_dir(), expected.is_dir(), "{name} is_dir, follow={follow}");
+                assert_eq!(actual.is_file(), expected.is_file(), "{name} is_file, follow={follow}");
+                assert_eq!(actual.modified().ok(), expected.modified().ok(), "{name} modified, follow={follow}");
+                assert_eq!(actual.permissions().readonly(), expected.permissions().readonly(), "{name} readonly, follow={follow}");
+            }
+        }
+
+        let _ = fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn get_metadata_reports_the_link_itself_unless_asked_to_follow() {
+        let base = std::env::temp_dir().join("fselect_get_metadata_symlink_test");
+        let _ = fs::remove_dir_all(&base);
+        fs::create_dir_all(base.join("sub")).unwrap();
+        fs::write(base.join("sub").join("inner.txt"), "x").unwrap();
+        fs::write(base.join("target.txt"), "hello world").unwrap();
+        if !create_symlink(&base.join("target.txt"), &base.join("file_link"), false)
+            || !create_symlink(&base.join("sub"), &base.join("dir_link"), true)
+        {
+            let _ = fs::remove_dir_all(&base);
+            return; // symlink creation is a privilege on some systems
+        }
+
+        let file_link = dir_entry_for(&base.join("file_link"));
+        let dir_link = dir_entry_for(&base.join("dir_link"));
+
+        let unfollowed = get_metadata(&file_link, false).unwrap();
+        assert!(unfollowed.file_type().is_symlink(), "not following must describe the link");
+        assert!(!unfollowed.is_file());
+        let unfollowed_dir = get_metadata(&dir_link, false).unwrap();
+        assert!(unfollowed_dir.file_type().is_symlink());
+        assert!(!unfollowed_dir.is_dir());
+
+        let followed = get_metadata(&file_link, true).unwrap();
+        assert!(followed.is_file(), "following must describe the target");
+        assert!(!followed.file_type().is_symlink());
+        assert_eq!(followed.len(), "hello world".len() as u64);
+        let followed_dir = get_metadata(&dir_link, true).unwrap();
+        assert!(followed_dir.is_dir());
+
+        let _ = fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn get_metadata_of_a_dangling_symlink_is_none_only_when_following() {
+        let base = std::env::temp_dir().join("fselect_get_metadata_dangling_test");
+        let _ = fs::remove_dir_all(&base);
+        fs::create_dir_all(&base).unwrap();
+        if !create_symlink(&base.join("missing.txt"), &base.join("dangling"), false) {
+            let _ = fs::remove_dir_all(&base);
+            return;
+        }
+
+        let entry = dir_entry_for(&base.join("dangling"));
+        assert!(get_metadata(&entry, false).is_some_and(|m| m.file_type().is_symlink()));
+        assert!(get_metadata(&entry, true).is_none());
+
+        let _ = fs::remove_dir_all(&base);
     }
 }

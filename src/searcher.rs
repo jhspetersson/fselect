@@ -170,14 +170,18 @@ fn apply_minus(column_expr: &Expr, value: Variant) -> Variant {
         .unwrap_or(value)
 }
 
+/// A rendered number as a numeric variant, or the text itself when it is not one.
+fn numeric_or_text(text: &str) -> Variant {
+    text.parse::<i64>()
+        .map(Variant::from_int)
+        .or_else(|_| text.parse::<f64>().map(Variant::from_float))
+        .unwrap_or_else(|_| Variant::from_string(&text.to_string()))
+}
+
 fn typed_variant(field: Option<&Field>, text: &str) -> Variant {
     let as_string = || Variant::from_string(&text.to_string());
     match field {
-        Some(field) if field.is_numeric_field() => text
-            .parse::<i64>()
-            .map(Variant::from_int)
-            .or_else(|_| text.parse::<f64>().map(Variant::from_float))
-            .unwrap_or_else(|_| as_string()),
+        Some(field) if field.is_numeric_field() => numeric_or_text(text),
         Some(field) if field.is_datetime_field() => parse_datetime(text)
             .map(|(from, _)| Variant::from_datetime(from))
             .unwrap_or_else(|_| as_string()),
@@ -847,7 +851,8 @@ impl<'a> Searcher<'a> {
                     for (i, k) in group_keys.iter().enumerate() {
                         file_map.insert(k.clone(), group_key.get(i).cloned().unwrap_or_default());
                     }
-                    self.bind_group_context(&aliases, group_key);
+                    let aggregate_values = self.aggregate_alias_values(&aliases, &mut file_map, group_acc)?;
+                    self.bind_group_context(&aliases, group_key, &aggregate_values);
                     if let Some(having_expr) = having_expr
                         && !self.group_conforms(&mut file_map, group_acc, having_expr)? {
                             continue;
@@ -923,6 +928,9 @@ impl<'a> Searcher<'a> {
                 let accumulators = std::mem::take(&mut self.accumulators);
                 let empty_acc = function::GroupAccumulator::default();
                 let ungrouped_acc = accumulators.get(&vec![]).unwrap_or(&empty_acc);
+                let aliases = self.query.own_root_aliases();
+                let aggregate_values = self.aggregate_alias_values(&aliases, &mut HashMap::new(), ungrouped_acc)?;
+                self.bind_group_context(&aliases, &[], &aggregate_values);
                 let mut passes_having = true;
                 if let Some(having_expr) = self.query.having.as_ref() {
                     passes_having =
@@ -1672,11 +1680,43 @@ impl<'a> Searcher<'a> {
         bare.cache_key()
     }
 
-    fn bind_group_context(&self, aliases: &HashSet<String>, group_key: &[String]) {
+    /// Values of the aliased aggregate columns for one group (`sum(size) as
+    /// total`), evaluated before any column is rendered so a correlated
+    /// subquery can read them as `t.total` wherever it appears in the SELECT
+    /// list. Nothing is computed when the query declares no root alias.
+    fn aggregate_alias_values(
+        &mut self,
+        aliases: &HashSet<String>,
+        file_map: &mut HashMap<String, String>,
+        accumulator: &function::GroupAccumulator,
+    ) -> Result<Vec<(String, Variant)>, SearchError> {
+        let mut values = Vec::new();
+        if aliases.is_empty() {
+            return Ok(values);
+        }
+        let query = self.query;
+        for column in &query.fields {
+            if let Some(ref alias) = column.alias
+                && column.has_aggregate_function()
+            {
+                let value = self.get_column_expr_value(None, &None, Path::new(""), file_map, Some(accumulator), column)?;
+                values.push((alias.clone(), numeric_or_text(&value.to_string())));
+            }
+        }
+        Ok(values)
+    }
+
+    /// Expose one group's row to correlated subqueries under every own root
+    /// alias: grouping values (by field name, grouping alias and matching
+    /// SELECT aliases) and the aliased aggregates from `aggregate_alias_values`.
+    fn bind_group_context(&self, aliases: &HashSet<String>, group_key: &[String], aggregate_values: &[(String, Variant)]) {
         let mut context = self.record_context.borrow_mut();
         for alias in aliases {
             let entry = context.entry(alias.clone()).or_default();
             entry.clear();
+            for (alias_name, value) in aggregate_values {
+                entry.insert(alias_name.clone(), value.clone());
+            }
             for (grouping_expr, text) in self.query.grouping_fields.iter().zip(group_key) {
                 let value = typed_variant(grouping_expr.field.as_ref(), text);
                 if let Some(field) = grouping_expr.field {
@@ -4454,6 +4494,49 @@ mod tests {
         assert_eq!((filtered.1, filtered.2), (2, 0), "a WHERE on a counting column counts too");
         assert_eq!(alone.0, vec!["a.txt\tUTF-8", "b.txt\tASCII"]);
         assert_eq!((alone.1, alone.2), (0, 2), "encoding on its own only classifies");
+    }
+
+    #[test]
+    fn aggregate_aliases_are_visible_to_correlated_subqueries() {
+        let tmp = std::env::temp_dir().join("fselect_test_aggregate_alias_context");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(tmp.join("data")).unwrap();
+        fs::create_dir_all(tmp.join("other")).unwrap();
+        for (name, size) in [("a.txt", 1), ("b.txt", 2), ("c.md", 5), ("d.md", 7)] {
+            fs::write(tmp.join("data").join(name), "x".repeat(size)).unwrap();
+        }
+        for (name, size) in [("o1", 1), ("o5", 5), ("o20", 20)] {
+            fs::write(tmp.join("other").join(name), "x".repeat(size)).unwrap();
+        }
+
+        let grouped = run_query_against_dir(
+            "select ext, sum(size) as total, (select count(*) from __DIR__/other where size > t.total) from __DIR__/data as t group by ext order by ext",
+            &tmp,
+        );
+        // The subquery column comes before the aggregate it refers to.
+        let before = run_query_against_dir(
+            "select ext, (select count(*) from __DIR__/other where size > t.total), sum(size) as total from __DIR__/data as t group by ext order by ext",
+            &tmp,
+        );
+        let counted = run_query_against_dir(
+            "select ext, count(*) as n, (select count(*) from __DIR__/other where size >= t.n) from __DIR__/data as t group by ext order by ext",
+            &tmp,
+        );
+        let with_grouping_alias = run_query_against_dir(
+            "select ext as e, sum(size) as total, (select count(*) from __DIR__/other where size > t.total and t.e = 'md') from __DIR__/data as t group by ext order by ext",
+            &tmp,
+        );
+        let ungrouped = run_query_against_dir(
+            "select sum(size) as total, (select count(*) from __DIR__/other where size > t.total) from __DIR__/data as t",
+            &tmp,
+        );
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(grouped, vec!["md\t12\t1", "txt\t3\t2"]);
+        assert_eq!(before, vec!["md\t1\t12", "txt\t2\t3"], "the alias must be bound before any column is rendered");
+        assert_eq!(counted, vec!["md\t2\t2", "txt\t2\t2"]);
+        assert_eq!(with_grouping_alias, vec!["md\t12\t1", "txt\t3\t0"]);
+        assert_eq!(ungrouped, vec!["15\t1"]);
     }
 
     #[test]

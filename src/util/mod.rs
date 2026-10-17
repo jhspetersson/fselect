@@ -666,6 +666,9 @@ pub fn get_exif_metadata(entry: &DirEntry) -> Option<HashMap<String, String>> {
                             exif_info.insert(field_tag, str_value.to_string());
                         }
                     }
+                    exif::Value::Byte(ref vec) if !vec.is_empty() && field_tag.eq("GPSAltitudeRef") => {
+                        exif_info.insert(field_tag, vec[0].to_string());
+                    }
                     _ => {
                         exif_info.insert(field_tag, field.value.display_as(field.tag).to_string());
                     }
@@ -686,11 +689,11 @@ pub fn get_exif_metadata(entry: &DirEntry) -> Option<HashMap<String, String>> {
 
             // Unparseable altitude data is omitted rather than masked as a
             // valid-looking 0.0.
-            if let (Some(altitude_str), Some(altitude_ref)) =
-                (exif_info.get("GPSAltitude").cloned(), exif_info.get("GPSAltitudeRef").cloned())
+            if let Some(altitude_str) = exif_info.get("GPSAltitude").cloned()
                 && let Ok(altitude) = altitude_str.parse::<f32>()
             {
-                let altitude = if altitude_ref.eq("1") { -altitude } else { altitude };
+                let below_sea_level = exif_info.get("GPSAltitudeRef").is_some_and(|r| r == "1");
+                let altitude = if below_sea_level { -altitude } else { altitude };
                 exif_info.insert(String::from("__Alt"), altitude.to_string());
             }
 

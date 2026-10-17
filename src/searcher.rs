@@ -5318,6 +5318,20 @@ f
     }
 
     #[test]
+    fn exif_altitude_honours_the_reference_byte_and_its_default() {
+        let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("resources").join("test").join("exif");
+        let rows = run_query_against_dir("select name, exif_alt from __DIR__ order by name", &fixtures);
+        assert_eq!(
+            rows,
+            vec![
+                "altitude-above-sea-level.jpg	123.5",
+                "altitude-below-sea-level.jpg	-123.5",
+                "altitude-without-ref.jpg	123.5",
+            ]
+        );
+    }
+
+    #[test]
     fn like_with_an_empty_pattern_matches_empty_values() {
         let tmp = std::env::temp_dir().join("fselect_test_like_empty");
         let _ = fs::remove_dir_all(&tmp);

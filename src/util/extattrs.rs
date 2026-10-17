@@ -1,16 +1,6 @@
 use std::fs::File;
 use std::os::unix::io::AsRawFd;
 
-/// FS_IOC_GETFLAGS ioctl request number.
-/// Computed as _IOR('f', 1, c_long) = (2 << 30) | (sizeof(c_long) << 16) | ('f' << 8) | 1
-const fn fs_ioc_getflags() -> libc::c_ulong {
-    let dir: libc::c_ulong = 2; // _IOC_READ
-    let ty: libc::c_ulong = b'f' as libc::c_ulong;
-    let nr: libc::c_ulong = 1;
-    let size: libc::c_ulong = std::mem::size_of::<libc::c_long>() as libc::c_ulong;
-    (dir << 30) | (size << 16) | (ty << 8) | nr
-}
-
 const FS_SECRM_FL: libc::c_long = 0x00000001;
 const FS_UNRM_FL: libc::c_long = 0x00000002;
 const FS_COMPR_FL: libc::c_long = 0x00000004;
@@ -60,7 +50,7 @@ const FLAG_LETTERS: &[(libc::c_long, char)] = &[
 pub fn get_ext_attrs(file: &File) -> Option<libc::c_long> {
     let fd = file.as_raw_fd();
     let mut flags: libc::c_long = 0;
-    let ret = unsafe { libc::ioctl(fd, fs_ioc_getflags().try_into().unwrap(), &mut flags) };
+    let ret = unsafe { libc::ioctl(fd, libc::FS_IOC_GETFLAGS, &mut flags) };
     if ret == 0 {
         Some(flags)
     } else {

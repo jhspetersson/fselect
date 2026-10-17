@@ -275,7 +275,7 @@ Let's see how all these are different:
 
 ### Functions
 
-Calling a function with the wrong number of arguments is a query error, reported before the search starts. A function name without parentheses is a call with no arguments, so `now` works but `upper` on its own does not.
+Calling a function with the wrong number of arguments is a query error, reported before the search starts. A function that takes no arguments may be called without parentheses, so `now` and `now()` are the same. Any other function name is a call only when parentheses follow it. On its own it is an ordinary string literal, so `where ext = log` compares against the text `log`.
 
 #### Aggregate functions
 

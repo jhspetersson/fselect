@@ -555,7 +555,7 @@ SHA-512 digest.
 SHA3-512 digest.
 .SH FUNCTIONS
 Calling a function with the wrong number of arguments is a query error, reported before the search starts.
-A function name without parentheses is a call with no arguments.
+A function that takes no arguments may be called without parentheses; any other function name is a call only when parentheses follow it, otherwise it is a string literal.
 .SS Aggregate functions
 Queries using these functions return a single result row.
 .TP

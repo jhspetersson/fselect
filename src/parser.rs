@@ -1304,7 +1304,9 @@ impl <'a> Parser<'a> {
                 // propagate: silently falling back to the literal "upper"
                 // would leave the already-consumed lexemes unrewound and
                 // turn `where length(name > 3` into a constant condition.
-                if let Ok(function) = Function::from_str(s) {
+                if let Ok(function) = Function::from_str(s)
+                    && (function.arity().min == 0 || self.call_follows())
+                {
                     let mut expr = self.parse_function(function)?;
                     expr.minus = minus;
                     return Ok(Some(expr));
@@ -3734,10 +3736,10 @@ mod tests {
 
     #[test]
     fn boolean_function_without_parens_does_not_eat_next_token() {
-        // The bare name is a call with no arguments: the arity error proves the
-        // tokens after it were not swallowed as its arguments.
+        // The bare name is a string literal, not a call, so it is rejected as
+        // an operator-less condition instead of swallowing the next tokens.
         let err = parse_query("select name from /test where CONTAINS and size > 100").unwrap_err();
-        assert_eq!(err, "Function CONTAINS expects 1 argument, got 0");
+        assert_eq!(err, "Expected a comparison or boolean condition in WHERE, found 'contains'");
 
         let query = parse_query("select name from /test where contains('x') and size > 100").unwrap();
         let expr = query.expr.unwrap();
@@ -4063,16 +4065,49 @@ mod tests {
 
     #[test]
     fn unquoted_function_name_parsed_as_function() {
-        // A bare function name is a call with no arguments. That is fine for a
-        // zero-argument function and a parse error for one that needs
-        // arguments (UPPER with none used to evaluate silently to "").
+        // A bare zero-argument function name is a call; the name of a function
+        // that needs arguments is an ordinary string literal without parentheses.
         let query = parse_query("select name from /test where name = curdate").unwrap();
         let expr = query.expr.unwrap();
         assert_eq!(expr.op, Some(Op::Eq));
         assert_eq!(expr.right.unwrap().function, Some(Function::CurrentDate));
 
-        let err = parse_query("select name from /test where name = upper").unwrap_err();
-        assert_eq!(err, "Function UPPER expects 1 argument, got 0");
+        let query = parse_query("select name from /test where name = upper").unwrap();
+        let right = query.expr.unwrap().right.unwrap();
+        assert_eq!(right.function, None);
+        assert_eq!(right.val.as_deref(), Some("upper"));
+    }
+
+    #[test]
+    fn function_names_without_parentheses_are_literals_unless_zero_argument() {
+        for (query, literal) in [
+            ("select name from /test where ext = log", "log"),
+            ("select name from /test where ext = LEN", "LEN"),
+            ("select name from /test where ext like year", "year"),
+            ("select name from /test where ext = max", "max"),
+        ] {
+            let right = parse_query(query).expect(query).expr.unwrap().right.unwrap();
+            assert_eq!(right.function, None, "{}", query);
+            assert_eq!(right.val.as_deref(), Some(literal), "{}", query);
+        }
+
+        let query = parse_query("select name from /test where ext in (log, txt)").unwrap();
+        let list = query.expr.unwrap().right.unwrap();
+        let values: Vec<_> = list.args.unwrap().iter().map(|a| a.val.clone().unwrap()).collect();
+        assert_eq!(values, vec!["log", "txt"]);
+
+        let query = parse_query("select upper from /test").unwrap();
+        assert_eq!(query.fields[0].function, None);
+        assert_eq!(query.fields[0].val.as_deref(), Some("upper"));
+
+        let query = parse_query("select name from /test where log(size) > 1").unwrap();
+        assert_eq!(query.expr.unwrap().left.unwrap().function, Some(Function::Log));
+
+        let query = parse_query("select name from /test where ext = now").unwrap();
+        assert_eq!(query.expr.unwrap().right.unwrap().function, Some(Function::CurrentTimestamp));
+
+        let err = parse_query("select name from /test where ext = log()").unwrap_err();
+        assert_eq!(err, "Function LOG expects 1 to 2 arguments, got 0");
     }
 
     #[test]
@@ -4568,9 +4603,11 @@ mod tests {
         let err = parse_query("select name from /test where size in (select upper(size, 1) from /other)").unwrap_err();
         assert!(err.contains("UPPER"), "{}", err);
 
-        // A function name with no parentheses is a call with no arguments.
-        let err = parse_query("select length from /test").unwrap_err();
-        assert_eq!(err, "Function LENGTH expects 1 argument, got 0");
+        // Without parentheses the name of a function that needs arguments is
+        // a string literal, not a call.
+        let query = parse_query("select length from /test").unwrap();
+        assert_eq!(query.fields[0].function, None);
+        assert_eq!(query.fields[0].val.as_deref(), Some("length"));
 
         let err = parse_query("select pi(1) from /test").unwrap_err();
         assert_eq!(err, "Function PI expects no arguments, got 1");
@@ -4846,11 +4883,13 @@ expected {:?}, got {:?}", query, expected, err);
         assert_eq!(query.fields[1].args.as_ref().map(|a| a.len()), Some(2));
         assert_eq!(format!("{}", query.expr.unwrap()), "Length(Name) Gt 3");
 
-        // A bare function name without parentheses is still a call, so a
-        // zero-argument function works and one that needs arguments errors.
+        // A bare zero-argument function name is still a call; the bare name
+        // of a function that needs arguments is a string literal.
         let query = parse_query("select name from /test where name = now").unwrap();
         assert!(query.expr.unwrap().right.unwrap().function.is_some());
-        let err = parse_query("select name from /test where name = year").unwrap_err();
-        assert_eq!(err, "Function YEAR expects 1 argument, got 0");
+        let query = parse_query("select name from /test where name = year").unwrap();
+        let right = query.expr.unwrap().right.unwrap();
+        assert_eq!(right.function, None);
+        assert_eq!(right.val.as_deref(), Some("year"));
     }
 }

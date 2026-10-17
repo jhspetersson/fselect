@@ -44,9 +44,9 @@ macro_rules! epoch_time_handler {
                 return Ok(Variant::from_int(attrs.$unix_accessor() as i64));
                 #[cfg(not(unix))]
                 if let Ok(sdt) = attrs.$st_accessor()
-                    && let Ok(duration) = sdt.duration_since(std::time::UNIX_EPOCH)
+                    && let Some((secs, _)) = system_time_to_unix(sdt)
                 {
-                    return Ok(Variant::from_int(duration.as_secs() as i64));
+                    return Ok(Variant::from_int(secs));
                 }
             }
             Ok(Variant::empty(VariantType::Int))
@@ -59,9 +59,9 @@ macro_rules! epoch_time_handler {
                 return Ok(Variant::from_int(attrs.$unix_nsec_accessor() as i64));
                 #[cfg(not(unix))]
                 if let Ok(sdt) = attrs.$st_accessor()
-                    && let Ok(duration) = sdt.duration_since(std::time::UNIX_EPOCH)
+                    && let Some((_, nsec)) = system_time_to_unix(sdt)
                 {
-                    return Ok(Variant::from_int(duration.subsec_nanos() as i64));
+                    return Ok(Variant::from_int(nsec as i64));
                 }
             }
             Ok(Variant::empty(VariantType::Int))

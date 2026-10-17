@@ -57,6 +57,7 @@ pub use self::datetime::format_time;
 pub use self::datetime::parse_datetime;
 pub use self::datetime::set_us_dates;
 pub use self::datetime::system_time_to_naive_local;
+pub use self::datetime::system_time_to_unix;
 pub use self::datetime::to_local_datetime;
 pub use self::glob::convert_glob_to_pattern;
 pub use self::glob::convert_like_to_pattern;

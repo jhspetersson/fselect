@@ -5318,6 +5318,29 @@ f
     }
 
     #[test]
+    fn epoch_fields_are_negative_before_1970() {
+        let tmp = std::env::temp_dir().join("fselect_test_pre_epoch_times");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        let path = tmp.join("old.txt");
+        fs::write(&path, "").unwrap();
+        let when = std::time::UNIX_EPOCH - std::time::Duration::new(300_000_000, 250_000_000);
+        fs::File::options()
+            .write(true)
+            .open(&path)
+            .unwrap()
+            .set_times(fs::FileTimes::new().set_modified(when).set_accessed(when))
+            .unwrap();
+
+        let rows = run_query_against_dir("select mtime, mtime_nsec, atime, atime_nsec, modified from __DIR__", &tmp);
+        let _ = fs::remove_dir_all(&tmp);
+        assert_eq!(rows.len(), 1);
+        let columns: Vec<&str> = rows[0].split('\t').collect();
+        assert_eq!(columns[..4], ["-300000001", "750000000", "-300000001", "750000000"]);
+        assert!(columns[4].starts_with("1960-"), "{}", rows[0]);
+    }
+
+    #[test]
     fn exif_altitude_honours_the_reference_byte_and_its_default() {
         let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("resources").join("test").join("exif");
         let rows = run_query_against_dir("select name, exif_alt from __DIR__ order by name", &fixtures);

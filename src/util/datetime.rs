@@ -131,19 +131,23 @@ pub fn parse_datetime(s: &str) -> Result<(NaiveDateTime, NaiveDateTime), String>
     }
 }
 
-pub fn system_time_to_naive_local(sdt: SystemTime) -> Option<NaiveDateTime> {
-    let (sec, nsec) = match sdt.duration_since(UNIX_EPOCH) {
-        Ok(dur) => (i64::try_from(dur.as_secs()).ok()?, dur.subsec_nanos()),
+pub fn system_time_to_unix(sdt: SystemTime) -> Option<(i64, u32)> {
+    match sdt.duration_since(UNIX_EPOCH) {
+        Ok(dur) => Some((i64::try_from(dur.as_secs()).ok()?, dur.subsec_nanos())),
         Err(e) => {
             let dur = e.duration();
             let secs = i64::try_from(dur.as_secs()).ok()?;
             if dur.subsec_nanos() == 0 {
-                (secs.checked_neg()?, 0)
+                Some((secs.checked_neg()?, 0))
             } else {
-                (secs.checked_neg()?.checked_sub(1)?, 1_000_000_000 - dur.subsec_nanos())
+                Some((secs.checked_neg()?.checked_sub(1)?, 1_000_000_000 - dur.subsec_nanos()))
             }
         }
-    };
+    }
+}
+
+pub fn system_time_to_naive_local(sdt: SystemTime) -> Option<NaiveDateTime> {
+    let (sec, nsec) = system_time_to_unix(sdt)?;
 
     DateTime::<Utc>::from_timestamp(sec, nsec)
         .map(|dt_utc| dt_utc.with_timezone(&Local).naive_local())

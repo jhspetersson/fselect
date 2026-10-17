@@ -123,15 +123,18 @@ fn malformed_in_lists_are_rejected_before_the_header() {
 fn a_failed_first_row_leaves_no_separator_and_keeps_the_limit() {
     let dir = std::env::temp_dir().join("fselect_test_failed_first_row");
     let _ = fs::remove_dir_all(&dir);
-    fs::create_dir_all(&dir).unwrap();
-    fs::write(dir.join("a.txt"), "x").unwrap();
-    fs::write(dir.join("b.txt"), "xxx").unwrap();
-    fs::write(dir.join("c.txt"), "xxxxx").unwrap();
-    let root = dir.display();
+    // Directory enumeration order is filesystem-specific, but roots are visited
+    // in the order they are written, so one file per root pins the row order
+    // and guarantees that the failing row really is the first one.
+    for (sub, name, content) in [("first", "a.txt", "x"), ("second", "b.txt", "xxx"), ("third", "c.txt", "xxxxx")] {
+        fs::create_dir_all(dir.join(sub)).unwrap();
+        fs::write(dir.join(sub).join(name), content).unwrap();
+    }
+    let roots = format!("{0}, {1}, {2}", dir.join("first").display(), dir.join("second").display(), dir.join("third").display());
 
-    let json = fselect(&format!("select name, 1 / (size - 1) from {root} into json"));
-    let limited = fselect(&format!("select name, 1 / (size - 1) from {root} limit 2 into json"));
-    let tabs = fselect(&format!("select name, 1 / (size - 1) from {root}"));
+    let json = fselect(&format!("select name, 1 / (size - 1) from {roots} into json"));
+    let limited = fselect(&format!("select name, 1 / (size - 1) from {roots} limit 2 into json"));
+    let tabs = fselect(&format!("select name, 1 / (size - 1) from {roots}"));
     let _ = fs::remove_dir_all(&dir);
 
     assert_eq!(json.code, Some(1), "{}", json.stderr);

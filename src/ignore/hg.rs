@@ -98,6 +98,33 @@ fn strip_hg_comment(line: &str) -> String {
 }
 
 fn parse_hgignore(file_path: &Path, dir_path: &Path) -> Result<Vec<HgignoreFilter>, String> {
+    parse_hgignore_chain(file_path, dir_path, &mut Vec::new())
+}
+
+/// `chain` holds the files currently being parsed, outermost first, so an
+/// `include:` that leads back to one of them is reported as a cycle instead
+/// of recursing until the stack is exhausted. A file reached twice through
+/// different branches is not a cycle and is parsed again.
+fn parse_hgignore_chain(
+    file_path: &Path,
+    dir_path: &Path,
+    chain: &mut Vec<std::path::PathBuf>,
+) -> Result<Vec<HgignoreFilter>, String> {
+    let identity = std::fs::canonicalize(file_path).unwrap_or_else(|_| file_path.to_path_buf());
+    if chain.contains(&identity) {
+        return Err(format!("cyclic include of {}", file_path.to_string_lossy()));
+    }
+    chain.push(identity);
+    let result = parse_hgignore_lines(file_path, dir_path, chain);
+    chain.pop();
+    result
+}
+
+fn parse_hgignore_lines(
+    file_path: &Path,
+    dir_path: &Path,
+    chain: &mut Vec<std::path::PathBuf>,
+) -> Result<Vec<HgignoreFilter>, String> {
     let mut result = vec![];
     let mut err = String::new();
 
@@ -154,7 +181,7 @@ fn parse_hgignore(file_path: &Path, dir_path: &Path) -> Result<Vec<HgignoreFilte
                                 .unwrap_or_else(|| dir_path.to_path_buf()),
                             false => dir_path.to_path_buf(),
                         };
-                        let mut parse_result = parse_hgignore(&include_path, &include_dir_path);
+                        let mut parse_result = parse_hgignore_chain(&include_path, &include_dir_path, chain);
                         match parse_result {
                             Ok(ref mut filters) => {
                                 result.append(filters);
@@ -669,6 +696,29 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         dir
+    }
+
+    #[test]
+    fn cyclic_includes_are_reported_instead_of_recursing_forever() {
+        let dir = make_test_dir("fselect_hg_cyclic_include_test");
+        std::fs::write(dir.join(".hgignore"), "syntax: glob\n*.log\ninclude:.hgignore\n").unwrap();
+        let err = parse_hgignore(&dir.join(".hgignore"), &dir).expect_err("a file including itself must fail");
+        assert!(err.contains("cyclic include"), "{err}");
+
+        std::fs::write(dir.join("a.hgignore"), "syntax: glob\n*.tmp\ninclude:b.hgignore\n").unwrap();
+        std::fs::write(dir.join("b.hgignore"), "syntax: glob\n*.bak\nsubinclude:a.hgignore\n").unwrap();
+        let err = parse_hgignore(&dir.join("a.hgignore"), &dir).expect_err("two files including each other must fail");
+        assert!(err.contains("cyclic include") && err.contains("a.hgignore"), "{err}");
+
+        // A legitimate chain still works, and the same file may be reached
+        // twice through different branches without being a cycle.
+        std::fs::write(dir.join("top.hgignore"), "include:mid.hgignore\ninclude:leaf.hgignore\n").unwrap();
+        std::fs::write(dir.join("mid.hgignore"), "syntax: glob\n*.mid\ninclude:leaf.hgignore\n").unwrap();
+        std::fs::write(dir.join("leaf.hgignore"), "syntax: glob\n*.leaf\n").unwrap();
+        let filters = parse_hgignore(&dir.join("top.hgignore"), &dir).expect("a diamond include is not a cycle");
+        assert_eq!(filters.len(), 3);
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

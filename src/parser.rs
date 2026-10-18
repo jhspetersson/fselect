@@ -1513,6 +1513,13 @@ impl <'a> Parser<'a> {
                         Some(Lexeme::Comma) => {}
                         Some(Lexeme::RawString(ref grouping_field)) => {
                             let actual_field = match grouping_field.parse::<usize>() {
+                                Ok(_) if self.followed_by_arithmetic_operator() => {
+                                    self.drop_lexeme();
+                                    match self.parse_expr()? {
+                                        Some(expr) => expr,
+                                        None => break,
+                                    }
+                                }
                                 Ok(idx) if idx >= 1 && idx <= fields.len() => fields[idx - 1].clone(),
                                 Ok(_) => return Err(String::from("Group by field index is out of range")),
                                 _ => match self.resolve_select_alias(fields, grouping_field) {
@@ -1527,6 +1534,13 @@ impl <'a> Parser<'a> {
                                 },
                             };
                             group_by_fields.push(actual_field);
+                        }
+                        Some(Lexeme::ArithmeticOperator(ref op)) if op == "-" => {
+                            self.drop_lexeme();
+                            match self.parse_expr()? {
+                                Some(expr) => group_by_fields.push(expr),
+                                None => break,
+                            }
                         }
                         Some(Lexeme::String(ref grouping_field)) => {
                             // Grouping by a string literal is meaningless, so a
@@ -2719,6 +2733,26 @@ mod tests {
         }
         let err = parse_query("select name, (select o.name, count(*) from /o as o) from /d as t").expect_err("own alias");
         assert!(err.contains("Column 'o.name' must appear in GROUP BY"), "{err}");
+    }
+
+    #[test]
+    fn group_by_accepts_arithmetic_without_parentheses() {
+        let negated = parse_query("select -size, count(*) from /d group by -size").unwrap();
+        assert_eq!(negated.grouping_fields.len(), 1);
+        assert_eq!(negated.grouping_fields[0].field, Some(Field::Size));
+        assert!(negated.grouping_fields[0].minus);
+
+        let sum = parse_query("select 1 + size, count(*) from /d group by 1 + size").unwrap();
+        assert_eq!(sum.grouping_fields.len(), 1);
+        assert_eq!(sum.grouping_fields[0].arithmetic_op, Some(ArithmeticOp::Add));
+        assert_eq!(sum.grouping_fields, parse_query("select 1 + size, count(*) from /d group by (1 + size)").unwrap().grouping_fields);
+
+        let two_keys = parse_query("select ext, 2 * size, count(*) from /d group by ext, 2 * size").unwrap();
+        assert_eq!(two_keys.grouping_fields.len(), 2);
+        assert_eq!(two_keys.grouping_fields[1].arithmetic_op, Some(ArithmeticOp::Multiply));
+
+        let positional = parse_query("select ext, size, count(*) from /d group by 1, 2").unwrap();
+        assert_eq!(positional.grouping_fields, vec![Expr::field(Field::Extension), Expr::field(Field::Size)]);
     }
 
     #[test]

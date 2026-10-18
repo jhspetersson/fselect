@@ -121,18 +121,32 @@ impl DimensionsExtractor for SvgDimensionsExtractor {
         let mut content = String::new();
         for event in svg::open(path, &mut content)? {
             if let Event::Tag(SVG, _, attributes) = event {
-                if let (Some(width_value), Some(height_value)) =
-                    (attributes.get("width"), attributes.get("height"))
-                    && let (Some(width), Some(height)) =
-                        (parse_svg_length(width_value)?, parse_svg_length(height_value)?)
-                {
-                    return Ok(Some(Dimensions { width, height }));
-                }
+                let width = match attributes.get("width") {
+                    Some(value) => parse_svg_length(value)?,
+                    None => None,
+                };
+                let height = match attributes.get("height") {
+                    Some(value) => parse_svg_length(value)?,
+                    None => None,
+                };
+                let view_box = attributes.get("viewBox").and_then(|v| parse_view_box(v));
+                let scaled = |length: usize, numerator: usize, denominator: usize| {
+                    (length as f64 * numerator as f64 / denominator as f64).round() as usize
+                };
 
-                // No absolute width/height (the standard shape of viewBox-only
-                // exports from Figma/Illustrator/icon sets, or percentage
-                // sizes): fall back to the viewBox dimensions.
-                return Ok(attributes.get("viewBox").and_then(|v| parse_view_box(v)));
+                return Ok(match (width, height, view_box) {
+                    (Some(width), Some(height), _) => Some(Dimensions { width, height }),
+                    (Some(width), None, Some(view_box)) if view_box.width > 0 => Some(Dimensions {
+                        width,
+                        height: scaled(width, view_box.height, view_box.width),
+                    }),
+                    (None, Some(height), Some(view_box)) if view_box.height > 0 => Some(Dimensions {
+                        width: scaled(height, view_box.width, view_box.height),
+                        height,
+                    }),
+                    (None, None, view_box) => view_box,
+                    _ => None,
+                });
             }
         }
 
@@ -283,6 +297,41 @@ mod test {
                 width: 100,
                 height: 50
             })
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn one_explicit_dimension_is_kept_and_the_other_follows_the_view_box_ratio() -> Result<(), Box<dyn Error>> {
+        use crate::util::dimensions::DimensionsExtractor;
+
+        let read = |name: &str, svg: &str| -> io::Result<Option<Dimensions>> {
+            let tmp = std::env::temp_dir().join(name);
+            std::fs::write(&tmp, svg)?;
+            let result = SvgDimensionsExtractor.try_read_dimensions(&tmp);
+            let _ = std::fs::remove_file(&tmp);
+            result
+        };
+
+        assert_eq!(
+            read("fselect_test_svg_width_only.svg", r#"<svg xmlns="http://www.w3.org/2000/svg" width="200" viewBox="0 0 100 50"></svg>"#)?,
+            Some(Dimensions { width: 200, height: 100 })
+        );
+        assert_eq!(
+            read("fselect_test_svg_height_only.svg", r#"<svg xmlns="http://www.w3.org/2000/svg" height="200" viewBox="0 0 100 50"></svg>"#)?,
+            Some(Dimensions { width: 400, height: 200 })
+        );
+        assert_eq!(
+            read("fselect_test_svg_width_percent.svg", r#"<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="30" viewBox="0 0 100 50"></svg>"#)?,
+            Some(Dimensions { width: 60, height: 30 })
+        );
+        assert_eq!(
+            read("fselect_test_svg_width_no_viewbox.svg", r#"<svg xmlns="http://www.w3.org/2000/svg" width="200"></svg>"#)?,
+            None
+        );
+        assert_eq!(
+            read("fselect_test_svg_width_zero_viewbox.svg", r#"<svg xmlns="http://www.w3.org/2000/svg" width="200" viewBox="0 0 0 50"></svg>"#)?,
+            None
         );
         Ok(())
     }

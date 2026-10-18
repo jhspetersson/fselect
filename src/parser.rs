@@ -77,12 +77,12 @@ impl <'a> Parser<'a> {
             self.drop_lexeme();
         }
 
-        let fields = self.parse_fields()?;
+        let mut fields = self.parse_fields()?;
         let mut roots = self.parse_roots()?;
         let root_options = self.parse_root_options()?;
         self.root_aliases = roots.iter().filter_map(|root| root.options.alias.clone()).collect();
         self.roots_parsed = true;
-        let expr = self.parse_where()?.map(|expr| Self::ensure_boolean_conditions(expr, "WHERE")).transpose()?;
+        let mut expr = self.parse_where()?.map(|expr| Self::ensure_boolean_conditions(expr, "WHERE")).transpose()?;
         self.where_parsed = true;
         // Fail once, up front, on literals that can never match: a typo like
         // `modified = 'not-a-date'` or `size > 'abc'` would otherwise be
@@ -92,9 +92,9 @@ impl <'a> Parser<'a> {
             where_expr.validate_numeric_literals()?;
             where_expr.validate_boolean_literals()?;
         }
-        let grouping_fields = self.parse_group_by(&fields)?;
-        let having = self.parse_having(&fields)?.map(|expr| Self::ensure_boolean_conditions(expr, "HAVING")).transpose()?;
-        let (ordering_fields, ordering_asc) = self.parse_order_by(&fields)?;
+        let mut grouping_fields = self.parse_group_by(&fields)?;
+        let mut having = self.parse_having(&fields)?.map(|expr| Self::ensure_boolean_conditions(expr, "HAVING")).transpose()?;
+        let (mut ordering_fields, ordering_asc) = self.parse_order_by(&fields)?;
         let (mut limit, limit_offset) = self.parse_limit()?;
         let mut offset = self.parse_offset()?;
         match self.next_lexeme() {
@@ -119,6 +119,19 @@ impl <'a> Parser<'a> {
             clause.validate_function_arity()?;
             clause.validate_date_function_literals()?;
             clause.validate_format_size_modifiers()?;
+        }
+
+        // A field written with this query's own root alias (`t.ext` with
+        // `from dir as t`) is the same column as the bare field; give both one
+        // key so grouping, HAVING, ORDER BY and the validators agree.
+        for clause in fields
+            .iter_mut()
+            .chain(expr.iter_mut())
+            .chain(grouping_fields.iter_mut())
+            .chain(having.iter_mut())
+            .chain(ordering_fields.iter_mut())
+        {
+            clause.mark_local_roots(&self.root_aliases);
         }
 
         self.reject_non_grouped_columns(&fields, &grouping_fields)?;
@@ -2726,6 +2739,22 @@ mod tests {
         // ... but a reference to the inner query's own alias is still checked.
         let err = parse_query("select name, (select o.name, count(*) from /o as o) from /d as t").expect_err("own alias");
         assert!(err.contains("Column 'o.name' must appear in GROUP BY"), "{err}");
+    }
+
+    #[test]
+    fn a_field_qualified_with_the_own_root_alias_is_the_same_grouping_column() {
+        for query in [
+            "select ext, count(*) from /d as t group by t.ext",
+            "select t.ext, count(*) from /d as t group by ext",
+            "select upper(t.ext), count(*) from /d as t group by ext",
+            "select ext, count(*) from /d as t group by t.ext order by ext",
+            "select t.ext, count(*) from /d as t group by t.ext having ext = 'txt' order by t.ext",
+        ] {
+            assert!(parse_query(query).is_ok(), "{}: {:?}", query, parse_query(query).err());
+        }
+        // An enclosing query's alias is a different row, so it is not the same column.
+        let err = parse_query("select name, (select ext, count(*) + t.size from /o group by t.ext) from /d as t").expect_err("outer alias");
+        assert!(err.contains("Column 'extension' must appear in GROUP BY"), "{err}");
     }
 
     #[test]

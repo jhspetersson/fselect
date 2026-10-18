@@ -4540,6 +4540,29 @@ mod tests {
     }
 
     #[test]
+    fn qualified_and_unqualified_grouping_columns_are_the_same_key() {
+        let tmp = std::env::temp_dir().join("fselect_test_qualified_grouping");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        for (name, size) in [("a.txt", 1), ("b.txt", 2), ("c.md", 3)] {
+            fs::write(tmp.join(name), "x".repeat(size)).unwrap();
+        }
+
+        let mixed_select = run_query_against_dir("select ext, count(*) from __DIR__ as t group by t.ext order by ext", &tmp);
+        let mixed_group = run_query_against_dir("select t.ext, count(*) from __DIR__ as t group by ext order by t.ext", &tmp);
+        let having = run_query_against_dir("select t.ext, count(*) from __DIR__ as t group by t.ext having ext = 'txt'", &tmp);
+        let ordered = run_query_against_dir("select t.ext, sum(size) from __DIR__ as t group by t.ext order by ext desc", &tmp);
+        let derived = run_query_against_dir("select upper(t.ext), count(*) from __DIR__ as t group by ext order by ext", &tmp);
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(mixed_select, vec!["md\t1", "txt\t2"]);
+        assert_eq!(mixed_group, vec!["md\t1", "txt\t2"]);
+        assert_eq!(having, vec!["txt\t2"]);
+        assert_eq!(ordered, vec!["txt\t3", "md\t3"]);
+        assert_eq!(derived, vec!["MD\t1", "TXT\t2"]);
+    }
+
+    #[test]
     fn bfs_stops_opening_queued_directories_once_the_limit_is_reached() {
         let tmp = std::env::temp_dir().join("fselect_test_bfs_limit");
         let _ = fs::remove_dir_all(&tmp);

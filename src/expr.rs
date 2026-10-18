@@ -19,6 +19,9 @@ pub const IS_CHAR: &str = "is_char";
 pub const IS_BLOCK: &str = "is_block";
 pub const IS_SOCKET: &str = "is_socket";
 pub const FILE_TYPE_PROPS: [&str; 6] = [IS_FILE, IS_DIR, IS_PIPE, IS_CHAR, IS_BLOCK, IS_SOCKET];
+/// Marks a field whose root alias names the query's own root (`t.ext` with
+/// `from dir as t`): the same column as the bare field, so it shares its key.
+const LOCAL_ROOT: &str = "local_root";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Expr {
@@ -83,6 +86,14 @@ impl ExprProps {
 
     pub fn clear_file_types(&mut self) {
         self.retain(|key, _| !Self::is_file_type_key(key));
+    }
+
+    pub fn mark_local_root(&mut self) {
+        self.insert(LOCAL_ROOT.to_string(), Variant::from_bool(true));
+    }
+
+    pub fn is_local_root(&self) -> bool {
+        self.get(LOCAL_ROOT).is_some_and(Variant::to_bool)
     }
 }
 
@@ -1160,6 +1171,24 @@ impl Expr {
         key
     }
 
+    /// Flag every field in this expression tree whose root alias is one of
+    /// `own_aliases` as the query's own column, so `t.ext` and `ext` render to
+    /// the same cache key. Subqueries are left alone: they mark their own.
+    pub fn mark_local_roots(&mut self, own_aliases: &[String]) {
+        if self.field.is_some()
+            && let Some(ref root_alias) = self.root_alias
+            && own_aliases.iter().any(|alias| alias.eq_ignore_ascii_case(root_alias))
+        {
+            self.props.mark_local_root();
+        }
+        for child in self.left.iter_mut().chain(self.right.iter_mut()) {
+            child.mark_local_roots(own_aliases);
+        }
+        for arg in self.args.iter_mut().flatten() {
+            arg.mark_local_roots(own_aliases);
+        }
+    }
+
     pub fn alias_reference(root_alias: String, text: String) -> Expr {
         let mut expr = Expr::value(text);
         expr.root_alias = Some(root_alias);
@@ -1255,7 +1284,9 @@ impl Expr {
         }
 
         if let Some(ref field) = self.field {
-            if let Some(ref root_alias) = self.root_alias {
+            if let Some(ref root_alias) = self.root_alias
+                && !(mode == Rendering::CacheKey && self.props.is_local_root())
+            {
                 out.write_str(root_alias)?;
                 out.write_char('.')?;
             }

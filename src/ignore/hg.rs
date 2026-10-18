@@ -12,11 +12,30 @@ use regex::Regex;
 #[derive(Clone, Debug)]
 pub struct HgignoreFilter {
     pub regex: Regex,
+    relative_to: Option<String>,
 }
 
 impl HgignoreFilter {
     fn new(regex: Regex) -> HgignoreFilter {
-        HgignoreFilter { regex }
+        HgignoreFilter { regex, relative_to: None }
+    }
+
+    fn relative_to(regex: Regex, root: &Path) -> HgignoreFilter {
+        HgignoreFilter { regex, relative_to: Some(root.to_string_lossy().into_owned()) }
+    }
+
+    fn matches(&self, path: &str) -> bool {
+        match self.relative_to {
+            None => self.regex.is_match(path),
+            Some(ref root) => match path.strip_prefix(root.as_str()).and_then(|rest| rest.strip_prefix(std::path::MAIN_SEPARATOR)) {
+                None => false,
+                Some(relative) => {
+                    #[cfg(windows)]
+                    let relative = relative.replace('\\', "/");
+                    self.regex.is_match(&relative)
+                }
+            },
+        }
     }
 }
 
@@ -60,7 +79,7 @@ fn update_hgignore_filters(hgignore_filters: &mut Vec<HgignoreFilter>, path: &Pa
 pub fn matches_hgignore_filter(hgignore_filters: &[HgignoreFilter], file_name: &str) -> bool {
     hgignore_filters
         .iter()
-        .any(|filter| filter.regex.is_match(file_name))
+        .any(|filter| filter.matches(file_name))
 }
 
 enum Syntax {
@@ -217,8 +236,8 @@ fn convert_hgignore_pattern(
             Ok(regex) => Ok(HgignoreFilter::new(regex)),
             Err(e) => Err(e),
         },
-        Syntax::Regexp => match convert_hgignore_regexp(pattern, file_path) {
-            Ok(regex) => Ok(HgignoreFilter::new(regex)),
+        Syntax::Regexp => match convert_hgignore_regexp(pattern) {
+            Ok(regex) => Ok(HgignoreFilter::relative_to(regex, file_path)),
             Err(e) => Err(e),
         },
     }
@@ -336,45 +355,8 @@ fn push_hg_literal(res: &mut String, c: char, sep: &str) {
     }
 }
 
-fn convert_hgignore_regexp(regexp: &str, file_path: &Path) -> Result<Regex, String> {
-    // Mercurial matches regexp patterns with `re.search` against the
-    // repo-relative path: unanchored unless the pattern starts with `^`.
-    // Only the repository-root prefix is anchored here; no end anchor is
-    // added so the user's regex keeps full control.
-    #[cfg(not(windows))]
-    {
-        let mut pattern = String::from("^") + &regex::escape(&file_path.to_string_lossy());
-        if !regexp.starts_with("^") {
-            pattern = pattern.add("/([^/]+/)*");
-            pattern = pattern.add(".*");
-        } else {
-            pattern = pattern.add("/");
-        }
-
-        pattern = pattern.add(&regexp.trim_start_matches("^"));
-
-        Regex::new(&pattern).map_err(|_| "Error creating regex pattern: ".to_string() + pattern.as_str())
-    }
-
-    #[cfg(windows)]
-    {
-        // Mercurial regexps use `/` as the path separator while matched
-        // paths are native `\`-separated on Windows, so an (optionally
-        // escaped) `/` in the pattern must match a literal backslash.
-        let regexp = regexp.replace("\\/", "/").replace('/', "\\\\");
-
-        let mut pattern = String::from("^") + &regex::escape(&file_path.to_string_lossy());
-        if !regexp.starts_with("^") {
-            pattern = pattern.add("\\\\([^\\\\]+\\\\)*");
-            pattern = pattern.add(".*");
-        } else {
-            pattern = pattern.add("\\\\");
-        }
-
-        pattern = pattern.add(regexp.trim_start_matches("^"));
-
-        Regex::new(&pattern).map_err(|_| "Error creating regex pattern: ".to_string() + pattern.as_str())
-    }
+fn convert_hgignore_regexp(regexp: &str) -> Result<Regex, String> {
+    Regex::new(regexp).map_err(|_| "Error creating regex pattern: ".to_string() + regexp)
 }
 
 #[cfg(test)]
@@ -482,19 +464,6 @@ mod tests {
         );
     }
 
-    #[cfg(not(windows))]
-    #[test]
-    fn regexp_path_with_dots_is_regex_escaped() {
-        let result = convert_hgignore_regexp("foo", Path::new("/home/user/my.project"));
-        let regex = result.unwrap();
-        let regex_str = regex.as_str();
-        assert!(
-            regex_str.contains("my\\.project"),
-            "dots in path should be escaped but got: {}",
-            regex_str
-        );
-    }
-
     #[cfg(windows)]
     #[test]
     fn glob_question_mark_matches_exactly_one_char_windows() {
@@ -510,19 +479,6 @@ mod tests {
     #[test]
     fn glob_path_with_dots_is_regex_escaped_windows() {
         let result = convert_hgignore_glob("*.txt", Path::new("C:\\Users\\user\\my.project"), false);
-        let regex = result.unwrap();
-        let regex_str = regex.as_str();
-        assert!(
-            regex_str.contains("my\\.project"),
-            "dots in path should be escaped but got: {}",
-            regex_str
-        );
-    }
-
-    #[cfg(windows)]
-    #[test]
-    fn regexp_path_with_dots_is_regex_escaped_windows() {
-        let result = convert_hgignore_regexp("foo", Path::new("C:\\Users\\user\\my.project"));
         let regex = result.unwrap();
         let regex_str = regex.as_str();
         assert!(
@@ -573,41 +529,6 @@ mod tests {
 
     #[cfg(not(windows))]
     #[test]
-    fn regexp_caret_anchored_includes_separator() {
-        let regex = convert_hgignore_regexp("^src/main", Path::new("/repo")).unwrap();
-        assert!(regex.is_match("/repo/src/main.rs"), "^-anchored pattern should match");
-        assert!(!regex.is_match("/reposrc/main.rs"), "should not match without separator");
-    }
-
-    #[cfg(windows)]
-    #[test]
-    fn regexp_caret_anchored_includes_separator_windows() {
-        let regex = convert_hgignore_regexp("^src/main", Path::new("C:\\repo")).unwrap();
-        assert!(
-            regex.is_match("C:\\repo\\src\\main.rs"),
-            "^-anchored pattern with / should match a native path"
-        );
-        assert!(!regex.is_match("C:\\repo\\srcmain.rs"), "should not match without separator");
-    }
-
-    #[cfg(windows)]
-    #[test]
-    fn regexp_slash_matches_native_separator_windows() {
-        let regex = convert_hgignore_regexp("target/debug", Path::new("C:\\repo")).unwrap();
-        assert!(
-            regex.is_match("C:\\repo\\x\\target\\debug\\foo.o"),
-            "unanchored regexp with / should match a native path"
-        );
-
-        let regex = convert_hgignore_regexp("^src\\/main", Path::new("C:\\repo")).unwrap();
-        assert!(
-            regex.is_match("C:\\repo\\src\\main.rs"),
-            "escaped \\/ should also match the native separator"
-        );
-    }
-
-    #[cfg(not(windows))]
-    #[test]
     fn glob_matches_whole_component_not_prefix() {
         let regex = convert_hgignore_glob("foo", Path::new("/repo"), false).unwrap();
         assert!(regex.is_match("/repo/foo"));
@@ -627,14 +548,6 @@ mod tests {
             !regex.is_match("/elsewhere/repo/foo"),
             "repo prefix must match from the start of the path"
         );
-    }
-
-    #[cfg(not(windows))]
-    #[test]
-    fn regexp_repo_prefix_is_start_anchored() {
-        let regex = convert_hgignore_regexp("foo", Path::new("/repo")).unwrap();
-        assert!(regex.is_match("/repo/x/myfoo.txt"), "re.search semantics within the repo");
-        assert!(!regex.is_match("/elsewhere/repo/x/foo"));
     }
 
     #[cfg(windows)]
@@ -660,12 +573,67 @@ mod tests {
         );
     }
 
-    #[cfg(windows)]
+    fn regexp_filter(pattern: &str, root: &Path) -> HgignoreFilter {
+        convert_hgignore_pattern(pattern, root, &Syntax::Regexp).unwrap()
+    }
+
+    fn under(root: &Path, relative: &str) -> String {
+        let relative = if cfg!(windows) { relative.replace('/', "\\") } else { relative.to_string() };
+        format!("{}{}{}", root.to_string_lossy(), std::path::MAIN_SEPARATOR, relative)
+    }
+
     #[test]
-    fn regexp_repo_prefix_is_start_anchored_windows() {
-        let regex = convert_hgignore_regexp("foo", Path::new("C:\\repo")).unwrap();
-        assert!(regex.is_match("C:\\repo\\x\\myfoo.txt"), "re.search semantics within the repo");
-        assert!(!regex.is_match("X:\\zzzC:\\repo\\x\\foo"));
+    fn regexp_repository_path_is_a_literal_prefix() {
+        let root = Path::new(if cfg!(windows) { "C:\\Users\\user\\my.project" } else { "/home/user/my.project" });
+        let sibling = Path::new(if cfg!(windows) { "C:\\Users\\user\\myXproject" } else { "/home/user/myXproject" });
+        let filters = [regexp_filter("foo", root)];
+        assert!(matches_hgignore_filter(&filters, &under(root, "foo")));
+        assert!(!matches_hgignore_filter(&filters, &under(sibling, "foo")));
+    }
+
+    #[test]
+    fn regexp_caret_anchors_at_the_repo_root_after_the_separator() {
+        let filters = [regexp_filter("^src/main", repo())];
+        assert!(matches_hgignore_filter(&filters, &under(repo(), "src/main.rs")));
+        assert!(!matches_hgignore_filter(&filters, &under(repo(), "srcmain.rs")));
+        assert!(!matches_hgignore_filter(&filters, &format!("{}src{}main.rs", repo().to_string_lossy(), std::path::MAIN_SEPARATOR)));
+        assert!(!matches_hgignore_filter(&filters, &under(repo(), "x/src/main.rs")));
+    }
+
+    #[test]
+    fn regexp_slash_matches_the_native_separator() {
+        let filters = [regexp_filter("target/debug", repo())];
+        assert!(matches_hgignore_filter(&filters, &under(repo(), "x/target/debug/foo.o")));
+        let filters = [regexp_filter("^src\\/main", repo())];
+        assert!(matches_hgignore_filter(&filters, &under(repo(), "src/main.rs")));
+    }
+
+    #[test]
+    fn regexp_searches_only_within_the_repository() {
+        let filters = [regexp_filter("foo", repo())];
+        assert!(matches_hgignore_filter(&filters, &under(repo(), "x/myfoo.txt")));
+        let elsewhere = format!("{}{}", if cfg!(windows) { "X:\\zzz" } else { "/elsewhere" }, under(repo(), "x/foo"));
+        assert!(!matches_hgignore_filter(&filters, &elsewhere));
+    }
+
+    #[test]
+    fn regexp_anchors_apply_to_the_repo_relative_path_in_every_alternative() {
+        let filters = [regexp_filter("^foo|^bar", repo())];
+        assert!(matches_hgignore_filter(&filters, &under(repo(), "foo.txt")));
+        assert!(matches_hgignore_filter(&filters, &under(repo(), "bar.txt")), "the second ^ alternative must anchor at the repo root too");
+        assert!(!matches_hgignore_filter(&filters, &under(repo(), "x/bar.txt")));
+
+        let filters = [regexp_filter("foo|bar", repo())];
+        assert!(matches_hgignore_filter(&filters, &under(repo(), "x/bar.txt")), "unanchored alternatives search the relative path");
+        assert!(!matches_hgignore_filter(&filters, &under(repo(), "x/baz.txt")));
+
+        let named_like_pattern = Path::new(if cfg!(windows) { "C:\\bar" } else { "/bar" });
+        let filters = [regexp_filter("foo|bar", named_like_pattern)];
+        assert!(!matches_hgignore_filter(&filters, &under(named_like_pattern, "x/baz.txt")), "the repository path itself is never searched");
+
+        let filters = [regexp_filter("\\.txt$", repo())];
+        assert!(matches_hgignore_filter(&filters, &under(repo(), "a/b.txt")));
+        assert!(!matches_hgignore_filter(&filters, &under(repo(), "a/b.txt.bak")));
     }
 
     #[test]

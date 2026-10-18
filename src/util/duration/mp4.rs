@@ -26,16 +26,19 @@ impl DurationExtractor for Mp4DurationExtractor {
             .map(|ts| ts.0)
             .filter(|&ts| ts > 0)
             .unwrap_or(1000);
+        // The movie lasts as long as its longest track, whatever its type:
+        // an audio-only MP4 has no video track but a duration all the same.
         Ok(context
             .tracks
             .iter()
-            .find(|track| track.track_type == mp4parse::TrackType::Video)
-            .and_then(|track| track.tkhd.as_ref())
+            .filter_map(|track| track.tkhd.as_ref())
             // Fragmented/DASH files store all-ones for "unknown" (ISO
             // 14496-12); reporting it would show a ~4-million-second video.
             .filter(|tkhd| tkhd.duration != u64::MAX && tkhd.duration != u32::MAX as u64)
-            .map(|tkhd| Duration {
-                length: (tkhd.duration / timescale) as usize,
+            .map(|tkhd| tkhd.duration)
+            .max()
+            .map(|duration| Duration {
+                length: (duration / timescale) as usize,
             }))
     }
 }
@@ -56,6 +59,20 @@ mod test {
         assert_eq!(
             Mp4DurationExtractor.try_read_duration(&path)?,
             Some(Duration { length: 1 }),
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn audio_only_mp4_reports_its_duration() -> Result<(), Box<dyn Error>> {
+        // An AAC-only ISO-BMFF file has no video track; its duration lives in
+        // the audio track header all the same.
+        let path_string =
+            std::env::var("CARGO_MANIFEST_DIR")? + "/resources/test/" + "audio/tone-5s.mp4";
+        let path = PathBuf::from(path_string);
+        assert_eq!(
+            Mp4DurationExtractor.try_read_duration(&path)?,
+            Some(Duration { length: 5 }),
         );
         Ok(())
     }

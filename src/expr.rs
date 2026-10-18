@@ -19,8 +19,6 @@ pub const IS_CHAR: &str = "is_char";
 pub const IS_BLOCK: &str = "is_block";
 pub const IS_SOCKET: &str = "is_socket";
 pub const FILE_TYPE_PROPS: [&str; 6] = [IS_FILE, IS_DIR, IS_PIPE, IS_CHAR, IS_BLOCK, IS_SOCKET];
-/// Marks a field whose root alias names the query's own root (`t.ext` with
-/// `from dir as t`): the same column as the bare field, so it shares its key.
 const LOCAL_ROOT: &str = "local_root";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -1171,9 +1169,6 @@ impl Expr {
         key
     }
 
-    /// Flag every field in this expression tree whose root alias is one of
-    /// `own_aliases` as the query's own column, so `t.ext` and `ext` render to
-    /// the same cache key. Subqueries are left alone: they mark their own.
     pub fn mark_local_roots(&mut self, own_aliases: &[String]) {
         if self.field.is_some()
             && let Some(ref root_alias) = self.root_alias

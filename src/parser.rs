@@ -121,9 +121,6 @@ impl <'a> Parser<'a> {
             clause.validate_format_size_modifiers()?;
         }
 
-        // A field written with this query's own root alias (`t.ext` with
-        // `from dir as t`) is the same column as the bare field; give both one
-        // key so grouping, HAVING, ORDER BY and the validators agree.
         for clause in fields
             .iter_mut()
             .chain(expr.iter_mut())
@@ -1460,14 +1457,6 @@ impl <'a> Parser<'a> {
         Ok(grouping)
     }
 
-    /// SQL's grouping rule for the SELECT list: once a query aggregates (a
-    /// GROUP BY clause, or an aggregate function among the columns), every
-    /// column must be a grouping expression, an expression built only from
-    /// grouping expressions, literals and aggregates, or a subquery. A column
-    /// outside that set has no row to read from and would be rendered from an
-    /// empty one (`name` blank, `length(name)` 0), so it is rejected. A
-    /// reference to an enclosing query's row (`t.size` inside a subquery) is
-    /// constant for the whole inner aggregation and passes.
     fn reject_non_grouped_columns(&self, fields: &[Expr], grouping_fields: &[Expr]) -> Result<(), String> {
         let aggregated = !grouping_fields.is_empty() || fields.iter().any(Expr::has_aggregate_function);
         if !aggregated {
@@ -1486,8 +1475,6 @@ impl <'a> Parser<'a> {
         }
     }
 
-    /// The first bare field inside `expr` that is read outside any grouping
-    /// expression or aggregate, if there is one.
     fn non_grouped_field<'e>(&self, expr: &'e Expr, grouping_keys: &[String]) -> Option<&'e Expr> {
         if expr.is_literal() || expr.subquery.is_some() || grouping_keys.contains(&expr.cache_key()) {
             return None;
@@ -2691,10 +2678,6 @@ mod tests {
 
     #[test]
     fn select_columns_outside_the_grouping_are_rejected() {
-        // SQL's rule: once a query aggregates, a column must be a grouping
-        // expression, built only from grouping expressions, literals and
-        // aggregates, or a subquery. Anything else would be rendered from an
-        // empty row (`name` blank, `length(name)` 0) and is rejected instead.
         for (query, column) in [
             ("select length(name), count(*) from /d group by length(name) % 2", "name"),
             ("select name, count(*) from /d group by ext", "name"),
@@ -2728,15 +2711,12 @@ mod tests {
             "select name from /d group by name order by max(size) desc",
             "select count(*) from /d",
             "select name, size, length(name) from /d",
-            // References to an enclosing query's row are constant within the
-            // inner aggregation, so they need no grouping there.
             "select name, (select count(*) + t.size from /o) from /d as t",
             "select name, (select count(*) + t.size from /o group by ext) from /d as t",
             "select name, (select max(size) - t.size from /o where size > t.size) from /d as t",
         ] {
             assert!(parse_query(query).is_ok(), "{}: {:?}", query, parse_query(query).err());
         }
-        // ... but a reference to the inner query's own alias is still checked.
         let err = parse_query("select name, (select o.name, count(*) from /o as o) from /d as t").expect_err("own alias");
         assert!(err.contains("Column 'o.name' must appear in GROUP BY"), "{err}");
     }
@@ -2752,7 +2732,6 @@ mod tests {
         ] {
             assert!(parse_query(query).is_ok(), "{}: {:?}", query, parse_query(query).err());
         }
-        // An enclosing query's alias is a different row, so it is not the same column.
         let err = parse_query("select name, (select ext, count(*) + t.size from /o group by t.ext) from /d as t").expect_err("outer alias");
         assert!(err.contains("Column 'extension' must appear in GROUP BY"), "{err}");
     }

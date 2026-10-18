@@ -72,9 +72,6 @@ impl FileMetadataState {
         self.full_content_scan_expected = full_content_scan_expected;
     }
 
-    /// Tell the state, once per query, that some column or condition needs the
-    /// full char/word/line scan anyway. Classification-only fields then take
-    /// their answer from that scan instead of reading the file a second time.
     pub fn expect_full_content_scan(&mut self, expected: bool) {
         self.full_content_scan_expected = expected;
     }
@@ -148,9 +145,6 @@ impl FileMetadataState {
         self.content_stats.as_ref().and_then(|o| o.as_ref())
     }
 
-    /// Text/binary classification, encoding and BOM. Taken from the full
-    /// content stats when those were already computed for this file, else from
-    /// the cheap byte-level pass, so `encoding` never pays for counting.
     pub fn update_content_kind(&mut self, entry: &DirEntry, file_info: &Option<FileInfo>) {
         if self.content_kind.is_some() {
             return;

@@ -625,17 +625,6 @@ pub fn format_absolute_path(path_buf: &Path) -> String {
     path
 }
 
-/// Metadata of a directory entry, describing the entry itself unless
-/// `follow_symlinks` is set and the entry is a symlink.
-///
-/// `DirEntry::metadata()` never follows a link, so it has the same semantics
-/// as `symlink_metadata(entry.path())` while being far cheaper: on Windows it
-/// is answered from the directory listing without opening the file (a
-/// `CreateFile` per entry used to dominate any query touching `size`), and on
-/// Unix it is one `fstatat` relative to the directory. A path lookup is only
-/// made where the listing cannot answer: a symlink whose target is wanted, and
-/// (on Windows) a directory, whose listing entry says size 0 while a handle
-/// query reports the index allocation that fselect has always shown.
 pub fn get_metadata(entry: &DirEntry, follow_symlinks: bool) -> Option<Metadata> {
     let file_type = entry.file_type().ok();
 
@@ -942,10 +931,6 @@ pub fn get_content_stats(entry: &DirEntry) -> Option<ContentStats> {
     content_stats_from_reader(file)
 }
 
-/// The classification part of `ContentStats`: text or binary, encoding, BOM.
-/// It is settled by a BOM alone or by a byte-level pass (NUL, ASCII, UTF-8
-/// validity), which is far cheaper than the char/word/line scan that the
-/// counting columns need, so `encoding` and `has_bom` use this instead.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ContentKind {
     pub is_text: bool,
@@ -968,10 +953,6 @@ pub fn get_content_kind(entry: &DirEntry) -> Option<ContentKind> {
     content_kind_from_reader(file)
 }
 
-/// Classify a file's content with the same rules as `content_stats_from_reader`
-/// but without decoding or counting anything. A BOM settles the answer before
-/// the body is read; otherwise the body is checked for NUL (binary), non-ASCII
-/// bytes and UTF-8 validity, and reading stops at the first NUL.
 pub fn content_kind_from_reader<R: Read>(mut reader: R) -> Option<ContentKind> {
     #[cfg(test)]
     CONTENT_CLASSIFICATIONS.with(|passes| passes.set(passes.get() + 1));
@@ -996,8 +977,6 @@ pub fn content_kind_from_reader<R: Read>(mut reader: R) -> Option<ContentKind> {
     Some(classifier.finish())
 }
 
-/// Byte-level mirror of `NoBomSink`'s classification: tracks NUL, ASCII-ness
-/// and strict UTF-8 validity, carrying an incomplete sequence across chunks.
 struct NoBomClassifier {
     has_nul: bool,
     is_ascii: bool,
@@ -1027,7 +1006,6 @@ impl NoBomClassifier {
 
         let mut rest = bytes;
         if !self.utf8_carry.is_empty() {
-            // Complete the sequence split at the previous chunk boundary first.
             let width = match self.utf8_carry[0] {
                 0xC0..=0xDF => 2,
                 0xE0..=0xEF => 3,
@@ -1038,7 +1016,7 @@ impl NoBomClassifier {
             rest = &rest[take..];
             match std::str::from_utf8(&self.utf8_carry) {
                 Ok(_) => self.utf8_carry.clear(),
-                Err(e) if e.error_len().is_none() => return, // still incomplete, chunk exhausted
+                Err(e) if e.error_len().is_none() => return,
                 Err(_) => {
                     self.utf8_valid = false;
                     self.utf8_carry.clear();
@@ -1271,8 +1249,6 @@ thread_local! {
     static CONTENT_CLASSIFICATIONS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
 
-/// Test-only: how many cheap classification passes (`content_kind_from_reader`)
-/// have run on this thread.
 #[cfg(test)]
 pub fn content_classifications() -> usize {
     CONTENT_CLASSIFICATIONS.with(|passes| passes.get())
@@ -1712,9 +1688,6 @@ mod tests {
     fn content_kind_agrees_with_the_full_scan() {
         use std::io::Cursor;
 
-        // Chunk boundaries fall at 4 + k * CONTENT_CHUNK (four bytes are
-        // peeked for the BOM); every sample is checked at several offsets so
-        // multibyte sequences straddle a boundary at each possible split.
         let boundary = 4 + CONTENT_CHUNK;
         let filler = |n: usize| vec![b'a'; n];
         let mut samples: Vec<Vec<u8>> = vec![
@@ -2436,9 +2409,6 @@ mod tests {
         let base = std::env::temp_dir().join("fselect_get_metadata_plain_test");
         let _ = fs::remove_dir_all(&base);
         fs::create_dir_all(base.join("sub")).unwrap();
-        // Enough entries that NTFS spills the directory index out of the MFT
-        // record: a handle-based query then reports the index allocation as
-        // the directory's size, where the directory listing says 0.
         for i in 0..300 {
             fs::write(base.join("sub").join(format!("inner_file_with_a_long_name_{i:04}.txt")), "x").unwrap();
         }
@@ -2472,7 +2442,7 @@ mod tests {
             || !create_symlink(&base.join("sub"), &base.join("dir_link"), true)
         {
             let _ = fs::remove_dir_all(&base);
-            return; // symlink creation is a privilege on some systems
+            return;
         }
 
         let file_link = dir_entry_for(&base.join("file_link"));

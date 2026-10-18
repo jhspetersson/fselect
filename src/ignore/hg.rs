@@ -101,10 +101,6 @@ fn parse_hgignore(file_path: &Path, dir_path: &Path) -> Result<Vec<HgignoreFilte
     parse_hgignore_chain(file_path, dir_path, &mut Vec::new())
 }
 
-/// `chain` holds the files currently being parsed, outermost first, so an
-/// `include:` that leads back to one of them is reported as a cycle instead
-/// of recursing until the stack is exhausted. A file reached twice through
-/// different branches is not a cycle and is parsed again.
 fn parse_hgignore_chain(
     file_path: &Path,
     dir_path: &Path,
@@ -710,8 +706,6 @@ mod tests {
         let err = parse_hgignore(&dir.join("a.hgignore"), &dir).expect_err("two files including each other must fail");
         assert!(err.contains("cyclic include") && err.contains("a.hgignore"), "{err}");
 
-        // A legitimate chain still works, and the same file may be reached
-        // twice through different branches without being a cycle.
         std::fs::write(dir.join("top.hgignore"), "include:mid.hgignore\ninclude:leaf.hgignore\n").unwrap();
         std::fs::write(dir.join("mid.hgignore"), "syntax: glob\n*.mid\ninclude:leaf.hgignore\n").unwrap();
         std::fs::write(dir.join("leaf.hgignore"), "syntax: glob\n*.leaf\n").unwrap();

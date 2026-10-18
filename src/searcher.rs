@@ -170,7 +170,6 @@ fn apply_minus(column_expr: &Expr, value: Variant) -> Variant {
         .unwrap_or(value)
 }
 
-/// A rendered number as a numeric variant, or the text itself when it is not one.
 fn numeric_or_text(text: &str) -> Variant {
     text.parse::<i64>()
         .map(Variant::from_int)
@@ -495,9 +494,6 @@ impl<'a> Searcher<'a> {
 
     /// In a GROUP BY query an ORDER BY expression must be a selected column,
     /// an aggregate, or a grouping column; anything else has no per-group value.
-    /// Whether any clause reads a column that needs the char/word/line content
-    /// scan, so classification-only columns (`encoding`, `has_bom`) can share
-    /// it instead of reading the file separately.
     fn needs_full_content_scan(query: &Query) -> bool {
         let mut fields = query.get_all_fields();
         if let Some(ref expr) = query.expr {
@@ -856,9 +852,6 @@ impl<'a> Searcher<'a> {
                         && !self.group_conforms(&mut file_map, group_acc, having_expr)? {
                             continue;
                         }
-                    // Only groups that survive HAVING are rendered, so only
-                    // they get their aliased aggregates evaluated and bound:
-                    // a filtered-out group may make such a column fail.
                     let aggregate_values = self.aggregate_alias_values(&aliases, &mut file_map, group_acc)?;
                     if !aggregate_values.is_empty() {
                         self.bind_group_context(&aliases, group_key, &aggregate_values);
@@ -940,9 +933,6 @@ impl<'a> Searcher<'a> {
                         self.group_conforms(&mut HashMap::new(), ungrouped_acc, having_expr)?;
                 }
 
-                // Nothing is evaluated for a group HAVING rejects: its columns
-                // (and the aliased aggregates bound for correlated subqueries)
-                // may well be what HAVING guards against, like `100 / sum(size)`.
                 if passes_having {
                     let aliases = self.query.own_root_aliases();
                     let aggregate_values = self.aggregate_alias_values(&aliases, &mut HashMap::new(), ungrouped_acc)?;
@@ -1690,10 +1680,6 @@ impl<'a> Searcher<'a> {
         bare.cache_key()
     }
 
-    /// Values of the aliased aggregate columns for one group (`sum(size) as
-    /// total`), evaluated before any column is rendered so a correlated
-    /// subquery can read them as `t.total` wherever it appears in the SELECT
-    /// list. Nothing is computed when the query declares no root alias.
     fn aggregate_alias_values(
         &mut self,
         aliases: &HashSet<String>,
@@ -1710,15 +1696,14 @@ impl<'a> Searcher<'a> {
                 && column.has_aggregate_function()
             {
                 let value = self.get_column_expr_value(None, &None, Path::new(""), file_map, Some(accumulator), column)?;
-                values.push((alias.clone(), numeric_or_text(&value.to_string())));
+                let text = value.to_string();
+                let value = if column.contains_numeric() { numeric_or_text(&text) } else { Variant::from_string(&text) };
+                values.push((alias.clone(), value));
             }
         }
         Ok(values)
     }
 
-    /// Expose one group's row to correlated subqueries under every own root
-    /// alias: grouping values (by field name, grouping alias and matching
-    /// SELECT aliases) and the aliased aggregates from `aggregate_alias_values`.
     fn bind_group_context(&self, aliases: &HashSet<String>, group_key: &[String], aggregate_values: &[(String, Variant)]) {
         let mut context = self.record_context.borrow_mut();
         for alias in aliases {
@@ -4523,7 +4508,6 @@ mod tests {
             "select ext, sum(size) as total, (select count(*) from __DIR__/other where size > t.total) from __DIR__/data as t group by ext order by ext",
             &tmp,
         );
-        // The subquery column comes before the aggregate it refers to.
         let before = run_query_against_dir(
             "select ext, (select count(*) from __DIR__/other where size > t.total), sum(size) as total from __DIR__/data as t group by ext order by ext",
             &tmp,
@@ -4581,8 +4565,6 @@ mod tests {
         fs::write(tmp.join("b.log"), "").unwrap();
         fs::write(tmp.join("c.txt"), "xxxx").unwrap();
 
-        // The log group sums to zero; HAVING drops it, so the aliased column
-        // (bound for correlated subqueries) must never be computed for it.
         let grouped = search_dir(
             "select ext, 100 / sum(size) as ratio from __DIR__ as t group by ext having sum(size) > 0",
             &tmp, Config::default(), true,
@@ -4613,9 +4595,6 @@ mod tests {
             fs::write(tmp.join("other").join(name), "x").unwrap();
         }
 
-        // The alias makes the column part of the group's alias context, so it
-        // is evaluated early; the correlation `t.ext` must already be this
-        // group's, not the previous one's, whichever order the groups come in.
         let query = "select ext, sum(size) + (select count(*) from __DIR__/other where ext = t.ext) as score from __DIR__/data as t group by ext order by ext";
         let ascending = run_query_against_dir(query, &tmp);
         let descending = run_query_against_dir(&format!("{query} desc"), &tmp);
@@ -4623,6 +4602,34 @@ mod tests {
 
         assert_eq!(ascending, vec!["md\t15", "txt\t3"]);
         assert_eq!(descending, vec!["txt\t3", "md\t15"]);
+    }
+
+    #[test]
+    fn text_aggregate_aliases_keep_numeric_looking_names_as_text() {
+        let tmp = std::env::temp_dir().join("fselect_test_text_aggregate_alias");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        for name in ["001", "002", "010"] {
+            fs::write(tmp.join(name), "x").unwrap();
+        }
+
+        let found = run_query_against_dir(
+            "select min(name) as first, (select count(*) from __DIR__ where name in (t.first)) from __DIR__ as t",
+            &tmp,
+        );
+        let length = run_query_against_dir(
+            "select min(name) as first, (select count(*) from __DIR__ where length(t.first) = 3) from __DIR__ as t",
+            &tmp,
+        );
+        let numeric = run_query_against_dir(
+            "select sum(size) as total, (select count(*) from __DIR__ where size < t.total) from __DIR__ as t",
+            &tmp,
+        );
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(found, vec!["001\t1"]);
+        assert_eq!(length, vec!["001\t3"]);
+        assert_eq!(numeric, vec!["3\t3"]);
     }
 
     #[test]

@@ -26,8 +26,6 @@ impl DurationExtractor for Mp4DurationExtractor {
             .map(|ts| ts.0)
             .filter(|&ts| ts > 0)
             .unwrap_or(1000);
-        // The movie lasts as long as its longest track, whatever its type:
-        // an audio-only MP4 has no video track but a duration all the same.
         Ok(context
             .tracks
             .iter()
@@ -65,8 +63,6 @@ mod test {
 
     #[test]
     fn audio_only_mp4_reports_its_duration() -> Result<(), Box<dyn Error>> {
-        // An AAC-only ISO-BMFF file has no video track; its duration lives in
-        // the audio track header all the same.
         let path_string =
             std::env::var("CARGO_MANIFEST_DIR")? + "/resources/test/" + "audio/tone-5s.mp4";
         let path = PathBuf::from(path_string);

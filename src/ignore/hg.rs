@@ -192,7 +192,7 @@ fn parse_hgignore_lines(
                         let include_dir_path = match subinclude {
                             true => include_path
                                 .parent()
-                                .map(Path::to_path_buf)
+                                .map(normalize_lexically)
                                 .unwrap_or_else(|| dir_path.to_path_buf()),
                             false => dir_path.to_path_buf(),
                         };
@@ -220,6 +220,24 @@ fn parse_hgignore_lines(
         true => Ok(result),
         false => Err(err),
     }
+}
+
+fn normalize_lexically(path: &Path) -> std::path::PathBuf {
+    let mut result = std::path::PathBuf::new();
+    for component in path.components() {
+        match component {
+            std::path::Component::CurDir => {}
+            std::path::Component::ParentDir => {
+                if matches!(result.components().next_back(), Some(std::path::Component::Normal(_))) {
+                    result.pop();
+                } else {
+                    result.push(component);
+                }
+            }
+            _ => result.push(component),
+        }
+    }
+    result
 }
 
 fn convert_hgignore_pattern(
@@ -660,6 +678,27 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         dir
+    }
+
+    #[test]
+    fn subinclude_paths_with_dot_components_still_root_their_rules() {
+        let dir = make_test_dir("fselect_hg_subinclude_dots_test");
+        std::fs::create_dir_all(dir.join("sub")).unwrap();
+        std::fs::write(dir.join("sub").join("rules.ignore"), "syntax: glob\n*.log\nsyntax: regexp\n^deep\n").unwrap();
+        let log = under(&dir, "sub/a.log");
+        let deep = under(&dir, "sub/deep.txt");
+        let outside = under(&dir, "deep.txt");
+
+        for directive in ["subinclude:sub/rules.ignore", "subinclude:./sub/rules.ignore", "subinclude:sub/../sub/rules.ignore"] {
+            std::fs::write(dir.join(".hgignore"), format!("{directive}\n")).unwrap();
+            let filters = parse_hgignore(&dir.join(".hgignore"), &dir).unwrap();
+            assert_eq!(filters.len(), 2, "{directive}");
+            assert!(matches_hgignore_filter(&filters, &log), "{directive}: glob rule");
+            assert!(matches_hgignore_filter(&filters, &deep), "{directive}: regexp rule rooted at sub/");
+            assert!(!matches_hgignore_filter(&filters, &outside), "{directive}: subinclude rules stay below their directory");
+        }
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

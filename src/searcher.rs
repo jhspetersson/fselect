@@ -4601,6 +4601,31 @@ mod tests {
     }
 
     #[test]
+    fn aliased_aggregates_with_correlated_subqueries_see_their_own_group() {
+        let tmp = std::env::temp_dir().join("fselect_test_aliased_aggregate_own_group");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(tmp.join("data")).unwrap();
+        fs::create_dir_all(tmp.join("other")).unwrap();
+        for (name, size) in [("a.txt", 1), ("b.txt", 2), ("c.md", 5), ("d.md", 7)] {
+            fs::write(tmp.join("data").join(name), "x".repeat(size)).unwrap();
+        }
+        for name in ["o1.md", "o2.md", "o3.md"] {
+            fs::write(tmp.join("other").join(name), "x").unwrap();
+        }
+
+        // The alias makes the column part of the group's alias context, so it
+        // is evaluated early; the correlation `t.ext` must already be this
+        // group's, not the previous one's, whichever order the groups come in.
+        let query = "select ext, sum(size) + (select count(*) from __DIR__/other where ext = t.ext) as score from __DIR__/data as t group by ext order by ext";
+        let ascending = run_query_against_dir(query, &tmp);
+        let descending = run_query_against_dir(&format!("{query} desc"), &tmp);
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(ascending, vec!["md\t15", "txt\t3"]);
+        assert_eq!(descending, vec!["txt\t3", "md\t15"]);
+    }
+
+    #[test]
     fn bfs_stops_opening_queued_directories_once_the_limit_is_reached() {
         let tmp = std::env::temp_dir().join("fselect_test_bfs_limit");
         let _ = fs::remove_dir_all(&tmp);

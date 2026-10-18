@@ -79,6 +79,23 @@ pub fn with_archived_entry<T>(archive: &Path, file_info: &FileInfo, read: impl F
     }
 }
 
+pub fn archived_directory_has_children(archive: &Path, file_info: &FileInfo) -> Option<bool> {
+    fn has_children<'a>(prefix: &str, names: impl Iterator<Item = &'a str>) -> bool {
+        names
+            .map(|name| name.replace('\\', "/"))
+            .any(|name| name != prefix && name.starts_with(prefix))
+    }
+
+    let mut prefix = file_info.name.replace('\\', "/");
+    if !prefix.ends_with('/') {
+        prefix.push('/');
+    }
+    match &file_info.member {
+        Some(member) => Some(has_children(&prefix, member.archive.borrow().file_names())),
+        None => Some(has_children(&prefix, open_archive(archive)?.file_names())),
+    }
+}
+
 pub fn archive_member_index<R>(archive: &zip::ZipArchive<R>, name: &str) -> Option<usize>
 where
     R: std::io::Read + std::io::Seek

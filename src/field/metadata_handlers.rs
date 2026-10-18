@@ -318,6 +318,12 @@ pub fn handle_is_hidden(ctx: &mut FieldContext) -> Result<Variant, SearchError> 
 pub fn handle_is_empty(ctx: &mut FieldContext) -> Result<Variant, SearchError> {
     match ctx.file_info {
         Some(file_info) => {
+            if file_info.name.ends_with('/') || file_info.name.ends_with('\\') {
+                return Ok(match crate::fileinfo::archived_directory_has_children(&ctx.entry.path(), file_info) {
+                    Some(has_children) => Variant::from_bool(!has_children),
+                    None => Variant::empty(VariantType::Bool),
+                });
+            }
             Ok(Variant::from_bool(file_info.size == 0))
         }
         _ => {
@@ -708,6 +714,33 @@ mod tests {
 
         assert_eq!(is_dir.to_string(), "true");
         assert_eq!(is_file.to_string(), "false");
+    }
+
+    #[test]
+    fn archived_directory_is_empty_only_without_children() {
+        use std::io::Write;
+
+        let tmp = std::env::temp_dir().join("fselect_test_archived_is_empty_h");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        let mut zip = zip::ZipWriter::new(fs::File::create(tmp.join("pack.zip")).unwrap());
+        let options = zip::write::SimpleFileOptions::default();
+        zip.add_directory("full", options).unwrap();
+        zip.start_file("full/child.txt", options).unwrap();
+        zip.write_all(b"x").unwrap();
+        zip.add_directory("empty", options).unwrap();
+        zip.start_file("blank.txt", options).unwrap();
+        zip.finish().unwrap();
+        let entry = fs::read_dir(&tmp).unwrap().next().unwrap().unwrap();
+
+        let is_empty = |inner: &str| {
+            let file_info = Some(FileInfo::named(inner));
+            test_field(&entry, &file_info, &tmp, &Field::IsEmpty).to_string()
+        };
+        let results = [is_empty("full/"), is_empty("full\\"), is_empty("empty/"), is_empty("blank.txt")];
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(results, ["false", "false", "true", "true"]);
     }
 
     #[test]

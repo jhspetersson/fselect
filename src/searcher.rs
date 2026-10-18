@@ -851,12 +851,18 @@ impl<'a> Searcher<'a> {
                     for (i, k) in group_keys.iter().enumerate() {
                         file_map.insert(k.clone(), group_key.get(i).cloned().unwrap_or_default());
                     }
-                    let aggregate_values = self.aggregate_alias_values(&aliases, &mut file_map, group_acc)?;
-                    self.bind_group_context(&aliases, group_key, &aggregate_values);
+                    self.bind_group_context(&aliases, group_key, &[]);
                     if let Some(having_expr) = having_expr
                         && !self.group_conforms(&mut file_map, group_acc, having_expr)? {
                             continue;
                         }
+                    // Only groups that survive HAVING are rendered, so only
+                    // they get their aliased aggregates evaluated and bound:
+                    // a filtered-out group may make such a column fail.
+                    let aggregate_values = self.aggregate_alias_values(&aliases, &mut file_map, group_acc)?;
+                    if !aggregate_values.is_empty() {
+                        self.bind_group_context(&aliases, group_key, &aggregate_values);
+                    }
                     let mut items: Vec<(String, String)> = Vec::new();
                     for column_expr in &self.query.fields {
                         let value = self.get_column_expr_value(
@@ -928,32 +934,36 @@ impl<'a> Searcher<'a> {
                 let accumulators = std::mem::take(&mut self.accumulators);
                 let empty_acc = function::GroupAccumulator::default();
                 let ungrouped_acc = accumulators.get(&vec![]).unwrap_or(&empty_acc);
-                let aliases = self.query.own_root_aliases();
-                let aggregate_values = self.aggregate_alias_values(&aliases, &mut HashMap::new(), ungrouped_acc)?;
-                self.bind_group_context(&aliases, &[], &aggregate_values);
                 let mut passes_having = true;
                 if let Some(having_expr) = self.query.having.as_ref() {
                     passes_having =
                         self.group_conforms(&mut HashMap::new(), ungrouped_acc, having_expr)?;
                 }
-                for column_expr in &self.query.fields {
-                    let value = self.get_column_expr_value(
-                        None,
-                        &None,
-                        Path::new(""),
-                        &mut HashMap::new(),
-                        Some(ungrouped_acc),
-                        column_expr
-                    )?;
-                    items.push((column_expr.column_name(), value.to_string()));
-                }
-                if self.root_depth_column
-                    && let Some((own_path, root_depth)) = &ungrouped_acc.representative
-                {
-                    Self::push_subquery_identity(&mut items, own_path, *root_depth);
-                }
 
+                // Nothing is evaluated for a group HAVING rejects: its columns
+                // (and the aliased aggregates bound for correlated subqueries)
+                // may well be what HAVING guards against, like `100 / sum(size)`.
                 if passes_having {
+                    let aliases = self.query.own_root_aliases();
+                    let aggregate_values = self.aggregate_alias_values(&aliases, &mut HashMap::new(), ungrouped_acc)?;
+                    self.bind_group_context(&aliases, &[], &aggregate_values);
+                    for column_expr in &self.query.fields {
+                        let value = self.get_column_expr_value(
+                            None,
+                            &None,
+                            Path::new(""),
+                            &mut HashMap::new(),
+                            Some(ungrouped_acc),
+                            column_expr
+                        )?;
+                        items.push((column_expr.column_name(), value.to_string()));
+                    }
+                    if self.root_depth_column
+                        && let Some((own_path, root_depth)) = &ungrouped_acc.representative
+                    {
+                        Self::push_subquery_identity(&mut items, own_path, *root_depth);
+                    }
+
                     self.results_writer.write_row(&mut buf, items)?;
                     let rendered = String::from(buf);
                     self.output_buffer.insert(
@@ -4560,6 +4570,34 @@ mod tests {
         assert_eq!(having, vec!["txt\t2"]);
         assert_eq!(ordered, vec!["txt\t3", "md\t3"]);
         assert_eq!(derived, vec!["MD\t1", "TXT\t2"]);
+    }
+
+    #[test]
+    fn having_filters_groups_before_aliased_aggregates_are_evaluated() {
+        let tmp = std::env::temp_dir().join("fselect_test_having_before_alias_binding");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        fs::write(tmp.join("a.log"), "").unwrap();
+        fs::write(tmp.join("b.log"), "").unwrap();
+        fs::write(tmp.join("c.txt"), "xxxx").unwrap();
+
+        // The log group sums to zero; HAVING drops it, so the aliased column
+        // (bound for correlated subqueries) must never be computed for it.
+        let grouped = search_dir(
+            "select ext, 100 / sum(size) as ratio from __DIR__ as t group by ext having sum(size) > 0",
+            &tmp, Config::default(), true,
+        );
+        let ungrouped = search_dir(
+            "select 100 / sum(size) as ratio from __DIR__ as t where ext = log having sum(size) > 0",
+            &tmp, Config::default(), true,
+        );
+        let _ = fs::remove_dir_all(&tmp);
+
+        let rows = |searcher: &Searcher| searcher.output_buffer.iter_values().map(|row| row.trim_end().to_string()).collect::<Vec<_>>();
+        assert_eq!(rows(&grouped), vec!["txt\t25"]);
+        assert_eq!(grouped.error_count, 0, "the zero-sum group was filtered out, nothing may be divided by zero");
+        assert!(rows(&ungrouped).is_empty(), "the single group fails HAVING, so no row and no error");
+        assert_eq!(ungrouped.error_count, 0);
     }
 
     #[test]

@@ -62,6 +62,26 @@ struct AncestorDir {
     parent: Option<Rc<AncestorDir>>,
 }
 
+/// Row aliases whose evaluation failed, shared with nested searchers. The
+/// error is reported only once such an alias is actually read, so a WHERE
+/// guard that never reaches the alias also never sees its error, exactly as
+/// with the inline expression.
+#[derive(Default)]
+struct AliasFailures {
+    pending: HashMap<String, HashMap<String, SearchError>>,
+    hit: Option<(String, SearchError)>,
+}
+
+impl AliasFailures {
+    fn note_read(&mut self, alias: &str, key: &str) {
+        if self.hit.is_none()
+            && let Some(err) = self.pending.get(alias).and_then(|keys| keys.get(key))
+        {
+            self.hit = Some((alias.to_string(), err.clone()));
+        }
+    }
+}
+
 struct QueuedDir {
     path: PathBuf,
     root_depth: u32,
@@ -101,6 +121,7 @@ pub struct Searcher<'a> {
     ordering_asc_rc: Rc<Vec<bool>>,
 
     record_context: Rc<RefCell<HashMap<String, HashMap<String, Variant>>>>,
+    alias_failures: Rc<RefCell<AliasFailures>>,
     current_alias: Option<String>,
     subquery_required_fields: Option<HashMap<Field, HashSet<String>>>,
     subquery_required_columns: Vec<(String, Expr)>,
@@ -385,6 +406,7 @@ impl<'a> Searcher<'a> {
             ordering_fields_rc: Rc::new(query.ordering_fields.clone()),
             ordering_asc_rc: Rc::new(query.ordering_asc.clone()),
             record_context,
+            alias_failures: Rc::new(RefCell::new(AliasFailures::default())),
             current_alias: None,
             subquery_required_fields: None,
             subquery_required_columns: vec![],
@@ -1301,6 +1323,7 @@ impl<'a> Searcher<'a> {
         // output_buffer instead of leaking to stdout (debug mode included).
         sub_searcher.silent_mode = true;
         sub_searcher.is_nested = true;
+        sub_searcher.alias_failures = Rc::clone(&self.alias_failures);
         sub_searcher.enclosing_aliases = self.enclosing_aliases.union(&self.query.own_root_aliases()).cloned().collect();
         sub_searcher.root_depth_column = root_depth_column;
         let shadowed: Vec<(String, Option<HashMap<String, Variant>>)> = {
@@ -2014,11 +2037,14 @@ impl<'a> Searcher<'a> {
                                 file_map.insert(cache_key, value.to_string());
                                 value
                             }
-                            //TODO: this should be propagated up to the higher context
-                            None => Variant::empty(VariantType::String),
+                            None => {
+                                self.alias_failures.borrow_mut().note_read(&context_name, &field_key);
+                                Variant::empty(VariantType::String)
+                            }
                         });
                     }
                     None if own_row || self.is_declared_alias(&context_name) => {
+                        self.alias_failures.borrow_mut().note_read(&context_name, &field_key);
                         return Ok(Variant::empty(VariantType::String));
                     }
                     None => {
@@ -2242,7 +2268,7 @@ impl<'a> Searcher<'a> {
         required_columns: &[(String, Expr)],
     ) -> Result<(), SearchError> {
         let rounds = if required_columns.len() > 1 { required_columns.len() } else { 1 };
-        let mut failed: Vec<usize> = Vec::new();
+        let mut failed: Vec<(usize, SearchError)> = Vec::new();
         for _ in 0..rounds {
             let mut changed = false;
             failed.clear();
@@ -2251,7 +2277,7 @@ impl<'a> Searcher<'a> {
                 let value = match self.get_column_expr_value(Some(entry), file_info, root_path, &mut scratch, None, column) {
                     Ok(value) => value,
                     Err(err) if !err.is_fatal() => {
-                        failed.push(index);
+                        failed.push((index, err));
                         Variant::empty(VariantType::String)
                     }
                     Err(err) => return Err(err),
@@ -2268,16 +2294,37 @@ impl<'a> Searcher<'a> {
                 break;
             }
         }
-        for index in failed {
-            let mut scratch = HashMap::new();
-            self.get_column_expr_value(Some(entry), file_info, root_path, &mut scratch, None, &required_columns[index].1)?;
+        for (index, err) in failed {
+            let name = &required_columns[index].0;
+            self.record_context.borrow_mut().entry(current_alias.to_string()).or_default().remove(name);
+            self.alias_failures.borrow_mut().pending.entry(current_alias.to_string()).or_default().insert(name.clone(), err);
         }
         Ok(())
+    }
+
+    fn alias_read_failure(&self) -> Result<(), SearchError> {
+        let mut failures = self.alias_failures.borrow_mut();
+        let owned = failures
+            .hit
+            .as_ref()
+            .is_some_and(|(alias, _)| self.query.roots.iter().any(|root| root.options.alias.as_deref() == Some(alias.as_str())));
+        if !owned {
+            return Ok(());
+        }
+        match failures.hit.take() {
+            Some((_, err)) => Err(err),
+            None => Ok(()),
+        }
     }
 
     fn check_file_inner(&mut self, entry: &DirEntry, root_path: &Path, file_info: &Option<FileInfo>, file_map: &mut HashMap<String, String>) -> Result<(), SearchError> {
         if let Some(ref current_alias) = self.current_alias.clone() {
             self.record_context.borrow_mut().entry(current_alias.to_string()).or_default().clear();
+            {
+                let mut failures = self.alias_failures.borrow_mut();
+                failures.pending.remove(current_alias.as_str());
+                failures.hit = None;
+            }
 
             if let Some(required_fields) = std::mem::take(&mut self.subquery_required_fields) {
                 let mut field_values = HashMap::new();
@@ -2304,6 +2351,7 @@ impl<'a> Searcher<'a> {
 
         if let Some(ref expr) = self.query.expr {
             let result = self.conforms(entry, file_info, root_path, expr)?;
+            self.alias_read_failure()?;
             if !result {
                 return Ok(());
             }
@@ -2337,6 +2385,7 @@ impl<'a> Searcher<'a> {
             } else {
                 None
             };
+            self.alias_read_failure()?;
             let accumulator = self.accumulators.entry(group_key).or_default();
             if identity.is_some() {
                 accumulator.representative = identity;
@@ -2392,6 +2441,7 @@ impl<'a> Searcher<'a> {
             }
         }
 
+        self.alias_read_failure()?;
         if self.is_buffered() {
             let row = if defer {
                 BufferedRow::Pending(PendingRow {
@@ -5542,6 +5592,37 @@ mod tests {
         assert_eq!(numeric, vec!["b.txt\t10\t10"], "numeric chain");
         assert_eq!(boolean, vec!["a.txt\ttrue\ttrue", "b.txt\ttrue\ttrue", "c.txt\ttrue\ttrue"], "boolean chain");
         assert_eq!(reversed, vec!["b.txt\t10\t10\t10"], "reverse-declared chain");
+    }
+
+    #[test]
+    fn alias_errors_surface_only_when_the_alias_is_read() {
+        let tmp = std::env::temp_dir().join("fselect_test_alias_errors_lazy");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(tmp.join("metrics")).unwrap();
+        fs::create_dir_all(tmp.join("other")).unwrap();
+        fs::write(tmp.join("metrics").join("a.txt"), "xxxx").unwrap();
+        fs::write(tmp.join("metrics").join("zero.txt"), "").unwrap();
+        fs::write(tmp.join("other").join("o1"), "x").unwrap();
+
+        let rows_and_errors = |query: &str| {
+            let searcher = search_dir(query, &tmp, Config::default(), true);
+            let rows: Vec<String> = searcher.output_buffer.iter_values().map(|s| s.trim_end().to_string()).collect();
+            (rows, searcher.error_count)
+        };
+        let guarded = rows_and_errors(
+            "select name, 100 / size as ratio from __DIR__/metrics as t where size > 0 and (select t.ratio from __DIR__/other limit 1) > 0 order by name",
+        );
+        let ordered = rows_and_errors(
+            "select name, 100 / size as ratio from __DIR__/metrics as t where size > 0 order by (select t.ratio from __DIR__/other limit 1)",
+        );
+        let unguarded = rows_and_errors(
+            "select name, 100 / size as ratio from __DIR__/metrics as t where (select t.ratio from __DIR__/other limit 1) > 0 order by name",
+        );
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(guarded, (vec!["a.txt\t25".to_string()], 0), "guarded by size > 0");
+        assert_eq!(ordered, (vec!["a.txt\t25".to_string()], 0), "alias used only by ORDER BY");
+        assert_eq!(unguarded, (vec!["a.txt\t25".to_string()], 1), "unguarded still reports");
     }
 
     #[test]

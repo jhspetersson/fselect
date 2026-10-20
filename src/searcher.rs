@@ -1168,13 +1168,7 @@ impl<'a> Searcher<'a> {
                 archives.open(archive_path)?
             }
         };
-        let member_name = path
-            .strip_prefix(&archive_path)
-            .ok()?
-            .components()
-            .map(|component| component.as_os_str().to_string_lossy().into_owned())
-            .collect::<Vec<String>>()
-            .join("/");
+        let member_name = Self::archive_member_name(path, &archive_path)?;
         let file_info = {
             let mut guard = shared.borrow_mut();
             let index = archive_member_index(&guard, &member_name)?;
@@ -1182,6 +1176,23 @@ impl<'a> Searcher<'a> {
             to_file_info(&member, Some(ArchiveMember { archive: Rc::clone(&shared), index }))
         };
         Some((archive_path, file_info))
+    }
+
+    fn archive_member_name(path: &Path, archive_path: &Path) -> Option<String> {
+        let raw = path.to_string_lossy();
+        let archive = archive_path.to_string_lossy();
+        if let Some(rest) = raw.strip_prefix(archive.as_ref())
+            && rest.starts_with(['/', '\\'])
+        {
+            return Some(rest.trim_start_matches(['/', '\\']).replace('\\', "/"));
+        }
+        let rest = path.strip_prefix(archive_path).ok()?;
+        Some(
+            rest.components()
+                .map(|component| component.as_os_str().to_string_lossy().into_owned())
+                .collect::<Vec<String>>()
+                .join("/"),
+        )
     }
 
     fn get_list_from_subquery(&mut self, query: Query) -> Result<Vec<String>, SearchError> {

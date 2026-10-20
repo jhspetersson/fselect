@@ -703,6 +703,7 @@ impl<'a> Searcher<'a> {
                     self.query
                         .fields
                         .iter()
+                        .filter(|column| !column.has_aggregate_function())
                         .filter_map(|column| {
                             let declared = column.alias.as_deref()?;
                             names
@@ -2227,6 +2228,53 @@ impl<'a> Searcher<'a> {
         result
     }
 
+    /// Binds the row's aliased columns that correlated subqueries read, in
+    /// settling rounds so an alias may depend on another declared later.
+    /// Failures are tolerated while values settle; a column that still fails
+    /// afterwards is evaluated once more strictly so its error is reported
+    /// like any other row error.
+    fn bind_row_aliases(
+        &mut self,
+        entry: &DirEntry,
+        file_info: &Option<FileInfo>,
+        root_path: &Path,
+        current_alias: &str,
+        required_columns: &[(String, Expr)],
+    ) -> Result<(), SearchError> {
+        let rounds = if required_columns.len() > 1 { required_columns.len() } else { 1 };
+        let mut failed: Vec<usize> = Vec::new();
+        for _ in 0..rounds {
+            let mut changed = false;
+            failed.clear();
+            for (index, (name, column)) in required_columns.iter().enumerate() {
+                let mut scratch = HashMap::new();
+                let value = match self.get_column_expr_value(Some(entry), file_info, root_path, &mut scratch, None, column) {
+                    Ok(value) => value,
+                    Err(err) if !err.is_fatal() => {
+                        failed.push(index);
+                        Variant::empty(VariantType::String)
+                    }
+                    Err(err) => return Err(err),
+                };
+                let previous = self
+                    .record_context
+                    .borrow_mut()
+                    .entry(current_alias.to_string())
+                    .or_default()
+                    .insert(name.clone(), value.clone());
+                changed |= previous.as_ref() != Some(&value);
+            }
+            if !changed && failed.is_empty() {
+                break;
+            }
+        }
+        for index in failed {
+            let mut scratch = HashMap::new();
+            self.get_column_expr_value(Some(entry), file_info, root_path, &mut scratch, None, &required_columns[index].1)?;
+        }
+        Ok(())
+    }
+
     fn check_file_inner(&mut self, entry: &DirEntry, root_path: &Path, file_info: &Option<FileInfo>, file_map: &mut HashMap<String, String>) -> Result<(), SearchError> {
         if let Some(ref current_alias) = self.current_alias.clone() {
             self.record_context.borrow_mut().entry(current_alias.to_string()).or_default().clear();
@@ -2249,27 +2297,9 @@ impl<'a> Searcher<'a> {
             }
 
             let required_columns = std::mem::take(&mut self.subquery_required_columns);
-            let rounds = if required_columns.len() > 1 { required_columns.len() } else { 1 };
-            for _ in 0..rounds {
-                let mut changed = false;
-                for (name, column) in &required_columns {
-                    let mut scratch = HashMap::new();
-                    let value = self
-                        .get_column_expr_value(Some(entry), file_info, root_path, &mut scratch, None, column)
-                        .unwrap_or(Variant::empty(VariantType::String));
-                    let previous = self
-                        .record_context
-                        .borrow_mut()
-                        .entry(current_alias.to_string())
-                        .or_default()
-                        .insert(name.clone(), value.clone());
-                    changed |= previous.as_ref() != Some(&value);
-                }
-                if !changed {
-                    break;
-                }
-            }
+            let outcome = self.bind_row_aliases(entry, file_info, root_path, current_alias, &required_columns);
             self.subquery_required_columns = required_columns;
+            outcome?;
         }
 
         if let Some(ref expr) = self.query.expr {
@@ -5453,6 +5483,35 @@ mod tests {
         assert_eq!(shown, vec!["a.txt	-2	-2", "b.txt	-10	-10"]);
         assert_eq!(ordered, vec!["b.txt	-10", "a.txt	-2"], "ordering through the alias");
         assert_eq!(counted, vec!["a.txt	-2	1", "b.txt	-10	1"], "correlated count through the alias");
+    }
+
+    #[test]
+    fn alias_evaluation_errors_are_reported_like_direct_ones() {
+        let tmp = std::env::temp_dir().join("fselect_test_alias_errors_reported");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(tmp.join("metrics")).unwrap();
+        fs::create_dir_all(tmp.join("other")).unwrap();
+        fs::write(tmp.join("metrics").join("a.txt"), "xxxx").unwrap();
+        fs::write(tmp.join("metrics").join("zero.txt"), "").unwrap();
+        fs::write(tmp.join("other").join("o1"), "x").unwrap();
+
+        let rows_and_errors = |query: &str| {
+            let searcher = search_dir(query, &tmp, Config::default(), true);
+            let rows: Vec<String> = searcher.output_buffer.iter_values().map(|s| s.trim_end().to_string()).collect();
+            (rows, searcher.error_count)
+        };
+        let direct = rows_and_errors("select name, 100 / size as ratio from __DIR__/metrics as t where 100 / size > 0 order by name");
+        let through_alias = rows_and_errors(
+            "select name, 100 / size as ratio from __DIR__/metrics as t where (select t.ratio from __DIR__/other limit 1) > 0 order by name",
+        );
+        let through_exists = rows_and_errors(
+            "select name, 100 / size as ratio from __DIR__/metrics as t where exists(select name from __DIR__/other where t.ratio > 0) order by name",
+        );
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(direct, (vec!["a.txt\t25".to_string()], 1));
+        assert_eq!(through_alias, direct, "scalar subquery on the alias");
+        assert_eq!(through_exists, direct, "exists on the alias");
     }
 
     #[test]

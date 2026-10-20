@@ -71,6 +71,7 @@ struct LexerState {
     in_value_set: bool,
     paren_depth: u32,
     after_as: bool,
+    after_value_end: bool,
 }
 
 impl LexerState {
@@ -87,11 +88,16 @@ impl LexerState {
             in_value_set: false,
             paren_depth: 0,
             after_as: false,
+            after_value_end: false,
         }
     }
 
     fn in_fields(&self) -> bool {
         self.clause == Clause::Fields
+    }
+
+    fn in_column_expression(&self) -> bool {
+        matches!(self.clause, Clause::Fields | Clause::GroupBy)
     }
 
     fn in_where(&self) -> bool {
@@ -371,6 +377,13 @@ impl Lexer {
                 "or" if self.state.in_where() && self.state.is_keyword_position(false) => Some(Lexeme::Or),
                 "and" if self.state.in_where() && self.state.is_keyword_position(false) => Some(Lexeme::And),
                 "not" if self.state.in_where() && !self.state.after_operator && !self.state.after_value_start => Some(Lexeme::Not),
+                "or" if self.state.in_column_expression() && self.state.after_value_end && self.value_follows() => Some(Lexeme::Or),
+                "and" if self.state.in_column_expression() && self.state.after_value_end && self.value_follows() => Some(Lexeme::And),
+                "not" if self.state.in_column_expression()
+                    && !self.state.after_value_end
+                    && !self.state.after_operator
+                    && !self.state.after_as
+                    && self.value_follows() => Some(Lexeme::Not),
                 "group" if self.state.is_keyword_position(search_root_ctx) && self.next_word_is("by") => {
                     self.state.clause = Clause::GroupBy;
                     Some(Lexeme::Group)
@@ -421,6 +434,11 @@ impl Lexer {
             let scope = self.current_scope();
             self.root_aliases.push((alias.to_ascii_lowercase(), scope));
         }
+        self.state.after_value_end = match lexeme {
+            Some(Lexeme::RawString(ref s)) => !s.eq_ignore_ascii_case("as"),
+            Some(Lexeme::String(_)) | Some(Lexeme::Close) | Some(Lexeme::CurlyClose) => true,
+            _ => false,
+        };
         self.state.after_as = matches!(lexeme, Some(Lexeme::RawString(ref s)) if s.eq_ignore_ascii_case("as"));
         self.state.possible_search_root = matches!(lexeme, Some(Lexeme::From))
                 || (matches!(lexeme, Some(Lexeme::Comma)) && self.state.clause == Clause::Roots);
@@ -472,6 +490,24 @@ impl Lexer {
         false
     }
 
+    fn value_follows(&self) -> bool {
+        let mut input_index = self.input_index;
+        let mut char_index = self.char_index;
+        while let Some(part) = self.chars.get(input_index) {
+            if let Some(&c) = part.iter().skip(char_index).find(|c| !c.is_ascii_whitespace()) {
+                if matches!(c, ',' | ')' | '}') {
+                    return false;
+                }
+                return !["from", "into", "where", "group", "order", "limit", "offset", "having", "as"]
+                    .iter()
+                    .any(|keyword| self.next_word_is(keyword));
+            }
+            input_index += 1;
+            char_index = 0;
+        }
+        false
+    }
+
     fn is_arithmetic_op_char(&self, c: char) -> bool {
         match c {
             '+' | '-' => self.state.in_expression() && !self.state.after_operator,
@@ -483,7 +519,7 @@ impl Lexer {
     }
 
     fn is_op_char(&self, c: char) -> bool {
-        if !matches!(self.state.clause, Clause::Fields | Clause::Where) {
+        if !matches!(self.state.clause, Clause::Fields | Clause::Where | Clause::GroupBy) {
             return false;
         }
 
@@ -2459,6 +2495,32 @@ c"))), "lexemes were {:?}", lexemes);
             Some(Lexeme::RawString(String::from("and"))),
             "and in SELECT column list should be RawString, not And keyword"
         );
+    }
+
+    #[test]
+    fn logical_words_in_select_column_list_are_operators_between_values() {
+        let mut lexer = lexer!("select name, not is_file, is_dir and size > 2, coalesce(is_file or is_dir, 0) from .");
+
+        let mut lexemes = vec![];
+        while let Some(lexeme) = lexer.next_lexeme() {
+            lexemes.push(lexeme);
+        }
+        assert!(lexemes.contains(&Lexeme::Not));
+        assert!(lexemes.contains(&Lexeme::And));
+        assert!(lexemes.contains(&Lexeme::Or));
+    }
+
+    #[test]
+    fn logical_words_without_an_operand_in_select_stay_column_names() {
+        for query in ["select not from .", "select name, not from .", "select name, and from .", "select name, size or from ."] {
+            let mut lexer = Lexer::new(vec![query.to_string()]);
+            while let Some(lexeme) = lexer.next_lexeme() {
+                assert!(
+                    !matches!(lexeme, Lexeme::Not | Lexeme::And | Lexeme::Or),
+                    "{query} produced {lexeme:?}"
+                );
+            }
+        }
     }
 
     #[test]

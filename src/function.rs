@@ -1960,6 +1960,7 @@ impl FieldAccumulator {
 pub struct GroupAccumulator {
     pub total_count: usize,
     pub fields: HashMap<String, FieldAccumulator>,
+    pub key_types: Vec<Option<VariantType>>,
     /// Absolute path and root depth of the first entry that joined the group.
     /// Only recorded when the query drives an outer FROM-subselect, so each
     /// group can stand in for one filesystem entry there.

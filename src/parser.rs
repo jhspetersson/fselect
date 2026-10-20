@@ -339,7 +339,7 @@ impl <'a> Parser<'a> {
                         }
                     }
                 }
-                Some(Lexeme::Open) | Some(Lexeme::CurlyOpen) => {
+                Some(Lexeme::Open) | Some(Lexeme::CurlyOpen) | Some(Lexeme::Not) => {
                     self.drop_lexeme();
                     match self.parse_expr() {
                         Ok(Some(field)) => fields.push(field),
@@ -785,7 +785,8 @@ impl <'a> Parser<'a> {
         }
     }
 
-    fn fold_by_weight(&self, mut operands: Vec<Expr>, logical_op: LogicalOp) -> Result<Expr, String> {
+    fn fold_by_weight(&self, operands: Vec<Expr>, logical_op: LogicalOp) -> Result<Expr, String> {
+        let mut operands: Vec<Expr> = operands.into_iter().map(|operand| self.as_condition(operand)).collect();
         operands.sort_by_key(|operand| operand.weight);
         let mut operands = operands.into_iter();
         let mut result = operands.next().expect("a chain has at least one operand");
@@ -818,9 +819,16 @@ impl <'a> Parser<'a> {
         self.negation_depth -= 1;
 
         match result {
-            Ok(Some(expr)) => Ok(Some(Self::negate_expr_op(&expr))),
+            Ok(Some(expr)) => Ok(Some(self.as_condition(expr).negated())),
             other => other,
         }
+    }
+
+    fn as_condition(&self, expr: Expr) -> Expr {
+        if self.wraps_bare_booleans() || expr.op.is_some() || expr.logical_op.is_some() {
+            return expr;
+        }
+        Expr::op(expr, Op::Eq, Expr::value(String::from("true")))
     }
 
     fn parse_comparison(&mut self) -> Result<Option<Expr>, String> {
@@ -1594,7 +1602,7 @@ impl <'a> Parser<'a> {
                                 }
                             }
                         }
-                        Some(Lexeme::Open) | Some(Lexeme::CurlyOpen) => {
+                        Some(Lexeme::Open) | Some(Lexeme::CurlyOpen) | Some(Lexeme::Not) => {
                             self.drop_lexeme();
                             match self.parse_expr()? {
                                 Some(group_field) => group_by_fields.push(group_field),
@@ -1895,29 +1903,6 @@ impl <'a> Parser<'a> {
     fn drop_lexeme(&mut self) {
         self.index -= 1;
     }
-
-    fn negate_expr_op(expr: &Expr) -> Expr {
-        let mut result = expr.clone();
-        result.props.clear_file_types();
-
-        if let Some(left) = &expr.left {
-            result.left = Some(Box::from(Self::negate_expr_op(left)));
-        }
-
-        if let &Some(op) = &expr.op {
-            result.op = Some(Op::negate(op));
-        }
-
-        if let Some(ref logical_op) = expr.logical_op {
-            result.logical_op = Some(logical_op.negate());
-        }
-
-        if let Some(right) = &expr.right {
-            result.right = Some(Box::from(Self::negate_expr_op(right)));
-        }
-
-        result
-    }
 }
 
 #[cfg(test)]
@@ -1937,6 +1922,39 @@ mod tests {
         let mut lexer = Lexer::new(vec![query.to_string()]);
         let mut p = Parser::new(&mut lexer);
         p.parse(false).err().unwrap_or_else(|| panic!("{} should not parse", query))
+    }
+
+    #[test]
+    fn bare_booleans_under_not_and_or_inside_arguments_become_conditions() {
+        let expr = parse_where("select name from /test where coalesce(not is_file, 0) = false");
+        let negated = expr.left.as_ref().unwrap().left.as_ref().unwrap();
+        assert_eq!(negated.op, Some(Op::Ne));
+        assert_eq!(negated.left.as_ref().unwrap().field, Some(Field::IsFile));
+
+        let expr = parse_where("select name from /test where coalesce(is_file and size > 2, 0) = true");
+        let conjunction = expr.left.as_ref().unwrap().left.as_ref().unwrap();
+        assert_eq!(conjunction.logical_op, Some(LogicalOp::And));
+        for side in [&conjunction.left, &conjunction.right] {
+            assert!(side.as_ref().unwrap().op.is_some());
+        }
+    }
+
+    #[test]
+    fn select_columns_accept_not_and_or_conditions() {
+        let query = parse_query("select not is_file, coalesce(not is_file, 0), is_file and size > 2 as big from /test").unwrap();
+        assert_eq!(query.fields.len(), 3);
+        assert_eq!(query.fields[0].op, Some(Op::Ne));
+        assert_eq!(query.fields[0].left.as_ref().unwrap().field, Some(Field::IsFile));
+        assert_eq!(query.fields[1].left.as_ref().unwrap().op, Some(Op::Ne));
+        assert_eq!(query.fields[2].logical_op, Some(LogicalOp::And));
+        assert_eq!(query.fields[2].alias.as_deref(), Some("big"));
+    }
+
+    #[test]
+    fn not_flips_only_the_outer_comparison_of_a_nested_one() {
+        let expr = parse_where("select name from /test where not ((size > 2) = false)");
+        assert_eq!(expr.op, Some(Op::Ne));
+        assert_eq!(expr.left.as_ref().unwrap().op, Some(Op::Gt));
     }
 
     #[test]

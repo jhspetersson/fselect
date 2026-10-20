@@ -1233,6 +1233,28 @@ enum Rendering {
 }
 
 impl Expr {
+    pub fn negated(&self) -> Expr {
+        let mut result = self.clone();
+        result.props.clear_file_types();
+
+        if let Some(op) = self.op {
+            result.op = Some(Op::negate(op));
+            return result;
+        }
+
+        if let Some(ref logical_op) = self.logical_op {
+            result.logical_op = Some(logical_op.negate());
+            if let Some(left) = &self.left {
+                result.left = Some(Box::new(left.negated()));
+            }
+            if let Some(right) = &self.right {
+                result.right = Some(Box::new(right.negated()));
+            }
+        }
+
+        result
+    }
+
     pub fn cache_key(&self) -> String {
         let mut key = String::new();
         self.render(&mut key, Rendering::CacheKey).expect("writing to a String cannot fail");

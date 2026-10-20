@@ -1933,7 +1933,9 @@ impl<'a> Searcher<'a> {
             }
             for (grouping_expr, text) in self.query.grouping_fields.iter().zip(group_key) {
                 let value = typed_variant(grouping_expr, text);
-                if let Some(field) = grouping_expr.field {
+                if let Some(field) = grouping_expr.field
+                    && !grouping_expr.minus
+                {
                     entry.insert(field.to_string(), value.clone());
                 }
                 if let Some(ref column_alias) = grouping_expr.alias {
@@ -5679,6 +5681,36 @@ mod tests {
         assert_eq!(ungrouped, vec!["15\t2\t2"]);
         assert_eq!(ungrouped_errors, 0, "no division by zero while rows are scanned");
         assert_eq!(grouped, vec!["md\t3\t10\t10", "txt\t12\t2.5\t2.5"]);
+    }
+
+    #[test]
+    fn negated_grouping_keys_do_not_overwrite_the_raw_field_in_the_group_context() {
+        let tmp = std::env::temp_dir().join("fselect_test_negated_grouping_key");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(tmp.join("data")).unwrap();
+        fs::create_dir_all(tmp.join("other")).unwrap();
+        for (name, size) in [("a.txt", 2), ("b.txt", 10), ("c.txt", 3)] {
+            fs::write(tmp.join("data").join(name), "x".repeat(size)).unwrap();
+        }
+        fs::write(tmp.join("other").join("o1"), "x").unwrap();
+
+        let shown = run_query_against_dir(
+            "select size, count(*), (select t.size from __DIR__/other limit 1) from __DIR__/data as t group by size, -size order by size",
+            &tmp,
+        );
+        let having = run_query_against_dir(
+            "select size, count(*) from __DIR__/data as t group by size, -size having (select t.size from __DIR__/other limit 1) > 5",
+            &tmp,
+        );
+        let aliased = run_query_against_dir(
+            "select size, -size as neg, (select t.neg from __DIR__/other limit 1) from __DIR__/data as t group by size, -size order by size",
+            &tmp,
+        );
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(shown, vec!["2\t1\t2", "3\t1\t3", "10\t1\t10"]);
+        assert_eq!(having, vec!["10\t1"]);
+        assert_eq!(aliased, vec!["2\t-2\t-2", "3\t-3\t-3", "10\t-10\t-10"], "a negated alias keeps its sign");
     }
 
     #[test]

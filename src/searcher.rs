@@ -1702,8 +1702,8 @@ impl<'a> Searcher<'a> {
             .iter()
             .filter(|column| column.alias.is_some() && column.has_aggregate_function())
             .collect();
-        let (correlated, independent): (Vec<&Expr>, Vec<&Expr>) =
-            aliased.iter().partition(|column| column.has_correlated_subquery());
+        let (dependent, independent): (Vec<&Expr>, Vec<&Expr>) =
+            aliased.iter().partition(|column| column.needs_row_context());
         let mut values: Vec<(String, Variant)> = Vec::new();
         for column in independent {
             if let Some(value) = self.aggregate_alias_value(file_map, accumulator, column, skip_failing_columns)? {
@@ -1713,22 +1713,32 @@ impl<'a> Searcher<'a> {
         if !values.is_empty() {
             self.bind_group_context(aliases, group_key, &values);
         }
-        if correlated.is_empty() {
+        if dependent.is_empty() {
             return Ok(());
         }
-        let rounds = if correlated.len() == 1 { 1 } else { correlated.len() + 1 };
+        let rounds = if dependent.len() == 1 { 1 } else { dependent.len() + 1 };
         let mut scratch = HashMap::new();
+        let mut failed: Vec<&Expr> = Vec::new();
         for _ in 0..rounds {
             let before = values.clone();
             scratch = file_map.clone();
-            for column in &correlated {
-                if let Some(value) = self.aggregate_alias_value(&mut scratch, accumulator, column, skip_failing_columns)? {
-                    Self::upsert_alias_value(&mut values, column, value);
-                    self.bind_group_context(aliases, group_key, &values);
+            failed.clear();
+            for column in &dependent {
+                match self.aggregate_alias_value(&mut scratch, accumulator, column, true)? {
+                    Some(value) => {
+                        Self::upsert_alias_value(&mut values, column, value);
+                        self.bind_group_context(aliases, group_key, &values);
+                    }
+                    None => failed.push(column),
                 }
             }
-            if values == before {
+            if values == before && failed.is_empty() {
                 break;
+            }
+        }
+        if !skip_failing_columns {
+            for column in failed {
+                self.aggregate_alias_value(&mut scratch, accumulator, column, false)?;
             }
         }
         file_map.extend(scratch);
@@ -4762,6 +4772,45 @@ mod tests {
         assert_eq!(chained, vec!["md	12	13	14", "txt	3	5	4"]);
         assert_eq!(reversed, vec!["md	14	13	12", "txt	4	5	3"]);
         assert_eq!(ungrouped, vec!["17	16	15"]);
+    }
+
+    #[test]
+    fn aliased_ratios_may_read_correlated_aliases_declared_later() {
+        let tmp = std::env::temp_dir().join("fselect_test_ratio_reads_later_alias");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(tmp.join("data")).unwrap();
+        fs::create_dir_all(tmp.join("other")).unwrap();
+        for (name, size) in [("a.txt", 1), ("b.txt", 2), ("c.md", 5), ("d.md", 7)] {
+            fs::write(tmp.join("data").join(name), "x".repeat(size)).unwrap();
+        }
+        for (name, size) in [("o1", 1), ("o5", 5), ("o20", 20)] {
+            fs::write(tmp.join("other").join(name), "x".repeat(size)).unwrap();
+        }
+
+        let score = "sum(size) + (select count(*) from __DIR__/other where size > t.total) as score";
+        let ratio = "sum(size) / t.score as ratio";
+        let dependency_first = run_query_against_dir(
+            &format!("select ext, sum(size) as total, {score}, {ratio} from __DIR__/data as t group by ext order by ext"),
+            &tmp,
+        );
+        let dependency_later = run_query_against_dir(
+            &format!("select ext, sum(size) as total, {ratio}, {score} from __DIR__/data as t group by ext order by ext"),
+            &tmp,
+        );
+        let ungrouped = run_query_against_dir(
+            &format!("select {ratio}, {score}, sum(size) as total from __DIR__/data as t"),
+            &tmp,
+        );
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(dependency_first.len(), 2, "{dependency_first:?}");
+        assert!(dependency_first[0].starts_with("md\t12\t13\t0.923"), "{dependency_first:?}");
+        assert!(dependency_first[1].starts_with("txt\t3\t5\t0.6"), "{dependency_first:?}");
+        assert_eq!(dependency_later.len(), 2, "{dependency_later:?}");
+        assert!(dependency_later[0].starts_with("md\t12\t0.923") && dependency_later[0].ends_with("\t13"), "{dependency_later:?}");
+        assert!(dependency_later[1].starts_with("txt\t3\t0.6") && dependency_later[1].ends_with("\t5"), "{dependency_later:?}");
+        assert_eq!(ungrouped.len(), 1, "{ungrouped:?}");
+        assert!(ungrouped[0].starts_with("0.9375\t16\t15"), "{ungrouped:?}");
     }
 
     #[test]

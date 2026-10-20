@@ -179,7 +179,7 @@ fn numeric_or_text(text: &str) -> Variant {
 
 fn typed_variant(expr: &Expr, text: &str) -> Variant {
     let as_string = || Variant::from_string(&text.to_string());
-    if expr.contains_numeric() {
+    let typed = if expr.contains_numeric() {
         numeric_or_text(text)
     } else if expr.contains_datetime() {
         parse_datetime(text)
@@ -189,7 +189,8 @@ fn typed_variant(expr: &Expr, text: &str) -> Variant {
         str_to_bool(text).map(Variant::from_bool).unwrap_or_else(as_string)
     } else {
         as_string()
-    }
+    };
+    typed.with_text(text)
 }
 
 enum Membership {
@@ -4922,6 +4923,30 @@ mod tests {
         assert_eq!(having_one, vec!["true\t3"], "numeric literal");
         assert_eq!(having_false, vec!["false\t1"]);
         assert_eq!(correlated, vec!["false\t0", "true\t4"]);
+    }
+
+    #[test]
+    fn cached_column_values_keep_their_original_text() {
+        let tmp = std::env::temp_dir().join("fselect_test_cached_value_text");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        fs::write(tmp.join("001"), "x").unwrap();
+
+        let last_day = run_query_against_dir(
+            "select last_day(modified), last_day(modified), length(last_day(modified)) from __DIR__",
+            &tmp,
+        );
+        let coalesce = run_query_against_dir(
+            "select coalesce(name, size), coalesce(name, size), length(coalesce(name, size)) from __DIR__",
+            &tmp,
+        );
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(last_day.len(), 1, "{last_day:?}");
+        let parts: Vec<&str> = last_day[0].split('\t').collect();
+        assert_eq!(parts[0], parts[1], "repeated column must render identically: {last_day:?}");
+        assert_eq!(parts[2], "10", "{last_day:?}");
+        assert_eq!(coalesce, vec!["001\t001\t3"]);
     }
 
     #[test]

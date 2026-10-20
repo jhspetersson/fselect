@@ -121,6 +121,11 @@ impl Variant {
         }
     }
 
+    pub fn with_text(mut self, text: &str) -> Variant {
+        self.string_value = text.to_string();
+        self
+    }
+
     pub fn from_datetime(value: NaiveDateTime) -> Variant {
         Variant {
             value_type: VariantType::DateTime,

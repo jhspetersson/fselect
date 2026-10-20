@@ -1770,8 +1770,7 @@ impl<'a> Searcher<'a> {
             Err(err) if skip_failing_columns && !err.is_fatal() => return Ok(None),
             Err(err) => return Err(err),
         };
-        let text = value.to_string();
-        Ok(Some(if column.contains_numeric() { numeric_or_text(&text) } else { Variant::from_string(&text) }))
+        Ok(Some(typed_variant(column, &value.to_string())))
     }
 
     fn upsert_alias_value(values: &mut Vec<(String, Variant)>, column: &Expr, value: Variant) {
@@ -4891,6 +4890,45 @@ mod tests {
         assert_eq!(ratio, vec!["1"]);
         assert_eq!(where_product, vec!["a.txt"]);
         assert_eq!(where_size_twice, vec!["a.txt"]);
+    }
+
+    #[test]
+    fn boolean_and_datetime_aggregate_aliases_keep_their_type() {
+        let tmp = std::env::temp_dir().join("fselect_test_typed_aggregate_aliases");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(tmp.join("data")).unwrap();
+        fs::create_dir_all(tmp.join("other")).unwrap();
+        let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+        for name in ["a.txt", "b.txt"] {
+            fs::write(tmp.join("data").join(name), "x").unwrap();
+        }
+        for name in ["o1", "o2", "o3"] {
+            fs::write(tmp.join("other").join(name), "x").unwrap();
+        }
+
+        let flag_upper = run_query_against_dir(
+            "select min(is_file) as flag, (select count(*) from __DIR__/other where t.flag = TRUE) from __DIR__/data as t",
+            &tmp,
+        );
+        let flag_lower = run_query_against_dir(
+            "select min(is_file) as flag, (select count(*) from __DIR__/other where t.flag = true) from __DIR__/data as t",
+            &tmp,
+        );
+        let latest_day = run_query_against_dir(
+            &format!("select (select count(*) from __DIR__/other where t.latest = '{today}'), max(modified) as latest from __DIR__/data as t"),
+            &tmp,
+        );
+        let first_name = run_query_against_dir(
+            "select min(name) as first, (select count(*) from __DIR__/data where name = t.first) from __DIR__/data as t",
+            &tmp,
+        );
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(flag_upper, vec!["true\t3"], "uppercase literal");
+        assert_eq!(flag_lower, vec!["true\t3"]);
+        assert_eq!(latest_day.len(), 1, "{latest_day:?}");
+        assert!(latest_day[0].starts_with("3\t"), "date-only comparison: {latest_day:?}");
+        assert_eq!(first_name, vec!["a.txt\t1"], "text aggregates stay text");
     }
 
     #[test]

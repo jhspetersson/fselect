@@ -553,6 +553,7 @@ impl<'a> Searcher<'a> {
         // ======== Process each root specified in the query =========
         for root in &self.query.roots {
             if root.options.regexp {
+                let follow_symlinks = root.options.symlinks;
                 let mut ext_roots: Vec<String> = vec![];
                 // Split the path into parts to process each segment as a regex
                 let parts = root.path.split('/').collect::<Vec<&str>>();
@@ -600,8 +601,12 @@ impl<'a> Searcher<'a> {
                             match path.read_dir() {
                                 Ok(read_result) => {
                                     for entry in read_result.flatten() {
-                                        if let Ok(file_type) = entry.file_type()
-                                            && file_type.is_dir()
+                                        let is_dir = match entry.file_type() {
+                                            Ok(file_type) if file_type.is_dir() => true,
+                                            Ok(file_type) if file_type.is_symlink() => follow_symlinks && entry.path().is_dir(),
+                                            _ => false,
+                                        };
+                                        if is_dir
                                                 && rx.is_match(
                                                     entry.file_name().to_string_lossy().as_ref(),
                                                 )
@@ -3864,6 +3869,29 @@ mod tests {
         assert_eq!(class, vec!["alpha.txt"]);
         assert_eq!(bracket_literal, vec!["draft[1.txt", "inner", "inner.txt"]);
         assert_eq!(bracket_literal_then_pattern, vec!["inner.txt"], "an invalid-regex literal before a pattern");
+    }
+
+    #[test]
+    fn regexp_roots_follow_directory_symlinks_when_asked() {
+        let tmp = std::env::temp_dir().join("fselect_test_regexp_root_symlinks");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(tmp.join("mixed").join("real")).unwrap();
+        fs::create_dir_all(tmp.join("target")).unwrap();
+        fs::write(tmp.join("mixed").join("real").join("real.txt"), "x").unwrap();
+        fs::write(tmp.join("target").join("linked.txt"), "x").unwrap();
+        link_directory(&tmp.join("mixed").join("link"), &tmp.join("target"));
+
+        let sorted = |query: &str| {
+            let mut rows = run_query_against_dir(query, &tmp);
+            rows.sort();
+            rows
+        };
+        let with_symlinks = sorted("select name from '__DIR__/mixed/.*' rx symlinks where is_file");
+        let without_symlinks = sorted("select name from '__DIR__/mixed/.*' rx where is_file");
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(with_symlinks, vec!["linked.txt", "real.txt"]);
+        assert_eq!(without_symlinks, vec!["real.txt"]);
     }
 
     #[test]

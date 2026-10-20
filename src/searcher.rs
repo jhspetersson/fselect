@@ -10,7 +10,7 @@ use std::rc::Rc;
 
 use chrono::NaiveDateTime;
 #[cfg(feature = "git")]
-use git2::Repository;
+use crate::util::git::IgnoreRules;
 use lscolors::{LsColors, Style};
 use regex::Regex;
 #[cfg(all(unix, feature = "users"))]
@@ -67,7 +67,7 @@ struct QueuedDir {
     root_depth: u32,
     ancestors: Option<Rc<AncestorDir>>,
     #[cfg(feature = "git")]
-    repository: Option<Rc<Repository>>,
+    repository: Option<Rc<IgnoreRules>>,
 }
 
 impl AncestorDir {
@@ -789,7 +789,7 @@ impl<'a> Searcher<'a> {
             let root_repository = match self.current_apply_gitignore {
                 true => canonical_path(&self.current_root_dir)
                     .ok()
-                    .and_then(|root| Repository::discover(root).ok())
+                    .and_then(IgnoreRules::discover)
                     .map(Rc::new),
                 false => None,
             };
@@ -1069,7 +1069,7 @@ impl<'a> Searcher<'a> {
         let mut archives = ArchiveLookup::default();
         let mut filters_root: Option<PathBuf> = None;
         #[cfg(feature = "git")]
-        let mut repository: Option<Repository> = None;
+        let mut repository: Option<IgnoreRules> = None;
         for (path_str, root_depth) in paths {
             if path_str.is_empty() {
                 continue;
@@ -1115,7 +1115,7 @@ impl<'a> Searcher<'a> {
                     repository = match self.current_apply_gitignore {
                         true => canonical_path(&root_dir)
                             .ok()
-                            .and_then(|root| Repository::discover(root).ok()),
+                            .and_then(IgnoreRules::discover),
                         false => None,
                     };
                 }
@@ -1129,7 +1129,7 @@ impl<'a> Searcher<'a> {
                 continue;
             }
             #[cfg(feature = "git")]
-            if repository.as_ref().is_some_and(|repo| repo.is_path_ignored(&entry_path).unwrap_or(false)) {
+            if repository.as_ref().is_some_and(|rules| rules.is_ignored(&entry_path)) {
                 continue;
             }
 
@@ -1374,11 +1374,11 @@ impl<'a> Searcher<'a> {
     fn gitignore_repository(
         &self,
         canonical_dir: &Path,
-        inherited: Option<&Rc<Repository>>,
-    ) -> Option<Rc<Repository>> {
+        inherited: Option<&Rc<IgnoreRules>>,
+    ) -> Option<Rc<IgnoreRules>> {
         if canonical_dir.join(".git").exists()
-            && let Ok(repo) = Repository::open(canonical_dir) {
-                return Some(Rc::new(repo));
+            && let Some(rules) = IgnoreRules::open(canonical_dir) {
+                return Some(Rc::new(rules));
             }
         inherited.cloned()
     }
@@ -1390,7 +1390,7 @@ impl<'a> Searcher<'a> {
         dir: &Path,
         root_depth: u32,
         #[cfg(feature = "git")]
-        git_repository: Option<Rc<Repository>>,
+        git_repository: Option<Rc<IgnoreRules>>,
         process_queue: bool,
     ) -> Result<(), SearchError> {
         // Canonicalization is comparatively expensive: it resolves every path
@@ -1457,8 +1457,7 @@ impl<'a> Searcher<'a> {
                                 let pass_gitignore = !self.current_apply_gitignore
                                     || !git_repository
                                         .as_ref()
-                                        .is_some_and(|repo| repo.is_path_ignored(&canonical_entry_path)
-                                            .unwrap_or(false));
+                                        .is_some_and(|rules| rules.is_ignored(&canonical_entry_path));
                                 #[cfg(not(feature = "git"))]
                                 let pass_gitignore = true;
 
@@ -5820,6 +5819,43 @@ f
         rows.iter()
             .map(|row| Path::new(row).file_name().unwrap().to_string_lossy().to_string())
             .collect()
+    }
+
+    #[cfg(feature = "git")]
+    fn commit_everything(dir: &Path) {
+        let repo = git2::Repository::open(dir).unwrap();
+        let sig = git2::Signature::new("test", "test@test", &git2::Time::new(1_000_000_000, 0)).unwrap();
+        let mut index = repo.index().unwrap();
+        index.add_all(["*"].iter(), git2::IndexAddOption::DEFAULT, None).unwrap();
+        index.write().unwrap();
+        let tree = repo.find_tree(index.write_tree().unwrap()).unwrap();
+        repo.commit(Some("HEAD"), &sig, &sig, "c", &tree, &[]).unwrap();
+    }
+
+    #[cfg(feature = "git")]
+    #[test]
+    fn gitignore_keeps_tracked_files_and_the_directories_holding_them() {
+        let tmp = std::env::temp_dir().join("fselect_test_gitignore_tracked");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(tmp.join("logs").join("deep")).unwrap();
+        git2::Repository::init(&tmp).unwrap();
+        for name in ["tracked.log", "logs/keep.log", "logs/deep/kept.log"] {
+            fs::write(tmp.join(name), "").unwrap();
+        }
+        commit_everything(&tmp);
+        fs::write(tmp.join(".gitignore"), "*.log\nlogs/\n").unwrap();
+        for name in ["loose.log", "logs/new.log", "logs/deep/fresh.log"] {
+            fs::write(tmp.join(name), "").unwrap();
+        }
+
+        for mode in ["bfs", "dfs"] {
+            let rows = run_query_against_dir(&format!("select path from __DIR__ gitignore {mode}"), &tmp);
+            let mut names = file_names(&rows);
+            names.retain(|n| n != ".gitignore");
+            names.sort();
+            assert_eq!(names, vec!["deep", "keep.log", "kept.log", "logs", "tracked.log"], "{mode}: {rows:?}");
+        }
+        let _ = fs::remove_dir_all(&tmp);
     }
 
     #[cfg(feature = "git")]

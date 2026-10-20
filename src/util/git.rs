@@ -20,6 +20,7 @@ struct RepoEntry {
     repo: Repository,
     /// Canonicalized work tree root, used to derive repository-relative paths.
     workdir: PathBuf,
+    tracked: Option<TrackedPaths>,
     /// Memoised branch name; the outer `Option` tracks whether it was computed.
     branch: Option<Option<String>>,
     history: HistoryScan,
@@ -95,7 +96,12 @@ impl GitCache {
 
     pub fn is_ignored(&mut self, path: &Path) -> Option<bool> {
         let (idx, rel) = self.locate(path)?;
-        self.repos[idx].repo.is_path_ignored(to_git_path(&rel)).ok()
+        let rel = to_git_path(&rel);
+        let RepoEntry { repo, tracked, .. } = &mut self.repos[idx];
+        if tracked.get_or_insert_with(|| TrackedPaths::load(repo)).contains(&rel) {
+            return Some(false);
+        }
+        repo.is_path_ignored(rel).ok()
     }
 
     /// The last commit that touched the file (or directory), like
@@ -172,10 +178,76 @@ impl GitCache {
         self.repos.push(RepoEntry {
             repo,
             workdir,
+            tracked: None,
             branch: None,
             history: HistoryScan::default(),
         });
         Some(self.repos.len() - 1)
+    }
+}
+
+/// Ignore rules of one repository, applied the way `git status` does: a path
+/// that is already in the index, or a directory holding such paths, is never
+/// ignored, whatever the patterns say.
+pub struct IgnoreRules {
+    repo: Repository,
+    workdir: PathBuf,
+    tracked: TrackedPaths,
+}
+
+impl IgnoreRules {
+    pub fn open(dir: impl AsRef<Path>) -> Option<IgnoreRules> {
+        Repository::open(dir).ok().and_then(IgnoreRules::from_repository)
+    }
+
+    pub fn discover(dir: impl AsRef<Path>) -> Option<IgnoreRules> {
+        Repository::discover(dir).ok().and_then(IgnoreRules::from_repository)
+    }
+
+    fn from_repository(repo: Repository) -> Option<IgnoreRules> {
+        let workdir = repo.workdir()?.to_path_buf();
+        let workdir = PathBuf::from(crate::util::canonical_path(&workdir).unwrap_or_else(|_| workdir.to_string_lossy().into_owned()));
+        let tracked = TrackedPaths::load(&repo);
+        Some(IgnoreRules { repo, workdir, tracked })
+    }
+
+    pub fn is_ignored(&self, path: &Path) -> bool {
+        if let Ok(rel) = path.strip_prefix(&self.workdir)
+            && self.tracked.contains(&to_git_path(rel))
+        {
+            return false;
+        }
+        self.repo.is_path_ignored(path).unwrap_or(false)
+    }
+}
+
+/// Sorted repository-relative paths of the index.
+struct TrackedPaths {
+    paths: Vec<String>,
+}
+
+impl TrackedPaths {
+    fn load(repo: &Repository) -> TrackedPaths {
+        let mut paths: Vec<String> = repo
+            .index()
+            .map(|index| index.iter().map(|entry| String::from_utf8_lossy(&entry.path).into_owned()).collect())
+            .unwrap_or_default();
+        paths.sort();
+        paths.dedup();
+        TrackedPaths { paths }
+    }
+
+    fn contains(&self, rel: &str) -> bool {
+        if rel.is_empty() {
+            return !self.paths.is_empty();
+        }
+        let at = self.paths.partition_point(|path| path.as_str() < rel);
+        if self.paths.get(at).is_some_and(|path| path == rel) {
+            return true;
+        }
+        let prefix = format!("{rel}/");
+        let at = self.paths.partition_point(|path| path.as_str() < prefix.as_str());
+        self.paths.get(at).is_some_and(|path| path.starts_with(&prefix))
     }
 }
 
@@ -508,6 +580,39 @@ mod tests {
         fs::write(dir.join(file), "x").unwrap();
         commit_all(&repo, "init", 1_000_000_000);
         repo
+    }
+
+    #[test]
+    fn tracked_paths_are_never_ignored() {
+        let dir = std::env::temp_dir().join("fselect_test_git_tracked_not_ignored");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(dir.join("logs")).unwrap();
+        let repo = Repository::init(&dir).unwrap();
+        fs::write(dir.join("tracked.log"), "t").unwrap();
+        fs::write(dir.join("logs").join("keep.log"), "k").unwrap();
+        commit_all(&repo, "c1", 1_000_000_000);
+        fs::write(dir.join(".gitignore"), "*.log\nlogs/\n").unwrap();
+        fs::write(dir.join("loose.log"), "l").unwrap();
+        fs::write(dir.join("logs").join("new.log"), "n").unwrap();
+
+        let mut cache = GitCache::new();
+        assert_eq!(cache.is_ignored(&dir.join("tracked.log")), Some(false));
+        assert_eq!(cache.is_ignored(&dir.join("loose.log")), Some(true));
+        assert_eq!(cache.is_ignored(&dir.join("logs")), Some(false));
+        assert_eq!(cache.is_ignored(&dir.join("logs").join("keep.log")), Some(false));
+        assert_eq!(cache.is_ignored(&dir.join("logs").join("new.log")), Some(true));
+
+        let rules = IgnoreRules::discover(&dir).unwrap();
+        let canonical = PathBuf::from(crate::util::canonical_path(&dir).unwrap());
+        assert!(!rules.is_ignored(&canonical.join("tracked.log")));
+        assert!(rules.is_ignored(&canonical.join("loose.log")));
+        assert!(!rules.is_ignored(&canonical.join("logs")));
+        assert!(rules.is_ignored(&canonical.join("logs").join("new.log")));
+
+        drop(repo);
+        drop(cache);
+        drop(rules);
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]

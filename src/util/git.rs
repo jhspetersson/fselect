@@ -42,6 +42,9 @@ struct HistoryScan {
     /// Resolved last-touch info per repository-relative path (and per
     /// directory: a commit touching `a/b/c.rs` also touches `a` and `a/b`).
     resolved: HashMap<String, Rc<CommitInfo>>,
+    /// Paths that must not resolve to a not-yet-processed commit because a
+    /// merge above it was tree-same to another parent for them.
+    blocked: HashMap<git2::Oid, PathSet>,
 }
 
 /// Caches opened repositories across files of the same traversal, plus the
@@ -275,11 +278,22 @@ fn advance_history(entry: &mut RepoEntry) -> bool {
         return false;
     };
     entry.history.next += 1;
+    let blocked = entry.history.blocked.remove(&oid).unwrap_or_default();
 
     let Ok(commit) = repo.find_commit(oid) else {
         return true;
     };
-    let touched = commit_touched_paths(repo, &commit);
+    let changes = commit_changes(repo, &commit);
+    let touched = changes.touched();
+    for (parent, pruned) in commit.parent_ids().zip(changes.pruned_per_parent()) {
+        let inherited = blocked.clone().union(pruned);
+        entry
+            .history
+            .blocked
+            .entry(parent)
+            .and_modify(|existing| *existing = std::mem::take(existing).intersection(inherited.clone()))
+            .or_insert(inherited);
+    }
     if touched.is_empty() {
         return true;
     }
@@ -287,6 +301,9 @@ fn advance_history(entry: &mut RepoEntry) -> bool {
     let info = Rc::new(commit_info(&commit));
 
     for path in touched {
+        if blocked.contains(&path) {
+            continue;
+        }
         entry
             .history
             .resolved
@@ -297,14 +314,114 @@ fn advance_history(entry: &mut RepoEntry) -> bool {
     true
 }
 
-/// The paths whose content differs between the commit and *all* of its parents
-/// (matching `git log`'s default no-simplification behavior for a single
-/// pathspec), plus every ancestor directory of each, so that directory
-/// queries resolve to the newest commit touching anything beneath them. The
-/// root commit touches everything in its tree.
-fn commit_touched_paths(repo: &Repository, commit: &Commit) -> Vec<String> {
+/// A set of repository paths that is either finite or the complement of a
+/// finite set, so that "everything except what a merge changed" stays cheap.
+#[derive(Clone, Debug)]
+enum PathSet {
+    Only(HashSet<String>),
+    AllExcept(HashSet<String>),
+}
+
+impl Default for PathSet {
+    fn default() -> PathSet {
+        PathSet::Only(HashSet::new())
+    }
+}
+
+impl PathSet {
+    fn all() -> PathSet {
+        PathSet::AllExcept(HashSet::new())
+    }
+
+    fn contains(&self, path: &str) -> bool {
+        match self {
+            PathSet::Only(set) => set.contains(path),
+            PathSet::AllExcept(set) => !set.contains(path),
+        }
+    }
+
+    fn complement(self) -> PathSet {
+        match self {
+            PathSet::Only(set) => PathSet::AllExcept(set),
+            PathSet::AllExcept(set) => PathSet::Only(set),
+        }
+    }
+
+    fn union(self, other: PathSet) -> PathSet {
+        match (self, other) {
+            (PathSet::Only(a), PathSet::Only(b)) => PathSet::Only(&a | &b),
+            (PathSet::Only(a), PathSet::AllExcept(b)) | (PathSet::AllExcept(b), PathSet::Only(a)) => {
+                PathSet::AllExcept(&b - &a)
+            }
+            (PathSet::AllExcept(a), PathSet::AllExcept(b)) => PathSet::AllExcept(&a & &b),
+        }
+    }
+
+    fn intersection(self, other: PathSet) -> PathSet {
+        match (self, other) {
+            (PathSet::Only(a), PathSet::Only(b)) => PathSet::Only(&a & &b),
+            (PathSet::Only(a), PathSet::AllExcept(b)) | (PathSet::AllExcept(b), PathSet::Only(a)) => {
+                PathSet::Only(&a - &b)
+            }
+            (PathSet::AllExcept(a), PathSet::AllExcept(b)) => PathSet::AllExcept(&a | &b),
+        }
+    }
+}
+
+/// What a commit changed relative to each parent (with every ancestor
+/// directory of each changed path included), or the whole tree for a root
+/// commit.
+enum CommitChanges {
+    Root(Vec<String>),
+    PerParent(Vec<HashSet<String>>),
+}
+
+impl CommitChanges {
+    /// The paths whose content differs between the commit and *all* of its
+    /// parents, which is what `git log` lists the commit for.
+    fn touched(&self) -> Vec<String> {
+        match self {
+            CommitChanges::Root(paths) => paths.clone(),
+            CommitChanges::PerParent(changes) => {
+                let mut intersection: Option<HashSet<String>> = None;
+                for changed in changes {
+                    intersection = Some(match intersection {
+                        None => changed.clone(),
+                        Some(previous) => &previous & changed,
+                    });
+                }
+                intersection.map(Vec::from_iter).unwrap_or_default()
+            }
+        }
+    }
+
+    /// `git log`'s default history simplification: when a merge leaves a path
+    /// identical to one of its parents, only the first such parent is
+    /// followed for that path. The result holds, per parent, the paths whose
+    /// history must not be resolved through that parent.
+    fn pruned_per_parent(&self) -> Vec<PathSet> {
+        let CommitChanges::PerParent(changes) = self else {
+            return Vec::new();
+        };
+        (0..changes.len())
+            .map(|j| {
+                let same_to_earlier = changes[..j]
+                    .iter()
+                    .fold(PathSet::all(), |acc, changed| acc.intersection(PathSet::Only(changed.clone())))
+                    .complement();
+                let same_to_later = changes[j + 1..]
+                    .iter()
+                    .fold(PathSet::all(), |acc, changed| acc.intersection(PathSet::Only(changed.clone())))
+                    .complement();
+                same_to_earlier.union(PathSet::Only(changes[j].clone()).intersection(same_to_later))
+            })
+            .collect()
+    }
+}
+
+fn commit_changes(repo: &Repository, commit: &Commit) -> CommitChanges {
     let Ok(tree) = commit.tree() else {
-        return Vec::new();
+        return CommitChanges::PerParent(Vec::new());
     };
 
     if commit.parent_count() == 0 {
@@ -317,35 +434,27 @@ fn commit_touched_paths(repo: &Repository, commit: &Commit) -> Vec<String> {
             }
             TreeWalkResult::Ok
         });
-        return paths;
+        return CommitChanges::Root(paths);
     }
 
-    let mut intersection: Option<HashSet<String>> = None;
+    let mut changes = Vec::new();
     for parent in commit.parents() {
-        let Ok(parent_tree) = parent.tree() else {
-            continue;
-        };
-        let Ok(diff) = repo.diff_tree_to_tree(Some(&parent_tree), Some(&tree), None) else {
-            continue;
-        };
-
         let mut changed = HashSet::new();
-        for delta in diff.deltas() {
-            for path in [delta.old_file().path(), delta.new_file().path()]
-                .into_iter()
-                .flatten()
-            {
-                add_with_ancestors(&mut changed, &path.to_string_lossy());
+        if let Ok(parent_tree) = parent.tree()
+            && let Ok(diff) = repo.diff_tree_to_tree(Some(&parent_tree), Some(&tree), None)
+        {
+            for delta in diff.deltas() {
+                for path in [delta.old_file().path(), delta.new_file().path()]
+                    .into_iter()
+                    .flatten()
+                {
+                    add_with_ancestors(&mut changed, &path.to_string_lossy());
+                }
             }
         }
-
-        intersection = Some(match intersection {
-            None => changed,
-            Some(previous) => previous.intersection(&changed).cloned().collect(),
-        });
+        changes.push(changed);
     }
-
-    intersection.map(Vec::from_iter).unwrap_or_default()
+    CommitChanges::PerParent(changes)
 }
 
 /// Inserts a '/'-separated path and each of its parent directories.
@@ -511,6 +620,88 @@ mod tests {
             c3.to_string()
         );
         let _ = c1;
+
+        drop(repo);
+        drop(cache);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    fn commit_tree(repo: &Repository, msg: &str, tree: &git2::Tree, parents: &[&git2::Commit], secs: i64) -> git2::Oid {
+        let sig = Signature::new("test", "test@test", &Time::new(secs, 0)).unwrap();
+        let update_ref = if parents.len() > 1 { Some("HEAD") } else { None };
+        repo.commit(update_ref, &sig, &sig, msg, tree, parents).unwrap()
+    }
+
+    fn tree_with<'r>(repo: &'r Repository, base: &git2::Tree, files: &[(&str, &str)]) -> git2::Tree<'r> {
+        let mut builder = repo.treebuilder(Some(base)).unwrap();
+        for (name, content) in files {
+            let blob = repo.blob(content.as_bytes()).unwrap();
+            builder.insert(name, blob, 0o100644).unwrap();
+        }
+        let oid = builder.write().unwrap();
+        repo.find_tree(oid).unwrap()
+    }
+
+    #[test]
+    fn last_commit_ignores_side_branches_discarded_by_a_merge() {
+        let dir = std::env::temp_dir().join("fselect_test_git_merge_ours");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let repo = Repository::init(&dir).unwrap();
+
+        fs::write(dir.join("file.txt"), "main").unwrap();
+        fs::write(dir.join("other.txt"), "main").unwrap();
+        let c1 = commit_all(&repo, "c1", 1_000_000_000);
+        let ours = {
+            let main = repo.find_commit(c1).unwrap();
+            let main_tree = main.tree().unwrap();
+            let side_tree = tree_with(&repo, &main_tree, &[("file.txt", "side")]);
+            let c2 = commit_tree(&repo, "side", &side_tree, &[&main], 1_000_000_100);
+            let side = repo.find_commit(c2).unwrap();
+            commit_tree(&repo, "merge -s ours", &main_tree, &[&main, &side], 1_000_000_200)
+        };
+
+        let mut cache = GitCache::new();
+        assert_eq!(cache.last_commit(&dir.join("file.txt")).unwrap().hash, c1.to_string());
+        assert_eq!(cache.last_commit(&dir.join("other.txt")).unwrap().hash, c1.to_string());
+        assert_eq!(cache.last_commit(&dir).unwrap().hash, ours.to_string());
+
+        drop(repo);
+        drop(cache);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn last_commit_follows_both_sides_of_a_real_merge() {
+        let dir = std::env::temp_dir().join("fselect_test_git_merge_both");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let repo = Repository::init(&dir).unwrap();
+
+        for name in ["base.txt", "main.txt", "side.txt", "both.txt"] {
+            fs::write(dir.join(name), "base").unwrap();
+        }
+        let c1 = commit_all(&repo, "c1", 1_000_000_000);
+        let (c_side, c_main, c_merge) = {
+            let base = repo.find_commit(c1).unwrap();
+            let base_tree = base.tree().unwrap();
+            let side_tree = tree_with(&repo, &base_tree, &[("side.txt", "side"), ("both.txt", "side")]);
+            let c_side = commit_tree(&repo, "side", &side_tree, &[&base], 1_000_000_100);
+            let side = repo.find_commit(c_side).unwrap();
+            let main_tree = tree_with(&repo, &base_tree, &[("main.txt", "main"), ("both.txt", "main")]);
+            let c_main = commit_tree(&repo, "main", &main_tree, &[&base], 1_000_000_200);
+            repo.reference("HEAD", c_main, true, "main").unwrap();
+            let main = repo.find_commit(c_main).unwrap();
+            let merged_tree = tree_with(&repo, &main_tree, &[("side.txt", "side"), ("both.txt", "merged")]);
+            (c_side, c_main, commit_tree(&repo, "merge", &merged_tree, &[&main, &side], 1_000_000_300))
+        };
+
+        let mut cache = GitCache::new();
+        let last = |cache: &mut GitCache, name: &str| cache.last_commit(&dir.join(name)).unwrap().hash;
+        assert_eq!(last(&mut cache, "base.txt"), c1.to_string());
+        assert_eq!(last(&mut cache, "main.txt"), c_main.to_string());
+        assert_eq!(last(&mut cache, "side.txt"), c_side.to_string());
+        assert_eq!(last(&mut cache, "both.txt"), c_merge.to_string());
 
         drop(repo);
         drop(cache);

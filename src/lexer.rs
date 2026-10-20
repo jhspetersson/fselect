@@ -70,6 +70,7 @@ struct LexerState {
     after_arithmetic: bool,
     in_value_set: bool,
     paren_depth: u32,
+    after_as: bool,
 }
 
 impl LexerState {
@@ -85,6 +86,7 @@ impl LexerState {
             after_arithmetic: false,
             in_value_set: false,
             paren_depth: 0,
+            after_as: false,
         }
     }
 
@@ -115,6 +117,7 @@ pub struct Lexer {
     between_parts: bool,
     state: LexerState,
     state_history: Vec<LexerState>,
+    root_aliases: Vec<String>,
 }
 
 impl Lexer {
@@ -127,6 +130,7 @@ impl Lexer {
             between_parts: false,
             state: LexerState::new(),
             state_history: vec![],
+            root_aliases: vec![],
         }
     }
 
@@ -230,13 +234,13 @@ impl Lexer {
                         && date_tail_follows(&s, &rest);
                     if !is_date {
                         if self.is_arithmetic_op_char(c) {
-                            let maybe_expr = looks_like_expression(&s);
+                            let maybe_expr = looks_like_expression(&s, &self.root_aliases);
                             if maybe_expr {
                                 break;
                             }
                         } else if self.state.after_operator
                             && is_arithmetic_char(c)
-                            && continues_arithmetic(&s, c, &rest, self.chars[self.input_index].get(self.char_index + 1).copied())
+                            && continues_arithmetic(&s, c, &rest, self.chars[self.input_index].get(self.char_index + 1).copied(), &self.root_aliases)
                         {
                             // `size > 2*4`: after a comparison operator `*`, `/`, `%`,
                             // `+` and `-` are literal characters (paths, LIKE patterns,
@@ -342,6 +346,13 @@ impl Lexer {
             _ => None,
         };
 
+        if self.state.clause == Clause::Roots
+            && self.state.after_as
+            && let Some(Lexeme::RawString(ref alias)) = lexeme
+        {
+            self.root_aliases.push(alias.to_ascii_lowercase());
+        }
+        self.state.after_as = matches!(lexeme, Some(Lexeme::RawString(ref s)) if s.eq_ignore_ascii_case("as"));
         self.state.possible_search_root = matches!(lexeme, Some(Lexeme::From))
                 || (matches!(lexeme, Some(Lexeme::Comma)) && self.state.clause == Clause::Roots);
         self.state.in_value_set = matches!(lexeme, Some(Lexeme::CurlyOpen))
@@ -450,11 +461,11 @@ fn date_tail_follows(s: &str, rest: &str) -> bool {
 
 /// Does `s` + `c` + `rest` read as an arithmetic expression over numbers,
 /// fields and functions (`2*4`, `10-5*2`, `2*size`), or as `1+(`?
-fn continues_arithmetic(s: &str, c: char, rest: &str, next_char: Option<char>) -> bool {
+fn continues_arithmetic(s: &str, c: char, rest: &str, next_char: Option<char>, root_aliases: &[String]) -> bool {
     if rest.is_empty() {
         return next_char == Some('(');
     }
-    looks_like_expression(&format!("{}{}{}", s, c, rest))
+    looks_like_expression(&format!("{}{}{}", s, c, rest), root_aliases)
 }
 
 static DATE_ALIKE_REGEX: LazyLock<Regex> = LazyLock::new(|| {
@@ -462,28 +473,31 @@ static DATE_ALIKE_REGEX: LazyLock<Regex> = LazyLock::new(|| {
 });
 
 /// Does the word read as arithmetic over operands (`t.size/2`, `line_count/2`,
-/// `10-5*2`)? Only operator characters separate operands, so a dotted alias
-/// reference or an underscored field name stays one operand; an empty operand
-/// (`-5`, `%size%`) means the word is a literal.
-fn looks_like_expression(s: &str) -> bool {
-    !s.split(['+', '-', '*', '/', '%', '(', ')']).any(|operand| !is_arithmetic_operand(operand))
+/// `10-5*2`)? Only operator characters separate operands, so an underscored
+/// field name stays one operand, and a dotted word is an operand only when it
+/// is a number or starts with a root alias the query declared, so an unquoted
+/// file name such as `report.txt-backup.bak` stays a literal. An empty operand
+/// (`-5`, `%size%`) also means the word is a literal.
+fn looks_like_expression(s: &str, root_aliases: &[String]) -> bool {
+    !s.split(['+', '-', '*', '/', '%', '(', ')']).any(|operand| !is_arithmetic_operand(operand, root_aliases))
 }
 
-fn is_arithmetic_operand(operand: &str) -> bool {
-    !operand.is_empty()
-        && (operand.parse::<i64>().is_ok()
-            || operand.parse::<f64>().is_ok()
-            || Field::parse_field(operand).is_ok()
-            || Function::from_str(operand).is_ok()
-            || is_alias_reference(operand))
-}
-
-fn is_alias_reference(operand: &str) -> bool {
-    fn is_identifier(part: &str) -> bool {
-        part.starts_with(|c: char| c.is_ascii_alphabetic() || c == '_')
-            && part.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+fn is_arithmetic_operand(operand: &str, root_aliases: &[String]) -> bool {
+    if operand.is_empty() {
+        return false;
     }
-    operand.split_once('.').is_some_and(|(alias, name)| is_identifier(alias) && is_identifier(name))
+    if operand.parse::<i64>().is_ok() || operand.parse::<f64>().is_ok() {
+        return true;
+    }
+    match operand.split_once('.') {
+        Some((alias, name)) => root_aliases.iter().any(|declared| declared.eq_ignore_ascii_case(alias)) && is_identifier(name),
+        None => Field::parse_field(operand).is_ok() || Function::from_str(operand).is_ok(),
+    }
+}
+
+fn is_identifier(part: &str) -> bool {
+    part.starts_with(|c: char| c.is_ascii_alphabetic() || c == '_')
+        && part.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
 }
 
 fn looks_like_date(s: &str) -> bool {
@@ -693,6 +707,18 @@ c"))), "lexemes were {:?}", lexemes);
             where_clause_of("select name from . as t where size>t.sz*2"),
             vec![raw("size"), gt, raw("t.sz"), arith("*"), raw("2")]
         );
+    }
+
+    #[test]
+    fn dotted_words_are_operands_only_for_declared_aliases() {
+        assert_eq!(rhs_of("select name from names where name=report.txt-backup.bak"), vec![raw("report.txt-backup.bak")]);
+        assert_eq!(rhs_of("select name from names where name=foo+bar.txt"), vec![raw("foo+bar.txt")]);
+        assert_eq!(
+            rhs_of("select name from names where name in (report.txt-backup.bak, a+b.txt)"),
+            vec![Lexeme::Open, raw("report.txt-backup.bak"), Lexeme::Comma, raw("a+b.txt"), Lexeme::Close]
+        );
+        assert_eq!(rhs_of("select name from names as t where name=t.sz*2"), vec![raw("t.sz"), arith("*"), raw("2")]);
+        assert_eq!(rhs_of("select name from names as T where name=t.sz*2"), vec![raw("t.sz"), arith("*"), raw("2")]);
     }
 
     #[test]

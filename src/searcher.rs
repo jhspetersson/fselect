@@ -162,6 +162,8 @@ pub struct Searcher<'a> {
     canonical_root_cache: Option<(PathBuf, PathBuf)>,
 
     pub error_count: i32,
+    suppress_row_errors: bool,
+    suppressed_row_error: Option<SearchError>,
 }
 
 macro_rules! try_output {
@@ -232,8 +234,12 @@ impl Membership {
             VariantType::Float => Membership::Floats(variants.filter_map(|v| v.to_float_opt()).collect()),
             VariantType::Bool => {
                 let mut bools = (false, false);
-                for variant in variants {
-                    if variant.to_bool() { bools.0 = true } else { bools.1 = true }
+                for value in values {
+                    match str_to_bool(value) {
+                        Some(true) => bools.0 = true,
+                        Some(false) => bools.1 = true,
+                        None => {}
+                    }
                 }
                 Membership::Bools { has_true: bools.0, has_false: bools.1 }
             }
@@ -449,6 +455,8 @@ impl<'a> Searcher<'a> {
             canonical_root_cache: None,
 
             error_count: 0,
+            suppress_row_errors: false,
+            suppressed_row_error: None,
         }
     }
 
@@ -1352,6 +1360,7 @@ impl<'a> Searcher<'a> {
         sub_searcher.silent_mode = true;
         sub_searcher.is_nested = true;
         sub_searcher.alias_failures = Rc::clone(&self.alias_failures);
+        sub_searcher.suppress_row_errors = self.suppress_row_errors;
         sub_searcher.enclosing_aliases = self.enclosing_aliases.union(&self.query.own_root_aliases()).cloned().collect();
         sub_searcher.root_depth_column = root_depth_column;
         let shadowed: Vec<(String, Option<HashMap<String, Variant>>)> = {
@@ -1373,6 +1382,9 @@ impl<'a> Searcher<'a> {
             }
         }
         outcome?;
+        if let Some(err) = sub_searcher.suppressed_row_error.take() {
+            return Err(err);
+        }
 
         // The buffer holds limit + offset rows; the offset rows are skipped
         // only in the print path, so they must be skipped here as well.
@@ -1803,6 +1815,16 @@ impl<'a> Searcher<'a> {
     }
 
     fn handle_nonfatal_error(&mut self, mut err: SearchError, default_source: &Path) {
+        // While a row alias is being bound, a row error inside its subquery
+        // is the alias's failure: it is handed back to the binder instead of
+        // being reported, and reported, against the outer row, only once the
+        // alias is read.
+        if self.suppress_row_errors {
+            if self.suppressed_row_error.is_none() {
+                self.suppressed_row_error = Some(err);
+            }
+            return;
+        }
         self.error_count += 1;
         if err.source.is_empty() {
             err.source = default_source.to_string_lossy().to_string();
@@ -2297,6 +2319,20 @@ impl<'a> Searcher<'a> {
         current_alias: &str,
         required_columns: &[(String, Expr)],
     ) -> Result<(), SearchError> {
+        let previous = std::mem::replace(&mut self.suppress_row_errors, true);
+        let outcome = self.bind_row_aliases_inner(entry, file_info, root_path, current_alias, required_columns);
+        self.suppress_row_errors = previous;
+        outcome
+    }
+
+    fn bind_row_aliases_inner(
+        &mut self,
+        entry: &DirEntry,
+        file_info: &Option<FileInfo>,
+        root_path: &Path,
+        current_alias: &str,
+        required_columns: &[(String, Expr)],
+    ) -> Result<(), SearchError> {
         let rounds = if required_columns.len() > 1 { required_columns.len() } else { 1 };
         let mut failed: Vec<(usize, SearchError)> = Vec::new();
         for _ in 0..rounds {
@@ -2614,7 +2650,7 @@ impl<'a> Searcher<'a> {
                 // not coerced to 0, like the DateTime arm below.
                 VariantType::Int => arg_val.to_exact_int() == Some(field_value.to_int()),
                 VariantType::Float => arg_val.to_float_opt() == Some(field_value.to_float()),
-                VariantType::Bool => arg_val.to_bool() == field_value.to_bool(),
+                VariantType::Bool => str_to_bool(&arg_val.to_string()) == Some(field_value.to_bool()),
                 VariantType::DateTime => {
                     // Unparseable values: silently skip this arg (treat as a
                     // non-match) instead of erroring per file scanned.
@@ -5750,6 +5786,25 @@ mod tests {
     }
 
     #[test]
+    fn unquoted_file_names_with_dots_and_pluses_stay_literal() {
+        let tmp = std::env::temp_dir().join("fselect_test_unquoted_dotted_names");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        for name in ["report.txt-backup.bak", "a+b.txt", "plain.txt"] {
+            fs::write(tmp.join(name), "x").unwrap();
+        }
+
+        let dotted = run_query_against_dir("select name from __DIR__ where name=report.txt-backup.bak", &tmp);
+        let plus = run_query_against_dir("select name from __DIR__ where name=a+b.txt", &tmp);
+        let in_list = run_query_against_dir("select name from __DIR__ where name in (report.txt-backup.bak, a+b.txt) order by name", &tmp);
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(dotted, vec!["report.txt-backup.bak"]);
+        assert_eq!(plus, vec!["a+b.txt"]);
+        assert_eq!(in_list, vec!["a+b.txt", "report.txt-backup.bak"]);
+    }
+
+    #[test]
     fn compact_arithmetic_in_where_is_calculated() {
         let tmp = std::env::temp_dir().join("fselect_test_compact_arithmetic");
         let _ = fs::remove_dir_all(&tmp);
@@ -5766,6 +5821,31 @@ mod tests {
         assert_eq!(qualified, vec!["b.txt"], "qualified field");
         assert_eq!(bare, vec!["b.txt"], "bare field");
         assert_eq!(underscored, vec!["b.txt\t0.5"], "underscored field");
+    }
+
+    #[test]
+    fn boolean_in_lists_skip_missing_values() {
+        let tmp = std::env::temp_dir().join("fselect_test_boolean_in_missing");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(tmp.join("data")).unwrap();
+        fs::create_dir_all(tmp.join("empty")).unwrap();
+        for name in ["a.txt", "b.txt"] {
+            fs::write(tmp.join("data").join(name), "x").unwrap();
+        }
+
+        let scalar_element = run_query_against_dir("select name from __DIR__/data where is_dir in ((select is_dir from __DIR__/empty))", &tmp);
+        let membership = run_query_against_dir("select name from __DIR__/data where is_dir in (select is_dir from __DIR__/empty)", &tmp);
+        let literal = run_query_against_dir("select name from __DIR__/data where is_dir in (false) order by name", &tmp);
+        let populated = run_query_against_dir(
+            "select name from __DIR__/data where is_dir in ((select is_dir from __DIR__/data limit 1)) order by name",
+            &tmp,
+        );
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(scalar_element, Vec::<String>::new(), "scalar subquery element");
+        assert_eq!(membership, Vec::<String>::new(), "membership subquery");
+        assert_eq!(literal, vec!["a.txt", "b.txt"], "literal false still matches");
+        assert_eq!(populated, vec!["a.txt", "b.txt"], "populated subquery still matches");
     }
 
     #[test]
@@ -5824,6 +5904,33 @@ mod tests {
 
         assert_eq!(through_copy, (vec!["a.txt\t25\t25".to_string()], 1), "error must follow the dependent alias");
         assert_eq!(across_inner_rows, (vec!["a.txt\t25".to_string()], 1), "a later inner row must not erase the hit");
+    }
+
+    #[test]
+    fn subquery_alias_errors_are_deferred_like_inline_ones() {
+        let tmp = std::env::temp_dir().join("fselect_test_subquery_alias_errors");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(tmp.join("metrics")).unwrap();
+        fs::create_dir_all(tmp.join("other")).unwrap();
+        fs::write(tmp.join("metrics").join("a.txt"), "xxxx").unwrap();
+        fs::write(tmp.join("metrics").join("zero.txt"), "").unwrap();
+        fs::write(tmp.join("other").join("o1"), "x").unwrap();
+
+        let rows_and_errors = |query: &str| {
+            let searcher = search_dir(query, &tmp, Config::default(), true);
+            let rows: Vec<String> = searcher.output_buffer.iter_values().map(|s| s.trim_end().to_string()).collect();
+            (rows, searcher.error_count)
+        };
+        let guarded = rows_and_errors(
+            "select name, (select 100 / t.size from __DIR__/other limit 1) as ratio from __DIR__/metrics as t where size > 0 order by (select t.ratio from __DIR__/other limit 1)",
+        );
+        let unguarded = rows_and_errors(
+            "select name, (select 100 / t.size from __DIR__/other limit 1) as ratio from __DIR__/metrics as t where (select t.ratio from __DIR__/other limit 1) > 0 order by name",
+        );
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(guarded, (vec!["a.txt\t25".to_string()], 0), "guarded by size > 0");
+        assert_eq!(unguarded, (vec!["a.txt\t25".to_string()], 1), "unguarded reports once");
     }
 
     #[test]

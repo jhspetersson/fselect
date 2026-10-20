@@ -461,10 +461,29 @@ static DATE_ALIKE_REGEX: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new("^(\\d{4})-?(\\d{2})?").unwrap()
 });
 
+/// Does the word read as arithmetic over operands (`t.size/2`, `line_count/2`,
+/// `10-5*2`)? Only operator characters separate operands, so a dotted alias
+/// reference or an underscored field name stays one operand; an empty operand
+/// (`-5`, `%size%`) means the word is a literal.
 fn looks_like_expression(s: &str) -> bool {
-    !s.split(|c: char| !c.is_ascii_alphanumeric()).any(|s| {
-        Field::parse_field(s).is_err() && Function::from_str(s).is_err() && s.parse::<i64>().is_err()
-    })
+    !s.split(['+', '-', '*', '/', '%', '(', ')']).any(|operand| !is_arithmetic_operand(operand))
+}
+
+fn is_arithmetic_operand(operand: &str) -> bool {
+    !operand.is_empty()
+        && (operand.parse::<i64>().is_ok()
+            || operand.parse::<f64>().is_ok()
+            || Field::parse_field(operand).is_ok()
+            || Function::from_str(operand).is_ok()
+            || is_alias_reference(operand))
+}
+
+fn is_alias_reference(operand: &str) -> bool {
+    fn is_identifier(part: &str) -> bool {
+        part.starts_with(|c: char| c.is_ascii_alphabetic() || c == '_')
+            && part.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+    }
+    operand.split_once('.').is_some_and(|(alias, name)| is_identifier(alias) && is_identifier(name))
 }
 
 fn looks_like_date(s: &str) -> bool {
@@ -649,6 +668,30 @@ c"))), "lexemes were {:?}", lexemes);
         assert_eq!(
             rhs_of("select name from . where size > 1+(2*2)"),
             vec![raw("1"), arith("+"), Lexeme::Open, raw("2"), arith("*"), raw("2"), Lexeme::Close]
+        );
+    }
+
+    fn where_clause_of(query: &str) -> Vec<Lexeme> {
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let lexemes = collect(&mut lexer);
+        let pos = lexemes.iter().position(|l| matches!(l, Lexeme::Where)).expect("where");
+        lexemes[pos + 1..].to_vec()
+    }
+
+    #[test]
+    fn compact_arithmetic_over_dotted_and_underscored_operands_is_split() {
+        let gt = Lexeme::Operator(">".to_string());
+        assert_eq!(
+            where_clause_of("select name from . as t where t.size/2>3"),
+            vec![raw("t.size"), arith("/"), raw("2"), gt.clone(), raw("3")]
+        );
+        assert_eq!(
+            where_clause_of("select name from . where line_count/2>3"),
+            vec![raw("line_count"), arith("/"), raw("2"), gt.clone(), raw("3")]
+        );
+        assert_eq!(
+            where_clause_of("select name from . as t where size>t.sz*2"),
+            vec![raw("size"), gt, raw("t.sz"), arith("*"), raw("2")]
         );
     }
 

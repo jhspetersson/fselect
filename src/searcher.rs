@@ -5714,6 +5714,25 @@ mod tests {
     }
 
     #[test]
+    fn compact_arithmetic_in_where_is_calculated() {
+        let tmp = std::env::temp_dir().join("fselect_test_compact_arithmetic");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        for (name, size) in [("a.txt", 2), ("b.txt", 10), ("c.txt", 3)] {
+            fs::write(tmp.join(name), "x".repeat(size)).unwrap();
+        }
+
+        let qualified = run_query_against_dir("select name from __DIR__ as t where t.size/2>3", &tmp);
+        let bare = run_query_against_dir("select name from __DIR__ where size/2>3", &tmp);
+        let underscored = run_query_against_dir("select name, line_count/2 from __DIR__ where name = 'b.txt'", &tmp);
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(qualified, vec!["b.txt"], "qualified field");
+        assert_eq!(bare, vec!["b.txt"], "bare field");
+        assert_eq!(underscored, vec!["b.txt\t0.5"], "underscored field");
+    }
+
+    #[test]
     fn having_can_read_aggregate_aliases_through_correlated_subqueries() {
         let tmp = std::env::temp_dir().join("fselect_test_having_aggregate_alias");
         let _ = fs::remove_dir_all(&tmp);

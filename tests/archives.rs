@@ -109,6 +109,32 @@ fn subquery_values_keep_their_own_trailing_line_breaks() {
 }
 
 #[test]
+fn from_subqueries_keep_archive_members_whose_names_contain_tabs() {
+    let dir = std::env::temp_dir().join("fselect_it_archive_tab_names");
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let options = zip::write::SimpleFileOptions::default();
+    let mut zip = zip::ZipWriter::new(fs::File::create(dir.join("tabzip.zip")).unwrap());
+    zip.start_file("before	after.txt", options).unwrap();
+    zip.write_all(b"abc").unwrap();
+    zip.start_file("plain.txt", options).unwrap();
+    zip.write_all(b"abcde").unwrap();
+    zip.finish().unwrap();
+    let root = dir.display();
+
+    let direct = fselect(&format!("select sum(size) from {root} archives where ext = txt"));
+    let wrapped = fselect(&format!("select sum(size) from (select path from {root} archives where ext = txt)"));
+    let names = fselect(&format!("select size from (select path from {root} archives where ext = txt) order by size"));
+    let _ = fs::remove_dir_all(&dir);
+
+    assert_eq!(direct.code, Some(0), "{}", direct.stderr);
+    assert_eq!(rows(&direct), vec!["8"]);
+    assert_eq!(wrapped.code, Some(0), "{}", wrapped.stderr);
+    assert_eq!(rows(&wrapped), vec!["8"], "{}", wrapped.stderr);
+    assert_eq!(rows(&names), vec!["3", "5"], "{}", names.stderr);
+}
+
+#[test]
 fn archive_members_report_mime_and_content_fields() {
     let dir = make_archive_dir("fselect_it_archive_fields", 2);
     let root = dir.display();

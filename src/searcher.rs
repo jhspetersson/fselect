@@ -1041,11 +1041,46 @@ impl<'a> Searcher<'a> {
                 let mut columns = row.rsplitn(3, '\t');
                 let depth = columns.next().and_then(|depth| depth.parse::<usize>().ok());
                 match (columns.next(), depth) {
-                    (Some(path), Some(depth)) if !path.is_empty() => (path.to_string(), Some(depth)),
+                    (Some(path), Some(depth)) if !path.is_empty() => (Self::decode_identity_path(path), Some(depth)),
                     _ => (row.clone(), None),
                 }
             })
             .collect())
+    }
+
+    /// The identity path travels inside a tab-separated row, so the separator
+    /// characters it may contain are escaped on the way out and restored here.
+    fn encode_identity_path(path: &str) -> String {
+        let mut out = String::with_capacity(path.len());
+        for c in path.chars() {
+            match c {
+                '\\' => out.push_str("\\\\"),
+                '\t' => out.push_str("\\t"),
+                '\n' => out.push_str("\\n"),
+                '\r' => out.push_str("\\r"),
+                _ => out.push(c),
+            }
+        }
+        out
+    }
+
+    fn decode_identity_path(encoded: &str) -> String {
+        let mut out = String::with_capacity(encoded.len());
+        let mut chars = encoded.chars();
+        while let Some(c) = chars.next() {
+            if c != '\\' {
+                out.push(c);
+                continue;
+            }
+            match chars.next() {
+                Some('t') => out.push('\t'),
+                Some('n') => out.push('\n'),
+                Some('r') => out.push('\r'),
+                Some(other) => out.push(other),
+                None => out.push('\\'),
+            }
+        }
+        out
     }
 
     /// The hidden identity an outer FROM-subselect needs to re-resolve this
@@ -1063,7 +1098,7 @@ impl<'a> Searcher<'a> {
     }
 
     fn push_subquery_identity(items: &mut Vec<(String, String)>, own_path: &str, root_depth: usize) {
-        items.push((String::new(), own_path.to_string()));
+        items.push((String::new(), Self::encode_identity_path(own_path)));
         items.push((String::new(), root_depth.to_string()));
     }
 

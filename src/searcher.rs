@@ -2960,7 +2960,9 @@ impl<'a> Searcher<'a> {
     }
 
     fn is_null_operand(operand: &Expr, value: &Variant) -> bool {
-        !operand.is_literal() && (operand.contains_numeric() || operand.contains_datetime()) && value.to_string().is_empty()
+        !operand.is_literal()
+            && (operand.contains_numeric() || operand.contains_datetime() || operand.contains_boolean())
+            && value.to_string().is_empty()
     }
 
     fn is_declared_alias(&self, alias: &str) -> bool {
@@ -5730,6 +5732,36 @@ mod tests {
         assert_eq!(qualified, vec!["b.txt"], "qualified field");
         assert_eq!(bare, vec!["b.txt"], "bare field");
         assert_eq!(underscored, vec!["b.txt\t0.5"], "underscored field");
+    }
+
+    #[test]
+    fn empty_boolean_subqueries_match_nothing() {
+        let tmp = std::env::temp_dir().join("fselect_test_empty_boolean_subquery");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(tmp.join("data")).unwrap();
+        fs::create_dir_all(tmp.join("empty")).unwrap();
+        for name in ["a.txt", "b.txt"] {
+            fs::write(tmp.join("data").join(name), "x").unwrap();
+        }
+
+        let direct = run_query_against_dir("select name from __DIR__/data where is_dir = (select is_dir from __DIR__/empty)", &tmp);
+        let reversed = run_query_against_dir("select name from __DIR__/data where (select is_dir from __DIR__/empty) = is_dir", &tmp);
+        let not_equal = run_query_against_dir("select name from __DIR__/data where is_dir != (select is_dir from __DIR__/empty)", &tmp);
+        let having = run_query_against_dir(
+            "select ext, count(*) from __DIR__/data group by ext having min(is_dir) = (select is_dir from __DIR__/empty)",
+            &tmp,
+        );
+        let populated = run_query_against_dir(
+            "select name from __DIR__/data where is_dir = (select is_dir from __DIR__/data limit 1) order by name",
+            &tmp,
+        );
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(direct, Vec::<String>::new(), "direct");
+        assert_eq!(reversed, Vec::<String>::new(), "reversed");
+        assert_eq!(not_equal, Vec::<String>::new(), "not equal is unknown too");
+        assert_eq!(having, Vec::<String>::new(), "having");
+        assert_eq!(populated, vec!["a.txt", "b.txt"], "a populated subquery still compares");
     }
 
     #[test]

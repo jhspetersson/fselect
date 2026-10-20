@@ -138,6 +138,7 @@ pub struct Searcher<'a> {
     enclosing_aliases: HashSet<String>,
     root_depth_column: bool,
     root_depth_cache: Option<(PathBuf, usize)>,
+    canonical_root_cache: Option<(PathBuf, PathBuf)>,
 
     pub error_count: i32,
 }
@@ -423,6 +424,7 @@ impl<'a> Searcher<'a> {
             enclosing_aliases: HashSet::new(),
             root_depth_column: false,
             root_depth_cache: None,
+            canonical_root_cache: None,
 
             error_count: 0,
         }
@@ -1110,6 +1112,22 @@ impl<'a> Searcher<'a> {
         items.push((String::new(), root_depth.to_string()));
     }
 
+    /// The canonical root joined with the path beneath it as traversed, so a
+    /// directory reached through a symlink keeps the link's name instead of
+    /// its target: ignore rules are written against the traversed spelling.
+    fn logical_canonical_dir(&mut self, dir: &Path, root_dir: &Path) -> Option<PathBuf> {
+        let relative = dir.strip_prefix(root_dir).ok()?;
+        let canonical_root = match &self.canonical_root_cache {
+            Some((cached_root, canonical)) if cached_root == root_dir => canonical.clone(),
+            _ => {
+                let canonical = PathBuf::from(canonical_path(&root_dir.to_path_buf()).ok()?);
+                self.canonical_root_cache = Some((root_dir.to_path_buf(), canonical.clone()));
+                canonical
+            }
+        };
+        Some(canonical_root.join(relative))
+    }
+
     fn root_depth_of(&mut self, root_path: &Path) -> usize {
         if let Some((cached_root, depth)) = &self.root_depth_cache
             && cached_root == root_path
@@ -1513,6 +1531,11 @@ impl<'a> Searcher<'a> {
 
         // Read the directory and process each entry
         let root_dir = self.current_root_dir.clone();
+        let filter_base = match &canonical_path {
+            Some(canonical) if self.current_follow_symlinks => self.logical_canonical_dir(dir, &root_dir).unwrap_or_else(|| PathBuf::from(canonical)),
+            Some(canonical) => PathBuf::from(canonical),
+            None => PathBuf::new(),
+        };
         #[cfg(test)]
         {
             self.dirs_opened += 1;
@@ -1528,7 +1551,7 @@ impl<'a> Searcher<'a> {
                         Ok(entry) => {
                             let path = entry.path();
                             let (pass_ignores, explore_only) = if self.current_apply_gitignore || self.current_apply_hgignore || self.current_apply_dockerignore {
-                                let canonical_entry_path = PathBuf::from(canonical_path.as_ref().unwrap()).join(entry.file_name());
+                                let canonical_entry_path = filter_base.join(entry.file_name());
 
                                 // Check the path against the filters
                                 #[cfg(feature = "git")]
@@ -4077,6 +4100,28 @@ mod tests {
             rows.sort();
             assert_eq!(rows, expected, "{}", mode);
         }
+    }
+
+    #[test]
+    fn ignore_rules_apply_to_paths_traversed_through_directory_symlinks() {
+        let tmp = std::env::temp_dir().join("fselect_test_ignore_through_symlink");
+        let _ = fs::remove_dir_all(&tmp);
+        let walk = tmp.join("walk");
+        fs::create_dir_all(walk.join("target")).unwrap();
+        fs::create_dir_all(walk.join(".hg")).unwrap();
+        fs::write(walk.join("target").join("drop.txt"), "x").unwrap();
+        fs::write(walk.join("target").join("keep.txt"), "x").unwrap();
+        fs::write(walk.join(".dockerignore"), "alias/drop.txt\n").unwrap();
+        fs::write(walk.join(".hgignore"), "syntax: regexp\n^alias/drop\\.txt$\n").unwrap();
+        link_directory(&walk.join("alias"), &walk.join("target"));
+
+        let docker = run_query_against_dir("select path from __DIR__/walk symlinks dockerignore where is_file and ext = txt order by path", &tmp);
+        let hg = run_query_against_dir("select path from __DIR__/walk symlinks hgignore where is_file and ext = txt order by path", &tmp);
+        let _ = fs::remove_dir_all(&tmp);
+
+        let expected = vec![rel(&["alias", "keep.txt"]), rel(&["target", "drop.txt"]), rel(&["target", "keep.txt"])];
+        assert_eq!(docker, expected, "dockerignore");
+        assert_eq!(hg, expected, "hgignore");
     }
 
     #[test]

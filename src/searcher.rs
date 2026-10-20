@@ -1938,14 +1938,15 @@ impl<'a> Searcher<'a> {
             }
         }
 
-        if file_map.contains_key(&cache_key) {
+        if let Some(cached) = file_map.get(&cache_key) {
+            let value = typed_variant(column_expr, cached);
             if let Some(entry_key) = context_field {
                 let mut context = self.record_context.borrow_mut();
                 let context_key = self.current_alias.clone().unwrap_or_else(|| String::from(""));
                 let context_entry = context.entry(context_key).or_default();
-                context_entry.insert(entry_key, typed_variant(column_expr, &file_map[&cache_key]));
+                context_entry.insert(entry_key, value.clone());
             }
-            return Ok(Variant::from_string(&file_map[&cache_key]));
+            return Ok(value);
         }
 
         if let Some(ref subquery) = column_expr.subquery {
@@ -4862,6 +4863,34 @@ mod tests {
         assert_eq!(having_one, vec!["true\t3"], "numeric literal");
         assert_eq!(having_false, vec!["false\t1"]);
         assert_eq!(correlated, vec!["false\t0", "true\t4"]);
+    }
+
+    #[test]
+    fn cached_column_values_keep_their_type() {
+        let tmp = std::env::temp_dir().join("fselect_test_cached_value_types");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(tmp.join("sub")).unwrap();
+        fs::write(tmp.join("a.txt"), "x".repeat(5)).unwrap();
+        fs::write(tmp.join("b.txt"), "x".repeat(2)).unwrap();
+
+        let product_alone = run_query_against_dir("select size * is_file from __DIR__ where name = 'a.txt'", &tmp);
+        let product_after_bool = run_query_against_dir("select is_file, size * is_file from __DIR__ where name = 'a.txt'", &tmp);
+        let ratio = run_query_against_dir("select is_file / is_file from __DIR__ where name = 'a.txt'", &tmp);
+        let where_product = run_query_against_dir(
+            "select name from __DIR__ where is_file = true and size * is_file > 2 order by name",
+            &tmp,
+        );
+        let where_size_twice = run_query_against_dir(
+            "select name from __DIR__ where size > 1 and size * 2 > 5 order by name",
+            &tmp,
+        );
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(product_alone, vec!["5"]);
+        assert_eq!(product_after_bool, vec!["true\t5"]);
+        assert_eq!(ratio, vec!["1"]);
+        assert_eq!(where_product, vec!["a.txt"]);
+        assert_eq!(where_size_twice, vec!["a.txt"]);
     }
 
     #[test]

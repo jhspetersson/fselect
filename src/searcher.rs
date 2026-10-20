@@ -177,14 +177,16 @@ fn numeric_or_text(text: &str) -> Variant {
         .unwrap_or_else(|_| Variant::from_string(&text.to_string()))
 }
 
-fn typed_variant(field: Option<&Field>, text: &str) -> Variant {
+fn typed_variant(expr: &Expr, text: &str) -> Variant {
     let as_string = || Variant::from_string(&text.to_string());
-    match field {
-        Some(field) if field.is_numeric_field() => numeric_or_text(text),
-        Some(field) if field.is_datetime_field() => parse_datetime(text)
+    if expr.contains_numeric() {
+        numeric_or_text(text)
+    } else if expr.contains_datetime() {
+        parse_datetime(text)
             .map(|(from, _)| Variant::from_datetime(from))
-            .unwrap_or_else(|_| as_string()),
-        _ => as_string(),
+            .unwrap_or_else(|_| as_string())
+    } else {
+        as_string()
     }
 }
 
@@ -1730,7 +1732,7 @@ impl<'a> Searcher<'a> {
                 entry.insert(alias_name.clone(), value.clone());
             }
             for (grouping_expr, text) in self.query.grouping_fields.iter().zip(group_key) {
-                let value = typed_variant(grouping_expr.field.as_ref(), text);
+                let value = typed_variant(grouping_expr, text);
                 if let Some(field) = grouping_expr.field {
                     entry.insert(field.to_string(), value.clone());
                 }
@@ -1882,7 +1884,7 @@ impl<'a> Searcher<'a> {
                 let mut context = self.record_context.borrow_mut();
                 let context_key = self.current_alias.clone().unwrap_or_else(|| String::from(""));
                 let context_entry = context.entry(context_key).or_default();
-                context_entry.insert(entry_key, typed_variant(column_expr.field.as_ref(), &file_map[&cache_key]));
+                context_entry.insert(entry_key, typed_variant(column_expr, &file_map[&cache_key]));
             }
             return Ok(Variant::from_string(&file_map[&cache_key]));
         }

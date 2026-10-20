@@ -2036,15 +2036,18 @@ impl<'a> Searcher<'a> {
         if let Some(ref field) = column_expr.field {
             if let Some(entry) = entry {
                 let raw = self.get_field_value(entry, file_info, root_path, field).unwrap_or(Variant::empty(VariantType::String));
-                // The record context feeds correlated subqueries and must hold
-                // the raw field value; only the returned value is negated.
+                // The record context feeds correlated subqueries: under the
+                // field name it holds the raw value, under an alias the value
+                // the column actually produces (negated when written `-size`).
                 let result = apply_minus(column_expr, raw.clone());
                 file_map.insert(cache_key, result.to_string());
                 let mut context = self.record_context.borrow_mut();
                 let context_key = self.current_alias.clone().unwrap_or_else(|| String::from(""));
                 let context_entry = context.entry(context_key).or_default();
-                let entry_key = if let Some(alias) = column_expr.alias.clone() { alias } else { field.to_string() };
-                context_entry.insert(entry_key, raw);
+                match column_expr.alias.clone() {
+                    Some(alias) => context_entry.insert(alias, result.clone()),
+                    None => context_entry.insert(field.to_string(), raw),
+                };
                 return Ok(result);
             } else if let Some(val) = file_map.get(&field.to_string()) {
                 return Ok(apply_minus(column_expr, Variant::from_string(val)));
@@ -5354,6 +5357,36 @@ mod tests {
         assert_eq!(calculated, vec!["TXT	2"]);
         assert_eq!(constant_grouped, vec!["md	1	7	7", "txt	2	7	7"]);
         assert_eq!(constant_ungrouped, vec!["3	7	7"]);
+    }
+
+    #[test]
+    fn negated_field_aliases_keep_their_sign_in_the_row_context() {
+        let tmp = std::env::temp_dir().join("fselect_test_negated_field_alias");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(tmp.join("data")).unwrap();
+        fs::create_dir_all(tmp.join("other")).unwrap();
+        for (name, size) in [("a.txt", 2), ("b.txt", 10)] {
+            fs::write(tmp.join("data").join(name), "x".repeat(size)).unwrap();
+        }
+        fs::write(tmp.join("other").join("o1"), "x").unwrap();
+
+        let shown = run_query_against_dir(
+            "select name, -size as neg, (select t.neg from __DIR__/other limit 1) from __DIR__/data as t order by name",
+            &tmp,
+        );
+        let ordered = run_query_against_dir(
+            "select name, -size as neg from __DIR__/data as t order by (select t.neg from __DIR__/other limit 1)",
+            &tmp,
+        );
+        let counted = run_query_against_dir(
+            "select name, -size as neg, (select count(*) from __DIR__/other where t.neg < 0) from __DIR__/data as t order by name",
+            &tmp,
+        );
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(shown, vec!["a.txt	-2	-2", "b.txt	-10	-10"]);
+        assert_eq!(ordered, vec!["b.txt	-10", "a.txt	-2"], "ordering through the alias");
+        assert_eq!(counted, vec!["a.txt	-2	1", "b.txt	-10	1"], "correlated count through the alias");
     }
 
     #[test]

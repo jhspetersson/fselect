@@ -848,11 +848,15 @@ impl<'a> Searcher<'a> {
                         file_map.insert(k.clone(), group_key.get(i).cloned().unwrap_or_default());
                     }
                     self.bind_group_context(&aliases, group_key, &[]);
-                    if let Some(having_expr) = having_expr
-                        && !self.group_conforms(&mut file_map, group_acc, having_expr)? {
+                    if let Some(having_expr) = having_expr {
+                        if having_expr.has_correlated_subquery() {
+                            self.bind_aggregate_aliases(&aliases, group_key, &mut file_map, group_acc, true)?;
+                        }
+                        if !self.group_conforms(&mut file_map, group_acc, having_expr)? {
                             continue;
                         }
-                    self.bind_aggregate_aliases(&aliases, group_key, &mut file_map, group_acc)?;
+                    }
+                    self.bind_aggregate_aliases(&aliases, group_key, &mut file_map, group_acc, false)?;
                     let mut items: Vec<(String, String)> = Vec::new();
                     for column_expr in &self.query.fields {
                         let value = self.get_column_expr_value(
@@ -924,16 +928,19 @@ impl<'a> Searcher<'a> {
                 let accumulators = std::mem::take(&mut self.accumulators);
                 let empty_acc = function::GroupAccumulator::default();
                 let ungrouped_acc = accumulators.get(&vec![]).unwrap_or(&empty_acc);
+                let aliases = self.query.own_root_aliases();
+                self.bind_group_context(&aliases, &[], &[]);
                 let mut passes_having = true;
                 if let Some(having_expr) = self.query.having.as_ref() {
+                    if having_expr.has_correlated_subquery() {
+                        self.bind_aggregate_aliases(&aliases, &[], &mut HashMap::new(), ungrouped_acc, true)?;
+                    }
                     passes_having =
                         self.group_conforms(&mut HashMap::new(), ungrouped_acc, having_expr)?;
                 }
 
                 if passes_having {
-                    let aliases = self.query.own_root_aliases();
-                    self.bind_group_context(&aliases, &[], &[]);
-                    self.bind_aggregate_aliases(&aliases, &[], &mut HashMap::new(), ungrouped_acc)?;
+                    self.bind_aggregate_aliases(&aliases, &[], &mut HashMap::new(), ungrouped_acc, false)?;
                     for column_expr in &self.query.fields {
                         let value = self.get_column_expr_value(
                             None,
@@ -1683,6 +1690,7 @@ impl<'a> Searcher<'a> {
         group_key: &[String],
         file_map: &mut HashMap<String, String>,
         accumulator: &function::GroupAccumulator,
+        skip_failing_columns: bool,
     ) -> Result<(), SearchError> {
         if aliases.is_empty() {
             return Ok(());
@@ -1696,7 +1704,11 @@ impl<'a> Searcher<'a> {
                     && column.has_aggregate_function()
                     && column.has_correlated_subquery() == correlated
                 {
-                    let value = self.get_column_expr_value(None, &None, Path::new(""), file_map, Some(accumulator), column)?;
+                    let value = match self.get_column_expr_value(None, &None, Path::new(""), file_map, Some(accumulator), column) {
+                        Ok(value) => value,
+                        Err(err) if skip_failing_columns && !err.is_fatal() => continue,
+                        Err(err) => return Err(err),
+                    };
                     let text = value.to_string();
                     let value = if column.contains_numeric() { numeric_or_text(&text) } else { Variant::from_string(&text) };
                     values.push((alias.clone(), value));
@@ -4673,6 +4685,40 @@ mod tests {
         assert_eq!(aliased, unaliased, "an alias must not change the value");
         assert_eq!(reversed, vec!["md\t13\t12", "txt\t5\t3"]);
         assert_eq!(ungrouped, vec!["16\t15"]);
+    }
+
+    #[test]
+    fn having_can_read_aggregate_aliases_through_correlated_subqueries() {
+        let tmp = std::env::temp_dir().join("fselect_test_having_aggregate_alias");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(tmp.join("data")).unwrap();
+        fs::create_dir_all(tmp.join("other")).unwrap();
+        for (name, size) in [("a.txt", 0), ("b.txt", 0), ("c.md", 5), ("d.md", 7)] {
+            fs::write(tmp.join("data").join(name), "x".repeat(size)).unwrap();
+        }
+        for (name, size) in [("o1", 1), ("o5", 5)] {
+            fs::write(tmp.join("other").join(name), "x".repeat(size)).unwrap();
+        }
+
+        let grouped = run_query_against_dir(
+            "select ext, sum(size) as total from __DIR__/data as t group by ext having (select count(*) from __DIR__/other where size > t.total) > 0 order by ext",
+            &tmp,
+        );
+        let ungrouped = run_query_against_dir(
+            "select sum(size) as total from __DIR__/data as t having (select count(*) from __DIR__/other where size < t.total) > 0",
+            &tmp,
+        );
+        let guarded = search_dir(
+            "select ext, 96 / sum(size) as ratio from __DIR__/data as t group by ext having sum(size) > 0 and (select count(*) from __DIR__/other where size < t.ratio) >= 0",
+            &tmp, Config::default(), true,
+        );
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(grouped, vec!["txt\t0"]);
+        assert_eq!(ungrouped, vec!["12"]);
+        let rows: Vec<String> = guarded.output_buffer.iter_values().map(|row| row.trim_end().to_string()).collect();
+        assert_eq!(rows, vec!["md\t8"]);
+        assert_eq!(guarded.error_count, 0);
     }
 
     #[test]

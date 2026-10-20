@@ -121,10 +121,11 @@ impl <'a> Parser<'a> {
             clause.validate_format_size_modifiers()?;
         }
 
-        // A qualifier on the query's only root alias is redundant (`t.size`
-        // is `size`), so it is dropped from cache keys; with several roots
-        // the qualifier tells `t.size` and `u.size` apart and must stay.
-        if self.root_aliases.len() == 1 {
+        // With a single root a qualifier is redundant (`t.size` is `size`),
+        // so it is dropped from cache keys; with several roots, named or
+        // not, `t.size` and `size` cover different entries and the qualifier
+        // must stay.
+        if roots.len() == 1 {
             for clause in fields
                 .iter_mut()
                 .chain(expr.iter_mut())

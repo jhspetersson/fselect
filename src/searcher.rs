@@ -149,6 +149,10 @@ pub struct Searcher<'a> {
     #[cfg(feature = "git")]
     git_cache: crate::util::git::GitCache,
     file_map: HashMap<String, String>,
+    /// The type each cached text was produced with, keyed by cache key and
+    /// stored with that text: a text alone cannot tell `coalesce(name,
+    /// is_file)` returning the file name "true" from the boolean true.
+    cached_types: HashMap<String, (String, VariantType)>,
     conforms_map: HashMap<String, String>,
     subquery_cache: HashMap<String, Vec<String>>,
     membership_cache: HashMap<(String, VariantType), Rc<Membership>>,
@@ -192,6 +196,24 @@ fn apply_minus(column_expr: &Expr, value: Variant) -> Variant {
     crate::operators::ArithmeticOp::Subtract
         .calc(&Variant::from_int(0), &value)
         .unwrap_or(value)
+}
+
+/// Rebuilds a cached text with the type it was produced with.
+fn variant_of_type(expr: &Expr, text: &str, value_type: &VariantType) -> Variant {
+    let typed = match value_type {
+        VariantType::String => Some(Variant::from_string(&text.to_string())),
+        VariantType::Int | VariantType::Float => text
+            .parse::<i64>()
+            .map(Variant::from_int)
+            .or_else(|_| text.parse::<f64>().map(Variant::from_float))
+            .ok(),
+        VariantType::Bool => str_to_bool(text).map(Variant::from_bool),
+        VariantType::DateTime => parse_datetime(text).ok().map(|(from, to)| Variant::from_datetime_range(from, to)),
+    };
+    match typed {
+        Some(variant) => variant.with_text(text),
+        None => typed_variant(expr, text),
+    }
 }
 
 /// Re-types a value that was rendered as text. The expression says which
@@ -252,7 +274,7 @@ impl Membership {
             Membership::Floats(list) => list.contains(&field_value.to_float()),
             Membership::Bools { has_true, has_false } => if field_value.to_bool() { *has_true } else { *has_false },
             Membership::DateTimes(intervals) => match field_value.to_datetime() {
-                Ok((dt, _)) => intervals.iter().any(|(start, finish)| dt >= *start && dt <= *finish),
+                Ok((from, to)) => intervals.iter().any(|(start, finish)| from <= *finish && *start <= to),
                 Err(_) => false,
             },
         }
@@ -442,6 +464,7 @@ impl<'a> Searcher<'a> {
             #[cfg(feature = "git")]
             git_cache: crate::util::git::GitCache::new(),
             file_map: HashMap::new(),
+            cached_types: HashMap::new(),
             conforms_map: HashMap::new(),
             subquery_cache: HashMap::new(),
             membership_cache: HashMap::new(),
@@ -2046,6 +2069,13 @@ impl<'a> Searcher<'a> {
                 entry.insert(alias_name.clone(), value.clone());
             }
             for (grouping_expr, text) in self.query.grouping_fields.iter().zip(group_key) {
+                if grouping_expr
+                    .root_alias
+                    .as_deref()
+                    .is_some_and(|owner| !owner.eq_ignore_ascii_case(alias))
+                {
+                    continue;
+                }
                 let value = typed_variant(grouping_expr, text);
                 if let Some(field) = grouping_expr.field
                     && !grouping_expr.minus
@@ -2178,6 +2208,7 @@ impl<'a> Searcher<'a> {
                         return Ok(match ctx.get(&field_key) {
                             Some(val) => {
                                 let value = apply_minus(column_expr, val.clone());
+                                self.cached_types.insert(cache_key.clone(), (value.to_string(), value.get_type().clone()));
                                 file_map.insert(cache_key, value.to_string());
                                 value
                             }
@@ -2199,7 +2230,10 @@ impl<'a> Searcher<'a> {
         }
 
         if let Some(cached) = file_map.get(&cache_key) {
-            let value = typed_variant(column_expr, cached);
+            let value = match self.cached_types.get(&cache_key) {
+                Some((text, value_type)) if text == cached => variant_of_type(column_expr, cached, value_type),
+                _ => typed_variant(column_expr, cached),
+            };
             if let Some(entry_key) = context_field {
                 let mut context = self.record_context.borrow_mut();
                 let context_key = self.current_alias.clone().unwrap_or_else(|| String::from(""));
@@ -2225,6 +2259,7 @@ impl<'a> Searcher<'a> {
             let result =
                 self.get_function_value(entry, file_info, root_path, file_map, accumulator, column_expr)?;
             let result = apply_minus(column_expr, result);
+            self.remember_type(&cache_key, &result);
             file_map.insert(cache_key, result.to_string());
             return Ok(result);
         }
@@ -2236,6 +2271,7 @@ impl<'a> Searcher<'a> {
                 // field name it holds the raw value, under an alias the value
                 // the column actually produces (negated when written `-size`).
                 let result = apply_minus(column_expr, raw.clone());
+                self.remember_type(&cache_key, &result);
                 file_map.insert(cache_key, result.to_string());
                 let mut context = self.record_context.borrow_mut();
                 let context_key = self.current_alias.clone().unwrap_or_else(|| String::from(""));
@@ -2267,6 +2303,9 @@ impl<'a> Searcher<'a> {
                     let right_result =
                         self.get_column_expr_value(entry, file_info, root_path, file_map, accumulator, right)?;
                         result = op.calc(&left_result, &right_result).map(|v| apply_minus(column_expr, v));
+                        if let Ok(ref value) = result {
+                            self.remember_type(&cache_key, value);
+                        }
                         file_map.insert(cache_key, result.clone()?.to_string());
                 } else {
                     result = Ok(apply_minus(column_expr, left_result));
@@ -2385,6 +2424,10 @@ impl<'a> Searcher<'a> {
         dispatch::get_field_value(&mut ctx, field)
     }
 
+    fn remember_type(&mut self, cache_key: &str, value: &Variant) {
+        self.cached_types.insert(cache_key.to_string(), (value.to_string(), value.get_type().clone()));
+    }
+
     fn check_file(&mut self, entry: &DirEntry, root_path: &Path, file_info: &Option<FileInfo>, file_type_hint: Option<FileType>) -> Result<(), SearchError> {
         self.fms.clear();
         // Reuse the file type the traversal already resolved, so is_dir /
@@ -2393,6 +2436,7 @@ impl<'a> Searcher<'a> {
 
         let mut file_map = std::mem::take(&mut self.file_map);
         file_map.clear();
+        self.cached_types.clear();
         let result = self.check_file_inner(entry, root_path, file_info, &mut file_map);
         self.file_map = file_map;
         result
@@ -2751,9 +2795,10 @@ impl<'a> Searcher<'a> {
                 VariantType::DateTime => {
                     // Unparseable values: silently skip this arg (treat as a
                     // non-match) instead of erroring per file scanned.
+                    // Interval overlap, the same rule as `=`.
                     match (field_value.to_datetime(), arg_val.to_datetime()) {
-                        (Ok((field_dt, _)), Ok((arg_start, arg_finish))) => {
-                            field_dt >= arg_start && field_dt <= arg_finish
+                        (Ok((field_start, field_finish)), Ok((arg_start, arg_finish))) => {
+                            field_start <= arg_finish && arg_start <= field_finish
                         }
                         _ => false,
                     }
@@ -4614,10 +4659,40 @@ mod tests {
             "select upper(t.name), upper(u.name) from __DIR__/a as t, __DIR__/b as u order by path",
             &tmp,
         );
+        let mixed = run_query_against_dir("select sum(t.size), sum(size) from __DIR__/a as t, __DIR__/b", &tmp);
+        let mixed_reversed = run_query_against_dir("select sum(size), sum(t.size) from __DIR__/b, __DIR__/a as t", &tmp);
         let _ = fs::remove_dir_all(&tmp);
 
         assert_eq!(sums, vec!["2\t3"]);
         assert_eq!(uppers, vec!["X.TXT", "\tY.TXT"]);
+        assert_eq!(mixed, vec!["2\t5"], "a named root next to an unnamed one");
+        assert_eq!(mixed_reversed, vec!["5\t2"], "unnamed root first");
+    }
+
+    #[test]
+    fn qualified_grouping_fields_bind_only_to_their_own_alias() {
+        let tmp = std::env::temp_dir().join("fselect_test_qualified_grouping_fields");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(tmp.join("a")).unwrap();
+        fs::create_dir_all(tmp.join("b")).unwrap();
+        fs::write(tmp.join("a").join("alpha.txt"), "x").unwrap();
+        fs::write(tmp.join("b").join("beta.txt"), "x").unwrap();
+
+        let sorted = |query: &str| {
+            let mut rows = run_query_against_dir(query, &tmp);
+            rows.sort();
+            rows
+        };
+        let forward = sorted("select t.name, u.name, count(*) from __DIR__/a as t, __DIR__/b as u group by t.name, u.name");
+        let reversed = sorted("select t.name, u.name, count(*) from __DIR__/a as t, __DIR__/b as u group by u.name, t.name");
+        let having = sorted(
+            "select t.name, u.name, count(*) from __DIR__/a as t, __DIR__/b as u group by t.name, u.name having t.name = 'alpha.txt'",
+        );
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(forward, vec!["\tbeta.txt\t1", "alpha.txt\t\t1"]);
+        assert_eq!(reversed, forward, "grouping order must not matter");
+        assert_eq!(having, vec!["alpha.txt\t\t1"]);
     }
 
     #[test]
@@ -5485,6 +5560,28 @@ mod tests {
     }
 
     #[test]
+    fn cached_values_keep_the_type_they_were_produced_with() {
+        let tmp = std::env::temp_dir().join("fselect_test_cached_produced_type");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        fs::write(tmp.join("true"), "x").unwrap();
+
+        let alone = run_query_against_dir("select coalesce(name, is_file) + 0 from __DIR__", &tmp);
+        let repeated = run_query_against_dir("select coalesce(name, is_file), coalesce(name, is_file) + 0 from __DIR__", &tmp);
+        let filter_alone = run_query_against_dir("select name from __DIR__ where coalesce(name, is_file) + 0 = 0", &tmp);
+        let filter_repeated = run_query_against_dir(
+            "select name from __DIR__ where coalesce(name, is_file) = 'true' and coalesce(name, is_file) + 0 = 0",
+            &tmp,
+        );
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(alone, vec!["0"]);
+        assert_eq!(repeated, vec!["true\t0"], "the cached value is the string name, not a boolean");
+        assert_eq!(filter_alone, vec!["true"]);
+        assert_eq!(filter_repeated, vec!["true"], "repetition must not change filtering");
+    }
+
+    #[test]
     fn cached_column_values_keep_their_type() {
         let tmp = std::env::temp_dir().join("fselect_test_cached_value_types");
         let _ = fs::remove_dir_all(&tmp);
@@ -6161,6 +6258,29 @@ mod tests {
         assert_eq!(reversed_equal, vec!["fresh.txt"], "a file modified today equals current_date() from either side");
         assert_eq!(having, vec!["1"], "reversed HAVING");
         assert!(mismatches.is_empty(), "{mismatches:#?}");
+    }
+
+    #[test]
+    fn date_membership_agrees_with_date_equality() {
+        let tmp = std::env::temp_dir().join("fselect_test_date_membership");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(tmp.join("other")).unwrap();
+        fs::write(tmp.join("fresh.txt"), "x").unwrap();
+        fs::write(tmp.join("other").join("o.txt"), "x").unwrap();
+
+        let rows = |condition: &str| {
+            run_query_against_dir(&format!("select name from __DIR__ where name = 'fresh.txt' and {condition}"), &tmp)
+        };
+        let equal = rows("concat(current_date(), '') = modified");
+        let in_list = rows("concat(current_date(), '') in (modified)");
+        let not_in = rows("concat(current_date(), '') not in (modified)");
+        let in_subquery = rows("concat(current_date(), '') in (select modified from __DIR__/other)");
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(equal, vec!["fresh.txt"]);
+        assert_eq!(in_list, equal, "in list");
+        assert_eq!(not_in, Vec::<String>::new(), "not in");
+        assert_eq!(in_subquery, equal, "in subquery");
     }
 
     #[test]

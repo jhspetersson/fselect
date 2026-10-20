@@ -722,10 +722,11 @@ impl<'a> Searcher<'a> {
                     for expr in clauses {
                         names.extend(expr.get_alias_references_in_subqueries(alias, false));
                     }
+                    let aggregate_dependent = Self::aggregate_dependent_aliases(&self.query.fields, alias);
                     self.query
                         .fields
                         .iter()
-                        .filter(|column| !column.has_aggregate_function())
+                        .filter(|column| !column.alias.as_deref().is_some_and(|declared| aggregate_dependent.contains(&declared.to_ascii_lowercase())))
                         .filter_map(|column| {
                             let declared = column.alias.as_deref()?;
                             names
@@ -1149,6 +1150,33 @@ impl<'a> Searcher<'a> {
             }
         };
         Some(canonical_root.join(relative))
+    }
+
+    /// Aliases (lowercased) whose value only exists once the group is
+    /// complete: columns with an aggregate, and transitively every column
+    /// that references such an alias. They are bound per group, never per row.
+    fn aggregate_dependent_aliases(fields: &[Expr], alias: &str) -> HashSet<String> {
+        let mut dependent: HashSet<String> = fields
+            .iter()
+            .filter(|column| column.has_aggregate_function())
+            .filter_map(|column| column.alias.as_deref().map(str::to_ascii_lowercase))
+            .collect();
+        loop {
+            let before = dependent.len();
+            for column in fields {
+                if let Some(declared) = column.alias.as_deref()
+                    && column
+                        .get_alias_references_in_subqueries(alias, true)
+                        .iter()
+                        .any(|name| dependent.contains(&name.to_ascii_lowercase()))
+                {
+                    dependent.insert(declared.to_ascii_lowercase());
+                }
+            }
+            if dependent.len() == before {
+                return dependent;
+            }
+        }
     }
 
     fn root_depth_of(&mut self, root_path: &Path) -> usize {
@@ -5623,6 +5651,34 @@ mod tests {
         assert_eq!(guarded, (vec!["a.txt\t25".to_string()], 0), "guarded by size > 0");
         assert_eq!(ordered, (vec!["a.txt\t25".to_string()], 0), "alias used only by ORDER BY");
         assert_eq!(unguarded, (vec!["a.txt\t25".to_string()], 1), "unguarded still reports");
+    }
+
+    #[test]
+    fn aliases_depending_on_aggregates_indirectly_are_bound_per_group() {
+        let tmp = std::env::temp_dir().join("fselect_test_indirect_aggregate_aliases");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(tmp.join("data")).unwrap();
+        fs::create_dir_all(tmp.join("other")).unwrap();
+        for (name, size) in [("a.txt", 2), ("b.txt", 10), ("c.md", 3)] {
+            fs::write(tmp.join("data").join(name), "x".repeat(size)).unwrap();
+        }
+        fs::write(tmp.join("other").join("o1"), "x").unwrap();
+
+        let columns = "sum(size) as total, 30 / (select t.total from __DIR__/other limit 1) as ratio, (select t.ratio from __DIR__/other limit 1)";
+        let (ungrouped, ungrouped_errors) = {
+            let searcher = search_dir(&format!("select {columns} from __DIR__/data as t"), &tmp, Config::default(), true);
+            let rows: Vec<String> = searcher.output_buffer.iter_values().map(|s| s.trim_end().to_string()).collect();
+            (rows, searcher.error_count)
+        };
+        let grouped = run_query_against_dir(
+            &format!("select ext, {columns} from __DIR__/data as t group by ext order by ext"),
+            &tmp,
+        );
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(ungrouped, vec!["15\t2\t2"]);
+        assert_eq!(ungrouped_errors, 0, "no division by zero while rows are scanned");
+        assert_eq!(grouped, vec!["md\t3\t10\t10", "txt\t12\t2.5\t2.5"]);
     }
 
     #[test]

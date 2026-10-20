@@ -2670,6 +2670,11 @@ impl<'a> Searcher<'a> {
                 None, &None, Path::new(""), file_map, Some(group_acc), right_expr,
             )?;
             let field_value = Self::retype_value(left_expr, right_expr, field_value);
+            if op.is_relational()
+                && (Self::is_null_operand(left_expr, &field_value) || Self::is_null_operand(right_expr, &value))
+            {
+                return Ok(false);
+            }
             return self.compare_variants(op, &field_value, &value);
         }
 
@@ -4719,6 +4724,31 @@ mod tests {
         let rows: Vec<String> = guarded.output_buffer.iter_values().map(|row| row.trim_end().to_string()).collect();
         assert_eq!(rows, vec!["md\t8"]);
         assert_eq!(guarded.error_count, 0);
+    }
+
+    #[test]
+    fn having_comparisons_never_match_a_missing_aggregate_value() {
+        let tmp = std::env::temp_dir().join("fselect_test_having_missing_value");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        fs::write(tmp.join("a.txt"), "hello").unwrap();
+        fs::write(tmp.join("b.md"), "hi").unwrap();
+        let logo = std::env::var("CARGO_MANIFEST_DIR").unwrap() + "/resources/test/image/rust-logo-blk.png";
+        fs::copy(logo, tmp.join("logo.png")).unwrap();
+
+        let run = |having: &str| run_query_against_dir(&format!("select ext from __DIR__ group by ext having {having} order by ext"), &tmp);
+        let less = run("max(width) < 1000");
+        let reversed = run("1000 > max(width)");
+        let not_equal = run("max(width) != 5");
+        let is_null = run("max(width) is null");
+        let is_not_null = run("max(width) is not null");
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(less, vec!["png"], "a missing width compares with nothing");
+        assert_eq!(reversed, vec!["png"]);
+        assert_eq!(not_equal, vec!["png"]);
+        assert_eq!(is_null, vec!["md", "txt"]);
+        assert_eq!(is_not_null, vec!["png"]);
     }
 
     #[test]

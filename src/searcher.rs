@@ -1977,7 +1977,7 @@ impl<'a> Searcher<'a> {
             }
             let list = self.get_list_from_subquery(*subquery)?;
             return match list.first() {
-                Some(result) => Ok(apply_minus(column_expr, Variant::from_string(result))),
+                Some(result) => Ok(apply_minus(column_expr, typed_variant(column_expr, result))),
                 None => Ok(Variant::empty(VariantType::String)),
             };
         }
@@ -5157,6 +5157,36 @@ mod tests {
         assert_eq!(aggregate, vec!["md\t12\t12", "txt\t3\t3"]);
         assert_eq!(grouping, vec!["md\t2\tmd", "txt\t2\ttxt"]);
         assert_eq!(ungrouped, vec!["15\t15"]);
+    }
+
+    #[test]
+    fn scalar_subqueries_keep_the_type_of_referenced_aliases() {
+        let tmp = std::env::temp_dir().join("fselect_test_scalar_alias_types");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(tmp.join("data")).unwrap();
+        fs::create_dir_all(tmp.join("other")).unwrap();
+        for (name, size) in [("a.txt", 10), ("b.txt", 2), ("c.txt", 7)] {
+            fs::write(tmp.join("data").join(name), "x".repeat(size)).unwrap();
+        }
+        fs::write(tmp.join("other").join("o1"), "x").unwrap();
+
+        let filtered = run_query_against_dir(
+            "select name, size as sz from __DIR__/data as t where (select t.sz from __DIR__/other limit 1) > 5 order by name",
+            &tmp,
+        );
+        let sorted = run_query_against_dir(
+            "select name, size as sz from __DIR__/data as t order by (select t.sz from __DIR__/other limit 1) desc",
+            &tmp,
+        );
+        let boolean = run_query_against_dir(
+            "select name, is_file as f from __DIR__/data as t where (select t.f from __DIR__/other limit 1) = TRUE order by name",
+            &tmp,
+        );
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(filtered, vec!["a.txt	10", "c.txt	7"], "numeric comparison");
+        assert_eq!(sorted, vec!["a.txt	10", "c.txt	7", "b.txt	2"], "numeric ordering");
+        assert_eq!(boolean, vec!["a.txt	true", "b.txt	true", "c.txt	true"], "boolean comparison");
     }
 
     #[test]

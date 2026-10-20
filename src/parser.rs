@@ -259,6 +259,7 @@ impl <'a> Parser<'a> {
                     let declared = column.alias.clone().unwrap_or(name);
                     expr.val = Some(format!("{}.{}", entry.alias, declared));
                     expr.root_alias = Some(entry.alias.clone());
+                    expr.remember_referenced_type(column);
                 }
                 None => expr.root_alias = None,
             }

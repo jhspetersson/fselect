@@ -717,12 +717,35 @@ impl Expr {
         }
     }
 
+    const REFERENCED_TYPE: &'static str = "referenced_type";
+
+    /// An alias reference (`t.sz`) is resolved at run time from the row
+    /// context, so the type of the column it names is recorded here for the
+    /// static type checks.
+    pub fn remember_referenced_type(&mut self, column: &Expr) {
+        let kind = if column.contains_numeric() {
+            "numeric"
+        } else if column.contains_datetime() {
+            "datetime"
+        } else if column.contains_boolean() {
+            "boolean"
+        } else {
+            return;
+        };
+        self.set_prop(Self::REFERENCED_TYPE, Variant::from_string(&kind.to_string()));
+    }
+
+    fn references_type(&self, kind: &str) -> bool {
+        self.alias_reference_key().is_some()
+            && self.get_prop(Self::REFERENCED_TYPE).is_some_and(|value| value.to_string() == kind)
+    }
+
     pub fn contains_numeric(&self) -> bool {
         Self::contains_numeric_field(self)
     }
 
     fn contains_numeric_field(expr: &Expr) -> bool {
-        if expr.arithmetic_op.is_some() {
+        if expr.arithmetic_op.is_some() || expr.references_type("numeric") {
             return true;
         }
 
@@ -781,6 +804,9 @@ impl Expr {
         if expr.arithmetic_op.is_some() {
             return false;
         }
+        if expr.references_type("boolean") {
+            return true;
+        }
 
         if let Some(ref subquery) = expr.subquery
             && let Some(column) = subquery.fields.first()
@@ -813,6 +839,10 @@ impl Expr {
     }
 
     fn contains_datetime_field(expr: &Expr) -> bool {
+        if expr.references_type("datetime") {
+            return true;
+        }
+
         if let Some(ref subquery) = expr.subquery
             && let Some(column) = subquery.fields.first()
         {

@@ -91,9 +91,16 @@ fn parse_svg_length(value: &str) -> io::Result<Option<usize>> {
     Ok(Some(pixels.round() as usize))
 }
 
+#[derive(Debug, PartialEq)]
+struct ViewBox {
+    width: f64,
+    height: f64,
+}
+
 /// Parse a `viewBox` attribute (`min-x min-y width height`, separated by
-/// whitespace and/or commas) into its width/height part.
-fn parse_view_box(value: &str) -> Option<Dimensions> {
+/// whitespace and/or commas) into its width/height part, kept fractional so
+/// that aspect ratios are exact.
+fn parse_view_box(value: &str) -> Option<ViewBox> {
     let mut parts = value
         .split(|c: char| c.is_ascii_whitespace() || c == ',')
         .filter(|p| !p.is_empty());
@@ -103,10 +110,7 @@ fn parse_view_box(value: &str) -> Option<Dimensions> {
     let height = parts.next()?.parse::<f64>().ok()?;
 
     if width.is_finite() && height.is_finite() && width >= 0.0 && height >= 0.0 {
-        Some(Dimensions {
-            width: width.round() as usize,
-            height: height.round() as usize,
-        })
+        Some(ViewBox { width, height })
     } else {
         None
     }
@@ -130,21 +134,24 @@ impl DimensionsExtractor for SvgDimensionsExtractor {
                     None => None,
                 };
                 let view_box = attributes.get("viewBox").and_then(|v| parse_view_box(v));
-                let scaled = |length: usize, numerator: usize, denominator: usize| {
-                    (length as f64 * numerator as f64 / denominator as f64).round() as usize
+                let scaled = |length: usize, numerator: f64, denominator: f64| {
+                    (length as f64 * numerator / denominator).round() as usize
                 };
 
                 return Ok(match (width, height, view_box) {
                     (Some(width), Some(height), _) => Some(Dimensions { width, height }),
-                    (Some(width), None, Some(view_box)) if view_box.width > 0 => Some(Dimensions {
+                    (Some(width), None, Some(view_box)) if view_box.width > 0.0 => Some(Dimensions {
                         width,
                         height: scaled(width, view_box.height, view_box.width),
                     }),
-                    (None, Some(height), Some(view_box)) if view_box.height > 0 => Some(Dimensions {
+                    (None, Some(height), Some(view_box)) if view_box.height > 0.0 => Some(Dimensions {
                         width: scaled(height, view_box.width, view_box.height),
                         height,
                     }),
-                    (None, None, view_box) => view_box,
+                    (None, None, Some(view_box)) => Some(Dimensions {
+                        width: view_box.width.round() as usize,
+                        height: view_box.height.round() as usize,
+                    }),
                     _ => None,
                 });
             }
@@ -262,19 +269,18 @@ mod test {
 
     #[test]
     fn test_view_box_parsing() {
-        use super::parse_view_box;
-        use crate::util::Dimensions;
+        use super::{parse_view_box, ViewBox};
         assert_eq!(
             parse_view_box("0 0 100 50"),
-            Some(Dimensions { width: 100, height: 50 })
+            Some(ViewBox { width: 100.0, height: 50.0 })
         );
         assert_eq!(
             parse_view_box("0, 0, 24, 24"),
-            Some(Dimensions { width: 24, height: 24 })
+            Some(ViewBox { width: 24.0, height: 24.0 })
         );
         assert_eq!(
             parse_view_box("-10 -10 36.5 20"),
-            Some(Dimensions { width: 37, height: 20 })
+            Some(ViewBox { width: 36.5, height: 20.0 })
         );
         assert_eq!(parse_view_box("0 0 100"), None);
         assert_eq!(parse_view_box("0 0 -1 5"), None);
@@ -324,6 +330,20 @@ mod test {
         assert_eq!(
             read("fselect_test_svg_width_percent.svg", r#"<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="30" viewBox="0 0 100 50"></svg>"#)?,
             Some(Dimensions { width: 60, height: 30 })
+        );
+        assert_eq!(
+            read("fselect_test_svg_fractional_viewbox.svg", r#"<svg xmlns="http://www.w3.org/2000/svg" width="100" viewBox="0 0 2.5 1.25"></svg>"#)?,
+            Some(Dimensions { width: 100, height: 50 }),
+            "fractional viewBox keeps its ratio"
+        );
+        assert_eq!(
+            read("fselect_test_svg_tiny_viewbox.svg", r#"<svg xmlns="http://www.w3.org/2000/svg" width="100" viewBox="0 0 0.5 0.25"></svg>"#)?,
+            Some(Dimensions { width: 100, height: 50 }),
+            "sub-unit viewBox keeps its ratio"
+        );
+        assert_eq!(
+            read("fselect_test_svg_tiny_viewbox_height.svg", r#"<svg xmlns="http://www.w3.org/2000/svg" height="50" viewBox="0 0 0.5 0.25"></svg>"#)?,
+            Some(Dimensions { width: 100, height: 50 })
         );
         assert_eq!(
             read("fselect_test_svg_width_no_viewbox.svg", r#"<svg xmlns="http://www.w3.org/2000/svg" width="200"></svg>"#)?,

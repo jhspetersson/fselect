@@ -473,7 +473,24 @@ impl<'a> Searcher<'a> {
             }
 
         for root in self.query.roots.iter().filter(|root| root.options.regexp) {
-            for part in root.path.split('/').filter(|part| looks_like_regexp(part)) {
+            let mut literal_prefix: Option<String> = None;
+            for (index, part) in root.path.split('/').enumerate() {
+                let joined = match (&literal_prefix, index) {
+                    (_, 0) => part.to_string(),
+                    (Some(prefix), _) => format!("{prefix}/{part}"),
+                    (None, _) => String::new(),
+                };
+                if !looks_like_regexp(part) {
+                    if literal_prefix.is_some() || index == 0 {
+                        literal_prefix = Some(joined);
+                    }
+                    continue;
+                }
+                if (literal_prefix.is_some() || index == 0) && Path::new(&joined).is_dir() {
+                    literal_prefix = Some(joined);
+                    continue;
+                }
+                literal_prefix = None;
                 root_part_regex(part)?;
             }
         }
@@ -564,6 +581,16 @@ impl<'a> Searcher<'a> {
                             if path == Path::new("") {
                                 path = current_dir.as_path();
                                 start_from_rx_dir = true;
+                            }
+
+                            let literal = match root.as_str() {
+                                "" => part.to_string(),
+                                "/" => format!("/{part}"),
+                                _ => format!("{root}/{part}"),
+                            };
+                            if Path::new(&literal).is_dir() {
+                                tmp.push(literal);
+                                continue;
                             }
 
                             match path.read_dir() {
@@ -3790,6 +3817,38 @@ mod tests {
         searcher.silent_mode = silent;
         searcher.list_search_results().expect("search failed");
         searcher
+    }
+
+    #[test]
+    fn regexp_roots_accept_every_regex_metacharacter_and_keep_existing_names_literal() {
+        let tmp = std::env::temp_dir().join("fselect_test_regexp_root_metachars");
+        let _ = fs::remove_dir_all(&tmp);
+        for dir in ["alpha", "beta", "gamma", "a1", "a22", "ab", "c++", ".hidden", "New folder (2)"] {
+            fs::create_dir_all(tmp.join("roots").join(dir)).unwrap();
+            fs::write(tmp.join("roots").join(dir).join(format!("{dir}.txt")), "x").unwrap();
+        }
+
+        let sorted = |query: &str| {
+            let mut rows = run_query_against_dir(query, &tmp);
+            rows.sort();
+            rows
+        };
+        let alternation = sorted("select name from '__DIR__/roots/(alpha|beta)' rx");
+        let dot = sorted("select name from '__DIR__/roots/a.' rx");
+        let digits = sorted("select name from '__DIR__/roots/a\\d+' rx");
+        let plus_literal = sorted("select name from '__DIR__/roots/c++' rx");
+        let hidden_literal = sorted("select name from '__DIR__/roots/.hidden' rx");
+        let parens_literal = sorted("select name from '__DIR__/roots/New folder (2)' rx");
+        let class = sorted("select name from '__DIR__/roots/[ab]lpha' rx");
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(alternation, vec!["alpha.txt", "beta.txt"]);
+        assert_eq!(dot, vec!["a1.txt", "ab.txt"]);
+        assert_eq!(digits, vec!["a1.txt", "a22.txt"]);
+        assert_eq!(plus_literal, vec!["c++.txt"]);
+        assert_eq!(hidden_literal, vec![".hidden.txt"]);
+        assert_eq!(parens_literal, vec!["New folder (2).txt"]);
+        assert_eq!(class, vec!["alpha.txt"]);
     }
 
     #[test]

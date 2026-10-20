@@ -242,7 +242,7 @@ impl <'a> Parser<'a> {
     fn finalize_expr_references(expr: &mut Expr, scope: &[AliasScope], substitute: bool) {
         if let Some((root_alias, name)) = expr.alias_reference_key() {
             let (root_alias, name) = (root_alias.to_string(), name.to_string());
-            let entry = scope.iter().find(|entry| entry.alias.eq_ignore_ascii_case(&root_alias));
+            let entry = scope.iter().rev().find(|entry| entry.alias.eq_ignore_ascii_case(&root_alias));
             let column = entry.and_then(|entry| {
                 entry.columns.iter().find(|(alias, _)| alias.eq_ignore_ascii_case(&name)).map(|(_, column)| (entry, column))
             });

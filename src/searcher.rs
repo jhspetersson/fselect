@@ -5056,6 +5056,37 @@ mod tests {
     }
 
     #[test]
+    fn an_inner_alias_shadows_an_outer_alias_of_the_same_name() {
+        let tmp = std::env::temp_dir().join("fselect_test_alias_shadowing");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(tmp.join("data")).unwrap();
+        fs::create_dir_all(tmp.join("other")).unwrap();
+        for name in ["a.txt", "b.txt"] {
+            fs::write(tmp.join("data").join(name), "x").unwrap();
+        }
+        fs::write(tmp.join("other").join("o1"), "x".repeat(6)).unwrap();
+        fs::write(tmp.join("other").join("o2"), "x".repeat(20)).unwrap();
+
+        let exists = |threshold: u32| {
+            run_query_against_dir(
+                &format!("select name from __DIR__/data as t where exists(select sum(size) as total from __DIR__/other as t having t.total > {threshold}) order by name"),
+                &tmp,
+            )
+        };
+        let above = exists(100);
+        let below = exists(20);
+        let inner_where = run_query_against_dir(
+            "select name from __DIR__/data as t where exists(select name from __DIR__/other as t where t.size > 10) order by name",
+            &tmp,
+        );
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(above, Vec::<String>::new(), "26 bytes is not above 100");
+        assert_eq!(below, vec!["a.txt", "b.txt"]);
+        assert_eq!(inner_where, vec!["a.txt", "b.txt"], "the inner t.size is the inner row");
+    }
+
+    #[test]
     fn having_can_read_aggregate_aliases_through_correlated_subqueries() {
         let tmp = std::env::temp_dir().join("fselect_test_having_aggregate_alias");
         let _ = fs::remove_dir_all(&tmp);

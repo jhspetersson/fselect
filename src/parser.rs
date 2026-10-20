@@ -210,17 +210,27 @@ impl <'a> Parser<'a> {
             scope.push(AliasScope { alias, columns: Self::aliased_columns(&query.fields), own: true });
         }
 
-        for expr in query.fields.iter_mut().chain(query.expr.iter_mut()) {
+        // A column may reference an alias whose own column references yet
+        // another alias, in any declaration order; each pass over the SELECT
+        // list settles one more link, and WHERE is resolved only against the
+        // settled columns so their recorded types are complete.
+        let passes = query.fields.iter().filter(|column| column.alias.is_some()).count().max(1);
+        for _ in 0..passes {
+            for expr in query.fields.iter_mut() {
+                Self::finalize_expr_references(expr, &scope, false);
+            }
+            let columns = Self::aliased_columns(&query.fields);
+            for entry in &mut scope[own_start..] {
+                entry.columns = columns.clone();
+            }
+        }
+        for expr in query.expr.iter_mut() {
             Self::finalize_expr_references(expr, &scope, false);
         }
         for root in query.roots.iter_mut() {
             if let Some(ref mut inner) = root.subquery {
                 Self::finalize_alias_references(inner, &scope);
             }
-        }
-        let columns = Self::aliased_columns(&query.fields);
-        for entry in &mut scope[own_start..] {
-            entry.columns = columns.clone();
         }
         let clauses = query
             .grouping_fields

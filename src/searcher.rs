@@ -5515,6 +5515,36 @@ mod tests {
     }
 
     #[test]
+    fn alias_chains_keep_their_type_in_where() {
+        let tmp = std::env::temp_dir().join("fselect_test_alias_chain_types");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(tmp.join("data")).unwrap();
+        fs::create_dir_all(tmp.join("other")).unwrap();
+        for (name, size) in [("a.txt", 2), ("b.txt", 10), ("c.txt", 3)] {
+            fs::write(tmp.join("data").join(name), "x".repeat(size)).unwrap();
+        }
+        fs::write(tmp.join("other").join("o1"), "x").unwrap();
+
+        let numeric = run_query_against_dir(
+            "select name, size as first, (select t.first from __DIR__/other limit 1) as second from __DIR__/data as t where (select t.second from __DIR__/other limit 1) > 5 order by name",
+            &tmp,
+        );
+        let boolean = run_query_against_dir(
+            "select name, is_file as f, (select t.f from __DIR__/other limit 1) as g from __DIR__/data as t where (select t.g from __DIR__/other limit 1) = TRUE order by name",
+            &tmp,
+        );
+        let reversed = run_query_against_dir(
+            "select name, (select t.second from __DIR__/other limit 1) as third, (select t.first from __DIR__/other limit 1) as second, size as first from __DIR__/data as t where (select t.third from __DIR__/other limit 1) > 5 order by name",
+            &tmp,
+        );
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(numeric, vec!["b.txt\t10\t10"], "numeric chain");
+        assert_eq!(boolean, vec!["a.txt\ttrue\ttrue", "b.txt\ttrue\ttrue", "c.txt\ttrue\ttrue"], "boolean chain");
+        assert_eq!(reversed, vec!["b.txt\t10\t10\t10"], "reverse-declared chain");
+    }
+
+    #[test]
     fn having_can_read_aggregate_aliases_through_correlated_subqueries() {
         let tmp = std::env::temp_dir().join("fselect_test_having_aggregate_alias");
         let _ = fs::remove_dir_all(&tmp);

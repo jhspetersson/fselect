@@ -698,14 +698,15 @@ impl<'a> Searcher<'a> {
                     for expr in clauses {
                         names.extend(expr.get_alias_references_in_subqueries(alias, false));
                     }
-                    names
-                        .into_iter()
-                        .filter_map(|name| {
-                            self.query
-                                .fields
+                    self.query
+                        .fields
+                        .iter()
+                        .filter_map(|column| {
+                            let declared = column.alias.as_deref()?;
+                            names
                                 .iter()
-                                .find(|column| column.alias.as_deref().is_some_and(|a| a.eq_ignore_ascii_case(&name)))
-                                .map(|column| (name, column.clone()))
+                                .find(|name| name.eq_ignore_ascii_case(declared))
+                                .map(|name| (name.clone(), column.clone()))
                         })
                         .collect()
                 }
@@ -1087,7 +1088,14 @@ impl<'a> Searcher<'a> {
     /// entry: its absolute path (archive member paths appended) and the depth
     /// of the root it was found under.
     fn subquery_identity(&mut self, entry: &DirEntry, file_info: &Option<FileInfo>, root_path: &Path) -> (String, usize) {
-        let own_path = crate::field::own_absolute_path(entry)
+        let entry_path = entry.path();
+        let beneath_root = entry_path
+            .strip_prefix(root_path)
+            .ok()
+            .and_then(|relative| canonical_path(&root_path.to_path_buf()).ok().map(|root| PathBuf::from(root).join(relative)));
+        let own_path = beneath_root
+            .ok_or(())
+            .or_else(|_| crate::field::own_absolute_path(entry).map_err(|_| ()))
             .map(|path| match file_info {
                 Some(info) => info.name.split('/').filter(|part| !part.is_empty()).fold(path, |path, part| path.join(part)),
                 None => path,
@@ -1770,7 +1778,7 @@ impl<'a> Searcher<'a> {
         let aliased: Vec<&Expr> = query
             .fields
             .iter()
-            .filter(|column| column.alias.is_some() && column.has_aggregate_function())
+            .filter(|column| column.alias.is_some())
             .collect();
         let (dependent, independent): (Vec<&Expr>, Vec<&Expr>) =
             aliased.iter().partition(|column| column.needs_row_context());
@@ -2213,12 +2221,25 @@ impl<'a> Searcher<'a> {
             }
 
             let required_columns = std::mem::take(&mut self.subquery_required_columns);
-            for (name, column) in &required_columns {
-                let mut scratch = HashMap::new();
-                let value = self
-                    .get_column_expr_value(Some(entry), file_info, root_path, &mut scratch, None, column)
-                    .unwrap_or(Variant::empty(VariantType::String));
-                self.record_context.borrow_mut().entry(current_alias.to_string()).or_default().insert(name.clone(), value);
+            let rounds = if required_columns.len() > 1 { required_columns.len() } else { 1 };
+            for _ in 0..rounds {
+                let mut changed = false;
+                for (name, column) in &required_columns {
+                    let mut scratch = HashMap::new();
+                    let value = self
+                        .get_column_expr_value(Some(entry), file_info, root_path, &mut scratch, None, column)
+                        .unwrap_or(Variant::empty(VariantType::String));
+                    let previous = self
+                        .record_context
+                        .borrow_mut()
+                        .entry(current_alias.to_string())
+                        .or_default()
+                        .insert(name.clone(), value.clone());
+                    changed |= previous.as_ref() != Some(&value);
+                }
+                if !changed {
+                    break;
+                }
             }
             self.subquery_required_columns = required_columns;
         }
@@ -4134,6 +4155,30 @@ mod tests {
     }
 
     #[test]
+    fn from_subselects_keep_paths_and_depths_beneath_followed_symlinks() {
+        let tmp = std::env::temp_dir().join("fselect_test_subselect_symlink_identity");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(tmp.join("walk").join("target")).unwrap();
+        fs::write(tmp.join("walk").join("target").join("keep.txt"), "x").unwrap();
+        link_directory(&tmp.join("walk").join("alias"), &tmp.join("walk").join("target"));
+
+        let direct = run_query_against_dir("select path, depth from __DIR__/walk symlinks where is_file order by path", &tmp);
+        let wrapped = run_query_against_dir(
+            "select path, depth from (select path from __DIR__/walk symlinks where is_file) order by path",
+            &tmp,
+        );
+        let filtered = run_query_against_dir(
+            "select path from (select path from __DIR__/walk symlinks where is_file) where depth = 2 order by path",
+            &tmp,
+        );
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(direct, vec![format!("{}	2", rel(&["alias", "keep.txt"])), format!("{}	2", rel(&["target", "keep.txt"]))]);
+        assert_eq!(wrapped, direct, "wrapping must not change paths or depths");
+        assert_eq!(filtered, vec![rel(&["alias", "keep.txt"]), rel(&["target", "keep.txt"])]);
+    }
+
+    #[test]
     fn from_subselects_keep_each_root_spelling_when_inner_roots_overlap() {
         let tmp = std::env::temp_dir().join("fselect_test_subselect_overlapping_roots");
         let _ = fs::remove_dir_all(&tmp);
@@ -5250,6 +5295,65 @@ mod tests {
 
         assert_eq!(shown, vec!["a.txt	1	1", "b.txt	2	2", "c.txt	1	1"]);
         assert_eq!(filtered, vec!["b.txt	2"]);
+    }
+
+    #[test]
+    fn dependent_row_aliases_settle_in_any_declaration_order() {
+        let tmp = std::env::temp_dir().join("fselect_test_dependent_row_aliases");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(tmp.join("data")).unwrap();
+        fs::create_dir_all(tmp.join("other")).unwrap();
+        for (name, size) in [("a.txt", 2), ("b.txt", 10), ("c.txt", 3)] {
+            fs::write(tmp.join("data").join(name), "x".repeat(size)).unwrap();
+        }
+        fs::write(tmp.join("other").join("o1"), "x").unwrap();
+
+        let chained = "select name, size as first, (select t.first from __DIR__/other limit 1) + 1 as next from __DIR__/data as t where (select t.next from __DIR__/other limit 1) > 5 order by name";
+        let reversed = "select name, (select t.first from __DIR__/other limit 1) + 1 as next, size as first from __DIR__/data as t where (select t.next from __DIR__/other limit 1) > 5 order by name";
+        let mut failures = Vec::new();
+        for run in 0..20 {
+            let rows = run_query_against_dir(chained, &tmp);
+            if rows != vec!["b.txt	10	11"] {
+                failures.push(format!("chained run {run}: {rows:?}"));
+            }
+            let rows = run_query_against_dir(reversed, &tmp);
+            if rows != vec!["b.txt	11	10"] {
+                failures.push(format!("reversed run {run}: {rows:?}"));
+            }
+        }
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert!(failures.is_empty(), "{failures:?}");
+    }
+
+    #[test]
+    fn calculated_and_constant_aliases_are_bound_for_groups() {
+        let tmp = std::env::temp_dir().join("fselect_test_calculated_group_aliases");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(tmp.join("data")).unwrap();
+        fs::create_dir_all(tmp.join("other")).unwrap();
+        for name in ["a.txt", "b.txt", "c.md"] {
+            fs::write(tmp.join("data").join(name), "x").unwrap();
+        }
+        fs::write(tmp.join("other").join("o1"), "x").unwrap();
+
+        let calculated = run_query_against_dir(
+            "select upper(ext) as kind, count(*) from __DIR__/data as t group by ext having (select t.kind from __DIR__/other limit 1) = 'TXT'",
+            &tmp,
+        );
+        let constant_grouped = run_query_against_dir(
+            "select ext, count(*), 7 as seven, (select t.seven from __DIR__/other limit 1) from __DIR__/data as t group by ext order by ext",
+            &tmp,
+        );
+        let constant_ungrouped = run_query_against_dir(
+            "select count(*), 7 as seven, (select t.seven from __DIR__/other limit 1) from __DIR__/data as t",
+            &tmp,
+        );
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(calculated, vec!["TXT	2"]);
+        assert_eq!(constant_grouped, vec!["md	1	7	7", "txt	2	7	7"]);
+        assert_eq!(constant_ungrouped, vec!["3	7	7"]);
     }
 
     #[test]

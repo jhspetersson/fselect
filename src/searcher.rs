@@ -2214,7 +2214,8 @@ impl<'a> Searcher<'a> {
             }
             for (field, key) in self.query.grouping_fields.iter().zip(&plan.grouping_keys) {
                 if !file_map.contains_key(key) {
-                    self.get_column_expr_value(Some(entry), file_info, root_path, file_map, None, field)?;
+                    let value = self.get_column_expr_value(Some(entry), file_info, root_path, file_map, None, field)?;
+                    file_map.entry(key.clone()).or_insert_with(|| value.to_string());
                 }
             }
             let group_key: Vec<String> = plan
@@ -4988,6 +4989,32 @@ mod tests {
         assert_eq!(latest_day.len(), 1, "{latest_day:?}");
         assert!(latest_day[0].starts_with("3\t"), "date-only comparison: {latest_day:?}");
         assert_eq!(first_name, vec!["a.txt\t1"], "text aggregates stay text");
+    }
+
+    #[test]
+    fn scalar_subqueries_in_group_by_form_distinct_groups() {
+        let tmp = std::env::temp_dir().join("fselect_test_group_by_scalar_subquery");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(tmp.join("data")).unwrap();
+        fs::create_dir_all(tmp.join("other")).unwrap();
+        for name in ["a.txt", "b.txt", "c.md"] {
+            fs::write(tmp.join("data").join(name), "x").unwrap();
+        }
+        fs::write(tmp.join("other").join("o.txt"), "x").unwrap();
+
+        let sorted = |query: &str| {
+            let mut rows = run_query_against_dir(query, &tmp);
+            rows.sort();
+            rows
+        };
+        let counts = sorted("select count(*) from __DIR__/data as t group by (select t.ext from __DIR__/other limit 1)");
+        let keyed = sorted(
+            "select (select t.ext from __DIR__/other limit 1), count(*) from __DIR__/data as t group by (select t.ext from __DIR__/other limit 1)",
+        );
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(counts, vec!["1", "2"]);
+        assert_eq!(keyed, vec!["md\t1", "txt\t2"]);
     }
 
     #[test]

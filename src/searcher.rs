@@ -5087,6 +5087,36 @@ mod tests {
     }
 
     #[test]
+    fn alias_references_resolve_regardless_of_capitalization() {
+        let tmp = std::env::temp_dir().join("fselect_test_alias_reference_case");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(tmp.join("data")).unwrap();
+        fs::create_dir_all(tmp.join("other")).unwrap();
+        for (name, size) in [("a.txt", 1), ("b.txt", 2), ("c.md", 5), ("d.md", 7)] {
+            fs::write(tmp.join("data").join(name), "x".repeat(size)).unwrap();
+        }
+        fs::write(tmp.join("other").join("o1"), "x").unwrap();
+
+        let aggregate = run_query_against_dir(
+            "select ext, sum(size) as Total, (select t.total from __DIR__/other limit 1) from __DIR__/data as t group by ext order by ext",
+            &tmp,
+        );
+        let grouping = run_query_against_dir(
+            "select ext as Kind, count(*), (select t.kind from __DIR__/other limit 1) from __DIR__/data as t group by ext order by ext",
+            &tmp,
+        );
+        let ungrouped = run_query_against_dir(
+            "select sum(size) as Total, (select t.TOTAL from __DIR__/other limit 1) from __DIR__/data as t",
+            &tmp,
+        );
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(aggregate, vec!["md\t12\t12", "txt\t3\t3"]);
+        assert_eq!(grouping, vec!["md\t2\tmd", "txt\t2\ttxt"]);
+        assert_eq!(ungrouped, vec!["15\t15"]);
+    }
+
+    #[test]
     fn having_can_read_aggregate_aliases_through_correlated_subqueries() {
         let tmp = std::env::temp_dir().join("fselect_test_having_aggregate_alias");
         let _ = fs::remove_dir_all(&tmp);

@@ -255,8 +255,9 @@ impl <'a> Parser<'a> {
                     }
                     return;
                 }
-                Some((entry, _)) => {
-                    expr.val = Some(format!("{}.{}", entry.alias, name));
+                Some((entry, column)) => {
+                    let declared = column.alias.clone().unwrap_or(name);
+                    expr.val = Some(format!("{}.{}", entry.alias, declared));
                     expr.root_alias = Some(entry.alias.clone());
                 }
                 None => expr.root_alias = None,

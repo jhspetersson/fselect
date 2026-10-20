@@ -2160,16 +2160,6 @@ impl<'a> Searcher<'a> {
         if let Some(ref current_alias) = self.current_alias.clone() {
             self.record_context.borrow_mut().entry(current_alias.to_string()).or_default().clear();
 
-            let required_columns = std::mem::take(&mut self.subquery_required_columns);
-            for (name, column) in &required_columns {
-                let mut scratch = HashMap::new();
-                let value = self
-                    .get_column_expr_value(Some(entry), file_info, root_path, &mut scratch, None, column)
-                    .unwrap_or(Variant::empty(VariantType::String));
-                self.record_context.borrow_mut().entry(current_alias.to_string()).or_default().insert(name.clone(), value);
-            }
-            self.subquery_required_columns = required_columns;
-
             if let Some(required_fields) = std::mem::take(&mut self.subquery_required_fields) {
                 let mut field_values = HashMap::new();
                 for (field, keys) in &required_fields {
@@ -2186,6 +2176,16 @@ impl<'a> Searcher<'a> {
                     context_entry.insert(field, field_value);
                 }
             }
+
+            let required_columns = std::mem::take(&mut self.subquery_required_columns);
+            for (name, column) in &required_columns {
+                let mut scratch = HashMap::new();
+                let value = self
+                    .get_column_expr_value(Some(entry), file_info, root_path, &mut scratch, None, column)
+                    .unwrap_or(Variant::empty(VariantType::String));
+                self.record_context.borrow_mut().entry(current_alias.to_string()).or_default().insert(name.clone(), value);
+            }
+            self.subquery_required_columns = required_columns;
         }
 
         if let Some(ref expr) = self.query.expr {
@@ -5187,6 +5187,34 @@ mod tests {
         assert_eq!(filtered, vec!["a.txt	10", "c.txt	7"], "numeric comparison");
         assert_eq!(sorted, vec!["a.txt	10", "c.txt	7", "b.txt	2"], "numeric ordering");
         assert_eq!(boolean, vec!["a.txt	true", "b.txt	true", "c.txt	true"], "boolean comparison");
+    }
+
+    #[test]
+    fn correlated_column_aliases_see_the_outer_fields_they_depend_on() {
+        let tmp = std::env::temp_dir().join("fselect_test_correlated_alias_inputs");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(tmp.join("data")).unwrap();
+        fs::create_dir_all(tmp.join("other")).unwrap();
+        for (name, size) in [("a.txt", 2), ("b.txt", 5), ("c.txt", 3)] {
+            fs::write(tmp.join("data").join(name), "x".repeat(size)).unwrap();
+        }
+        for (name, size) in [("o1", 1), ("o2", 4)] {
+            fs::write(tmp.join("other").join(name), "x".repeat(size)).unwrap();
+        }
+
+        let matches = "(select count(*) from __DIR__/other where size < t.size) as matches";
+        let shown = run_query_against_dir(
+            &format!("select name, {matches}, (select t.matches from __DIR__/other limit 1) from __DIR__/data as t order by name"),
+            &tmp,
+        );
+        let filtered = run_query_against_dir(
+            &format!("select name, {matches} from __DIR__/data as t where (select t.matches from __DIR__/other limit 1) = 2 order by name"),
+            &tmp,
+        );
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(shown, vec!["a.txt	1	1", "b.txt	2	2", "c.txt	1	1"]);
+        assert_eq!(filtered, vec!["b.txt	2"]);
     }
 
     #[test]

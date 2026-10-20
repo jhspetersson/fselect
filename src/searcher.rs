@@ -2324,12 +2324,44 @@ impl<'a> Searcher<'a> {
                 break;
             }
         }
-        for (index, err) in failed {
-            let name = &required_columns[index].0;
-            self.record_context.borrow_mut().entry(current_alias.to_string()).or_default().remove(name);
-            self.alias_failures.borrow_mut().pending.entry(current_alias.to_string()).or_default().insert(name.clone(), err);
+        if failed.is_empty() {
+            return Ok(());
         }
-        Ok(())
+        for (index, err) in failed {
+            self.mark_row_alias_failed(current_alias, &required_columns[index].0, err);
+        }
+        // A column that read a failed alias was bound from an empty
+        // placeholder; it inherits the failure so that reading it reports
+        // the original error too.
+        loop {
+            let mut spread = false;
+            for (name, column) in required_columns {
+                if self.alias_failures.borrow().pending.get(current_alias).is_some_and(|keys| keys.contains_key(name)) {
+                    continue;
+                }
+                self.alias_failures.borrow_mut().hit = None;
+                let mut scratch = HashMap::new();
+                let _ = self.get_column_expr_value(Some(entry), file_info, root_path, &mut scratch, None, column);
+                let hit = self.alias_failures.borrow_mut().hit.take();
+                if let Some((_, err)) = hit {
+                    self.mark_row_alias_failed(current_alias, name, err);
+                    spread = true;
+                }
+            }
+            if !spread {
+                return Ok(());
+            }
+        }
+    }
+
+    fn mark_row_alias_failed(&self, current_alias: &str, name: &str, err: SearchError) {
+        self.record_context.borrow_mut().entry(current_alias.to_string()).or_default().remove(name);
+        self.alias_failures
+            .borrow_mut()
+            .pending
+            .entry(current_alias.to_string())
+            .or_default()
+            .insert(name.to_string(), err);
     }
 
     fn alias_read_failure(&self) -> Result<(), SearchError> {
@@ -2353,7 +2385,9 @@ impl<'a> Searcher<'a> {
             {
                 let mut failures = self.alias_failures.borrow_mut();
                 failures.pending.remove(current_alias.as_str());
-                failures.hit = None;
+                if failures.hit.as_ref().is_some_and(|(alias, _)| alias == current_alias) {
+                    failures.hit = None;
+                }
             }
 
             if let Some(required_fields) = std::mem::take(&mut self.subquery_required_fields) {
@@ -5762,6 +5796,34 @@ mod tests {
         assert_eq!(not_equal, Vec::<String>::new(), "not equal is unknown too");
         assert_eq!(having, Vec::<String>::new(), "having");
         assert_eq!(populated, vec!["a.txt", "b.txt"], "a populated subquery still compares");
+    }
+
+    #[test]
+    fn deferred_alias_errors_survive_dependent_aliases_and_nested_rows() {
+        let tmp = std::env::temp_dir().join("fselect_test_deferred_alias_errors");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(tmp.join("metrics")).unwrap();
+        fs::create_dir_all(tmp.join("other")).unwrap();
+        fs::write(tmp.join("metrics").join("a.txt"), "xxxx").unwrap();
+        fs::write(tmp.join("metrics").join("zero.txt"), "").unwrap();
+        fs::write(tmp.join("other").join("o1"), "x").unwrap();
+        fs::write(tmp.join("other").join("o2"), "x").unwrap();
+
+        let rows_and_errors = |query: &str| {
+            let searcher = search_dir(query, &tmp, Config::default(), true);
+            let rows: Vec<String> = searcher.output_buffer.iter_values().map(|s| s.trim_end().to_string()).collect();
+            (rows, searcher.error_count)
+        };
+        let through_copy = rows_and_errors(
+            "select name, 100 / size as ratio, (select t.ratio from __DIR__/other limit 1) as copy from __DIR__/metrics as t where (select t.copy from __DIR__/other limit 1) > 0 order by name",
+        );
+        let across_inner_rows = rows_and_errors(
+            "select name, 100 / size as ratio from __DIR__/metrics as t where exists(select name from __DIR__/other where t.ratio > 0) order by name",
+        );
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(through_copy, (vec!["a.txt\t25\t25".to_string()], 1), "error must follow the dependent alias");
+        assert_eq!(across_inner_rows, (vec!["a.txt\t25".to_string()], 1), "a later inner row must not erase the hit");
     }
 
     #[test]

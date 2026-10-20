@@ -35,6 +35,7 @@ pub struct Parser<'a> {
     roots_parsed: bool,
     where_parsed: bool,
     in_having: bool,
+    args_depth: u32,
     debug: bool,
     /// Aliases declared on this query's own roots; any other alias in an
     /// expression refers to an enclosing query's entry.
@@ -54,6 +55,7 @@ impl <'a> Parser<'a> {
             roots_parsed: false,
             where_parsed: false,
             in_having: false,
+            args_depth: 0,
             debug: false,
             root_aliases: vec![],
             negation_depth: 0,
@@ -986,8 +988,10 @@ impl <'a> Parser<'a> {
         result
     }
 
+    /// A bare boolean in WHERE or HAVING is a condition (`where is_file`),
+    /// but inside a function's argument list or an IN list it is a value.
     fn wraps_bare_booleans(&self) -> bool {
-        self.roots_parsed && (!self.where_parsed || self.in_having)
+        self.args_depth == 0 && self.roots_parsed && (!self.where_parsed || self.in_having)
     }
 
     fn ensure_boolean_conditions(mut expr: Expr, clause: &str) -> Result<Expr, String> {
@@ -1224,6 +1228,13 @@ impl <'a> Parser<'a> {
     }
 
     fn parse_args(&mut self) -> Result<Vec<Expr>, String> {
+        self.args_depth += 1;
+        let args = self.parse_args_inner();
+        self.args_depth -= 1;
+        args
+    }
+
+    fn parse_args_inner(&mut self) -> Result<Vec<Expr>, String> {
         let mut args = vec![];
 
         loop {
@@ -1389,6 +1400,13 @@ impl <'a> Parser<'a> {
     }
 
     fn parse_function(&mut self, function: Function) -> Result<Expr, String> {
+        self.args_depth += 1;
+        let parsed = self.parse_function_inner(function);
+        self.args_depth -= 1;
+        parsed
+    }
+
+    fn parse_function_inner(&mut self, function: Function) -> Result<Expr, String> {
         let mut function_expr = Expr::function(function);
 
         let mut curly_mode = false;

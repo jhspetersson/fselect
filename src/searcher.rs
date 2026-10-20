@@ -155,6 +155,13 @@ pub struct Searcher<'a> {
     cached_types: HashMap<String, (String, VariantType)>,
     conforms_map: HashMap<String, String>,
     subquery_cache: HashMap<String, Vec<String>>,
+    /// The type each first-column value of a subquery's rows was produced
+    /// with, keyed by the value's text, cached alongside the rows: a row is
+    /// handed back as text, which alone cannot tell the file name "true"
+    /// from the boolean true.
+    subquery_type_cache: HashMap<String, HashMap<String, VariantType>>,
+    last_subquery_types: HashMap<String, VariantType>,
+    first_column_types: HashMap<String, VariantType>,
     membership_cache: HashMap<(String, VariantType), Rc<Membership>>,
     silent_mode: bool,
     /// Runs a subquery on behalf of an enclosing searcher, whose aliases it
@@ -467,6 +474,9 @@ impl<'a> Searcher<'a> {
             cached_types: HashMap::new(),
             conforms_map: HashMap::new(),
             subquery_cache: HashMap::new(),
+            subquery_type_cache: HashMap::new(),
+            last_subquery_types: HashMap::new(),
+            first_column_types: HashMap::new(),
             membership_cache: HashMap::new(),
             silent_mode: false,
             is_nested: false,
@@ -940,10 +950,11 @@ impl<'a> Searcher<'a> {
                     }
                     self.bind_aggregate_aliases(&aliases, group_key, &mut file_map, group_acc, false)?;
                     let mut items: Vec<(String, String)> = Vec::new();
-                    for column_expr in &self.query.fields {
+                    for (index, column_expr) in self.query.fields.iter().enumerate() {
                         let value = self.get_column_expr_value(
                             None, &None, Path::new(""), &mut file_map, Some(group_acc), column_expr,
                         )?;
+                        self.note_first_column_type(index, &value);
                         items.push((column_expr.column_name(), value.to_string()));
                     }
                     if self.root_depth_column
@@ -1388,6 +1399,7 @@ impl<'a> Searcher<'a> {
         let ok_to_cache = is_subquery_cacheable(&query);
         if ok_to_cache
             && let Some(cached) = self.subquery_cache.get(&query_str) {
+                self.last_subquery_types = self.subquery_type_cache.get(&query_str).cloned().unwrap_or_default();
                 return Ok(cached.clone());
             }
 
@@ -1460,11 +1472,19 @@ impl<'a> Searcher<'a> {
             .map(|s| s.strip_suffix(terminator.as_str()).unwrap_or(s).to_string())
             .collect::<Vec<String>>();
 
+        self.last_subquery_types = std::mem::take(&mut sub_searcher.first_column_types);
         if ok_to_cache {
+            self.subquery_type_cache.insert(query_str.clone(), self.last_subquery_types.clone());
             self.subquery_cache.insert(query_str, result_values.clone());
         }
 
         Ok(result_values)
+    }
+
+    fn note_first_column_type(&mut self, index: usize, value: &Variant) {
+        if index == 0 && self.is_nested {
+            self.first_column_types.entry(value.to_string()).or_insert_with(|| value.get_type().clone());
+        }
     }
 
     #[cfg(all(windows, feature = "everything"))]
@@ -2049,7 +2069,13 @@ impl<'a> Searcher<'a> {
         column: &Expr,
     ) -> Result<Variant, SearchError> {
         let value = self.get_column_expr_value(None, &None, Path::new(""), file_map, Some(accumulator), column)?;
-        Ok(typed_variant(column, &value.to_string()))
+        // An aggregate is formatted as text and needs its type back; any
+        // other column already carries the type it was produced with.
+        if column.has_aggregate_function() {
+            Ok(typed_variant(column, &value.to_string()))
+        } else {
+            Ok(value)
+        }
     }
 
     fn upsert_alias_value(values: &mut Vec<(String, Variant)>, column: &Expr, value: Variant) {
@@ -2250,7 +2276,13 @@ impl<'a> Searcher<'a> {
             }
             let list = self.get_list_from_subquery(*subquery)?;
             return match list.first() {
-                Some(result) => Ok(apply_minus(column_expr, typed_variant(column_expr, result))),
+                Some(result) => {
+                    let value = match self.last_subquery_types.get(result) {
+                        Some(value_type) => variant_of_type(column_expr, result, value_type),
+                        None => typed_variant(column_expr, result),
+                    };
+                    Ok(apply_minus(column_expr, value))
+                }
                 None => Ok(Variant::empty(VariantType::String)),
             };
         }
@@ -2282,7 +2314,7 @@ impl<'a> Searcher<'a> {
                 };
                 return Ok(result);
             } else if let Some(val) = file_map.get(&field.to_string()) {
-                return Ok(apply_minus(column_expr, Variant::from_string(val)));
+                return Ok(apply_minus(column_expr, typed_variant(column_expr, val)));
             } else {
                 return Ok(Variant::empty(VariantType::String));
             }
@@ -2290,6 +2322,20 @@ impl<'a> Searcher<'a> {
 
         if let Some(ref value) = column_expr.val {
             return Ok(Variant::from_signed_string(value, column_expr.minus));
+        }
+
+        // A comparison used as a column (`select size > 2`) is a condition:
+        // it evaluates to a boolean, per row or per group.
+        if column_expr.op.is_some() || column_expr.logical_op.is_some() {
+            let holds = match (entry, accumulator) {
+                (Some(entry), _) => Some(self.conforms(entry, file_info, root_path, column_expr)?),
+                (None, Some(accumulator)) => Some(self.group_conforms(file_map, accumulator, column_expr)?),
+                (None, None) => None,
+            };
+            return Ok(match holds {
+                Some(holds) => Variant::from_bool(holds),
+                None => Variant::empty(VariantType::Bool),
+            });
         }
 
         let result;
@@ -2646,7 +2692,10 @@ impl<'a> Searcher<'a> {
                 continue;
             }
             let record = match self.get_column_expr_value(Some(entry), file_info, root_path, file_map, None, field) {
-                Ok(record) => record,
+                Ok(record) => {
+                    self.note_first_column_type(index, &record);
+                    record
+                }
                 Err(err) if err.is_fatal() => return Err(err),
                 Err(err) => {
                     self.handle_nonfatal_error(err, &entry.path());
@@ -5582,6 +5631,39 @@ mod tests {
     }
 
     #[test]
+    fn produced_types_survive_subqueries_and_grouped_aliases() {
+        let tmp = std::env::temp_dir().join("fselect_test_produced_types_across_boundaries");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(tmp.join("names")).unwrap();
+        fs::create_dir_all(tmp.join("other")).unwrap();
+        fs::write(tmp.join("names").join("true"), "x").unwrap();
+        fs::write(tmp.join("other").join("o1"), "x").unwrap();
+
+        let scalar = run_query_against_dir(
+            "select (select coalesce(name, is_file) from __DIR__/names where name = 'true') + 0 from __DIR__/other",
+            &tmp,
+        );
+        let inside = run_query_against_dir(
+            "select (select coalesce(name, is_file) + 0 from __DIR__/names where name = 'true') from __DIR__/other",
+            &tmp,
+        );
+        let boolean = run_query_against_dir(
+            "select (select coalesce(is_file, name) from __DIR__/names where name = 'true') + 0 from __DIR__/other",
+            &tmp,
+        );
+        let grouped = run_query_against_dir(
+            "select name, coalesce(name, is_file) as c, (select t.c from __DIR__/other limit 1) + 0 from __DIR__/names as t group by name, is_file",
+            &tmp,
+        );
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(inside, vec!["0"]);
+        assert_eq!(scalar, inside, "the string crosses the subquery boundary as a string");
+        assert_eq!(boolean, vec!["1"], "a real boolean still crosses as a boolean");
+        assert_eq!(grouped, vec!["true\ttrue\t0"], "grouped alias");
+    }
+
+    #[test]
     fn cached_column_values_keep_their_type() {
         let tmp = std::env::temp_dir().join("fselect_test_cached_value_types");
         let _ = fs::remove_dir_all(&tmp);
@@ -6281,6 +6363,47 @@ mod tests {
         assert_eq!(in_list, equal, "in list");
         assert_eq!(not_in, Vec::<String>::new(), "not in");
         assert_eq!(in_subquery, equal, "in subquery");
+    }
+
+    #[test]
+    fn boolean_looking_function_arguments_stay_literal() {
+        let tmp = std::env::temp_dir().join("fselect_test_boolean_function_arguments");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        fs::write(tmp.join("alpha.txt"), "x").unwrap();
+
+        let upper = run_query_against_dir("select name from __DIR__ where concat(name, 'TRUE') = 'alpha.txtTRUE'", &tmp);
+        let lower = run_query_against_dir("select name from __DIR__ where concat(name, 'false') = 'alpha.txtfalse'", &tmp);
+        let having = run_query_against_dir(
+            "select concat(name, 'TRUE'), count(*) from __DIR__ group by concat(name, 'TRUE') having concat(name, 'TRUE') = 'alpha.txtTRUE'",
+            &tmp,
+        );
+        let bare = run_query_against_dir("select name from __DIR__ where is_file", &tmp);
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(upper, vec!["alpha.txt"]);
+        assert_eq!(lower, vec!["alpha.txt"]);
+        assert_eq!(having, vec!["alpha.txtTRUE\t1"]);
+        assert_eq!(bare, vec!["alpha.txt"], "a bare boolean condition still works");
+    }
+
+    #[test]
+    fn comparison_columns_evaluate_to_booleans() {
+        let tmp = std::env::temp_dir().join("fselect_test_comparison_columns");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(tmp.join("a")).unwrap();
+        fs::create_dir_all(tmp.join("b")).unwrap();
+        fs::write(tmp.join("a").join("two.txt"), "xx").unwrap();
+        fs::write(tmp.join("b").join("three.txt"), "xxx").unwrap();
+
+        let shown = run_query_against_dir("select name, (size > 2) from __DIR__/a, __DIR__/b order by name", &tmp);
+        let summed = run_query_against_dir("select sum((size > 2) + 0) from __DIR__/a, __DIR__/b", &tmp);
+        let grouped = run_query_against_dir("select ext, (sum(size) > 4) from __DIR__/a, __DIR__/b group by ext", &tmp);
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(shown, vec!["three.txt\ttrue", "two.txt\tfalse"]);
+        assert_eq!(summed, vec!["1"]);
+        assert_eq!(grouped, vec!["txt\ttrue"]);
     }
 
     #[test]

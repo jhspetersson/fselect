@@ -38,7 +38,7 @@ pub fn convert_glob_to_pattern(s: &str) -> Result<String, String> {
         return Err("Error parsing glob expression: ".to_string() + s);
     }
 
-    Ok(format!("^(?i){}$", string))
+    Ok(format!("^(?is){}$", string))
 }
 
 pub fn convert_like_to_pattern(s: &str) -> Result<String, String> {
@@ -71,7 +71,7 @@ pub fn convert_like_to_pattern(s: &str) -> Result<String, String> {
         }
     }
 
-    Ok(format!("^(?i){}$", string))
+    Ok(format!("^(?is){}$", string))
 }
 
 #[cfg(test)]
@@ -102,31 +102,47 @@ mod tests {
     #[test]
     fn test_convert_glob_to_pattern_asterisk() {
         let pattern = convert_glob_to_pattern("*.txt").unwrap();
-        assert_eq!(pattern, "^(?i).*\\.txt$");
+        assert_eq!(pattern, "^(?is).*\\.txt$");
     }
 
     #[test]
     fn test_convert_glob_to_pattern_question_mark() {
         let pattern = convert_glob_to_pattern("file?.txt").unwrap();
-        assert_eq!(pattern, "^(?i)file.\\.txt$");
+        assert_eq!(pattern, "^(?is)file.\\.txt$");
     }
 
     #[test]
     fn test_convert_glob_to_pattern_mixed() {
         let pattern = convert_glob_to_pattern("file-*.?xt").unwrap();
-        assert_eq!(pattern, "^(?i)file-.*\\..xt$");
+        assert_eq!(pattern, "^(?is)file-.*\\..xt$");
     }
 
     #[test]
     fn test_convert_glob_to_pattern_special_chars() {
         let pattern = convert_glob_to_pattern("file[1-3].txt").unwrap();
-        assert_eq!(pattern, "^(?i)file\\[1-3\\]\\.txt$");
+        assert_eq!(pattern, "^(?is)file\\[1-3\\]\\.txt$");
+    }
+
+    #[test]
+    fn wildcards_match_across_newlines() {
+        let multiline = "alpha
+beta.txt";
+        for pattern in ["*.txt", "alpha*", "*", "alpha?beta.txt"] {
+            let regex = Regex::new(&convert_glob_to_pattern(pattern).unwrap()).unwrap();
+            assert!(regex.is_match(multiline), "glob {pattern:?}");
+        }
+        for pattern in ["%.txt", "alpha%", "%", "alpha_beta.txt"] {
+            let regex = Regex::new(&convert_like_to_pattern(pattern).unwrap()).unwrap();
+            assert!(regex.is_match(multiline), "like {pattern:?}");
+        }
+        let regex = Regex::new(&convert_like_to_pattern("beta.txt").unwrap()).unwrap();
+        assert!(!regex.is_match(multiline), "anchors still cover the whole string");
     }
 
     #[test]
     fn empty_like_pattern_matches_only_the_empty_string() {
         let pattern = convert_like_to_pattern("").unwrap();
-        assert_eq!(pattern, "^(?i)$");
+        assert_eq!(pattern, "^(?is)$");
         let regex = Regex::new(&pattern).unwrap();
         assert!(regex.is_match(""));
         assert!(!regex.is_match("a"));
@@ -135,25 +151,25 @@ mod tests {
     #[test]
     fn test_convert_like_to_pattern_percent() {
         let pattern = convert_like_to_pattern("%.txt").unwrap();
-        assert_eq!(pattern, "^(?i).*\\.txt$");
+        assert_eq!(pattern, "^(?is).*\\.txt$");
     }
 
     #[test]
     fn test_convert_like_to_pattern_underscore() {
         let pattern = convert_like_to_pattern("file_.txt").unwrap();
-        assert_eq!(pattern, "^(?i)file.\\.txt$");
+        assert_eq!(pattern, "^(?is)file.\\.txt$");
     }
 
     #[test]
     fn test_convert_like_to_pattern_mixed() {
         let pattern = convert_like_to_pattern("file-%.txt").unwrap();
-        assert_eq!(pattern, "^(?i)file-.*\\.txt$");
+        assert_eq!(pattern, "^(?is)file-.*\\.txt$");
     }
 
     #[test]
     fn test_convert_like_to_pattern_question_mark() {
         let pattern = convert_like_to_pattern("file?.txt").unwrap();
-        assert_eq!(pattern, "^(?i)file\\?\\.txt$");
+        assert_eq!(pattern, "^(?is)file\\?\\.txt$");
     }
 
     #[test]
@@ -169,43 +185,43 @@ mod tests {
     #[test]
     fn test_convert_like_to_pattern_special_chars() {
         let pattern = convert_like_to_pattern("file*.txt").unwrap();
-        assert_eq!(pattern, "^(?i)file\\*\\.txt$");
+        assert_eq!(pattern, "^(?is)file\\*\\.txt$");
     }
 
     #[test]
     fn test_convert_glob_escapes_plus() {
         let pattern = convert_glob_to_pattern("a+b.txt").unwrap();
-        assert_eq!(pattern, "^(?i)a\\+b\\.txt$");
+        assert_eq!(pattern, "^(?is)a\\+b\\.txt$");
     }
 
     #[test]
     fn test_convert_glob_escapes_braces() {
         let pattern = convert_glob_to_pattern("file{1}.txt").unwrap();
-        assert_eq!(pattern, "^(?i)file\\{1\\}\\.txt$");
+        assert_eq!(pattern, "^(?is)file\\{1\\}\\.txt$");
     }
 
     #[test]
     fn test_convert_glob_escapes_pipe() {
         let pattern = convert_glob_to_pattern("a|b.txt").unwrap();
-        assert_eq!(pattern, "^(?i)a\\|b\\.txt$");
+        assert_eq!(pattern, "^(?is)a\\|b\\.txt$");
     }
 
     #[test]
     fn test_convert_like_escapes_plus() {
         let pattern = convert_like_to_pattern("a+b").unwrap();
-        assert_eq!(pattern, "^(?i)a\\+b$");
+        assert_eq!(pattern, "^(?is)a\\+b$");
     }
 
     #[test]
     fn test_convert_like_escapes_braces() {
         let pattern = convert_like_to_pattern("file{1}").unwrap();
-        assert_eq!(pattern, "^(?i)file\\{1\\}$");
+        assert_eq!(pattern, "^(?is)file\\{1\\}$");
     }
 
     #[test]
     fn test_convert_like_escaped_underscore() {
         let pattern = convert_like_to_pattern("a\\_b.txt").unwrap();
-        assert_eq!(pattern, "^(?i)a_b\\.txt$");
+        assert_eq!(pattern, "^(?is)a_b\\.txt$");
         let re = regex::Regex::new(&pattern).unwrap();
         assert!(re.is_match("a_b.txt"));
         assert!(!re.is_match("axb.txt"));
@@ -214,7 +230,7 @@ mod tests {
     #[test]
     fn test_convert_like_escaped_percent() {
         let pattern = convert_like_to_pattern("100\\%").unwrap();
-        assert_eq!(pattern, "^(?i)100%$");
+        assert_eq!(pattern, "^(?is)100%$");
         let re = regex::Regex::new(&pattern).unwrap();
         assert!(re.is_match("100%"));
         assert!(!re.is_match("100200"));
@@ -223,7 +239,7 @@ mod tests {
     #[test]
     fn test_convert_like_escaped_backslash() {
         let pattern = convert_like_to_pattern("a\\\\b").unwrap();
-        assert_eq!(pattern, "^(?i)a\\\\b$");
+        assert_eq!(pattern, "^(?is)a\\\\b$");
         let re = regex::Regex::new(&pattern).unwrap();
         assert!(re.is_match("a\\b"));
         assert!(!re.is_match("ab"));
@@ -233,7 +249,7 @@ mod tests {
     fn test_convert_like_backslash_before_other_char_is_literal() {
         // MySQL keeps the backslash when it does not precede a wildcard or backslash
         let pattern = convert_like_to_pattern("a\\b").unwrap();
-        assert_eq!(pattern, "^(?i)a\\\\b$");
+        assert_eq!(pattern, "^(?is)a\\\\b$");
         let re = regex::Regex::new(&pattern).unwrap();
         assert!(re.is_match("a\\b"));
         assert!(!re.is_match("ab"));
@@ -242,7 +258,7 @@ mod tests {
     #[test]
     fn test_convert_like_trailing_backslash_is_literal() {
         let pattern = convert_like_to_pattern("dir\\").unwrap();
-        assert_eq!(pattern, "^(?i)dir\\\\$");
+        assert_eq!(pattern, "^(?is)dir\\\\$");
         let re = regex::Regex::new(&pattern).unwrap();
         assert!(re.is_match("dir\\"));
         assert!(!re.is_match("dir"));

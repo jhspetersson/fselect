@@ -309,7 +309,7 @@ fn is_subquery_cacheable(query: &Query) -> bool {
 
 /// Compiles one regex component of a `regexp` root path.
 fn root_part_regex(part: &str) -> Result<Regex, SearchError> {
-    Regex::new(&format!("^{}$", part))
+    Regex::new(&format!("^(?:{})$", part))
         .map_err(|_| SearchError::fatal(format!("invalid regex in root path: {}", part)))
 }
 
@@ -3825,7 +3825,7 @@ mod tests {
     fn regexp_roots_accept_every_regex_metacharacter_and_keep_existing_names_literal() {
         let tmp = std::env::temp_dir().join("fselect_test_regexp_root_metachars");
         let _ = fs::remove_dir_all(&tmp);
-        for dir in ["alpha", "beta", "gamma", "a1", "a22", "ab", "c++", ".hidden", "New folder (2)"] {
+        for dir in ["alpha", "beta", "gamma", "a1", "a22", "ab", "c++", ".hidden", "New folder (2)", "alphajunk", "junkbeta"] {
             fs::create_dir_all(tmp.join("roots").join(dir)).unwrap();
             fs::write(tmp.join("roots").join(dir).join(format!("{dir}.txt")), "x").unwrap();
         }
@@ -3836,6 +3836,7 @@ mod tests {
             rows
         };
         let alternation = sorted("select name from '__DIR__/roots/(alpha|beta)' rx");
+        let bare_alternation = sorted("select name from '__DIR__/roots/alpha|beta' rx");
         let dot = sorted("select name from '__DIR__/roots/a.' rx");
         let digits = sorted("select name from '__DIR__/roots/a\\d+' rx");
         let plus_literal = sorted("select name from '__DIR__/roots/c++' rx");
@@ -3845,6 +3846,7 @@ mod tests {
         let _ = fs::remove_dir_all(&tmp);
 
         assert_eq!(alternation, vec!["alpha.txt", "beta.txt"]);
+        assert_eq!(bare_alternation, vec!["alpha.txt", "beta.txt"], "alternation must be grouped before anchoring");
         assert_eq!(dot, vec!["a1.txt", "ab.txt"]);
         assert_eq!(digits, vec!["a1.txt", "a22.txt"]);
         assert_eq!(plus_literal, vec!["c++.txt"]);

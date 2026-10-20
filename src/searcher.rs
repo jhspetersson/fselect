@@ -1028,8 +1028,9 @@ impl<'a> Searcher<'a> {
         // result against the filesystem regardless of the inner query's root.
         // An aggregated query keeps its own columns: replacing them would drop
         // the aggregate (and with it the grouping), and the outer query only
-        // reads the identity columns appended after them anyway.
-        if !query.is_aggregated() {
+        // reads the identity columns appended after them anyway. Aliased
+        // columns stay too, since the query's own clauses may reference them.
+        if !query.is_aggregated() && !query.fields.iter().any(|field| field.alias.is_some()) {
             query.fields = vec![Expr::field(Field::Name)];
         }
         query.output_format = crate::query::OutputFormat::Tabs;
@@ -4070,6 +4071,31 @@ mod tests {
         assert_eq!(two_roots, vec!["c".to_string(), rel(&["c", "deep.txt"]), "same.txt".to_string(), "same.txt".to_string()]);
         assert_eq!(direct_rx.len(), 4);
         assert_eq!(through_rx, direct_rx, "a regexp root expands to the matched directories, and paths are relative to those");
+    }
+
+    #[test]
+    fn from_subselects_keep_aliases_their_own_clauses_depend_on() {
+        let tmp = std::env::temp_dir().join("fselect_test_subselect_keeps_aliases");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(tmp.join("data")).unwrap();
+        fs::create_dir_all(tmp.join("other")).unwrap();
+        for (name, size) in [("a.txt", 1), ("b.txt", 2), ("c.md", 5), ("d.md", 7)] {
+            fs::write(tmp.join("data").join(name), "x".repeat(size)).unwrap();
+        }
+        fs::write(tmp.join("other").join("o1"), "xxx").unwrap();
+
+        let inner = "select path, size as sz from __DIR__/data as t where exists(select name from __DIR__/other where size < t.sz)";
+        let direct = run_query_against_dir(&format!("{inner} order by path"), &tmp);
+        let wrapped = run_query_against_dir(&format!("select name, size from ({inner}) order by name"), &tmp);
+        let ordered = run_query_against_dir(
+            "select name from (select path, size as sz from __DIR__/data order by sz desc limit 1)",
+            &tmp,
+        );
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(direct.len(), 2, "{direct:?}");
+        assert_eq!(wrapped, vec!["c.md	5", "d.md	7"]);
+        assert_eq!(ordered, vec!["d.md"]);
     }
 
     #[test]

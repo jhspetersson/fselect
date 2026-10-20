@@ -558,8 +558,7 @@ impl<'a> Searcher<'a> {
                 let parts = root.path.split('/').collect::<Vec<&str>>();
                 for part in parts {
                     if looks_like_regexp(part) {
-                        // Create a regex from the part
-                        let rx = root_part_regex(part)?;
+                        let mut compiled: Option<Regex> = None;
                         let mut tmp = vec![];
 
                         if ext_roots.is_empty() {
@@ -593,6 +592,10 @@ impl<'a> Searcher<'a> {
                                 tmp.push(literal);
                                 continue;
                             }
+                            if compiled.is_none() {
+                                compiled = Some(root_part_regex(part)?);
+                            }
+                            let rx = compiled.as_ref().unwrap();
 
                             match path.read_dir() {
                                 Ok(read_result) => {
@@ -3827,10 +3830,12 @@ mod tests {
     fn regexp_roots_accept_every_regex_metacharacter_and_keep_existing_names_literal() {
         let tmp = std::env::temp_dir().join("fselect_test_regexp_root_metachars");
         let _ = fs::remove_dir_all(&tmp);
-        for dir in ["alpha", "beta", "gamma", "a1", "a22", "ab", "c++", ".hidden", "New folder (2)", "alphajunk", "junkbeta"] {
+        for dir in ["alpha", "beta", "gamma", "a1", "a22", "ab", "c++", ".hidden", "New folder (2)", "alphajunk", "junkbeta", "draft[1"] {
             fs::create_dir_all(tmp.join("roots").join(dir)).unwrap();
             fs::write(tmp.join("roots").join(dir).join(format!("{dir}.txt")), "x").unwrap();
         }
+        fs::create_dir_all(tmp.join("roots").join("draft[1").join("inner")).unwrap();
+        fs::write(tmp.join("roots").join("draft[1").join("inner").join("inner.txt"), "x").unwrap();
 
         let sorted = |query: &str| {
             let mut rows = run_query_against_dir(query, &tmp);
@@ -3845,6 +3850,8 @@ mod tests {
         let hidden_literal = sorted("select name from '__DIR__/roots/.hidden' rx");
         let parens_literal = sorted("select name from '__DIR__/roots/New folder (2)' rx");
         let class = sorted("select name from '__DIR__/roots/[ab]lpha' rx");
+        let bracket_literal = sorted("select name from '__DIR__/roots/draft[1' rx");
+        let bracket_literal_then_pattern = sorted("select name from '__DIR__/roots/draft[1/.*' rx");
         let _ = fs::remove_dir_all(&tmp);
 
         assert_eq!(alternation, vec!["alpha.txt", "beta.txt"]);
@@ -3855,6 +3862,8 @@ mod tests {
         assert_eq!(hidden_literal, vec![".hidden.txt"]);
         assert_eq!(parens_literal, vec!["New folder (2).txt"]);
         assert_eq!(class, vec!["alpha.txt"]);
+        assert_eq!(bracket_literal, vec!["draft[1.txt", "inner", "inner.txt"]);
+        assert_eq!(bracket_literal_then_pattern, vec!["inner.txt"], "an invalid-regex literal before a pattern");
     }
 
     #[test]

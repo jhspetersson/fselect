@@ -135,6 +135,70 @@ fn from_subqueries_keep_archive_members_whose_names_contain_tabs() {
 }
 
 #[test]
+fn contains_respects_text_encodings_inside_archives() {
+    let dir = std::env::temp_dir().join("fselect_it_archive_contains_encodings");
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let options = zip::write::SimpleFileOptions::default();
+    let mut zip = zip::ZipWriter::new(fs::File::create(dir.join("texts.zip")).unwrap());
+    let mut utf16le = vec![0xFF, 0xFE];
+    for unit in "hello world".encode_utf16() {
+        utf16le.extend_from_slice(&unit.to_le_bytes());
+    }
+    zip.start_file("hello16.txt", options).unwrap();
+    zip.write_all(&utf16le).unwrap();
+    zip.start_file("kanji16.txt", options).unwrap();
+    zip.write_all(&[0xFF, 0xFE, 0x41, 0x42]).unwrap();
+    zip.start_file("overlap16.txt", options).unwrap();
+    zip.write_all(&[0xFF, 0xFE, 0x0A, 0x4E, 0x4E, 0x4E]).unwrap();
+    zip.start_file("latin1.txt", options).unwrap();
+    zip.write_all(b"un caf\xe9 noir").unwrap();
+    zip.start_file("latin1_end.txt", options).unwrap();
+    zip.write_all(b"caf\xe9").unwrap();
+    zip.start_file("late_nul.txt", options).unwrap();
+    let mut late_nul = b"caf\xe9 ".to_vec();
+    late_nul.extend(std::iter::repeat_n(b'x', 16_000));
+    late_nul.push(0);
+    zip.write_all(&late_nul).unwrap();
+    zip.finish().unwrap();
+    let root = dir.display();
+    let cafe = fselect(&format!("select name from {root} archives where ext = txt and contains('caf\u{e9}') order by name"));
+    assert_eq!(rows(&cafe), vec!["latin1.txt", "latin1_end.txt"], "{}", cafe.stderr);
+
+    let hello = fselect(&format!("select name from {root} archives where ext = txt and contains('hello') order by name"));
+    let ab = fselect(&format!("select name from {root} archives where ext = txt and contains('AB') order by name"));
+    let overlap = fselect(&format!("select name from {root} archives where ext = txt and contains('\u{4E4E}') order by name"));
+    let _ = fs::remove_dir_all(&dir);
+
+    assert_eq!(rows(&hello), vec!["hello16.txt"], "{}", hello.stderr);
+    assert_eq!(rows(&ab), Vec::<&str>::new(), "{}", ab.stderr);
+    assert_eq!(rows(&overlap), vec!["overlap16.txt"], "{}", overlap.stderr);
+}
+
+#[test]
+fn from_subqueries_resolve_archive_members_by_index_not_by_normalized_name() {
+    let dir = std::env::temp_dir().join("fselect_it_archive_member_identity");
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let options = zip::write::SimpleFileOptions::default();
+    let mut zip = zip::ZipWriter::new(fs::File::create(dir.join("collision.zip")).unwrap());
+    zip.start_file("dir/item.txt", options).unwrap();
+    zip.write_all(b"abc").unwrap();
+    zip.start_file("dir\\item.txt", options).unwrap();
+    zip.write_all(b"abcdef").unwrap();
+    zip.finish().unwrap();
+    let root = dir.display();
+
+    let six = fselect(&format!("select name, size from (select path from {root} archives where ext = txt and size = 6)"));
+    let sum = fselect(&format!("select sum(size) from (select path from {root} archives where ext = txt)"));
+    let _ = fs::remove_dir_all(&dir);
+
+    assert_eq!(six.code, Some(0), "{}", six.stderr);
+    assert_eq!(rows(&six), vec!["item.txt\t6"], "{}", six.stderr);
+    assert_eq!(rows(&sum), vec!["9"], "{}", sum.stderr);
+}
+
+#[test]
 fn archive_members_report_mime_and_content_fields() {
     let dir = make_archive_dir("fselect_it_archive_fields", 2);
     let root = dir.display();

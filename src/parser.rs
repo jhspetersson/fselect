@@ -121,14 +121,19 @@ impl <'a> Parser<'a> {
             clause.validate_format_size_modifiers()?;
         }
 
-        for clause in fields
-            .iter_mut()
-            .chain(expr.iter_mut())
-            .chain(grouping_fields.iter_mut())
-            .chain(having.iter_mut())
-            .chain(ordering_fields.iter_mut())
-        {
-            clause.mark_local_roots(&self.root_aliases);
+        // A qualifier on the query's only root alias is redundant (`t.size`
+        // is `size`), so it is dropped from cache keys; with several roots
+        // the qualifier tells `t.size` and `u.size` apart and must stay.
+        if self.root_aliases.len() == 1 {
+            for clause in fields
+                .iter_mut()
+                .chain(expr.iter_mut())
+                .chain(grouping_fields.iter_mut())
+                .chain(having.iter_mut())
+                .chain(ordering_fields.iter_mut())
+            {
+                clause.mark_local_roots(&self.root_aliases);
+            }
         }
 
         self.reject_non_grouped_columns(&fields, &grouping_fields)?;
@@ -2672,6 +2677,11 @@ mod tests {
             "select name from /d where is_dir",
             "select name from /d where is_dir = is_file",
             "select name from /d where is_dir = contains('x')",
+            "select name from /d where is_file = concat('tr', 'ue')",
+            "select name from /d where is_file = replace('xtrue', 'x', '')",
+            "select name from /d where is_file = substring('true', 1, 4)",
+            "select name from /d where is_file in (concat('tr', 'ue'))",
+            "select name from /d where is_file = coalesce(is_file, 'nope')",
         ] {
             assert!(parse_query(query).is_ok(), "{}: {:?}", query, parse_query(query).err());
         }

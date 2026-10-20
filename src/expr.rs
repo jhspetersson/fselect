@@ -928,6 +928,11 @@ impl Expr {
     }
 
     fn check_bool_value_side(expr: &Expr, field: &Field) -> Result<(), String> {
+        if expr.function.is_some() {
+            // a function result is data-dependent; its arguments are not
+            // literals compared with the field (`concat('tr', 'ue')`)
+            return Ok(());
+        }
         for arg in expr.args.iter().flatten() {
             Self::check_bool_value_side(arg, field)?;
         }

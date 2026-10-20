@@ -117,11 +117,29 @@ pub struct Lexer {
     between_parts: bool,
     state: LexerState,
     state_history: Vec<LexerState>,
-    root_aliases: Vec<String>,
+    /// Root aliases with the subquery scope they were declared in (the ids
+    /// of the enclosing subqueries, outermost first): an alias is visible in
+    /// that scope and the subqueries nested in it, never in the enclosing
+    /// query or in a sibling subquery.
+    root_aliases: Vec<(String, Vec<usize>)>,
+    /// Open subquery scopes as (id, depth at which the subquery's `select`
+    /// was read); ids are assigned in reading order, so the probe pass and
+    /// the real pass agree on them.
+    scope_stack: Vec<(usize, u32)>,
+    next_scope_id: usize,
+    previous_was_open: bool,
 }
 
 impl Lexer {
     pub fn new(input: Vec<String>) -> Lexer {
+        let mut lexer = Lexer::without_alias_probe(input);
+        if lexer.input.iter().any(|part| part.to_ascii_lowercase().contains("as")) {
+            lexer.root_aliases = Lexer::probe_root_aliases(lexer.input.clone());
+        }
+        lexer
+    }
+
+    fn without_alias_probe(input: Vec<String>) -> Lexer {
         Lexer {
             chars: input.iter().map(|part| part.chars().collect()).collect(),
             input,
@@ -131,7 +149,23 @@ impl Lexer {
             state: LexerState::new(),
             state_history: vec![],
             root_aliases: vec![],
+            scope_stack: vec![],
+            next_scope_id: 0,
+            previous_was_open: false,
         }
+    }
+
+    /// Root aliases are declared in FROM, after the SELECT list that may
+    /// already use them (`select t.size/2 from data as t`), so a throwaway
+    /// pass collects them before the real lexing starts.
+    fn probe_root_aliases(input: Vec<String>) -> Vec<(String, Vec<usize>)> {
+        let mut probe = Lexer::without_alias_probe(input);
+        while let Some(lexeme) = probe.next_lexeme() {
+            if matches!(lexeme, Lexeme::Error(_)) {
+                break;
+            }
+        }
+        probe.root_aliases
     }
 
     pub fn get_input_string(&self) -> String {
@@ -149,6 +183,34 @@ impl Lexer {
         } else {
             self.state = LexerState::new();
         }
+        // The nested parse consumed the subquery's closing parenthesis while
+        // this state was saved, so the restored depth still counts the
+        // opening one; the parser re-injects a synthetic Close that never
+        // passes through here.
+        self.state.paren_depth = self.state.paren_depth.saturating_sub(1);
+        self.sync_scopes();
+    }
+
+    fn current_scope(&self) -> Vec<usize> {
+        self.scope_stack.iter().map(|(id, _)| *id).collect()
+    }
+
+    /// A subquery scope ends once the depth drops below the depth its
+    /// `select` was read at, whether the closing parenthesis passed through
+    /// this lexer or was consumed by a nested parse and restored here.
+    fn sync_scopes(&mut self) {
+        let depth = self.alias_depth();
+        while self.scope_stack.last().is_some_and(|(_, opened_at)| depth < *opened_at) {
+            self.scope_stack.pop();
+        }
+    }
+
+    /// Parenthesis depth across every pushed state: the parser resets the
+    /// state when it enters a subquery, so the enclosing depth lives in the
+    /// history. The probe pass has no history and counts parentheses alone;
+    /// both yield the same depth for the same position in the query.
+    fn alias_depth(&self) -> u32 {
+        self.state_history.iter().map(|state| state.paren_depth).sum::<u32>() + self.state.paren_depth
     }
 
     pub fn next_lexeme(&mut self) -> Option<Lexeme> {
@@ -234,13 +296,13 @@ impl Lexer {
                         && date_tail_follows(&s, &rest);
                     if !is_date {
                         if self.is_arithmetic_op_char(c) {
-                            let maybe_expr = looks_like_expression(&s, &self.root_aliases);
+                            let maybe_expr = looks_like_expression(&s, &self.root_aliases, &self.current_scope());
                             if maybe_expr {
                                 break;
                             }
                         } else if self.state.after_operator
                             && is_arithmetic_char(c)
-                            && continues_arithmetic(&s, c, &rest, self.chars[self.input_index].get(self.char_index + 1).copied(), &self.root_aliases)
+                            && continues_arithmetic(&s, c, &rest, self.chars[self.input_index].get(self.char_index + 1).copied(), &self.root_aliases, &self.current_scope())
                         {
                             // `size > 2*4`: after a comparison operator `*`, `/`, `%`,
                             // `+` and `-` are literal characters (paths, LIKE patterns,
@@ -346,11 +408,18 @@ impl Lexer {
             _ => None,
         };
 
+        if matches!(lexeme, Some(Lexeme::Select)) && self.previous_was_open {
+            let id = self.next_scope_id;
+            self.next_scope_id += 1;
+            self.scope_stack.push((id, self.alias_depth()));
+        }
+        self.previous_was_open = matches!(lexeme, Some(Lexeme::Open) | Some(Lexeme::CurlyOpen));
         if self.state.clause == Clause::Roots
             && self.state.after_as
-            && let Some(Lexeme::RawString(ref alias)) = lexeme
+            && let Some(Lexeme::RawString(ref alias) | Lexeme::String(ref alias)) = lexeme
         {
-            self.root_aliases.push(alias.to_ascii_lowercase());
+            let scope = self.current_scope();
+            self.root_aliases.push((alias.to_ascii_lowercase(), scope));
         }
         self.state.after_as = matches!(lexeme, Some(Lexeme::RawString(ref s)) if s.eq_ignore_ascii_case("as"));
         self.state.possible_search_root = matches!(lexeme, Some(Lexeme::From))
@@ -369,6 +438,7 @@ impl Lexer {
             Some(Lexeme::Close) | Some(Lexeme::CurlyClose) => self.state.paren_depth.saturating_sub(1),
             _ => self.state.paren_depth,
         };
+        self.sync_scopes();
         self.state.after_value_start = matches!(lexeme, Some(Lexeme::Comma)) && self.state.in_where();
         self.state.after_not = matches!(lexeme, Some(Lexeme::Not));
         self.state.after_arithmetic = matches!(lexeme, Some(Lexeme::ArithmeticOperator(_)));
@@ -461,11 +531,11 @@ fn date_tail_follows(s: &str, rest: &str) -> bool {
 
 /// Does `s` + `c` + `rest` read as an arithmetic expression over numbers,
 /// fields and functions (`2*4`, `10-5*2`, `2*size`), or as `1+(`?
-fn continues_arithmetic(s: &str, c: char, rest: &str, next_char: Option<char>, root_aliases: &[String]) -> bool {
+fn continues_arithmetic(s: &str, c: char, rest: &str, next_char: Option<char>, root_aliases: &[(String, Vec<usize>)], scope: &[usize]) -> bool {
     if rest.is_empty() {
         return next_char == Some('(');
     }
-    looks_like_expression(&format!("{}{}{}", s, c, rest), root_aliases)
+    looks_like_expression(&format!("{}{}{}", s, c, rest), root_aliases, scope)
 }
 
 static DATE_ALIKE_REGEX: LazyLock<Regex> = LazyLock::new(|| {
@@ -478,11 +548,11 @@ static DATE_ALIKE_REGEX: LazyLock<Regex> = LazyLock::new(|| {
 /// is a number or starts with a root alias the query declared, so an unquoted
 /// file name such as `report.txt-backup.bak` stays a literal. An empty operand
 /// (`-5`, `%size%`) also means the word is a literal.
-fn looks_like_expression(s: &str, root_aliases: &[String]) -> bool {
-    !s.split(['+', '-', '*', '/', '%', '(', ')']).any(|operand| !is_arithmetic_operand(operand, root_aliases))
+fn looks_like_expression(s: &str, root_aliases: &[(String, Vec<usize>)], scope: &[usize]) -> bool {
+    !s.split(['+', '-', '*', '/', '%', '(', ')']).any(|operand| !is_arithmetic_operand(operand, root_aliases, scope))
 }
 
-fn is_arithmetic_operand(operand: &str, root_aliases: &[String]) -> bool {
+fn is_arithmetic_operand(operand: &str, root_aliases: &[(String, Vec<usize>)], scope: &[usize]) -> bool {
     if operand.is_empty() {
         return false;
     }
@@ -490,7 +560,12 @@ fn is_arithmetic_operand(operand: &str, root_aliases: &[String]) -> bool {
         return true;
     }
     match operand.split_once('.') {
-        Some((alias, name)) => root_aliases.iter().any(|declared| declared.eq_ignore_ascii_case(alias)) && is_identifier(name),
+        Some((alias, name)) => {
+            root_aliases
+                .iter()
+                .any(|(declared, declared_in)| scope.starts_with(declared_in) && declared.eq_ignore_ascii_case(alias))
+                && is_identifier(name)
+        }
         None => Field::parse_field(operand).is_ok() || Function::from_str(operand).is_ok(),
     }
 }
@@ -706,6 +781,69 @@ c"))), "lexemes were {:?}", lexemes);
         assert_eq!(
             where_clause_of("select name from . as t where size>t.sz*2"),
             vec![raw("size"), gt, raw("t.sz"), arith("*"), raw("2")]
+        );
+    }
+
+    fn select_list_of(query: &str) -> Vec<Lexeme> {
+        let mut lexer = Lexer::new(vec![query.to_string()]);
+        let lexemes = collect(&mut lexer);
+        let pos = lexemes.iter().position(|l| matches!(l, Lexeme::From)).expect("from");
+        lexemes[1..pos].to_vec()
+    }
+
+    #[test]
+    fn aliases_declared_after_the_select_list_still_qualify_its_arithmetic() {
+        assert_eq!(
+            select_list_of("select name,t.size/2 from data as t"),
+            vec![raw("name"), Lexeme::Comma, raw("t.size"), arith("/"), raw("2")]
+        );
+        assert_eq!(
+            select_list_of("select t.sz*2 from data as T"),
+            vec![raw("t.sz"), arith("*"), raw("2")]
+        );
+        assert_eq!(select_list_of("select report.txt-backup.bak from data"), vec![raw("report.txt-backup.bak")]);
+    }
+
+    #[test]
+    fn inner_aliases_do_not_leak_into_the_outer_query() {
+        let gt = Lexeme::Operator(">".to_string());
+        assert_eq!(
+            where_clause_of("select name,(select name from other as report limit 1) from names where name=report.txt-1"),
+            vec![raw("name"), Lexeme::Operator("=".to_string()), raw("report.txt-1")]
+        );
+        assert_eq!(
+            where_clause_of("select name,(select name from other as report limit 1) from names as t where t.size/2>3"),
+            vec![raw("t.size"), arith("/"), raw("2"), gt, raw("3")]
+        );
+    }
+
+    #[test]
+    fn inner_aliases_are_scoped_to_their_subquery_not_to_parentheses() {
+        let eq = Lexeme::Operator("=".to_string());
+        assert_eq!(
+            where_clause_of("select name,(select name from other as report limit 1) from names where (name=report.txt-1)"),
+            vec![Lexeme::Open, raw("name"), eq.clone(), raw("report.txt-1"), Lexeme::Close]
+        );
+        assert_eq!(
+            where_clause_of("select name,(select name from other as report limit 1) from names where name in (report.txt-1, x)"),
+            vec![raw("name"), Lexeme::Operator("in".to_string()), Lexeme::Open, raw("report.txt-1"), Lexeme::Comma, raw("x"), Lexeme::Close]
+        );
+        let all = |query: &str| collect(&mut Lexer::new(vec![query.to_string()]));
+        let sibling = all(
+            "select (select name from other as report limit 1),(select name from other where name=report.txt-1 limit 1) from names",
+        );
+        assert!(sibling.contains(&raw("report.txt-1")), "sibling subquery: {sibling:?}");
+        assert!(!sibling.contains(&arith("-")), "sibling subquery: {sibling:?}");
+        let own = all("select (select report.size*2 from other as report limit 1) from names");
+        assert!(own.contains(&raw("report.size")) && own.contains(&arith("*")), "declaring subquery: {own:?}");
+    }
+
+    #[test]
+    fn quoted_root_aliases_qualify_arithmetic() {
+        let gt = Lexeme::Operator(">".to_string());
+        assert_eq!(
+            where_clause_of("select name from data as 't' where t.size/2>3"),
+            vec![raw("t.size"), arith("/"), raw("2"), gt, raw("3")]
         );
     }
 

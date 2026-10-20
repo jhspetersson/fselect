@@ -218,31 +218,155 @@ macro_rules! functions {
 /// rolling overlap of `needle.len() - 1` bytes so matches that straddle chunk
 /// boundaries are still found. Avoids the unbounded memory cost (and the
 /// UTF-8 requirement) of `read_to_string`.
-fn file_contains<R: Read>(mut reader: R, needle: &[u8]) -> bool {
-    if needle.is_empty() {
+/// The needle in the file's own encoding, taken from its byte-order mark:
+/// the encoded bytes, the length of the mark, and the code unit size the
+/// match must be aligned to (a UTF-16LE `U+4241` is the bytes `41 42`, not
+/// the text `AB`).
+fn encoded_needle(head: &[u8], needle: &str) -> (Vec<u8>, usize, usize) {
+    match crate::util::detect_bom(head) {
+        Some(("UTF-16LE", len)) => (needle.encode_utf16().flat_map(|unit| unit.to_le_bytes()).collect(), len, 2),
+        Some(("UTF-16BE", len)) => (needle.encode_utf16().flat_map(|unit| unit.to_be_bytes()).collect(), len, 2),
+        Some(("UTF-32LE", len)) => (needle.chars().flat_map(|c| (c as u32).to_le_bytes()).collect(), len, 4),
+        Some(("UTF-32BE", len)) => (needle.chars().flat_map(|c| (c as u32).to_be_bytes()).collect(), len, 4),
+        Some((_, len)) => (needle.as_bytes().to_vec(), len, 1),
+        None => (needle.as_bytes().to_vec(), 0, 1),
+    }
+}
+
+fn latin1_needle(text: &str) -> Option<Vec<u8>> {
+    text.chars().map(|c| u8::try_from(u32::from(c)).ok()).collect()
+}
+
+/// Without a byte-order mark the body is UTF-8 when it decodes as UTF-8 and
+/// Latin-1 otherwise (a NUL makes it binary), exactly as `is_text`
+/// classifies it. A non-ASCII needle is therefore looked for in both
+/// spellings while the body is validated, and the spelling that fits the
+/// whole body decides; an ASCII needle never gets here, its bytes are the
+/// same in both.
+fn contains_utf8_or_latin1<R: Read>(mut reader: R, head: &[u8], utf8: &[u8], latin1: Option<Vec<u8>>) -> bool {
+    const CHUNK: usize = 8 * 1024;
+    let longest = utf8.len().max(latin1.as_ref().map_or(0, Vec::len));
+    let overlap = longest - 1;
+    let mut buf = vec![0u8; (CHUNK + overlap).max(head.len())];
+    buf[..head.len()].copy_from_slice(head);
+    let mut carry = head.len();
+    let mut fresh_from = 0;
+    let utf8_finder = memchr::memmem::Finder::new(utf8);
+    let latin1_finder = latin1.as_deref().map(memchr::memmem::Finder::new);
+    let (mut utf8_match, mut latin1_match) = (false, false);
+    let (mut valid_utf8, mut has_nul) = (true, false);
+    let mut pending: Vec<u8> = Vec::new();
+
+    loop {
+        let end = match reader.read(&mut buf[carry..]) {
+            Ok(0) if carry == 0 => break,
+            Ok(n) => carry + n,
+            Err(_) => return false,
+        };
+        let fresh = &buf[fresh_from..end];
+        if !has_nul && fresh.contains(&0) {
+            has_nul = true;
+        }
+        if valid_utf8 && !has_nul {
+            pending.extend_from_slice(fresh);
+            match std::str::from_utf8(&pending) {
+                Ok(_) => pending.clear(),
+                Err(err) if err.error_len().is_none() => {
+                    pending.drain(..err.valid_up_to());
+                }
+                Err(_) => {
+                    valid_utf8 = false;
+                    pending.clear();
+                }
+            }
+        }
+        if !utf8_match && utf8_finder.find(&buf[..end]).is_some() {
+            utf8_match = true;
+        }
+        if !latin1_match && latin1_finder.as_ref().is_some_and(|finder| finder.find(&buf[..end]).is_some()) {
+            latin1_match = true;
+        }
+        // Only a match in both spellings is settled early: a Latin-1 match
+        // still depends on no NUL turning up in a later chunk, which would
+        // make the body binary and leave the raw byte search alone to count.
+        if utf8_match && latin1_match {
+            return true;
+        }
+        if end < buf.len() && end == carry {
+            break;
+        }
+        if end >= overlap {
+            buf.copy_within(end - overlap..end, 0);
+            carry = overlap;
+        } else {
+            carry = end;
+        }
+        fresh_from = carry;
+    }
+    // An incomplete sequence left at the end of the file (a Latin-1 body
+    // ending in a byte above 0x7F) is invalid UTF-8 as well.
+    if !pending.is_empty() {
+        valid_utf8 = false;
+    }
+    if valid_utf8 || has_nul {
+        utf8_match
+    } else {
+        latin1_match
+    }
+}
+
+fn file_contains<R: Read>(mut reader: R, needle_text: &str) -> bool {
+    if needle_text.is_empty() {
         return true;
     }
 
     const CHUNK: usize = 8 * 1024;
+    let mut head = [0u8; 4];
+    let mut filled = 0;
+    while filled < head.len() {
+        match reader.read(&mut head[filled..]) {
+            Ok(0) => break,
+            Ok(n) => filled += n,
+            Err(_) => return false,
+        }
+    }
+    let (needle, bom_len, unit) = encoded_needle(&head[..filled], needle_text);
+    if bom_len == 0 && !needle_text.is_ascii() {
+        return contains_utf8_or_latin1(reader, &head[..filled], &needle, latin1_needle(needle_text));
+    }
+
     let overlap = needle.len() - 1;
-    let mut buf = vec![0u8; CHUNK + overlap];
-    let mut carry = 0usize;
+    let mut buf = vec![0u8; (CHUNK + overlap).max(filled)];
+    buf[..filled].copy_from_slice(&head[..filled]);
+    let mut carry = filled;
+    let mut base = 0usize;
     // SIMD-accelerated substring search; the naive windows() scan was 3-4x
     // slower on cached files and O(n*m) on repetitive data.
-    let finder = memchr::memmem::Finder::new(needle);
+    let finder = memchr::memmem::Finder::new(&needle);
 
     loop {
-        let read = match reader.read(&mut buf[carry..]) {
-            Ok(0) => return false,
-            Ok(n) => n,
+        let end = match reader.read(&mut buf[carry..]) {
+            Ok(0) if carry == 0 => return false,
+            Ok(n) => carry + n,
             Err(_) => return false,
         };
-        let end = carry + read;
-        if finder.find(&buf[..end]).is_some() {
-            return true;
+        // Matches may overlap: an unaligned occurrence can hide an aligned
+        // one starting a byte later (UTF-16LE 上乎 is 0A 4E 4E 4E, and 乎 is
+        // 4E 4E), so the scan resumes one byte after each rejected match.
+        let mut from = 0;
+        while let Some(pos) = finder.find(&buf[from..end]) {
+            let at = from + pos;
+            if (base + at).checked_sub(bom_len).is_some_and(|offset| offset % unit == 0) {
+                return true;
+            }
+            from = at + 1;
+        }
+        if end < buf.len() && end == carry {
+            return false;
         }
         if end >= overlap {
             buf.copy_within(end - overlap..end, 0);
+            base += end - overlap;
             carry = overlap;
         } else {
             carry = end;
@@ -382,12 +506,10 @@ impl Function {
     }
 }
 
-fn numeric_extreme_text(raw: &Option<String>, value: f64) -> String {
-    match raw {
-        Some(raw) if value != 0.0 => raw.clone(),
-        Some(_) => String::from("0"),
-        None => String::new(),
-    }
+/// The extreme keeps the spelling it was pushed with (`000`, `-000`, `1e3`):
+/// the result must name a value that exists, so no spelling is rewritten.
+fn numeric_extreme_text(raw: &Option<String>) -> String {
+    raw.clone().unwrap_or_default()
 }
 
 fn snap_to_exact_power(val: f64, base: f64, approx: f64) -> f64 {
@@ -899,7 +1021,7 @@ pub fn get_value(
         }
         // ===== File functions =====
         Function::Contains => {
-            let needle = function_arg.as_bytes();
+            let needle = function_arg.as_str();
             let found = match (entry, file_info) {
                 (Some(entry), Some(file_info)) => {
                     with_archived_entry(&entry.path(), file_info, |reader| file_contains(reader, needle))
@@ -1182,7 +1304,7 @@ pub fn get_aggregate_value(
                 // Numeric order when every value was a number, size order when
                 // every value was a file size, plain text order otherwise
                 // (datetimes, names, mixed columns).
-                Some(acc) if acc.all_numeric() => numeric_extreme_text(&acc.min_raw, acc.min),
+                Some(acc) if acc.all_numeric() => numeric_extreme_text(&acc.min_raw),
                 Some(acc) if acc.all_sizes() => acc.min_value.clone().unwrap_or_default(),
                 Some(acc) => acc.min_text.clone().unwrap_or_default(),
                 _ => String::new(),
@@ -1190,7 +1312,7 @@ pub fn get_aggregate_value(
         }
         Function::Max => {
             match field_acc {
-                Some(acc) if acc.all_numeric() => numeric_extreme_text(&acc.max_raw, acc.max),
+                Some(acc) if acc.all_numeric() => numeric_extreme_text(&acc.max_raw),
                 Some(acc) if acc.all_sizes() => acc.max_value.clone().unwrap_or_default(),
                 Some(acc) => acc.max_text.clone().unwrap_or_default(),
                 _ => String::new(),
@@ -1841,7 +1963,7 @@ pub struct GroupAccumulator {
     /// Absolute path and root depth of the first entry that joined the group.
     /// Only recorded when the query drives an outer FROM-subselect, so each
     /// group can stand in for one filesystem entry there.
-    pub representative: Option<(String, usize)>,
+    pub representative: Option<(String, usize, Option<usize>)>,
 }
 
 impl GroupAccumulator {
@@ -4225,17 +4347,36 @@ mod tests {
     }
 
     #[test]
-    fn min_negative_zero_normalized() {
+    fn min_and_max_keep_all_zero_spellings() {
+        let names = make_accumulator("val", &["000", "001", "002"]);
+        assert_eq!(get_aggregate_value(&Function::Min, &names, "val".to_string(), &None), "000");
+        assert_eq!(get_aggregate_value(&Function::Max, &names, "val".to_string(), &None), "002");
+
+        let decimal = make_accumulator("val", &["0.0", "0.5"]);
+        assert_eq!(get_aggregate_value(&Function::Min, &decimal, "val".to_string(), &None), "0.0");
+
+        let negative = make_accumulator("val", &["-0.0", "1"]);
+        assert_eq!(get_aggregate_value(&Function::Min, &negative, "val".to_string(), &None), "-0.0");
+
+        let signed_names = make_accumulator("val", &["-000", "001"]);
+        assert_eq!(get_aggregate_value(&Function::Min, &signed_names, "val".to_string(), &None), "-000");
+    }
+
+    #[test]
+    fn min_negative_zero_keeps_the_first_spelling() {
         let acc = make_accumulator("val", &["-0", "0"]);
+        let result = get_aggregate_value(&Function::Min, &acc, "val".to_string(), &None);
+        assert_eq!(result, "-0");
+        let acc = make_accumulator("val", &["0", "-0"]);
         let result = get_aggregate_value(&Function::Min, &acc, "val".to_string(), &None);
         assert_eq!(result, "0");
     }
 
     #[test]
-    fn max_negative_zero_normalized() {
+    fn max_negative_zero_keeps_the_first_spelling() {
         let acc = make_accumulator("val", &["-0", "0"]);
         let result = get_aggregate_value(&Function::Max, &acc, "val".to_string(), &None);
-        assert_eq!(result, "0");
+        assert_eq!(result, "-0");
     }
 
     #[test]
@@ -4409,7 +4550,7 @@ mod tests {
         // ASCII substring "needle". The streaming implementation must find it;
         // a String-based read_to_string fails outright on invalid UTF-8 and
         // wrongly reports the substring as absent.
-        let mut bytes: Vec<u8> = vec![0xff, 0xfe, 0xfd, 0xfc, 0x80, 0x81];
+        let mut bytes: Vec<u8> = vec![0xfd, 0xfc, 0xff, 0xfe, 0x80, 0x81];
         bytes.extend_from_slice(b"needle");
         bytes.extend_from_slice(&[0xff, 0xfe, 0xfd]);
         let path = write_temp_file("non_utf8.bin", &bytes);
@@ -4426,6 +4567,98 @@ mod tests {
         assert!(result.to_bool(), "Contains should find substring even in non-UTF8 files");
 
         let _ = std::fs::remove_file(&path);
+    }
+
+    fn contains_in(name: &str, bytes: &[u8], needle: &str) -> bool {
+        let path = write_temp_file(name, bytes);
+        let entry = dir_entry_for(&path);
+        let result = get_value(&Function::Contains, String::from(needle), vec![], Some(&entry), &None).unwrap();
+        let _ = std::fs::remove_file(&path);
+        result.to_bool()
+    }
+
+    fn encode_text(text: &str, encoding: &str) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        match encoding {
+            "UTF-16LE" => {
+                bytes.extend_from_slice(&[0xFF, 0xFE]);
+                for unit in text.encode_utf16() {
+                    bytes.extend_from_slice(&unit.to_le_bytes());
+                }
+            }
+            "UTF-16BE" => {
+                bytes.extend_from_slice(&[0xFE, 0xFF]);
+                for unit in text.encode_utf16() {
+                    bytes.extend_from_slice(&unit.to_be_bytes());
+                }
+            }
+            "UTF-32LE" => {
+                bytes.extend_from_slice(&[0xFF, 0xFE, 0x00, 0x00]);
+                for c in text.chars() {
+                    bytes.extend_from_slice(&(c as u32).to_le_bytes());
+                }
+            }
+            "UTF-32BE" => {
+                bytes.extend_from_slice(&[0x00, 0x00, 0xFE, 0xFF]);
+                for c in text.chars() {
+                    bytes.extend_from_slice(&(c as u32).to_be_bytes());
+                }
+            }
+            _ => bytes.extend_from_slice(text.as_bytes()),
+        }
+        bytes
+    }
+
+    #[test]
+    fn contains_searches_text_in_its_recognized_encoding() {
+        for encoding in ["UTF-16LE", "UTF-16BE", "UTF-32LE", "UTF-32BE"] {
+            let bytes = encode_text("hello world", encoding);
+            assert!(contains_in(&format!("hello_{encoding}.txt"), &bytes, "hello"), "{encoding}: hello");
+            assert!(contains_in(&format!("world_{encoding}.txt"), &bytes, "o w"), "{encoding}: o w");
+            assert!(!contains_in(&format!("absent_{encoding}.txt"), &bytes, "bye"), "{encoding}: bye");
+        }
+        let kanji = encode_text("\u{4241}", "UTF-16LE");
+        assert!(!contains_in("kanji_utf16le.txt", &kanji, "AB"), "UTF-16LE bytes 41 42 are not the text AB");
+        assert!(contains_in("kanji_utf16le_self.txt", &kanji, "\u{4241}"), "the character itself is found");
+        let utf8_bom = encode_text("hello world", "UTF-8");
+        let mut with_bom = vec![0xEF, 0xBB, 0xBF];
+        with_bom.extend_from_slice(&utf8_bom);
+        assert!(contains_in("hello_utf8_bom.txt", &with_bom, "hello"), "UTF-8 with BOM");
+        // 上 is 0A 4E and 乎 is 4E 4E in UTF-16LE: the bytes 4E 4E first occur
+        // unaligned at offset 1, and the aligned occurrence at offset 2
+        // overlaps it.
+        for encoding in ["UTF-16LE", "UTF-16BE"] {
+            let overlapping = encode_text("\u{4E0A}\u{4E4E}", encoding);
+            assert!(contains_in(&format!("overlap_{encoding}.txt"), &overlapping, "\u{4E4E}"), "{encoding}: overlapping aligned match");
+        }
+    }
+
+    #[test]
+    fn contains_searches_latin1_text_as_latin1() {
+        let latin1_cafe = b"un caf\xe9 noir";
+        assert!(contains_in("latin1_cafe.txt", latin1_cafe, "caf\u{e9}"), "Latin-1 caf\u{e9}");
+        assert!(contains_in("latin1_ascii.txt", latin1_cafe, "noir"), "ASCII needle in a Latin-1 file");
+        assert!(!contains_in("latin1_absent.txt", latin1_cafe, "th\u{e9}"), "absent needle");
+        // Invalid UTF-8 overall (E9 20), so the body is Latin-1 text
+        // "\u{e9} caf\u{c3}\u{a9}": the UTF-8 bytes of caf\u{e9} appear, the text does not.
+        let latin1_lookalike = b"\xe9 caf\xc3\xa9";
+        assert!(!contains_in("latin1_lookalike.txt", latin1_lookalike, "caf\u{e9}"), "UTF-8 bytes inside Latin-1 text are not a match");
+        assert!(contains_in("utf8_cafe.txt", "un caf\u{e9} noir".as_bytes(), "caf\u{e9}"), "UTF-8 caf\u{e9}");
+        // A Latin-1 body ending in a non-ASCII byte leaves a lone lead byte
+        // at the end of the file: an incomplete sequence, not valid UTF-8.
+        assert!(contains_in("latin1_trailing.txt", b"caf\xe9", "caf\u{e9}"), "Latin-1 caf\u{e9} at the end of the file");
+        assert!(contains_in("latin1_single.txt", b"\xe9", "\u{e9}"), "a single Latin-1 byte");
+        assert!(contains_in("latin1_trailing_lead.txt", b"caf\xc3", "caf\u{c3}"), "a trailing byte that is a UTF-8 lead byte");
+        // A NUL anywhere makes the body binary, even chunks after a Latin-1
+        // match: binary bodies are searched as raw bytes only.
+        let mut late_nul = b"caf\xe9 ".to_vec();
+        late_nul.extend(std::iter::repeat_n(b'x', 16_000));
+        late_nul.push(0);
+        assert!(!contains_in("latin1_late_nul.bin", &late_nul, "caf\u{e9}"), "a NUL in a later chunk makes the body binary");
+        let mut no_nul = b"caf\xe9 ".to_vec();
+        no_nul.extend(std::iter::repeat_n(b'x', 16_000));
+        assert!(contains_in("latin1_long.txt", &no_nul, "caf\u{e9}"), "the same body without the NUL is Latin-1 text");
+        assert!(!contains_in("utf8_lookalike.txt", "caf\u{c3}\u{a9}".as_bytes(), "caf\u{e9}"), "a UTF-8 file spelling caf\u{c3}\u{a9} does not contain caf\u{e9}");
     }
 
     #[test]

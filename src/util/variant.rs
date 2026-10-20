@@ -126,6 +126,15 @@ impl Variant {
         self
     }
 
+    /// A datetime that stands for a whole span, as a date-only text does
+    /// (`2026-10-20` is the day from its first to its last second), so a
+    /// comparison against it keeps the span instead of collapsing to midnight.
+    pub fn from_datetime_range(from: NaiveDateTime, to: NaiveDateTime) -> Variant {
+        let mut variant = Variant::from_datetime(from);
+        variant.dt_to = Some(to);
+        variant
+    }
+
     pub fn from_datetime(value: NaiveDateTime) -> Variant {
         Variant {
             value_type: VariantType::DateTime,

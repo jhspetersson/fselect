@@ -194,27 +194,25 @@ fn apply_minus(column_expr: &Expr, value: Variant) -> Variant {
         .unwrap_or(value)
 }
 
-fn numeric_or_text(text: &str) -> Variant {
-    text.parse::<i64>()
-        .map(Variant::from_int)
-        .or_else(|_| text.parse::<f64>().map(Variant::from_float))
-        .unwrap_or_else(|_| Variant::from_string(&text.to_string()))
-}
-
+/// Re-types a value that was rendered as text. The expression says which
+/// types it can produce, the text says which one it did: `coalesce(is_file,
+/// size)` may be numeric or boolean, and `true` is the boolean.
 fn typed_variant(expr: &Expr, text: &str) -> Variant {
-    let as_string = || Variant::from_string(&text.to_string());
-    let typed = if expr.contains_numeric() {
-        numeric_or_text(text)
-    } else if expr.contains_datetime() {
-        parse_datetime(text)
-            .map(|(from, _)| Variant::from_datetime(from))
-            .unwrap_or_else(|_| as_string())
-    } else if expr.contains_boolean() {
-        str_to_bool(text).map(Variant::from_bool).unwrap_or_else(as_string)
-    } else {
-        as_string()
-    };
-    typed.with_text(text)
+    let mut typed = None;
+    if expr.contains_numeric() {
+        typed = text
+            .parse::<i64>()
+            .map(Variant::from_int)
+            .or_else(|_| text.parse::<f64>().map(Variant::from_float))
+            .ok();
+    }
+    if typed.is_none() && expr.contains_datetime() {
+        typed = parse_datetime(text).ok().map(|(from, to)| Variant::from_datetime_range(from, to));
+    }
+    if typed.is_none() && expr.contains_boolean() {
+        typed = str_to_bool(text).map(Variant::from_bool);
+    }
+    typed.unwrap_or_else(|| Variant::from_string(&text.to_string())).with_text(text)
 }
 
 enum Membership {
@@ -905,12 +903,15 @@ impl<'a> Searcher<'a> {
                     for (i, k) in group_keys.iter().enumerate() {
                         file_map.insert(k.clone(), group_key.get(i).cloned().unwrap_or_default());
                     }
+                    self.reset_alias_failures(&aliases);
                     self.bind_group_context(&aliases, group_key, &[]);
                     if let Some(having_expr) = having_expr {
                         if having_expr.has_correlated_subquery() {
                             self.bind_aggregate_aliases(&aliases, group_key, &mut file_map, group_acc, true)?;
                         }
-                        if !self.group_conforms(&mut file_map, group_acc, having_expr)? {
+                        let conforms = self.group_conforms(&mut file_map, group_acc, having_expr)?;
+                        self.alias_read_failure()?;
+                        if !conforms {
                             continue;
                         }
                     }
@@ -923,9 +924,9 @@ impl<'a> Searcher<'a> {
                         items.push((column_expr.column_name(), value.to_string()));
                     }
                     if self.root_depth_column
-                        && let Some((own_path, root_depth)) = &group_acc.representative
+                        && let Some((own_path, root_depth, member_index)) = &group_acc.representative
                     {
-                        Self::push_subquery_identity(&mut items, own_path, *root_depth);
+                        Self::push_subquery_identity(&mut items, own_path, *root_depth, *member_index);
                     }
                     let mut criteria_values: Vec<String> =
                         Vec::with_capacity(sorting_indices.len());
@@ -987,6 +988,7 @@ impl<'a> Searcher<'a> {
                 let empty_acc = function::GroupAccumulator::default();
                 let ungrouped_acc = accumulators.get(&vec![]).unwrap_or(&empty_acc);
                 let aliases = self.query.own_root_aliases();
+                self.reset_alias_failures(&aliases);
                 self.bind_group_context(&aliases, &[], &[]);
                 let mut passes_having = true;
                 if let Some(having_expr) = self.query.having.as_ref() {
@@ -995,6 +997,7 @@ impl<'a> Searcher<'a> {
                     }
                     passes_having =
                         self.group_conforms(&mut HashMap::new(), ungrouped_acc, having_expr)?;
+                    self.alias_read_failure()?;
                 }
 
                 if passes_having {
@@ -1011,9 +1014,9 @@ impl<'a> Searcher<'a> {
                         items.push((column_expr.column_name(), value.to_string()));
                     }
                     if self.root_depth_column
-                        && let Some((own_path, root_depth)) = &ungrouped_acc.representative
+                        && let Some((own_path, root_depth, member_index)) = &ungrouped_acc.representative
                     {
-                        Self::push_subquery_identity(&mut items, own_path, *root_depth);
+                        Self::push_subquery_identity(&mut items, own_path, *root_depth, *member_index);
                     }
 
                     self.results_writer.write_row(&mut buf, items)?;
@@ -1058,7 +1061,7 @@ impl<'a> Searcher<'a> {
     /// Run a FROM-clause subselect and return the list of paths it produced.
     /// The inner query is forced to emit only the `path` field so its rows can
     /// drive the outer query as a flat list of filesystem entries.
-    fn collect_subquery_root_paths(&mut self, mut query: Query) -> Result<Vec<(String, Option<usize>)>, SearchError> {
+    fn collect_subquery_root_paths(&mut self, mut query: Query) -> Result<Vec<(String, Option<usize>, Option<usize>)>, SearchError> {
         // Use the absolute path so visit_subquery_paths can re-resolve each
         // result against the filesystem regardless of the inner query's root.
         // An aggregated query keeps its own columns: replacing them would drop
@@ -1074,10 +1077,19 @@ impl<'a> Searcher<'a> {
             .into_iter()
             .map(|row| {
                 let mut columns = row.rsplitn(3, '\t');
-                let depth = columns.next().and_then(|depth| depth.parse::<usize>().ok());
+                // `<depth>` for a file, `<depth>@<member index>` for an
+                // archive member: two members may share a normalized name
+                // (`dir/item.txt` and `dir\item.txt`), only the index is unique.
+                let (depth, member) = match columns.next() {
+                    Some(last) => match last.split_once('@') {
+                        Some((depth, member)) => (depth.parse::<usize>().ok(), member.parse::<usize>().ok()),
+                        None => (last.parse::<usize>().ok(), None),
+                    },
+                    None => (None, None),
+                };
                 match (columns.next(), depth) {
-                    (Some(path), Some(depth)) if !path.is_empty() => (Self::decode_identity_path(path), Some(depth)),
-                    _ => (row.clone(), None),
+                    (Some(path), Some(depth)) if !path.is_empty() => (Self::decode_identity_path(path), Some(depth), member),
+                    _ => (row.clone(), None, None),
                 }
             })
             .collect())
@@ -1121,7 +1133,7 @@ impl<'a> Searcher<'a> {
     /// The hidden identity an outer FROM-subselect needs to re-resolve this
     /// entry: its absolute path (archive member paths appended) and the depth
     /// of the root it was found under.
-    fn subquery_identity(&mut self, entry: &DirEntry, file_info: &Option<FileInfo>, root_path: &Path) -> (String, usize) {
+    fn subquery_identity(&mut self, entry: &DirEntry, file_info: &Option<FileInfo>, root_path: &Path) -> (String, usize, Option<usize>) {
         let entry_path = entry.path();
         let beneath_root = entry_path
             .strip_prefix(root_path)
@@ -1136,12 +1148,17 @@ impl<'a> Searcher<'a> {
             })
             .map(|path| path.to_string_lossy().to_string())
             .unwrap_or_default();
-        (own_path, self.root_depth_of(root_path))
+        let member_index = file_info.as_ref().and_then(|info| info.member.as_ref()).map(|member| member.index);
+        (own_path, self.root_depth_of(root_path), member_index)
     }
 
-    fn push_subquery_identity(items: &mut Vec<(String, String)>, own_path: &str, root_depth: usize) {
+    fn push_subquery_identity(items: &mut Vec<(String, String)>, own_path: &str, root_depth: usize, member_index: Option<usize>) {
         items.push((String::new(), Self::encode_identity_path(own_path)));
-        items.push((String::new(), root_depth.to_string()));
+        let depth = match member_index {
+            Some(index) => format!("{root_depth}@{index}"),
+            None => root_depth.to_string(),
+        };
+        items.push((String::new(), depth));
     }
 
     /// The canonical root joined with the path beneath it as traversed, so a
@@ -1206,13 +1223,13 @@ impl<'a> Searcher<'a> {
     /// traversal. The std library cannot build a `DirEntry` from a path, so the
     /// parent directory is read once and its entries looked up by name for as
     /// long as consecutive paths keep coming from the same directory.
-    fn visit_subquery_paths(&mut self, paths: Vec<(String, Option<usize>)>) -> Result<(), SearchError> {
+    fn visit_subquery_paths(&mut self, paths: Vec<(String, Option<usize>, Option<usize>)>) -> Result<(), SearchError> {
         let mut lookup = DirEntryLookup::new();
         let mut archives = ArchiveLookup::default();
         let mut filters_root: Option<PathBuf> = None;
         #[cfg(feature = "git")]
         let mut repository: Option<IgnoreRules> = None;
-        for (path_str, root_depth) in paths {
+        for (path_str, root_depth, member_index) in paths {
             if path_str.is_empty() {
                 continue;
             }
@@ -1220,7 +1237,7 @@ impl<'a> Searcher<'a> {
                 break;
             }
             let path = PathBuf::from(&path_str);
-            let (entry_path, file_info) = match self.archived_member_of(&path, &mut archives) {
+            let (entry_path, file_info) = match self.archived_member_of(&path, member_index, &mut archives) {
                 Some((archive, file_info)) => (archive, Some(file_info)),
                 None => (path.clone(), None),
             };
@@ -1294,7 +1311,7 @@ impl<'a> Searcher<'a> {
         Ok(())
     }
 
-    fn archived_member_of(&self, path: &Path, archives: &mut ArchiveLookup) -> Option<(PathBuf, FileInfo)> {
+    fn archived_member_of(&self, path: &Path, member_index: Option<usize>, archives: &mut ArchiveLookup) -> Option<(PathBuf, FileInfo)> {
         let (archive_path, shared) = match archives.holding(path) {
             Some(found) => found,
             None => {
@@ -1311,7 +1328,10 @@ impl<'a> Searcher<'a> {
         let member_name = Self::archive_member_name(path, &archive_path)?;
         let file_info = {
             let mut guard = shared.borrow_mut();
-            let index = archive_member_index(&guard, &member_name)?;
+            let index = match member_index {
+                Some(index) => index,
+                None => archive_member_index(&guard, &member_name)?,
+            };
             let member = guard.by_index_raw(index).ok()?;
             to_file_info(&member, Some(ArchiveMember { archive: Rc::clone(&shared), index }))
         };
@@ -1363,22 +1383,42 @@ impl<'a> Searcher<'a> {
         sub_searcher.suppress_row_errors = self.suppress_row_errors;
         sub_searcher.enclosing_aliases = self.enclosing_aliases.union(&self.query.own_root_aliases()).cloned().collect();
         sub_searcher.root_depth_column = root_depth_column;
-        let shadowed: Vec<(String, Option<HashMap<String, Variant>>)> = {
+        // The subquery's own aliases shadow same-named outer aliases for the
+        // duration of the search: the outer row context and the outer
+        // pending alias failures are set aside and restored afterwards.
+        let shadowed: Vec<(String, Option<HashMap<String, Variant>>, Option<HashMap<String, SearchError>>)> = {
             let context = self.record_context.borrow();
+            let mut failures = self.alias_failures.borrow_mut();
             query.own_root_aliases().into_iter().map(|alias| {
                 let saved = context.get(&alias).cloned();
-                (alias, saved)
+                let pending = failures.pending.remove(&alias);
+                (alias, saved, pending)
             }).collect()
+        };
+        let shadowed_hit = {
+            let mut failures = self.alias_failures.borrow_mut();
+            match &failures.hit {
+                Some((alias, _)) if shadowed.iter().any(|(own, _, _)| own == alias) => failures.hit.take(),
+                _ => None,
+            }
         };
         let outcome = sub_searcher.list_search_results();
         self.error_count += sub_searcher.error_count;
         {
             let mut context = self.record_context.borrow_mut();
-            for (alias, saved) in shadowed {
+            let mut failures = self.alias_failures.borrow_mut();
+            for (alias, saved, pending) in shadowed {
+                match pending {
+                    Some(entry) => failures.pending.insert(alias.clone(), entry),
+                    None => failures.pending.remove(&alias),
+                };
                 match saved {
                     Some(entry) => context.insert(alias, entry),
                     None => context.remove(&alias),
                 };
+            }
+            if shadowed_hit.is_some() {
+                failures.hit = shadowed_hit;
             }
         }
         outcome?;
@@ -1883,8 +1923,10 @@ impl<'a> Searcher<'a> {
             aliased.iter().partition(|column| column.needs_row_context());
         let mut values: Vec<(String, Variant)> = Vec::new();
         for column in independent {
-            if let Some(value) = self.aggregate_alias_value(file_map, accumulator, column, skip_failing_columns)? {
-                Self::upsert_alias_value(&mut values, column, value);
+            match self.aggregate_alias_value(file_map, accumulator, column) {
+                Ok(value) => Self::upsert_alias_value(&mut values, column, value),
+                Err(err) if skip_failing_columns && !err.is_fatal() => self.mark_aggregate_alias_failed(aliases, column, err),
+                Err(err) => return Err(err),
             }
         }
         if !values.is_empty() {
@@ -1895,31 +1937,86 @@ impl<'a> Searcher<'a> {
         }
         let rounds = if dependent.len() == 1 { 1 } else { dependent.len() + 1 };
         let mut scratch = HashMap::new();
-        let mut failed: Vec<&Expr> = Vec::new();
+        let mut failed: Vec<(&Expr, SearchError)> = Vec::new();
         for _ in 0..rounds {
             let before = values.clone();
             scratch = file_map.clone();
             failed.clear();
             for column in &dependent {
-                match self.aggregate_alias_value(&mut scratch, accumulator, column, true)? {
-                    Some(value) => {
+                match self.aggregate_alias_value(&mut scratch, accumulator, column) {
+                    Ok(value) => {
                         Self::upsert_alias_value(&mut values, column, value);
                         self.bind_group_context(aliases, group_key, &values);
                     }
-                    None => failed.push(column),
+                    Err(err) if !err.is_fatal() => failed.push((column, err)),
+                    Err(err) => return Err(err),
                 }
             }
             if values == before && failed.is_empty() {
                 break;
             }
         }
-        if !skip_failing_columns {
-            for column in failed {
-                self.aggregate_alias_value(&mut scratch, accumulator, column, false)?;
+        for (column, err) in failed {
+            if skip_failing_columns {
+                self.mark_aggregate_alias_failed(aliases, column, err);
+            } else {
+                self.aggregate_alias_value(&mut scratch, accumulator, column)?;
             }
+        }
+        if skip_failing_columns {
+            // Reads made while preparing the aliases are not reads by the
+            // query: a dependent alias that read a failed one inherits the
+            // failure, and the hit is cleared so only a later real read
+            // (HAVING, columns) reports it.
+            loop {
+                let mut spread = false;
+                for column in &dependent {
+                    let Some(name) = column.alias.as_deref() else { continue };
+                    if self.alias_failures.borrow().pending.values().any(|keys| keys.contains_key(name)) {
+                        continue;
+                    }
+                    self.alias_failures.borrow_mut().hit = None;
+                    // Start from the group's base map: the values cached
+                    // during the rounds would serve a wrapper such as
+                    // `coalesce(...)` without re-reading the failed alias.
+                    let mut probe = file_map.clone();
+                    let _ = self.aggregate_alias_value(&mut probe, accumulator, column);
+                    let hit = self.alias_failures.borrow_mut().hit.take();
+                    if let Some((_, err)) = hit {
+                        self.mark_aggregate_alias_failed(aliases, column, err);
+                        spread = true;
+                    }
+                }
+                if !spread {
+                    break;
+                }
+            }
+            self.alias_failures.borrow_mut().hit = None;
         }
         file_map.extend(scratch);
         Ok(())
+    }
+
+    /// A group alias that failed while HAVING is prepared stays pending under
+    /// every own root alias, so a HAVING subquery that reads it reports the
+    /// error, while a HAVING that never reads it stays silent.
+    fn mark_aggregate_alias_failed(&self, aliases: &HashSet<String>, column: &Expr, err: SearchError) {
+        let Some(name) = column.alias.as_deref() else {
+            return;
+        };
+        for alias in aliases {
+            self.mark_row_alias_failed(alias, name, err.clone());
+        }
+    }
+
+    fn reset_alias_failures(&self, aliases: &HashSet<String>) {
+        let mut failures = self.alias_failures.borrow_mut();
+        for alias in aliases {
+            failures.pending.remove(alias);
+        }
+        if failures.hit.as_ref().is_some_and(|(alias, _)| aliases.contains(alias)) {
+            failures.hit = None;
+        }
     }
 
     fn aggregate_alias_value(
@@ -1927,14 +2024,9 @@ impl<'a> Searcher<'a> {
         file_map: &mut HashMap<String, String>,
         accumulator: &function::GroupAccumulator,
         column: &Expr,
-        skip_failing_columns: bool,
-    ) -> Result<Option<Variant>, SearchError> {
-        let value = match self.get_column_expr_value(None, &None, Path::new(""), file_map, Some(accumulator), column) {
-            Ok(value) => value,
-            Err(err) if skip_failing_columns && !err.is_fatal() => return Ok(None),
-            Err(err) => return Err(err),
-        };
-        Ok(Some(typed_variant(column, &value.to_string())))
+    ) -> Result<Variant, SearchError> {
+        let value = self.get_column_expr_value(None, &None, Path::new(""), file_map, Some(accumulator), column)?;
+        Ok(typed_variant(column, &value.to_string()))
     }
 
     fn upsert_alias_value(values: &mut Vec<(String, Variant)>, column: &Expr, value: Variant) {
@@ -2527,8 +2619,8 @@ impl<'a> Searcher<'a> {
         }
 
         if self.root_depth_column {
-            let (own_path, root_depth) = self.subquery_identity(entry, file_info, root_path);
-            Self::push_subquery_identity(&mut items, &own_path, root_depth);
+            let (own_path, root_depth, member_index) = self.subquery_identity(entry, file_info, root_path);
+            Self::push_subquery_identity(&mut items, &own_path, root_depth, member_index);
         }
 
         let mut criteria = vec!["".to_string(); self.query.ordering_fields.len()];
@@ -2622,6 +2714,11 @@ impl<'a> Searcher<'a> {
         field_value: &Variant,
         negate: bool,
     ) -> Result<bool, SearchError> {
+        // A missing numeric, datetime or boolean value is unknown, not 0 or
+        // false: like `= 0`, neither IN nor NOT IN can match it.
+        if expr.left.as_deref().is_some_and(|left| Self::is_null_operand(left, field_value)) {
+            return Ok(false);
+        }
         let right = expr.right.as_ref().unwrap();
         let args: &[Expr] = match &right.args {
             Some(args) => args,
@@ -2941,20 +3038,25 @@ impl<'a> Searcher<'a> {
                     // matches the coercion behavior of the other type branches.
                     // Without this, a typo in a date literal would propagate a
                     // non-fatal error per file scanned, spamming stderr.
+                    // Both sides are intervals: an instant is a one-second
+                    // interval, a date-only value spans its whole day, so the
+                    // rules hold whichever side carries the span
+                    // (`modified = today` and `today = modified` alike).
                     match (field_value.to_datetime(), value.to_datetime()) {
-                        (Ok((field_dt, _)), Ok((start, finish))) => {
-                            let start = start.and_utc().timestamp();
-                            let finish = finish.and_utc().timestamp();
-                            let dt = field_dt.and_utc().timestamp();
+                        (Ok((left_start, left_finish)), Ok((right_start, right_finish))) => {
+                            let left_start = left_start.and_utc().timestamp();
+                            let left_finish = left_finish.and_utc().timestamp();
+                            let right_start = right_start.and_utc().timestamp();
+                            let right_finish = right_finish.and_utc().timestamp();
                             match op {
-                                Op::Eeq => dt == start,
-                                Op::Ene => dt != start,
-                                Op::Eq => dt >= start && dt <= finish,
-                                Op::Ne => dt < start || dt > finish,
-                                Op::Gt => dt > finish,
-                                Op::Gte => dt >= start,
-                                Op::Lt => dt < start,
-                                Op::Lte => dt <= finish,
+                                Op::Eeq => left_start == right_start,
+                                Op::Ene => left_start != right_start,
+                                Op::Eq => left_start <= right_finish && right_start <= left_finish,
+                                Op::Ne => left_finish < right_start || left_start > right_finish,
+                                Op::Gt => left_start > right_finish,
+                                Op::Gte => left_finish >= right_start,
+                                Op::Lt => left_finish < right_start,
+                                Op::Lte => left_start <= right_finish,
                                 _ => false,
                             }
                         }
@@ -3044,8 +3146,8 @@ impl<'a> Searcher<'a> {
             return value;
         }
         if left_expr.contains_datetime() || right_expr.contains_datetime() {
-            if let Ok((dt_from, _)) = value.to_datetime() {
-                return Variant::from_datetime(dt_from);
+            if let Ok((dt_from, dt_to)) = value.to_datetime() {
+                return Variant::from_datetime_range(dt_from, dt_to);
             }
         } else if (left_expr.contains_numeric() || right_expr.contains_numeric())
             && let Ok(f) = value.to_string().parse::<f64>()
@@ -4499,6 +4601,26 @@ mod tests {
     }
 
     #[test]
+    fn different_root_aliases_do_not_share_cached_values() {
+        let tmp = std::env::temp_dir().join("fselect_test_root_alias_caches");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(tmp.join("a")).unwrap();
+        fs::create_dir_all(tmp.join("b")).unwrap();
+        fs::write(tmp.join("a").join("x.txt"), "xx").unwrap();
+        fs::write(tmp.join("b").join("y.txt"), "yyy").unwrap();
+
+        let sums = run_query_against_dir("select sum(t.size), sum(u.size) from __DIR__/a as t, __DIR__/b as u", &tmp);
+        let uppers = run_query_against_dir(
+            "select upper(t.name), upper(u.name) from __DIR__/a as t, __DIR__/b as u order by path",
+            &tmp,
+        );
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(sums, vec!["2\t3"]);
+        assert_eq!(uppers, vec!["X.TXT", "\tY.TXT"]);
+    }
+
+    #[test]
     fn sibling_root_aliases_have_no_row_while_another_root_is_walked() {
         let tmp = std::env::temp_dir().join("fselect_test_sibling_alias_rows");
         let _ = fs::remove_dir_all(&tmp);
@@ -5337,6 +5459,32 @@ mod tests {
     }
 
     #[test]
+    fn cached_values_take_the_type_of_the_value_actually_produced() {
+        let tmp = std::env::temp_dir().join("fselect_test_cached_coalesce_type");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(tmp.join("sub")).unwrap();
+        fs::write(tmp.join("a.txt"), "xxxxx").unwrap();
+
+        let arithmetic = run_query_against_dir(
+            "select coalesce(is_file, size), coalesce(is_file, size) + 0 from __DIR__ where name = 'a.txt'",
+            &tmp,
+        );
+        let filtered = run_query_against_dir(
+            "select name from __DIR__ where coalesce(is_file, size) = true and coalesce(is_file, size) + 0 = 1",
+            &tmp,
+        );
+        let division = run_query_against_dir(
+            "select coalesce(is_file, size), 10 / coalesce(is_file, size) from __DIR__ where name = 'a.txt'",
+            &tmp,
+        );
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(arithmetic, vec!["true\t1"]);
+        assert_eq!(filtered, vec!["a.txt"]);
+        assert_eq!(division, vec!["true\t10"]);
+    }
+
+    #[test]
     fn cached_column_values_keep_their_type() {
         let tmp = std::env::temp_dir().join("fselect_test_cached_value_types");
         let _ = fs::remove_dir_all(&tmp);
@@ -5805,6 +5953,64 @@ mod tests {
     }
 
     #[test]
+    fn compact_qualified_arithmetic_works_in_select_and_with_quoted_aliases() {
+        let tmp = std::env::temp_dir().join("fselect_test_compact_select_arithmetic");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        for (name, size) in [("a.txt", 2), ("b.txt", 10), ("c.txt", 3)] {
+            fs::write(tmp.join(name), "x".repeat(size)).unwrap();
+        }
+
+        let select = run_query_against_dir("select name,t.size/2 from __DIR__ as t order by name", &tmp);
+        let quoted = run_query_against_dir("select name from __DIR__ as 't' where t.size/2>3", &tmp);
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(select, vec!["a.txt\t1", "b.txt\t5", "c.txt\t1.5"], "select list");
+        assert_eq!(quoted, vec!["b.txt"], "quoted alias in where");
+    }
+
+    #[test]
+    fn inner_subquery_aliases_do_not_change_outer_literals() {
+        let tmp = std::env::temp_dir().join("fselect_test_inner_alias_scope");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(tmp.join("names")).unwrap();
+        fs::create_dir_all(tmp.join("other")).unwrap();
+        fs::write(tmp.join("names").join("report.txt-1"), "x").unwrap();
+        fs::write(tmp.join("other").join("o1"), "x").unwrap();
+
+        let rows = run_query_against_dir(
+            "select name,(select name from __DIR__/other as report limit 1) from __DIR__/names where name=report.txt-1",
+            &tmp,
+        );
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(rows, vec!["report.txt-1\to1"]);
+    }
+
+    #[test]
+    fn inner_subquery_aliases_do_not_change_parenthesised_outer_literals() {
+        let tmp = std::env::temp_dir().join("fselect_test_inner_alias_parens");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(tmp.join("names")).unwrap();
+        fs::create_dir_all(tmp.join("other")).unwrap();
+        fs::write(tmp.join("names").join("report.txt-1"), "x").unwrap();
+        fs::write(tmp.join("other").join("o1"), "x").unwrap();
+
+        let parenthesised = run_query_against_dir(
+            "select name,(select name from __DIR__/other as report limit 1) from __DIR__/names where (name=report.txt-1)",
+            &tmp,
+        );
+        let in_list = run_query_against_dir(
+            "select name,(select name from __DIR__/other as report limit 1) from __DIR__/names where name in (report.txt-1)",
+            &tmp,
+        );
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(parenthesised, vec!["report.txt-1\to1"], "parenthesised predicate");
+        assert_eq!(in_list, vec!["report.txt-1\to1"], "in list");
+    }
+
+    #[test]
     fn compact_arithmetic_in_where_is_calculated() {
         let tmp = std::env::temp_dir().join("fselect_test_compact_arithmetic");
         let _ = fs::remove_dir_all(&tmp);
@@ -5846,6 +6052,115 @@ mod tests {
         assert_eq!(membership, Vec::<String>::new(), "membership subquery");
         assert_eq!(literal, vec!["a.txt", "b.txt"], "literal false still matches");
         assert_eq!(populated, vec!["a.txt", "b.txt"], "populated subquery still matches");
+    }
+
+    #[test]
+    fn boolean_fields_compare_against_function_results() {
+        let tmp = std::env::temp_dir().join("fselect_test_boolean_function_results");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        for name in ["a.txt", "b.txt"] {
+            fs::write(tmp.join(name), "x").unwrap();
+        }
+
+        let concat = run_query_against_dir("select name from __DIR__ where is_file = concat('tr', 'ue') order by name", &tmp);
+        let in_list = run_query_against_dir("select name from __DIR__ where is_file in (concat('tr', 'ue')) order by name", &tmp);
+        let coalesce = run_query_against_dir("select name from __DIR__ where is_file = coalesce(is_file, 'nope') order by name", &tmp);
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(concat, vec!["a.txt", "b.txt"], "concat");
+        assert_eq!(in_list, vec!["a.txt", "b.txt"], "in list");
+        assert_eq!(coalesce, vec!["a.txt", "b.txt"], "coalesce");
+    }
+
+    #[test]
+    fn function_produced_dates_keep_their_whole_day_range() {
+        let tmp = std::env::temp_dir().join("fselect_test_function_date_ranges");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        fs::write(tmp.join("fresh.txt"), "x").unwrap();
+
+        let compare = |op: &str, value: &str| {
+            run_query_against_dir(&format!("select name from __DIR__ where modified {op} {value}"), &tmp)
+        };
+        let mut mismatches = Vec::new();
+        for op in ["=", "!=", ">", ">=", "<", "<="] {
+            let literal = compare(op, "today");
+            for value in ["current_date()", "concat(current_date(), '')", "(select current_date() from __DIR__ limit 1)"] {
+                let produced = compare(op, value);
+                if produced != literal {
+                    mismatches.push(format!("modified {op} {value}: {produced:?} vs today: {literal:?}"));
+                }
+            }
+        }
+        let equal = compare("=", "current_date()");
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(equal, vec!["fresh.txt"], "a file modified today equals current_date()");
+        assert!(mismatches.is_empty(), "{mismatches:#?}");
+    }
+
+    #[test]
+    fn in_lists_treat_missing_values_as_unknown() {
+        let tmp = std::env::temp_dir().join("fselect_test_in_missing_values");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(tmp.join("sub")).unwrap();
+        fs::write(tmp.join("2020-01-01"), "x").unwrap();
+        fs::write(tmp.join("notes.txt"), "x").unwrap();
+
+        let zero = run_query_against_dir("select name from __DIR__ where year(name) in (0) order by name", &tmp);
+        let year = run_query_against_dir("select name from __DIR__ where year(name) in (2020) order by name", &tmp);
+        let not_zero = run_query_against_dir("select name from __DIR__ where year(name) not in (0) order by name", &tmp);
+        let membership = run_query_against_dir(
+            "select name from __DIR__ where year(name) in (select year(name) from __DIR__) order by name",
+            &tmp,
+        );
+        let is_null = run_query_against_dir("select name from __DIR__ where year(name) is null order by name", &tmp);
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(zero, Vec::<String>::new(), "missing year is not 0");
+        assert_eq!(year, vec!["2020-01-01"]);
+        assert_eq!(not_zero, vec!["2020-01-01"], "missing year is unknown for NOT IN as well");
+        assert_eq!(membership, vec!["2020-01-01"], "membership through a subquery");
+        assert_eq!(is_null, vec!["notes.txt", "sub"]);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn in_lists_treat_missing_boolean_values_as_unknown() {
+        let tmp = std::env::temp_dir().join("fselect_test_in_missing_booleans");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(tmp.join("sub")).unwrap();
+        fs::write(tmp.join("plain.txt"), "x").unwrap();
+
+        let rows = run_query_against_dir("select name from __DIR__ where contains('needle') in (false) order by name", &tmp);
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(rows, vec!["plain.txt"], "a directory has no contains() result");
+    }
+
+    #[test]
+    fn reversed_date_comparisons_keep_the_interval_on_the_left() {
+        let tmp = std::env::temp_dir().join("fselect_test_reversed_date_comparisons");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        fs::write(tmp.join("fresh.txt"), "x").unwrap();
+
+        let mut mismatches = Vec::new();
+        for (op, mirrored) in [("=", "="), ("!=", "!="), (">", "<"), (">=", "<="), ("<", ">"), ("<=", ">=")] {
+            let direct = run_query_against_dir(&format!("select name from __DIR__ where modified {op} current_date()"), &tmp);
+            let reversed = run_query_against_dir(&format!("select name from __DIR__ where current_date() {mirrored} modified"), &tmp);
+            if direct != reversed {
+                mismatches.push(format!("modified {op} current_date(): {direct:?}, current_date() {mirrored} modified: {reversed:?}"));
+            }
+        }
+        let reversed_equal = run_query_against_dir("select name from __DIR__ where current_date() = modified", &tmp);
+        let having = run_query_against_dir("select count(*) from __DIR__ having current_date() = max(modified)", &tmp);
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(reversed_equal, vec!["fresh.txt"], "a file modified today equals current_date() from either side");
+        assert_eq!(having, vec!["1"], "reversed HAVING");
+        assert!(mismatches.is_empty(), "{mismatches:#?}");
     }
 
     #[test]
@@ -5931,6 +6246,153 @@ mod tests {
 
         assert_eq!(guarded, (vec!["a.txt\t25".to_string()], 0), "guarded by size > 0");
         assert_eq!(unguarded, (vec!["a.txt\t25".to_string()], 1), "unguarded reports once");
+    }
+
+    #[test]
+    fn min_and_max_over_all_zero_file_names_return_existing_names() {
+        let tmp = std::env::temp_dir().join("fselect_test_min_max_zero_names");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        for name in ["000", "001", "002", "-000"] {
+            fs::write(tmp.join(name), "x").unwrap();
+        }
+
+        let extremes = run_query_against_dir("select min(name), max(name) from __DIR__", &tmp);
+        let found = run_query_against_dir("select name from __DIR__ where name in (select min(name) from __DIR__)", &tmp);
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(extremes, vec!["-000\t002"]);
+        assert_eq!(found, vec!["-000"], "the minimum must be an existing name");
+    }
+
+    #[test]
+    fn shadowed_aliases_do_not_erase_the_outer_pending_error() {
+        let tmp = std::env::temp_dir().join("fselect_test_shadowed_alias_errors");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(tmp.join("metrics")).unwrap();
+        fs::create_dir_all(tmp.join("other")).unwrap();
+        fs::write(tmp.join("metrics").join("b.txt"), "xxxx").unwrap();
+        fs::write(tmp.join("metrics").join("0.txt"), "").unwrap();
+        fs::write(tmp.join("other").join("o1"), "x").unwrap();
+
+        let rows_and_errors = |query: &str| {
+            let searcher = search_dir(query, &tmp, Config::default(), true);
+            let rows: Vec<String> = searcher.output_buffer.iter_values().map(|s| s.trim_end().to_string()).collect();
+            (rows, searcher.error_count)
+        };
+        let shadow_before_read = rows_and_errors(
+            "select name, 100 / size as ratio from __DIR__/metrics as t where exists(select name from __DIR__/other as t where t.size > 0) and (select t.ratio from __DIR__/other limit 1) > 0 order by name",
+        );
+        let shadow_after_read = rows_and_errors(
+            "select name, 100 / size as ratio from __DIR__/metrics as t where (select t.ratio from __DIR__/other limit 1) > 0 and exists(select name from __DIR__/other as t where t.size > 0) order by name",
+        );
+        let shadow_during_binding = rows_and_errors(
+            "select name, 100 / size as ratio, (select count(*) from __DIR__/other as t where t.size > 0) as cnt from __DIR__/metrics as t where (select t.ratio from __DIR__/other limit 1) > 0 and (select t.cnt from __DIR__/other limit 1) > 0 order by name",
+        );
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(shadow_before_read, (vec!["b.txt\t25".to_string()], 1), "inner alias t declared before the read");
+        assert_eq!(shadow_after_read, (vec!["b.txt\t25".to_string()], 1), "inner alias t declared after the read");
+        assert_eq!(shadow_during_binding, (vec!["b.txt\t25\t1".to_string()], 1), "inner alias t searched while the failure is pending");
+    }
+
+    fn search_outcome(query_template: &str, dir: &Path) -> Result<Vec<String>, String> {
+        use crate::lexer::Lexer;
+        use crate::parser::Parser;
+
+        let query_string = query_template.replace("__DIR__", &dir.to_string_lossy());
+        let mut lexer = Lexer::new(vec![query_string]);
+        let mut parser = Parser::new(&mut lexer);
+        let parsed = Box::leak(Box::new(parser.parse(false).expect("parse failed")));
+        let config = Box::leak(Box::new(Config::default()));
+        let default_config = Box::leak(Box::new(Config::default()));
+        let mut searcher = Searcher::new(parsed, config, default_config, false);
+        searcher.silent_mode = true;
+        searcher
+            .list_search_results()
+            .map(|_| searcher.output_buffer.iter_values().map(|s| s.trim_end().to_string()).collect())
+            .map_err(|err| err.description)
+    }
+
+    #[test]
+    fn having_guards_protect_dependent_aggregate_aliases() {
+        let tmp = std::env::temp_dir().join("fselect_test_having_guard_dependent_alias");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(tmp.join("metrics")).unwrap();
+        fs::create_dir_all(tmp.join("other")).unwrap();
+        fs::write(tmp.join("metrics").join("a.txt"), "").unwrap();
+        fs::write(tmp.join("metrics").join("b.md"), "xx").unwrap();
+        fs::write(tmp.join("other").join("o1"), "x").unwrap();
+
+        let columns = "ext, 100 / sum(size) as ratio, (select t.ratio from __DIR__/other limit 1) as again";
+        let guarded = search_outcome(
+            &format!("select {columns} from __DIR__/metrics as t group by ext having sum(size) > 0 and (select t.again from __DIR__/other limit 1) > 0"),
+            &tmp,
+        );
+        let unguarded = search_outcome(
+            &format!("select {columns} from __DIR__/metrics as t group by ext having (select t.again from __DIR__/other limit 1) > 0"),
+            &tmp,
+        );
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(guarded, Ok(vec!["md\t50\t50".to_string()]), "guarded");
+        assert_eq!(unguarded, Err("Division by zero".to_string()), "unguarded");
+    }
+
+    #[test]
+    fn wrapped_dependent_aliases_still_inherit_aggregate_errors() {
+        let tmp = std::env::temp_dir().join("fselect_test_wrapped_dependent_alias_errors");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(tmp.join("zero")).unwrap();
+        fs::create_dir_all(tmp.join("other")).unwrap();
+        fs::write(tmp.join("zero").join("empty.txt"), "").unwrap();
+        fs::write(tmp.join("other").join("o1"), "x").unwrap();
+
+        for wrapper in [
+            "coalesce((select t.ratio from __DIR__/other limit 1), 0)",
+            "length((select t.ratio from __DIR__/other limit 1))",
+            "(select t.ratio from __DIR__/other limit 1) + 1",
+        ] {
+            let outcome = search_outcome(
+                &format!("select 100 / sum(size) as ratio, {wrapper} as again from __DIR__/zero as t having (select t.again from __DIR__/other limit 1) > 0"),
+                &tmp,
+            );
+            assert_eq!(outcome, Err("Division by zero".to_string()), "{wrapper}");
+        }
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn having_reports_aggregate_alias_errors_read_through_subqueries() {
+        let tmp = std::env::temp_dir().join("fselect_test_having_alias_errors");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(tmp.join("zero")).unwrap();
+        fs::create_dir_all(tmp.join("other")).unwrap();
+        fs::create_dir_all(tmp.join("data")).unwrap();
+        fs::write(tmp.join("zero").join("empty.txt"), "").unwrap();
+        fs::write(tmp.join("other").join("o1"), "x").unwrap();
+        fs::write(tmp.join("data").join("a.txt"), "").unwrap();
+        fs::write(tmp.join("data").join("b.md"), "xxxx").unwrap();
+
+        let direct = search_outcome("select 100 / sum(size) as ratio from __DIR__/zero as t having ratio > 0", &tmp);
+        let through_alias = search_outcome(
+            "select 100 / sum(size) as ratio from __DIR__/zero as t having (select t.ratio from __DIR__/other limit 1) > 0",
+            &tmp,
+        );
+        let grouped = search_outcome(
+            "select ext, 100 / sum(size) as ratio from __DIR__/data as t group by ext having (select t.ratio from __DIR__/other limit 1) > 0",
+            &tmp,
+        );
+        let healthy = search_outcome(
+            "select 100 / sum(size) as ratio from __DIR__/other as t having (select t.ratio from __DIR__/other limit 1) > 0",
+            &tmp,
+        );
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(direct, Err("Division by zero".to_string()), "direct");
+        assert_eq!(through_alias, Err("Division by zero".to_string()), "through alias");
+        assert_eq!(grouped, Err("Division by zero".to_string()), "grouped");
+        assert_eq!(healthy, Ok(vec!["100".to_string()]), "healthy");
     }
 
     #[test]

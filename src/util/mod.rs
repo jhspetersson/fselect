@@ -769,7 +769,7 @@ pub struct ContentStats {
     pub line_ending: String,
 }
 
-fn detect_bom(bytes: &[u8]) -> Option<(&'static str, usize)> {
+pub fn detect_bom(bytes: &[u8]) -> Option<(&'static str, usize)> {
     if bytes.starts_with(&[0xFF, 0xFE, 0x00, 0x00]) {
         Some(("UTF-32LE", 4))
     } else if bytes.starts_with(&[0x00, 0x00, 0xFE, 0xFF]) {

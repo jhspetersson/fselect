@@ -185,6 +185,8 @@ fn typed_variant(expr: &Expr, text: &str) -> Variant {
         parse_datetime(text)
             .map(|(from, _)| Variant::from_datetime(from))
             .unwrap_or_else(|_| as_string())
+    } else if expr.contains_boolean() {
+        str_to_bool(text).map(Variant::from_bool).unwrap_or_else(as_string)
     } else {
         as_string()
     }
@@ -2750,6 +2752,10 @@ impl<'a> Searcher<'a> {
                 && f.is_finite() {
                     return Variant::from_float(f);
                 }
+        else if (left_expr.contains_boolean() || right_expr.contains_boolean())
+            && let Some(b) = str_to_bool(&value.to_string()) {
+                return Variant::from_bool(b);
+            }
         value
     }
 
@@ -4811,6 +4817,40 @@ mod tests {
         assert!(dependency_later[1].starts_with("txt\t3\t0.6") && dependency_later[1].ends_with("\t5"), "{dependency_later:?}");
         assert_eq!(ungrouped.len(), 1, "{ungrouped:?}");
         assert!(ungrouped[0].starts_with("0.9375\t16\t15"), "{ungrouped:?}");
+    }
+
+    #[test]
+    fn grouped_booleans_keep_their_type_in_having_and_correlated_subqueries() {
+        let tmp = std::env::temp_dir().join("fselect_test_grouped_booleans");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(tmp.join("sub")).unwrap();
+        for name in ["a.txt", "b.txt", "c.txt"] {
+            fs::write(tmp.join(name), "x").unwrap();
+        }
+
+        let having = |literal: &str| {
+            run_query_against_dir(
+                &format!("select is_file, count(*) from __DIR__ group by is_file having is_file = {literal}"),
+                &tmp,
+            )
+        };
+        let where_upper = run_query_against_dir("select count(*) from __DIR__ where is_file = TRUE", &tmp);
+        let having_lower = having("true");
+        let having_upper = having("TRUE");
+        let having_one = having("1");
+        let having_false = having("FALSE");
+        let correlated = run_query_against_dir(
+            "select is_file, (select count(*) from __DIR__ where t.is_file = TRUE) from __DIR__ as t group by is_file order by is_file",
+            &tmp,
+        );
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(where_upper, vec!["3"]);
+        assert_eq!(having_lower, vec!["true\t3"]);
+        assert_eq!(having_upper, vec!["true\t3"], "uppercase literal");
+        assert_eq!(having_one, vec!["true\t3"], "numeric literal");
+        assert_eq!(having_false, vec!["false\t1"]);
+        assert_eq!(correlated, vec!["false\t0", "true\t4"]);
     }
 
     #[test]

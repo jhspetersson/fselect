@@ -773,6 +773,41 @@ impl Expr {
         false
     }
 
+    pub fn contains_boolean(&self) -> bool {
+        Self::contains_boolean_field(self)
+    }
+
+    fn contains_boolean_field(expr: &Expr) -> bool {
+        if expr.arithmetic_op.is_some() {
+            return false;
+        }
+
+        if let Some(ref subquery) = expr.subquery
+            && let Some(column) = subquery.fields.first()
+        {
+            return Self::contains_boolean_field(column);
+        }
+
+        if let Some(ref function) = expr.function
+            && !function.passes_argument_type_through()
+        {
+            if function.is_boolean_function() {
+                return true;
+            }
+            if function.is_numeric_function() || function.is_string_function() || function.is_datetime_function() {
+                return false;
+            }
+        }
+
+        if expr.field.is_some_and(|field| field.is_boolean_field()) {
+            return true;
+        }
+
+        expr.left.as_deref().is_some_and(Self::contains_boolean_field)
+            || expr.right.as_deref().is_some_and(Self::contains_boolean_field)
+            || expr.args.as_ref().is_some_and(|args| args.iter().any(Self::contains_boolean_field))
+    }
+
     pub fn contains_datetime(&self) -> bool {
         Self::contains_datetime_field(self)
     }

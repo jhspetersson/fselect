@@ -1576,7 +1576,9 @@ impl<'a> Searcher<'a> {
                                 let explore_only = pass_gitignore
                                     && pass_hgignore
                                     && !pass_dockerignore
-                                    && entry.file_type().is_ok_and(|file_type| file_type.is_dir())
+                                    && entry.file_type().is_ok_and(|file_type| {
+                                        file_type.is_dir() || (self.current_follow_symlinks && file_type.is_symlink() && path.is_dir())
+                                    })
                                     && dockerignore_exception_may_lie_beneath(
                                         &self.dockerignore_filters,
                                         canonical_entry_path.to_string_lossy().as_ref(),
@@ -4122,6 +4124,25 @@ mod tests {
         let expected = vec![rel(&["alias", "keep.txt"]), rel(&["target", "drop.txt"]), rel(&["target", "keep.txt"])];
         assert_eq!(docker, expected, "dockerignore");
         assert_eq!(hg, expected, "hgignore");
+    }
+
+    #[test]
+    fn dockerignore_exceptions_beneath_an_excluded_directory_symlink_are_found() {
+        let tmp = std::env::temp_dir().join("fselect_test_dockerignore_exception_symlink");
+        let _ = fs::remove_dir_all(&tmp);
+        let walk = tmp.join("walk");
+        fs::create_dir_all(walk.join("target")).unwrap();
+        fs::write(walk.join("target").join("drop.txt"), "x").unwrap();
+        fs::write(walk.join("target").join("keep.txt"), "x").unwrap();
+        fs::write(walk.join(".dockerignore"), "alias\n!alias/keep.txt\ntarget\n").unwrap();
+        link_directory(&walk.join("alias"), &walk.join("target"));
+
+        let bfs = run_query_against_dir("select path from __DIR__/walk symlinks dockerignore bfs where is_file and ext = txt order by path", &tmp);
+        let dfs = run_query_against_dir("select path from __DIR__/walk symlinks dockerignore dfs where is_file and ext = txt order by path", &tmp);
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(bfs, vec![rel(&["alias", "keep.txt"])], "bfs");
+        assert_eq!(dfs, vec![rel(&["alias", "keep.txt"])], "dfs");
     }
 
     #[test]

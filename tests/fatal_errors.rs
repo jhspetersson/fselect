@@ -89,10 +89,16 @@ fn grouped_query_errors_are_rejected_before_the_header() {
 #[test]
 fn invalid_regex_root_is_rejected_before_the_header() {
     let dir = make_dir("fselect_test_fatal_regex_root");
+    fs::create_dir_all(dir.join("x")).unwrap();
+    fs::create_dir_all(dir.join("y")).unwrap();
     let dir = dir.to_string_lossy();
 
     assert_rejected_without_output(
         &format!("select name from {}/a[b regexp into json", dir),
+        "invalid regex in root path",
+    );
+    assert_rejected_without_output(
+        &format!("select name from '{}/x|y/c[' regexp into json", dir),
         "invalid regex in root path",
     );
 }

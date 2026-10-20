@@ -444,13 +444,14 @@ impl<'a> Searcher<'a> {
         // A query that can never run is rejected before any output, so a
         // fatal error never leaves a half-written JSON array or HTML page.
         self.validate()?;
+        let roots = self.expand_roots()?;
 
         if !self.silent_mode {
             let col_count = self.query.fields.len();
             try_output!(self.results_writer.write_header(&self.query.raw_query, col_count, &mut std::io::stdout()), Ok(()));
         }
 
-        let result = self.search_and_print();
+        let result = self.search_and_print(roots);
 
         // Once the header is out the footer always follows, even when the
         // search aborted, so the document stays well-formed.
@@ -472,29 +473,6 @@ impl<'a> Searcher<'a> {
             && let Some(alias) = self.query.find_external_alias(&self.query.own_root_aliases()) {
                 return Err(SearchError::fatal(format!("Invalid root alias: {}", alias)).with_source("query"));
             }
-
-        for root in self.query.roots.iter().filter(|root| root.options.regexp) {
-            let mut literal_prefix: Option<String> = None;
-            for (index, part) in root.path.split('/').enumerate() {
-                let joined = match (&literal_prefix, index) {
-                    (_, 0) => part.to_string(),
-                    (Some(prefix), _) => format!("{prefix}/{part}"),
-                    (None, _) => String::new(),
-                };
-                if !looks_like_regexp(part) {
-                    if literal_prefix.is_some() || index == 0 {
-                        literal_prefix = Some(joined);
-                    }
-                    continue;
-                }
-                if (literal_prefix.is_some() || index == 0) && Path::new(&joined).is_dir() {
-                    literal_prefix = Some(joined);
-                    continue;
-                }
-                literal_prefix = None;
-                root_part_regex(part)?;
-            }
-        }
 
         if let Some(ordering_expr) = self.unsortable_grouped_ordering() {
             return Err(SearchError::fatal(format!(
@@ -543,14 +521,12 @@ impl<'a> Searcher<'a> {
         })
     }
 
-    fn search_and_print(&mut self) -> Result<(), SearchError> {
+    /// Expands `regexp` roots into the directories they match, before any
+    /// output is written: an invalid regex is a fatal query error.
+    fn expand_roots(&mut self) -> Result<Vec<Root>, SearchError> {
         let current_dir = std::env::current_dir()?;
-
-        let start_time = std::time::Instant::now();
-
         let mut roots = vec![];
 
-        // ======== Process each root specified in the query =========
         for root in &self.query.roots {
             if root.options.regexp {
                 let follow_symlinks = root.options.symlinks;
@@ -668,6 +644,13 @@ impl<'a> Searcher<'a> {
                 roots.push(root.clone());
             }
         }
+
+
+        Ok(roots)
+    }
+
+    fn search_and_print(&mut self, roots: Vec<Root>) -> Result<(), SearchError> {
+        let start_time = std::time::Instant::now();
 
         // ======== Explore each root =========
         for root in roots {
@@ -3841,6 +3824,10 @@ mod tests {
         }
         fs::create_dir_all(tmp.join("roots").join("draft[1").join("inner")).unwrap();
         fs::write(tmp.join("roots").join("draft[1").join("inner").join("inner.txt"), "x").unwrap();
+        for (parent, file) in [("alpha", "x.txt"), ("beta", "y.txt")] {
+            fs::create_dir_all(tmp.join("roots").join(parent).join("draft[1")).unwrap();
+            fs::write(tmp.join("roots").join(parent).join("draft[1").join(file), "x").unwrap();
+        }
 
         let sorted = |query: &str| {
             let mut rows = run_query_against_dir(query, &tmp);
@@ -3857,18 +3844,20 @@ mod tests {
         let class = sorted("select name from '__DIR__/roots/[ab]lpha' rx");
         let bracket_literal = sorted("select name from '__DIR__/roots/draft[1' rx");
         let bracket_literal_then_pattern = sorted("select name from '__DIR__/roots/draft[1/.*' rx");
+        let pattern_then_bracket_literal = sorted("select name from '__DIR__/roots/alpha|beta/draft[1' rx");
         let _ = fs::remove_dir_all(&tmp);
 
-        assert_eq!(alternation, vec!["alpha.txt", "beta.txt"]);
-        assert_eq!(bare_alternation, vec!["alpha.txt", "beta.txt"], "alternation must be grouped before anchoring");
+        assert_eq!(alternation, vec!["alpha.txt", "beta.txt", "draft[1", "draft[1", "x.txt", "y.txt"]);
+        assert_eq!(bare_alternation, vec!["alpha.txt", "beta.txt", "draft[1", "draft[1", "x.txt", "y.txt"], "alternation must be grouped before anchoring");
         assert_eq!(dot, vec!["a1.txt", "ab.txt"]);
         assert_eq!(digits, vec!["a1.txt", "a22.txt"]);
         assert_eq!(plus_literal, vec!["c++.txt"]);
         assert_eq!(hidden_literal, vec![".hidden.txt"]);
         assert_eq!(parens_literal, vec!["New folder (2).txt"]);
-        assert_eq!(class, vec!["alpha.txt"]);
+        assert_eq!(class, vec!["alpha.txt", "draft[1", "x.txt"]);
         assert_eq!(bracket_literal, vec!["draft[1.txt", "inner", "inner.txt"]);
         assert_eq!(bracket_literal_then_pattern, vec!["inner.txt"], "an invalid-regex literal before a pattern");
+        assert_eq!(pattern_then_bracket_literal, vec!["x.txt", "y.txt"], "an invalid-regex literal after a pattern");
     }
 
     #[test]

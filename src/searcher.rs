@@ -1698,29 +1698,66 @@ impl<'a> Searcher<'a> {
             return Ok(());
         }
         let query = self.query;
-        let mut values = Vec::new();
-        for correlated in [false, true] {
-            let before = values.len();
-            for column in &query.fields {
-                if let Some(ref alias) = column.alias
-                    && column.has_aggregate_function()
-                    && column.has_correlated_subquery() == correlated
-                {
-                    let value = match self.get_column_expr_value(None, &None, Path::new(""), file_map, Some(accumulator), column) {
-                        Ok(value) => value,
-                        Err(err) if skip_failing_columns && !err.is_fatal() => continue,
-                        Err(err) => return Err(err),
-                    };
-                    let text = value.to_string();
-                    let value = if column.contains_numeric() { numeric_or_text(&text) } else { Variant::from_string(&text) };
-                    values.push((alias.clone(), value));
-                }
-            }
-            if values.len() > before {
-                self.bind_group_context(aliases, group_key, &values);
+        let aliased: Vec<&Expr> = query
+            .fields
+            .iter()
+            .filter(|column| column.alias.is_some() && column.has_aggregate_function())
+            .collect();
+        let (correlated, independent): (Vec<&Expr>, Vec<&Expr>) =
+            aliased.iter().partition(|column| column.has_correlated_subquery());
+        let mut values: Vec<(String, Variant)> = Vec::new();
+        for column in independent {
+            if let Some(value) = self.aggregate_alias_value(file_map, accumulator, column, skip_failing_columns)? {
+                Self::upsert_alias_value(&mut values, column, value);
             }
         }
+        if !values.is_empty() {
+            self.bind_group_context(aliases, group_key, &values);
+        }
+        if correlated.is_empty() {
+            return Ok(());
+        }
+        let rounds = if correlated.len() == 1 { 1 } else { correlated.len() + 1 };
+        let mut scratch = HashMap::new();
+        for _ in 0..rounds {
+            let before = values.clone();
+            scratch = file_map.clone();
+            for column in &correlated {
+                if let Some(value) = self.aggregate_alias_value(&mut scratch, accumulator, column, skip_failing_columns)? {
+                    Self::upsert_alias_value(&mut values, column, value);
+                    self.bind_group_context(aliases, group_key, &values);
+                }
+            }
+            if values == before {
+                break;
+            }
+        }
+        file_map.extend(scratch);
         Ok(())
+    }
+
+    fn aggregate_alias_value(
+        &mut self,
+        file_map: &mut HashMap<String, String>,
+        accumulator: &function::GroupAccumulator,
+        column: &Expr,
+        skip_failing_columns: bool,
+    ) -> Result<Option<Variant>, SearchError> {
+        let value = match self.get_column_expr_value(None, &None, Path::new(""), file_map, Some(accumulator), column) {
+            Ok(value) => value,
+            Err(err) if skip_failing_columns && !err.is_fatal() => return Ok(None),
+            Err(err) => return Err(err),
+        };
+        let text = value.to_string();
+        Ok(Some(if column.contains_numeric() { numeric_or_text(&text) } else { Variant::from_string(&text) }))
+    }
+
+    fn upsert_alias_value(values: &mut Vec<(String, Variant)>, column: &Expr, value: Variant) {
+        let alias = column.alias.clone().unwrap_or_default();
+        match values.iter_mut().find(|(name, _)| *name == alias) {
+            Some(slot) => slot.1 = value,
+            None => values.push((alias, value)),
+        }
     }
 
     fn bind_group_context(&self, aliases: &HashSet<String>, group_key: &[String], aggregate_values: &[(String, Variant)]) {
@@ -4692,6 +4729,40 @@ mod tests {
         assert_eq!(aliased, unaliased, "an alias must not change the value");
         assert_eq!(reversed, vec!["md\t13\t12", "txt\t5\t3"]);
         assert_eq!(ungrouped, vec!["16\t15"]);
+    }
+
+    #[test]
+    fn correlated_aggregate_aliases_may_depend_on_other_correlated_aliases() {
+        let tmp = std::env::temp_dir().join("fselect_test_correlated_alias_chain");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(tmp.join("data")).unwrap();
+        fs::create_dir_all(tmp.join("other")).unwrap();
+        for (name, size) in [("a.txt", 1), ("b.txt", 2), ("c.md", 5), ("d.md", 7)] {
+            fs::write(tmp.join("data").join(name), "x".repeat(size)).unwrap();
+        }
+        for (name, size) in [("o1", 1), ("o5", 5), ("o20", 20)] {
+            fs::write(tmp.join("other").join(name), "x".repeat(size)).unwrap();
+        }
+
+        let score = "sum(size) + (select count(*) from __DIR__/other where size > t.total) as score";
+        let combined = "sum(size) + (select count(*) from __DIR__/other where size < t.score) as combined";
+        let chained = run_query_against_dir(
+            &format!("select ext, sum(size) as total, {score}, {combined} from __DIR__/data as t group by ext order by ext"),
+            &tmp,
+        );
+        let reversed = run_query_against_dir(
+            &format!("select ext, {combined}, {score}, sum(size) as total from __DIR__/data as t group by ext order by ext"),
+            &tmp,
+        );
+        let ungrouped = run_query_against_dir(
+            &format!("select {combined}, {score}, sum(size) as total from __DIR__/data as t"),
+            &tmp,
+        );
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(chained, vec!["md	12	13	14", "txt	3	5	4"]);
+        assert_eq!(reversed, vec!["md	14	13	12", "txt	4	5	3"]);
+        assert_eq!(ungrouped, vec!["17	16	15"]);
     }
 
     #[test]

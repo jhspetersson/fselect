@@ -4599,7 +4599,7 @@ mod tests {
     #[cfg(all(unix, feature = "users"))]
     #[test]
     fn group_field_is_selectable_everywhere() {
-        let query = "select group, name from /test where group = 'wheel' group by group order by group";
+        let query = "select group, name from /test where group = 'wheel' group by group, name order by group";
         let mut lexer = Lexer::new(vec![query.to_string()]);
         let mut p = Parser::new(&mut lexer);
         let parsed = p.parse(false).unwrap_or_else(|e| panic!("{}: {}", query, e));

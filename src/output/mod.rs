@@ -40,6 +40,10 @@ impl ResultsWriter {
             .map_or(Ok(()), |value| write!(writer, "{}", value))
     }
 
+    pub fn row_terminator(&mut self) -> String {
+        self.formatter.row_ended().unwrap_or_default()
+    }
+
     pub fn write_row_separator(&mut self, writer: &mut dyn Write) -> std::io::Result<()> {
         self.formatter
             .row_separator()

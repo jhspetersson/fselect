@@ -81,6 +81,34 @@ fn subqueries_resolve_archive_members_whose_names_start_with_a_dot_segment() {
 }
 
 #[test]
+fn subquery_values_keep_their_own_trailing_line_breaks() {
+    let dir = std::env::temp_dir().join("fselect_it_subquery_trailing_newlines");
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let options = zip::write::SimpleFileOptions::default();
+    let mut zip = zip::ZipWriter::new(fs::File::create(dir.join("names.zip")).unwrap());
+    for name in ["hello\n", "hello\r\n", "world"] {
+        zip.start_file(name, options).unwrap();
+        zip.write_all(b"x").unwrap();
+    }
+    zip.finish().unwrap();
+    let root = dir.display();
+
+    let via_in = fselect(&format!(
+        "select length(name) from {root} archives where name in (select name from {root} archives) order by length(name)"
+    ));
+    let scalar = fselect(&format!(
+        "select length((select name from {root} archives where name like 'hello%' order by name desc limit 1)) from {root} where name = 'names.zip'"
+    ));
+    let _ = fs::remove_dir_all(&dir);
+
+    assert_eq!(via_in.code, Some(0), "{}", via_in.stderr);
+    assert_eq!(rows(&via_in), vec!["5", "6", "7", "9"], "{}", via_in.stderr);
+    assert_eq!(scalar.code, Some(0), "{}", scalar.stderr);
+    assert_eq!(rows(&scalar), vec!["7"], "{}", scalar.stderr);
+}
+
+#[test]
 fn archive_members_report_mime_and_content_fields() {
     let dir = make_archive_dir("fselect_it_archive_fields", 2);
     let root = dir.display();

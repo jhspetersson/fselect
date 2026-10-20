@@ -1271,11 +1271,13 @@ impl<'a> Searcher<'a> {
 
         // The buffer holds limit + offset rows; the offset rows are skipped
         // only in the print path, so they must be skipped here as well.
-        // Strip only the row terminator: file names may legally end in spaces
-        // or tabs, and a mangled name would silently drop the row later.
+        // Strip exactly one row terminator: values may legally end in spaces,
+        // tabs or line breaks of their own, and a mangled value would silently
+        // drop the row later.
+        let terminator = sub_searcher.results_writer.row_terminator();
         let result_values = sub_searcher.output_buffer.iter_values()
             .skip(query.offset as usize)
-            .map(|s| s.trim_end_matches(['\r', '\n']).to_string())
+            .map(|s| s.strip_suffix(terminator.as_str()).unwrap_or(s).to_string())
             .collect::<Vec<String>>();
 
         if ok_to_cache {

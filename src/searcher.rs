@@ -5949,6 +5949,38 @@ f
 
     #[cfg(feature = "git")]
     #[test]
+    fn gitignore_keeps_tracked_files_renamed_only_by_case() {
+        let tmp = std::env::temp_dir().join("fselect_test_gitignore_tracked_icase");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(tmp.join("logs")).unwrap();
+        let repo = git2::Repository::init(&tmp).unwrap();
+        let ignores_case = repo.config().and_then(|c| c.get_bool("core.ignorecase")).unwrap_or(false);
+        drop(repo);
+        if !ignores_case {
+            let _ = fs::remove_dir_all(&tmp);
+            return;
+        }
+        for name in ["tracked.log", "logs/keep.log"] {
+            fs::write(tmp.join(name), "").unwrap();
+        }
+        commit_everything(&tmp);
+        fs::write(tmp.join(".gitignore"), "*.log\nlogs/\n").unwrap();
+        fs::rename(tmp.join("tracked.log"), tmp.join("TRACKED.log")).unwrap();
+        fs::rename(tmp.join("logs"), tmp.join("LOGS")).unwrap();
+        fs::write(tmp.join("LOGS").join("new.log"), "").unwrap();
+
+        for mode in ["bfs", "dfs"] {
+            let rows = run_query_against_dir(&format!("select path from __DIR__ gitignore {mode}"), &tmp);
+            let mut names = file_names(&rows);
+            names.retain(|n| n != ".gitignore");
+            names.sort();
+            assert_eq!(names, vec!["LOGS", "TRACKED.log", "keep.log"], "{mode}: {rows:?}");
+        }
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
+    #[cfg(feature = "git")]
+    #[test]
     fn gitignore_applies_below_the_top_level_of_a_nested_repository_in_bfs() {
         let tmp = std::env::temp_dir().join("fselect_test_gitignore_nested_bfs");
         let _ = fs::remove_dir_all(&tmp);

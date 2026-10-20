@@ -221,26 +221,32 @@ impl IgnoreRules {
     }
 }
 
-/// Sorted repository-relative paths of the index.
+/// Sorted repository-relative paths of the index, lowercased when the
+/// repository has `core.ignorecase` so a case-only rename still matches.
 struct TrackedPaths {
     paths: Vec<String>,
+    ignore_case: bool,
 }
 
 impl TrackedPaths {
     fn load(repo: &Repository) -> TrackedPaths {
+        let ignore_case = repo.config().and_then(|config| config.get_bool("core.ignorecase")).unwrap_or(false);
+        let fold = |path: String| if ignore_case { path.to_ascii_lowercase() } else { path };
         let mut paths: Vec<String> = repo
             .index()
-            .map(|index| index.iter().map(|entry| String::from_utf8_lossy(&entry.path).into_owned()).collect())
+            .map(|index| index.iter().map(|entry| fold(String::from_utf8_lossy(&entry.path).into_owned())).collect())
             .unwrap_or_default();
         paths.sort();
         paths.dedup();
-        TrackedPaths { paths }
+        TrackedPaths { paths, ignore_case }
     }
 
     fn contains(&self, rel: &str) -> bool {
         if rel.is_empty() {
             return !self.paths.is_empty();
         }
+        let folded = if self.ignore_case { rel.to_ascii_lowercase() } else { rel.to_string() };
+        let rel = folded.as_str();
         let at = self.paths.partition_point(|path| path.as_str() < rel);
         if self.paths.get(at).is_some_and(|path| path == rel) {
             return true;
@@ -608,6 +614,43 @@ mod tests {
         assert!(rules.is_ignored(&canonical.join("loose.log")));
         assert!(!rules.is_ignored(&canonical.join("logs")));
         assert!(rules.is_ignored(&canonical.join("logs").join("new.log")));
+
+        drop(repo);
+        drop(cache);
+        drop(rules);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn tracked_paths_fold_case_when_the_repository_ignores_case() {
+        let dir = std::env::temp_dir().join("fselect_test_git_tracked_icase");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(dir.join("logs")).unwrap();
+        let repo = Repository::init(&dir).unwrap();
+        if !repo.config().and_then(|c| c.get_bool("core.ignorecase")).unwrap_or(false) {
+            drop(repo);
+            let _ = fs::remove_dir_all(&dir);
+            return;
+        }
+        fs::write(dir.join("tracked.log"), "t").unwrap();
+        fs::write(dir.join("logs").join("keep.log"), "k").unwrap();
+        commit_all(&repo, "c1", 1_000_000_000);
+        fs::write(dir.join(".gitignore"), "*.log\nlogs/\n").unwrap();
+        fs::rename(dir.join("tracked.log"), dir.join("TRACKED.log")).unwrap();
+        fs::rename(dir.join("logs"), dir.join("LOGS")).unwrap();
+        fs::write(dir.join("LOGS").join("new.log"), "n").unwrap();
+
+        let mut cache = GitCache::new();
+        assert_eq!(cache.is_ignored(&dir.join("TRACKED.log")), Some(false));
+        assert_eq!(cache.is_ignored(&dir.join("LOGS")), Some(false));
+        assert_eq!(cache.is_ignored(&dir.join("LOGS").join("keep.log")), Some(false));
+        assert_eq!(cache.is_ignored(&dir.join("LOGS").join("new.log")), Some(true));
+
+        let rules = IgnoreRules::discover(&dir).unwrap();
+        let canonical = PathBuf::from(crate::util::canonical_path(&dir).unwrap());
+        assert!(!rules.is_ignored(&canonical.join("TRACKED.log")));
+        assert!(!rules.is_ignored(&canonical.join("LOGS")));
+        assert!(rules.is_ignored(&canonical.join("LOGS").join("new.log")));
 
         drop(repo);
         drop(cache);

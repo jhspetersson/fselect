@@ -248,20 +248,24 @@ enum Membership {
     Ints(HashSet<i64>),
     Floats(Vec<f64>),
     Bools { has_true: bool, has_false: bool },
-    DateTimes(Vec<(NaiveDateTime, NaiveDateTime)>),
+    DateTimes(Vec<(i64, i64)>),
+}
+
+fn datetime_seconds((from, to): (NaiveDateTime, NaiveDateTime)) -> (i64, i64) {
+    (from.and_utc().timestamp(), to.and_utc().timestamp())
 }
 
 impl Membership {
-    fn new(values: &[String], field_type: &VariantType) -> Membership {
-        let variants = values.iter().map(Variant::from_string);
+    fn new(values: &[Variant], field_type: &VariantType) -> Membership {
+        let variants = values.iter();
         match field_type {
-            VariantType::String => Membership::Strings(values.iter().cloned().collect()),
+            VariantType::String => Membership::Strings(values.iter().map(Variant::to_string).collect()),
             VariantType::Int => Membership::Ints(variants.filter_map(|v| v.to_exact_int()).collect()),
             VariantType::Float => Membership::Floats(variants.filter_map(|v| v.to_float_opt()).collect()),
             VariantType::Bool => {
                 let mut bools = (false, false);
                 for value in values {
-                    match str_to_bool(value) {
+                    match str_to_bool(&value.to_string()) {
                         Some(true) => bools.0 = true,
                         Some(false) => bools.1 = true,
                         None => {}
@@ -269,7 +273,9 @@ impl Membership {
                 }
                 Membership::Bools { has_true: bools.0, has_false: bools.1 }
             }
-            VariantType::DateTime => Membership::DateTimes(variants.filter_map(|v| v.to_datetime().ok()).collect()),
+            VariantType::DateTime => {
+                Membership::DateTimes(variants.filter_map(|v| v.to_datetime().ok().map(datetime_seconds)).collect())
+            }
         }
     }
 
@@ -279,7 +285,7 @@ impl Membership {
             Membership::Ints(set) => set.contains(&field_value.to_int()),
             Membership::Floats(list) => list.contains(&field_value.to_float()),
             Membership::Bools { has_true, has_false } => if field_value.to_bool() { *has_true } else { *has_false },
-            Membership::DateTimes(intervals) => match field_value.to_datetime() {
+            Membership::DateTimes(intervals) => match field_value.to_datetime().map(datetime_seconds) {
                 Ok((from, to)) => intervals.iter().any(|(start, finish)| from <= *finish && *start <= to),
                 Err(_) => false,
             },
@@ -982,33 +988,41 @@ impl<'a> Searcher<'a> {
                     }
                     let mut criteria_values: Vec<String> =
                         Vec::with_capacity(sorting_indices.len());
+                    let mut criteria_types: Vec<Option<VariantType>> =
+                        Vec::with_capacity(sorting_indices.len());
                     for (index, ordering_expr) in
                         sorting_indices.iter().zip(self.query.ordering_fields.iter())
                     {
-                        let value = match index {
+                        let (value, value_type) = match index {
                             // Reuse the value already rendered for the SELECT list
-                            Some(index) => items
-                                .get(*index)
-                                .map(|item| item.1.clone())
-                                .unwrap_or_default(),
+                            Some(index) => {
+                                let value = items
+                                    .get(*index)
+                                    .map(|item| item.1.clone())
+                                    .unwrap_or_default();
+                                let value_type = self.cached_value_type(&ordering_expr.cache_key(), &value);
+                                (value, value_type)
+                            }
                             // Not selected: evaluate the ordering expression
                             // against this group's accumulator (aggregates) or
                             // its grouping-key values in file_map.
-                            None => self
-                                .get_column_expr_value(
+                            None => {
+                                let value = self.get_column_expr_value(
                                     None,
                                     &None,
                                     Path::new(""),
                                     &mut file_map,
                                     Some(group_acc),
                                     ordering_expr,
-                                )?
-                                .to_string(),
+                                )?;
+                                (value.to_string(), Some(value.get_type().clone()))
+                            }
                         };
                         criteria_values.push(value);
+                        criteria_types.push(value_type);
                     }
                     grouped_results.insert(
-                        Criteria::new(ordering_fields_rc.clone(), criteria_values, ordering_asc_rc.clone()),
+                        Criteria::with_types(ordering_fields_rc.clone(), criteria_values, &criteria_types, ordering_asc_rc.clone()),
                         (items, first_type),
                     );
                 }
@@ -2119,14 +2133,7 @@ impl<'a> Searcher<'a> {
         accumulator: &function::GroupAccumulator,
         column: &Expr,
     ) -> Result<Variant, SearchError> {
-        let value = self.get_column_expr_value(None, &None, Path::new(""), file_map, Some(accumulator), column)?;
-        // An aggregate is formatted as text and needs its type back; any
-        // other column already carries the type it was produced with.
-        if column.has_aggregate_function() {
-            Ok(typed_variant(column, &value.to_string()))
-        } else {
-            Ok(value)
-        }
+        self.get_column_expr_value(None, &None, Path::new(""), file_map, Some(accumulator), column)
     }
 
     fn upsert_alias_value(values: &mut Vec<(String, Variant)>, column: &Expr, value: Variant) {
@@ -2405,7 +2412,12 @@ impl<'a> Searcher<'a> {
                 (None, None) => None,
             };
             return Ok(match holds {
-                Some(holds) => apply_minus(column_expr, Variant::from_bool(holds)),
+                Some(holds) => {
+                    let result = apply_minus(column_expr, Variant::from_bool(holds));
+                    self.remember_type(&cache_key, &result);
+                    file_map.insert(cache_key, result.to_string());
+                    result
+                }
                 None => Variant::empty(VariantType::Bool),
             });
         }
@@ -2467,13 +2479,17 @@ impl<'a> Searcher<'a> {
                 left_expr.cache_key()
             };
             let empty_acc = function::GroupAccumulator::default();
-            let aggr_result = function::get_aggregate_value(
-                function,
-                accumulator.unwrap_or(&empty_acc),
-                buffer_key,
-                &column_expr.val,
-            );
-            Ok(Variant::from_string(&aggr_result))
+            let accumulator = accumulator.unwrap_or(&empty_acc);
+            let selected_type = if function.passes_argument_type_through() {
+                accumulator.fields.get(&buffer_key).and_then(function::FieldAccumulator::uniform_type)
+            } else {
+                None
+            };
+            let aggr_result = function::get_aggregate_value(function, accumulator, buffer_key, &column_expr.val);
+            Ok(match selected_type {
+                Some(value_type) => variant_of_type(column_expr, &aggr_result, value_type),
+                None => typed_variant(column_expr, &aggr_result),
+            })
         } else if *function == function::Function::Coalesce {
             // COALESCE short-circuits: later arguments are evaluated only
             // while every earlier one came back empty, so a failing or
@@ -2544,6 +2560,13 @@ impl<'a> Searcher<'a> {
 
     fn remember_type(&mut self, cache_key: &str, value: &Variant) {
         self.cached_types.insert(cache_key.to_string(), (value.to_string(), value.get_type().clone()));
+    }
+
+    fn cached_value_type(&self, cache_key: &str, text: &str) -> Option<VariantType> {
+        self.cached_types
+            .get(cache_key)
+            .filter(|(cached, _)| cached == text)
+            .map(|(_, value_type)| value_type.clone())
     }
 
     fn check_file(&mut self, entry: &DirEntry, root_path: &Path, file_info: &Option<FileInfo>, file_type_hint: Option<FileType>) -> Result<(), SearchError> {
@@ -2717,16 +2740,16 @@ impl<'a> Searcher<'a> {
                 let value = self.get_field_value(entry, file_info, root_path, field).unwrap_or(Variant::empty(VariantType::String));
                 file_map.insert(key.clone(), value.to_string());
             }
-            for (key, left) in &plan.inner_exprs {
-                if !file_map.contains_key(key) {
-                    let value = self.get_column_expr_value(Some(entry), file_info, root_path, file_map, None, left)?;
-                    file_map.entry(key.clone()).or_insert_with(|| value.to_string());
+            let planned = plan.inner_exprs.iter().map(|(key, left)| (key, left))
+                .chain(plan.grouping_keys.iter().zip(&self.query.grouping_fields).map(|(key, field)| (key, field)));
+            for (key, expr) in planned {
+                if file_map.contains_key(key) {
+                    continue;
                 }
-            }
-            for (field, key) in self.query.grouping_fields.iter().zip(&plan.grouping_keys) {
+                let value = self.get_column_expr_value(Some(entry), file_info, root_path, file_map, None, expr)?;
                 if !file_map.contains_key(key) {
-                    let value = self.get_column_expr_value(Some(entry), file_info, root_path, file_map, None, field)?;
-                    file_map.entry(key.clone()).or_insert_with(|| value.to_string());
+                    self.remember_type(key, &value);
+                    file_map.insert(key.clone(), value.to_string());
                 }
             }
             let group_key: Vec<String> = plan
@@ -2760,7 +2783,8 @@ impl<'a> Searcher<'a> {
             }
             accumulator.increment_count();
             for (key, value) in file_map.iter() {
-                accumulator.push(key, value);
+                let value_type = self.cached_types.get(key).filter(|(text, _)| text == value).map(|(_, value_type)| value_type);
+                accumulator.push_typed(key, value, value_type);
             }
             return Ok(());
         }
@@ -2804,12 +2828,19 @@ impl<'a> Searcher<'a> {
         }
 
         let mut criteria = vec!["".to_string(); self.query.ordering_fields.len()];
+        let mut criteria_types = vec![None; self.query.ordering_fields.len()];
         for (idx, field) in self.query.ordering_fields.iter().enumerate() {
-            criteria[idx] = match file_map.get(&field.cache_key()) {
-                Some(record) => record.clone(),
-                None => self
-                    .get_column_expr_value(Some(entry), file_info, root_path, file_map, None, field)?
-                    .to_string(),
+            let key = field.cache_key();
+            match file_map.get(&key) {
+                Some(record) => {
+                    criteria_types[idx] = self.cached_value_type(&key, record);
+                    criteria[idx] = record.clone();
+                }
+                None => {
+                    let value = self.get_column_expr_value(Some(entry), file_info, root_path, file_map, None, field)?;
+                    criteria_types[idx] = Some(value.get_type().clone());
+                    criteria[idx] = value.to_string();
+                }
             }
         }
 
@@ -2832,9 +2863,10 @@ impl<'a> Searcher<'a> {
             };
             self.found += 1;
             self.output_buffer.insert(
-                Criteria::new(
+                Criteria::with_types(
                     self.ordering_fields_rc.clone(),
                     criteria,
+                    &criteria_types,
                     self.ordering_asc_rc.clone(),
                 ),
                 row,
@@ -2933,7 +2965,7 @@ impl<'a> Searcher<'a> {
                     // Unparseable values: silently skip this arg (treat as a
                     // non-match) instead of erroring per file scanned.
                     // Interval overlap, the same rule as `=`.
-                    match (field_value.to_datetime(), arg_val.to_datetime()) {
+                    match (field_value.to_datetime().map(datetime_seconds), arg_val.to_datetime().map(datetime_seconds)) {
                         (Ok((field_start, field_finish)), Ok((arg_start, arg_finish))) => {
                             field_start <= arg_finish && arg_start <= field_finish
                         }
@@ -2955,6 +2987,15 @@ impl<'a> Searcher<'a> {
             return Ok(Rc::clone(membership));
         }
         let values = self.get_list_from_subquery(subquery.clone())?;
+        let column = subquery.fields.first();
+        let values: Vec<Variant> = values
+            .iter()
+            .zip(self.last_subquery_types.iter().chain(std::iter::repeat(&None)))
+            .map(|(text, value_type)| match (column, value_type) {
+                (Some(column), Some(value_type)) => variant_of_type(column, text, value_type),
+                _ => Variant::from_string(text),
+            })
+            .collect();
         let membership = Rc::new(Membership::new(&values, field_type));
         if is_subquery_cacheable(subquery) {
             self.membership_cache.insert(key, Rc::clone(&membership));
@@ -7139,6 +7180,164 @@ mod tests {
         assert_eq!(function_alias_vs_field, vec![String::from("A.TXT\t0")]);
         assert_eq!(grouped_alias, vec![String::from("txt\t0\t1\t3")]);
         assert_eq!(ordered_alias, vec![String::from("a.txt\t0")]);
+    }
+
+    #[test]
+    fn cached_comparison_results_keep_their_boolean_type() {
+        let tmp = std::env::temp_dir().join("fselect_test_cached_comparison_type");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        fs::write(tmp.join("two.txt"), "xx").unwrap();
+        fs::write(tmp.join("three.txt"), "xxx").unwrap();
+
+        let run = |query: &str| run_query_against_dir(query, &tmp);
+        let count_then_sum = run("select count(size > 2), sum((size > 2) + 0) from __DIR__");
+        let sum_then_count = run("select sum((size > 2) + 0), count(size > 2) from __DIR__");
+        let grouped_arithmetic = run("select (size > 2) + 0, count(*) from __DIR__ group by size > 2 order by 1");
+        let grouped_having = run("select size > 2, count(*) from __DIR__ group by size > 2 having (size > 2) + 0 = 1");
+        let negated = run("select size > 2, -(size > 2) from __DIR__ order by 1");
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(count_then_sum, vec![String::from("2\t1")]);
+        assert_eq!(sum_then_count, vec![String::from("1\t2")]);
+        assert_eq!(grouped_arithmetic, vec![String::from("0\t1"), String::from("1\t1")]);
+        assert_eq!(grouped_having, vec![String::from("true\t1")]);
+        assert_eq!(negated, vec![String::from("false\t0"), String::from("true\t-1")]);
+    }
+
+    #[test]
+    fn aggregate_aliases_keep_the_type_the_column_produced() {
+        let tmp = std::env::temp_dir().join("fselect_test_aggregate_alias_types");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        fs::write(tmp.join("true"), "xx").unwrap();
+
+        let run = |query: &str| run_query_against_dir(query, &tmp);
+        let boolean_alias = run("select (sum(size) > 1) as big, t.big + 0 from __DIR__ as t");
+        let boolean_having = run("select (sum(size) > 1) as big from __DIR__ as t having t.big + 0 = 1");
+        let numeric_alias = run("select sum(size) as s, t.s + 1, t.s > 10 from __DIR__ as t");
+        let numeric_having = run("select sum(size) as s from __DIR__ as t having t.s > 10");
+        let text_alias = run("select max(name) as n, t.n + 0 from __DIR__ as t");
+        let coalesced_text = run("select coalesce(max(name), is_dir) as n, t.n + 0 from __DIR__ as t group by is_dir");
+        let count_having = run("select count(*) as c from __DIR__ as t having t.c = 1");
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(boolean_alias, vec![String::from("true\t1")]);
+        assert_eq!(boolean_having, vec![String::from("true")]);
+        assert_eq!(numeric_alias, vec![String::from("2\t3\tfalse")]);
+        assert!(numeric_having.is_empty());
+        assert_eq!(text_alias, vec![String::from("true\t0")]);
+        assert_eq!(coalesced_text, vec![String::from("true\t0")]);
+        assert_eq!(count_having, vec![String::from("1")]);
+    }
+
+    #[test]
+    fn in_subqueries_keep_the_result_types_of_their_values() {
+        let tmp = std::env::temp_dir().join("fselect_test_in_subquery_types");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        fs::write(tmp.join("one"), "x").unwrap();
+        let half_second_past = std::time::SystemTime::UNIX_EPOCH + std::time::Duration::new(1_600_000_000, 500_000_000);
+        fs::File::options().write(true).open(tmp.join("one")).unwrap().set_modified(half_second_past).unwrap();
+
+        let run = |condition: &str| run_query_against_dir(&format!("select name from __DIR__ where {condition}"), &tmp);
+        let size_in_booleans = run("size in (select is_file from __DIR__)");
+        let size_not_in_booleans = run("size not in (select is_file from __DIR__)");
+        let size_in_false = run("size in (select is_dir from __DIR__)");
+        let boolean_in_sizes = run("is_file in (select size from __DIR__)");
+        let modified_in_modified = run("modified in (select modified from __DIR__)");
+        let modified_not_in_modified = run("modified not in (select modified from __DIR__)");
+        let modified_in_scalar = run("modified in ((select modified from __DIR__))");
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(size_in_booleans, vec![String::from("one")]);
+        assert!(size_not_in_booleans.is_empty());
+        assert!(size_in_false.is_empty());
+        assert_eq!(boolean_in_sizes, vec![String::from("one")]);
+        assert_eq!(modified_in_modified, vec![String::from("one")]);
+        assert!(modified_not_in_modified.is_empty());
+        assert_eq!(modified_in_scalar, vec![String::from("one")]);
+    }
+
+    #[test]
+    fn aggregated_scalar_subqueries_keep_their_boolean_type() {
+        let tmp = std::env::temp_dir().join("fselect_test_aggregated_subquery_types");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        fs::write(tmp.join("one"), "x").unwrap();
+
+        let run = |query: &str| run_query_against_dir(query, &tmp);
+        let count_then_sum = run("select count((select size > 0 from __DIR__)), sum((select size > 0 from __DIR__) + 0) from __DIR__");
+        let sum_then_count = run("select sum((select size > 0 from __DIR__) + 0), count((select size > 0 from __DIR__)) from __DIR__");
+        let grouped = run("select (select size > 0 from __DIR__) + 0, count(*) from __DIR__ group by (select size > 0 from __DIR__)");
+        let grouped_having = run("select (select size > 0 from __DIR__), count(*) from __DIR__ group by (select size > 0 from __DIR__) having (select size > 0 from __DIR__) + 0 = 1");
+        let negated = run("select count((select size > 0 from __DIR__)), -(select size > 0 from __DIR__) from __DIR__ group by name");
+        let text_stays_text = run("select count((select name from __DIR__)), (select name from __DIR__) + 0 from __DIR__ group by name");
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(count_then_sum, vec![String::from("1\t1")]);
+        assert_eq!(sum_then_count, vec![String::from("1\t1")]);
+        assert_eq!(grouped, vec![String::from("1\t1")]);
+        assert_eq!(grouped_having, vec![String::from("true\t1")]);
+        assert_eq!(negated, vec![String::from("1\t-1")]);
+        assert_eq!(text_stays_text, vec![String::from("1\t0")]);
+    }
+
+    #[test]
+    fn min_and_max_keep_the_type_of_the_selected_value() {
+        let tmp = std::env::temp_dir().join("fselect_test_min_max_value_types");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        fs::write(tmp.join("true"), "xx").unwrap();
+
+        let run = |query: &str| run_query_against_dir(query, &tmp);
+        let comparison = run("select min(size > 1), min(size > 1) + 0, max(size > 1) + 0 from __DIR__");
+        let boolean_field = run("select min(is_file) + 0 from __DIR__");
+        let coalesced_name = run("select min(coalesce(name, is_file)), min(coalesce(name, is_file)) + 0 from __DIR__");
+        let plain = run("select min(name) + 0, max(size) + 1, max(modified) > yesterday, min(fsize) from __DIR__");
+        let aliased = run("select min(size > 1) as b, t.b + 0 from __DIR__ as t");
+        let aliased_having = run("select min(coalesce(name, is_file)) as n from __DIR__ as t having t.n + 0 = 0");
+        let grouped_having = run("select min(size > 1), count(*) from __DIR__ group by is_file having min(size > 1) = true");
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(comparison, vec![String::from("true\t1\t1")]);
+        assert_eq!(boolean_field, vec![String::from("1")]);
+        assert_eq!(coalesced_name, vec![String::from("true\t0")]);
+        assert_eq!(plain, vec![String::from("0\t3\ttrue\t2B")]);
+        assert_eq!(aliased, vec![String::from("true\t1")]);
+        assert_eq!(aliased_having, vec![String::from("true")]);
+        assert_eq!(grouped_having, vec![String::from("true\t1")]);
+    }
+
+    #[test]
+    fn ordering_uses_the_type_of_the_sorted_value() {
+        let tmp = std::env::temp_dir().join("fselect_test_ordering_value_types");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        fs::write(tmp.join("a-new.txt"), "new").unwrap();
+        fs::write(tmp.join("z-old.txt"), "old").unwrap();
+        let year_1999 = std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(928_000_000);
+        fs::File::options().write(true).open(tmp.join("z-old.txt")).unwrap().set_modified(year_1999).unwrap();
+
+        let run = |query: &str| run_query_against_dir(query, &tmp);
+        let ascending = run("select name, modified > '2000-01-01' as recent from __DIR__ order by recent, name");
+        let descending = run("select name, modified > '2000-01-01' as recent from __DIR__ order by recent desc, name");
+        let by_position = run("select name, modified > '2000-01-01' from __DIR__ order by 2, name");
+        let limited = run("select name, modified > '2000-01-01' as recent from __DIR__ order by recent limit 1");
+        let unselected = run("select name from __DIR__ order by modified > '2000-01-01' limit 1");
+        let compact = run("select name from __DIR__ order by (modified>'2000-01-01')+0 desc, name limit 1");
+        let coalesced_text = run("select name, coalesce(name, modified) as c from __DIR__ order by c desc");
+        let grouped = run("select modified > '2000-01-01' as recent, count(*) from __DIR__ group by recent order by recent");
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(ascending, vec![String::from("z-old.txt\tfalse"), String::from("a-new.txt\ttrue")]);
+        assert_eq!(descending, vec![String::from("a-new.txt\ttrue"), String::from("z-old.txt\tfalse")]);
+        assert_eq!(by_position, vec![String::from("z-old.txt\tfalse"), String::from("a-new.txt\ttrue")]);
+        assert_eq!(limited, vec![String::from("z-old.txt\tfalse")]);
+        assert_eq!(unselected, vec![String::from("z-old.txt")]);
+        assert_eq!(compact, vec![String::from("a-new.txt")]);
+        assert_eq!(coalesced_text, vec![String::from("z-old.txt\tz-old.txt"), String::from("a-new.txt\ta-new.txt")]);
+        assert_eq!(grouped, vec![String::from("false\t1"), String::from("true\t1")]);
     }
 
     #[test]

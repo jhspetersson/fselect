@@ -1727,7 +1727,7 @@ impl <'a> Parser<'a> {
                                 }
                             }
                         }
-                        Some(Lexeme::Open) | Some(Lexeme::CurlyOpen) => {
+                        Some(Lexeme::Open) | Some(Lexeme::CurlyOpen) | Some(Lexeme::Not) => {
                             self.drop_lexeme();
                             match self.parse_expr()? {
                                 Some(expr) => {
@@ -2639,6 +2639,33 @@ mod tests {
         let grouped = parse_query("select length(name) as len, count(*) from /d group by len, len % 2").unwrap();
         assert_eq!(grouped.grouping_fields[0].function, Some(Function::Length), "bare alias is the aliased expression");
         assert_eq!(grouped.grouping_fields[1].left.as_ref().unwrap().function, Some(Function::Length), "alias inside arithmetic is the aliased expression");
+    }
+
+    #[test]
+    fn order_by_accepts_comparisons_like_group_by() {
+        let compact = parse_query("select name from /d order by size>2 desc, name").unwrap();
+        assert_eq!(compact.ordering_fields.len(), 2);
+        assert_eq!(compact.ordering_fields[0].op, Some(Op::Gt));
+        assert_eq!(compact.ordering_fields[0].left.as_ref().unwrap().field, Some(Field::Size));
+        assert_eq!(compact.ordering_asc, vec![false, true]);
+
+        let spaced = parse_query("select name from /d order by modified > '2000-01-01' limit 1").unwrap();
+        assert_eq!(spaced.ordering_fields[0].op, Some(Op::Gt));
+        assert_eq!(spaced.ordering_fields[0].left.as_ref().unwrap().field, Some(Field::Modified));
+
+        let arithmetic = parse_query("select name from /d order by (size>2)+0 desc, name").unwrap();
+        let wrapped = &arithmetic.ordering_fields[0];
+        assert!(wrapped.arithmetic_op.is_some(), "the comparison is the left operand of + 0");
+        assert_eq!(wrapped.left.as_ref().unwrap().op, Some(Op::Gt));
+
+        let logical = parse_query("select name from /d order by not size > 2, size > 2 and is_file desc").unwrap();
+        assert_eq!(logical.ordering_fields.len(), 2);
+        assert!(logical.ordering_fields[1].logical_op.is_some());
+        assert_eq!(logical.ordering_asc, vec![true, false]);
+
+        let aggregated = parse_query("select ext, count(*) from /d group by ext order by count(*) > 1 desc").unwrap();
+        assert_eq!(aggregated.ordering_fields[0].op, Some(Op::Gt));
+        assert_eq!(aggregated.ordering_fields[0].left.as_ref().unwrap().function, Some(Function::Count));
     }
 
     #[test]

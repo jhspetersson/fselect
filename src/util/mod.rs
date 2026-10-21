@@ -80,19 +80,22 @@ enum SortKey {
 }
 
 impl SortKey {
-    fn new(field: &Expr, value: &str) -> SortKey {
+    fn new(field: &Expr, value: &str, value_type: Option<&VariantType>) -> SortKey {
         static EPOCH: LazyLock<NaiveDateTime> = LazyLock::new(|| {
             NaiveDate::from_ymd_opt(1970, 1, 1)
                 .unwrap()
                 .and_hms_opt(0, 0, 0)
                 .unwrap()
         });
-        if field.contains_numeric() {
-            SortKey::Number(numeric_sort_key(value))
-        } else if field.contains_datetime() {
-            SortKey::DateTime(parse_datetime(value).map(|(from, _)| from).unwrap_or(*EPOCH))
-        } else {
-            SortKey::Direct
+        let datetime = |value: &str| SortKey::DateTime(parse_datetime(value).map(|(from, _)| from).unwrap_or(*EPOCH));
+        match value_type {
+            Some(VariantType::Bool) => SortKey::Number(str_to_bool(value).map(|flag| if flag { 1.0 } else { 0.0 })),
+            Some(VariantType::Int | VariantType::Float) => SortKey::Number(numeric_sort_key(value)),
+            Some(VariantType::DateTime) => datetime(value),
+            Some(VariantType::String) => SortKey::Direct,
+            None if field.contains_numeric() => SortKey::Number(numeric_sort_key(value)),
+            None if field.contains_datetime() => datetime(value),
+            None => SortKey::Direct,
         }
     }
 }
@@ -115,13 +118,26 @@ where
     T: Display,
 {
     pub fn new(fields: Rc<Vec<Expr>>, values: Vec<T>, orderings: Rc<Vec<bool>>) -> Criteria<T> {
+        Self::with_types(fields, values, &[], orderings)
+    }
+
+    pub fn with_types(
+        fields: Rc<Vec<Expr>>,
+        values: Vec<T>,
+        value_types: &[Option<VariantType>],
+        orderings: Rc<Vec<bool>>,
+    ) -> Criteria<T> {
         debug_assert_eq!(fields.len(), values.len());
         debug_assert_eq!(values.len(), orderings.len());
 
         let keys = fields
             .iter()
             .zip(&values)
-            .map(|(field, value)| SortKey::new(field, &value.to_string()))
+            .enumerate()
+            .map(|(index, (field, value))| {
+                let value_type = value_types.get(index).and_then(Option::as_ref);
+                SortKey::new(field, &value.to_string(), value_type)
+            })
             .collect();
 
         Criteria {
@@ -2348,6 +2364,29 @@ mod tests {
         let older_desc = make("2024-01-05 09:30:00", false);
         let newer_desc = make("2026-06-11 10:00:00", false);
         assert_eq!(older_desc.cmp(&newer_desc), Ordering::Greater);
+    }
+
+    #[test]
+    fn sort_keys_follow_the_value_type_over_the_declared_one() {
+        let recent = {
+            let mut expr = Expr::field(Field::Modified);
+            expr.op = Some(crate::operators::Op::Gt);
+            expr.right = Some(Box::new(Expr::value(String::from("2000-01-01"))));
+            expr
+        };
+        let fields = Rc::new(vec![recent]);
+        let orderings = Rc::new(vec![true]);
+        let make = |value: &str, value_type: VariantType| {
+            Criteria::with_types(fields.clone(), vec![String::from(value)], &[Some(value_type)], orderings.clone())
+        };
+
+        assert_eq!(make("false", VariantType::Bool).cmp(&make("true", VariantType::Bool)), Ordering::Less);
+        assert_eq!(make("b.txt", VariantType::String).cmp(&make("a.txt", VariantType::String)), Ordering::Greater);
+        assert_eq!(make("2", VariantType::Int).cmp(&make("10", VariantType::Int)), Ordering::Less);
+        assert_eq!(
+            make("2024-01-05 09:30:00", VariantType::DateTime).cmp(&make("2026-06-11 10:00:00", VariantType::DateTime)),
+            Ordering::Less
+        );
     }
 
     #[test]

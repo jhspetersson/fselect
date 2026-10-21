@@ -1882,11 +1882,27 @@ pub struct FieldAccumulator {
     max_text: Option<String>,
     min_raw: Option<String>,
     max_raw: Option<String>,
+    value_type: Option<VariantType>,
+    mixed_types: bool,
 }
 
 impl FieldAccumulator {
-    pub fn push(&mut self, value: &str) {
+    pub fn uniform_type(&self) -> Option<&VariantType> {
+        if self.mixed_types { None } else { self.value_type.as_ref() }
+    }
+
+    pub fn push_typed(&mut self, value: &str, value_type: Option<&VariantType>) {
         if !value.is_empty() {
+            if !self.mixed_types {
+                match (&self.value_type, value_type) {
+                    (None, Some(value_type)) if self.non_empty_count == 0 => self.value_type = Some(value_type.clone()),
+                    (Some(current), Some(value_type)) if current == value_type => {}
+                    _ => {
+                        self.mixed_types = true;
+                        self.value_type = None;
+                    }
+                }
+            }
             self.non_empty_count += 1;
             if value.parse::<f64>().is_ok() {
                 self.numeric_like_count += 1;
@@ -1972,8 +1988,13 @@ impl GroupAccumulator {
         self.total_count += 1;
     }
 
+    #[cfg(test)]
     pub fn push(&mut self, field: &str, value: &str) {
-        self.fields.entry(field.to_string()).or_default().push(value);
+        self.push_typed(field, value, None);
+    }
+
+    pub fn push_typed(&mut self, field: &str, value: &str, value_type: Option<&VariantType>) {
+        self.fields.entry(field.to_string()).or_default().push_typed(value, value_type);
     }
 }
 

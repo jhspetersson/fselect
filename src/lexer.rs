@@ -97,7 +97,7 @@ impl LexerState {
     }
 
     fn in_column_expression(&self) -> bool {
-        matches!(self.clause, Clause::Fields | Clause::GroupBy)
+        matches!(self.clause, Clause::Fields | Clause::GroupBy | Clause::OrderBy)
     }
 
     fn in_where(&self) -> bool {
@@ -519,7 +519,7 @@ impl Lexer {
     }
 
     fn is_op_char(&self, c: char) -> bool {
-        if !matches!(self.state.clause, Clause::Fields | Clause::Where | Clause::GroupBy) {
+        if !matches!(self.state.clause, Clause::Fields | Clause::Where | Clause::GroupBy | Clause::OrderBy) {
             return false;
         }
 

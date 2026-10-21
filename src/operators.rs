@@ -152,6 +152,9 @@ impl ArithmeticOp {
     }
 
     pub fn calc(&self, left: &Variant, right: &Variant) -> Result<Variant, String> {
+        if left.to_string().is_empty() || right.to_string().is_empty() {
+            return Ok(Variant::empty(crate::util::variant::VariantType::Float));
+        }
         let right_val = right.to_float();
 
         if matches!(self, ArithmeticOp::Divide | ArithmeticOp::Modulo) && right_val == 0.0 {
@@ -177,6 +180,21 @@ impl ArithmeticOp {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn arithmetic_on_an_empty_operand_is_empty() {
+        let empty = Variant::empty(crate::util::variant::VariantType::String);
+        let three = Variant::from_int(3);
+        for op in [ArithmeticOp::Add, ArithmeticOp::Subtract, ArithmeticOp::Multiply, ArithmeticOp::Divide, ArithmeticOp::Modulo] {
+            let left_empty = op.calc(&empty, &three).unwrap();
+            assert!(left_empty.to_string().is_empty(), "{op}: empty left operand");
+            assert!(left_empty.to_float_opt().is_none(), "{op}: an empty result is not a number");
+            let right_empty = op.calc(&three, &empty).unwrap();
+            assert!(right_empty.to_string().is_empty(), "{op}: empty right operand, no division by zero");
+        }
+        assert_eq!(ArithmeticOp::Add.calc(&three, &Variant::from_int(0)).unwrap().to_float(), 3.0);
+        assert!(ArithmeticOp::Divide.calc(&three, &Variant::from_int(0)).is_err(), "a real zero still divides by zero");
+    }
 
     #[test]
     fn arithmetic_op_displays_as_its_symbol() {

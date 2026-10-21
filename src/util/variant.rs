@@ -22,9 +22,20 @@ pub struct Variant {
     bool_value: Option<bool>,
     dt_from: Option<NaiveDateTime>,
     dt_to: Option<NaiveDateTime>,
+    null: bool,
 }
 
 impl Variant {
+    pub fn null() -> Variant {
+        let mut value = Variant::empty(VariantType::String);
+        value.null = true;
+        value
+    }
+
+    pub fn is_null(&self) -> bool {
+        self.null
+    }
+
     pub fn empty(value_type: VariantType) -> Variant {
         Variant {
             value_type,
@@ -34,6 +45,7 @@ impl Variant {
             bool_value: None,
             dt_from: None,
             dt_to: None,
+            null: false,
         }
     }
 
@@ -50,6 +62,7 @@ impl Variant {
             bool_value: None,
             dt_from: None,
             dt_to: None,
+            null: false,
         }
     }
 
@@ -66,6 +79,7 @@ impl Variant {
             bool_value: None,
             dt_from: None,
             dt_to: None,
+            null: false,
         }
     }
 
@@ -78,6 +92,7 @@ impl Variant {
             bool_value: None,
             dt_from: None,
             dt_to: None,
+            null: false,
         }
     }
 
@@ -100,6 +115,7 @@ impl Variant {
             bool_value: None,
             dt_from: None,
             dt_to: None,
+            null: false,
         }
     }
 
@@ -118,6 +134,7 @@ impl Variant {
             bool_value: Some(value),
             dt_from: None,
             dt_to: None,
+            null: false,
         }
     }
 
@@ -144,6 +161,7 @@ impl Variant {
             bool_value: None,
             dt_from: Some(value),
             dt_to: Some(value),
+            null: false,
         }
     }
 
@@ -366,6 +384,17 @@ mod tests {
     fn from_signed_string_negative() {
         let v = Variant::from_signed_string(&String::from("42"), true);
         assert_eq!(v.to_string(), "-42");
+    }
+
+    #[test]
+    fn null_is_distinct_from_an_empty_string() {
+        let null = Variant::null();
+        assert!(null.is_null());
+        assert_eq!(null.to_string(), "");
+        assert!(matches!(null.get_type(), VariantType::String));
+        assert!(!Variant::empty(VariantType::String).is_null());
+        assert!(!Variant::from_string(&String::new()).is_null());
+        assert!(null.with_text("").is_null(), "re-texting keeps the marker");
     }
 
     #[test]

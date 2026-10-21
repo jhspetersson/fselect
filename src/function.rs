@@ -1882,36 +1882,44 @@ pub struct FieldAccumulator {
     max_text: Option<String>,
     min_raw: Option<String>,
     max_raw: Option<String>,
-    value_type: Option<VariantType>,
-    mixed_types: bool,
+    min_text_type: Option<VariantType>,
+    max_text_type: Option<VariantType>,
+    min_value_type: Option<VariantType>,
+    max_value_type: Option<VariantType>,
+    min_raw_type: Option<VariantType>,
+    max_raw_type: Option<VariantType>,
 }
 
 impl FieldAccumulator {
-    pub fn uniform_type(&self) -> Option<&VariantType> {
-        if self.mixed_types { None } else { self.value_type.as_ref() }
+    pub fn extreme_type(&self, maximum: bool) -> Option<&VariantType> {
+        let (raw, value, text) = if maximum {
+            (&self.max_raw_type, &self.max_value_type, &self.max_text_type)
+        } else {
+            (&self.min_raw_type, &self.min_value_type, &self.min_text_type)
+        };
+        if self.all_numeric() {
+            raw.as_ref()
+        } else if self.all_sizes() {
+            value.as_ref()
+        } else {
+            text.as_ref()
+        }
     }
 
     pub fn push_typed(&mut self, value: &str, value_type: Option<&VariantType>) {
+        let value_type = value_type.cloned();
         if !value.is_empty() {
-            if !self.mixed_types {
-                match (&self.value_type, value_type) {
-                    (None, Some(value_type)) if self.non_empty_count == 0 => self.value_type = Some(value_type.clone()),
-                    (Some(current), Some(value_type)) if current == value_type => {}
-                    _ => {
-                        self.mixed_types = true;
-                        self.value_type = None;
-                    }
-                }
-            }
             self.non_empty_count += 1;
             if value.parse::<f64>().is_ok() {
                 self.numeric_like_count += 1;
             }
             if self.min_text.as_deref().is_none_or(|current| value < current) {
                 self.min_text = Some(value.to_string());
+                self.min_text_type = value_type.clone();
             }
             if self.max_text.as_deref().is_none_or(|current| value > current) {
                 self.max_text = Some(value.to_string());
+                self.max_text_type = value_type.clone();
             }
             let size = parse_filesize(value);
             if size.is_some() {
@@ -1920,10 +1928,12 @@ impl FieldAccumulator {
             if matches!(Self::compare(value, size, &self.min_value, self.min_size), None | Some(Ordering::Less)) {
                 self.min_value = Some(value.to_string());
                 self.min_size = size;
+                self.min_value_type = value_type.clone();
             }
             if matches!(Self::compare(value, size, &self.max_value, self.max_size), None | Some(Ordering::Greater)) {
                 self.max_value = Some(value.to_string());
                 self.max_size = size;
+                self.max_value_type = value_type.clone();
             }
         }
         if let Ok(v) = value.parse::<f64>()
@@ -1933,16 +1943,20 @@ impl FieldAccumulator {
                     self.max = v;
                     self.min_raw = Some(value.to_string());
                     self.max_raw = Some(value.to_string());
+                    self.min_raw_type = value_type.clone();
+                    self.max_raw_type = value_type;
                     self.count = 1;
                     self.sum = v;
                 } else {
                     if v < self.min {
                         self.min = v;
                         self.min_raw = Some(value.to_string());
+                        self.min_raw_type = value_type.clone();
                     }
                     if v > self.max {
                         self.max = v;
                         self.max_raw = Some(value.to_string());
+                        self.max_raw_type = value_type;
                     }
                     let old_mean = self.sum / self.count as f64;
                     self.count += 1;
@@ -3494,6 +3508,32 @@ mod tests {
         let acc = make_accumulator("fsize", &["2 KB", "900 B", "1 MB"]);
         assert_eq!(get_aggregate_value(&Function::Min, &acc, "fsize".to_string(), &None), "900 B");
         assert_eq!(get_aggregate_value(&Function::Max, &acc, "fsize".to_string(), &None), "1 MB");
+    }
+
+    #[test]
+    fn min_and_max_report_the_type_of_the_selected_extreme() {
+        let mut acc = GroupAccumulator::default();
+        acc.push_typed("val", "true", Some(&VariantType::String));
+        acc.push_typed("val", "false", Some(&VariantType::Bool));
+        let field = acc.fields.get("val").unwrap();
+        assert_eq!(get_aggregate_value(&Function::Max, &acc, "val".to_string(), &None), "true");
+        assert_eq!(field.extreme_type(true), Some(&VariantType::String), "the maximum is the file name");
+        assert_eq!(get_aggregate_value(&Function::Min, &acc, "val".to_string(), &None), "false");
+        assert_eq!(field.extreme_type(false), Some(&VariantType::Bool), "the minimum is the boolean");
+
+        let mut numeric = GroupAccumulator::default();
+        numeric.push_typed("n", "10", Some(&VariantType::Int));
+        numeric.push_typed("n", "9.5", Some(&VariantType::Float));
+        let field = numeric.fields.get("n").unwrap();
+        assert_eq!(field.extreme_type(true), Some(&VariantType::Int));
+        assert_eq!(field.extreme_type(false), Some(&VariantType::Float));
+
+        let mut sizes = GroupAccumulator::default();
+        sizes.push_typed("s", "900B", Some(&VariantType::String));
+        sizes.push_typed("s", "2KiB", None);
+        let field = sizes.fields.get("s").unwrap();
+        assert_eq!(field.extreme_type(false), Some(&VariantType::String));
+        assert_eq!(field.extreme_type(true), None, "an untyped extreme stays unknown");
     }
 
     #[test]

@@ -1479,7 +1479,15 @@ impl <'a> Parser<'a> {
         // larger expression, leave it to the regular expression parser.
         let next = self.next_lexeme();
         self.drop_lexeme();
-        if matches!(next, Some(Lexeme::ArithmeticOperator(_)) | Some(Lexeme::Open) | Some(Lexeme::CurlyOpen)) {
+        if matches!(
+            next,
+            Some(Lexeme::ArithmeticOperator(_))
+                | Some(Lexeme::Operator(_))
+                | Some(Lexeme::And)
+                | Some(Lexeme::Or)
+                | Some(Lexeme::Open)
+                | Some(Lexeme::CurlyOpen)
+        ) {
             return None;
         }
 
@@ -2666,6 +2674,51 @@ mod tests {
         let aggregated = parse_query("select ext, count(*) from /d group by ext order by count(*) > 1 desc").unwrap();
         assert_eq!(aggregated.ordering_fields[0].op, Some(Op::Gt));
         assert_eq!(aggregated.ordering_fields[0].left.as_ref().unwrap().function, Some(Function::Count));
+    }
+
+    #[test]
+    fn comparisons_may_start_with_a_select_alias_in_order_by_and_group_by() {
+        let compact = parse_query("select name, size as s from /d order by s>1000 desc, name").unwrap();
+        assert_eq!(compact.ordering_fields.len(), 2);
+        assert_eq!(compact.ordering_fields[0].op, Some(Op::Gt));
+        assert_eq!(compact.ordering_fields[0].left.as_ref().unwrap().field, Some(Field::Size), "s is the aliased size");
+        assert_eq!(compact.ordering_asc, vec![false, true]);
+
+        let spaced = parse_query("select name, size as s from /d order by s > 2 desc, name").unwrap();
+        assert_eq!(spaced.ordering_fields[0].op, Some(Op::Gt));
+        assert_eq!(spaced.ordering_fields[0].left.as_ref().unwrap().field, Some(Field::Size));
+
+        let bare = parse_query("select name, size as s from /d order by s desc, name").unwrap();
+        assert_eq!(bare.ordering_fields[0].field, Some(Field::Size), "a bare alias still resolves to its column");
+        assert!(bare.ordering_fields[0].op.is_none());
+
+        let grouped = parse_query("select size as s, count(*) from /d group by s, s>2 order by s > 2 desc, s").unwrap();
+        assert_eq!(grouped.grouping_fields.len(), 2);
+        assert_eq!(grouped.grouping_fields[0].field, Some(Field::Size));
+        assert_eq!(grouped.grouping_fields[1].op, Some(Op::Gt));
+        assert_eq!(grouped.grouping_fields[1].left.as_ref().unwrap().field, Some(Field::Size));
+        assert_eq!(grouped.ordering_fields[0].op, Some(Op::Gt));
+        assert_eq!(grouped.ordering_asc, vec![false, true]);
+    }
+
+    #[test]
+    fn logical_conditions_may_start_with_a_select_alias_in_order_by() {
+        let conjunction = parse_query("select name, is_file as f from /d order by f and size>1000 desc, name").unwrap();
+        assert_eq!(conjunction.ordering_fields.len(), 2);
+        let first = &conjunction.ordering_fields[0];
+        assert!(first.logical_op.is_some(), "f and size>1000 is one logical sort key");
+        let condition = first.left.as_ref().unwrap();
+        assert_eq!(condition.op, Some(Op::Eq), "a bare boolean alias is wrapped as a condition");
+        assert_eq!(condition.left.as_ref().unwrap().field, Some(Field::IsFile), "f is the aliased is_file");
+        assert_eq!(conjunction.ordering_asc, vec![false, true]);
+
+        let disjunction = parse_query("select name, is_file as f from /d order by f or size>2 desc, name").unwrap();
+        assert!(disjunction.ordering_fields[0].logical_op.is_some());
+        assert_eq!(disjunction.ordering_asc, vec![false, true]);
+
+        let grouped = parse_query("select is_file as f, count(*) from /d group by f, f and size>2").unwrap();
+        assert_eq!(grouped.grouping_fields.len(), 2);
+        assert!(grouped.grouping_fields[1].logical_op.is_some());
     }
 
     #[test]

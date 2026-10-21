@@ -773,7 +773,7 @@ impl<'a> Searcher<'a> {
                         .chain(self.query.grouping_fields.iter())
                         .chain(self.query.having.iter());
                     for expr in clauses {
-                        names.extend(expr.get_alias_references_in_subqueries(alias, false));
+                        names.extend(expr.get_alias_references_in_subqueries(alias, true));
                     }
                     let aggregate_dependent = Self::aggregate_dependent_aliases(&self.query.fields, alias);
                     self.query
@@ -1519,7 +1519,7 @@ impl<'a> Searcher<'a> {
     }
 
     fn first_column_type(&self, index: usize, value: &Variant) -> Option<VariantType> {
-        (index == 0 && self.is_nested).then(|| value.get_type().clone())
+        (index == 0 && self.is_nested && !value.is_null()).then(|| value.get_type().clone())
     }
 
     #[cfg(all(windows, feature = "everything"))]
@@ -2356,13 +2356,14 @@ impl<'a> Searcher<'a> {
             let list = self.get_list_from_subquery(*subquery)?;
             return match list.first() {
                 Some(result) => {
-                    let value = match self.last_subquery_types.first().and_then(Option::as_ref) {
-                        Some(value_type) => variant_of_type(column_expr, result, value_type),
-                        None => typed_variant(column_expr, result),
+                    let value = match self.last_subquery_types.first() {
+                        Some(Some(value_type)) => variant_of_type(column_expr, result, value_type),
+                        Some(None) if result.is_empty() => Variant::null(),
+                        _ => typed_variant(column_expr, result),
                     };
                     Ok(apply_minus(column_expr, value))
                 }
-                None => Ok(Variant::empty(VariantType::String)),
+                None => Ok(Variant::null()),
             };
         }
 
@@ -2481,11 +2482,17 @@ impl<'a> Searcher<'a> {
             let empty_acc = function::GroupAccumulator::default();
             let accumulator = accumulator.unwrap_or(&empty_acc);
             let selected_type = if function.passes_argument_type_through() {
-                accumulator.fields.get(&buffer_key).and_then(function::FieldAccumulator::uniform_type)
+                accumulator
+                    .fields
+                    .get(&buffer_key)
+                    .and_then(|field| field.extreme_type(*function == function::Function::Max))
             } else {
                 None
             };
             let aggr_result = function::get_aggregate_value(function, accumulator, buffer_key, &column_expr.val);
+            if aggr_result.is_empty() && *function != function::Function::Count {
+                return Ok(Variant::null());
+            }
             Ok(match selected_type {
                 Some(value_type) => variant_of_type(column_expr, &aggr_result, value_type),
                 None => typed_variant(column_expr, &aggr_result),
@@ -2496,14 +2503,16 @@ impl<'a> Searcher<'a> {
             // expensive fallback costs nothing once a value is found.
             let mut candidates = std::iter::once(left_expr.as_ref())
                 .chain(column_expr.args.iter().flatten());
+            let mut all_null = true;
             let result = loop {
                 match candidates.next() {
-                    None => break Variant::empty(VariantType::String),
+                    None => break if all_null { Variant::null() } else { Variant::empty(VariantType::String) },
                     Some(arg) => {
                         let value = self.get_column_expr_value(entry, file_info, root_path, file_map, accumulator, arg)?;
                         if !value.to_string().is_empty() {
                             break value;
                         }
+                        all_null &= value.is_null();
                     }
                 }
             };
@@ -2954,6 +2963,9 @@ impl<'a> Searcher<'a> {
             let arg_val = self.get_column_expr_value(
                 Some(entry), file_info, root_path, arg_map, None, arg,
             )?;
+            if arg_val.is_null() {
+                continue;
+            }
             let matches = match field_type {
                 VariantType::String => arg_val.to_string() == field_value.to_string(),
                 // Unparsable numeric args (`size in ('abc')`) are skipped,
@@ -2991,6 +3003,7 @@ impl<'a> Searcher<'a> {
         let values: Vec<Variant> = values
             .iter()
             .zip(self.last_subquery_types.iter().chain(std::iter::repeat(&None)))
+            .filter(|(text, value_type)| value_type.is_some() || !text.is_empty())
             .map(|(text, value_type)| match (column, value_type) {
                 (Some(column), Some(value_type)) => variant_of_type(column, text, value_type),
                 _ => Variant::from_string(text),
@@ -3361,9 +3374,10 @@ impl<'a> Searcher<'a> {
     }
 
     fn is_null_operand(operand: &Expr, value: &Variant) -> bool {
-        !operand.is_literal()
-            && (operand.contains_numeric() || operand.contains_datetime() || operand.contains_boolean())
-            && value.to_string().is_empty()
+        value.is_null()
+            || (!operand.is_literal()
+                && (operand.contains_numeric() || operand.contains_datetime() || operand.contains_boolean())
+                && value.to_string().is_empty())
     }
 
     fn is_declared_alias(&self, alias: &str) -> bool {
@@ -7341,6 +7355,164 @@ mod tests {
     }
 
     #[test]
+    fn formatted_sizes_order_by_their_byte_count() {
+        let tmp = std::env::temp_dir().join("fselect_test_formatted_size_order");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        fs::write(tmp.join("small.bin"), vec![0u8; 900]).unwrap();
+        fs::write(tmp.join("big.bin"), vec![0u8; 2048]).unwrap();
+
+        let run = |query: &str| run_query_against_dir(query, &tmp);
+        let largest = run("select name from __DIR__ order by fsize desc limit 1");
+        let ascending = run("select name, fsize from __DIR__ order by fsize");
+        let human_descending = run("select name from __DIR__ order by hsize desc, name");
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(largest, vec![String::from("big.bin")]);
+        assert_eq!(ascending, vec![String::from("small.bin\t900B"), String::from("big.bin\t2KiB")]);
+        assert_eq!(human_descending, vec![String::from("big.bin"), String::from("small.bin")]);
+    }
+
+    #[test]
+    fn min_and_max_over_mixed_types_keep_the_type_of_the_chosen_value() {
+        let tmp = std::env::temp_dir().join("fselect_test_mixed_type_extremes");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(tmp.join("strings")).unwrap();
+        fs::create_dir_all(tmp.join("other")).unwrap();
+        fs::write(tmp.join("strings").join("true"), "x").unwrap();
+        fs::write(tmp.join("other").join("plain"), "y").unwrap();
+
+        let strings = tmp.join("strings");
+        let other = tmp.join("other");
+        let run = |query: &str| {
+            run_query_against_dir(
+                &query.replace("__STRINGS__", &strings.to_string_lossy()).replace("__OTHER__", &other.to_string_lossy()),
+                &tmp,
+            )
+        };
+        let maximum = run("select max(coalesce(t.name, u.is_dir)) + 0 from __STRINGS__ as t, __OTHER__ as u");
+        let both = run("select max(coalesce(t.name, u.is_dir)), min(coalesce(t.name, u.is_dir)) + 0 from __STRINGS__ as t, __OTHER__ as u");
+        let having = run("select max(coalesce(t.name, u.is_dir)) as m from __STRINGS__ as t, __OTHER__ as u having m + 0 = 0");
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(maximum, vec![String::from("0")]);
+        assert_eq!(both, vec![String::from("true\t0")]);
+        assert_eq!(having, vec![String::from("true")]);
+    }
+
+    #[test]
+    fn arithmetic_keeps_missing_metadata_missing() {
+        let tmp = std::env::temp_dir().join("fselect_test_missing_metadata_arithmetic");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        let three_pixels_wide = [137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82, 0, 0, 0, 3, 0, 0, 0, 1, 8, 2, 0, 0, 0, 148, 130, 131, 227, 0, 0, 0, 13, 73, 68, 65, 84, 120, 156, 99, 248, 207, 192, 0, 65, 0, 17, 248, 2, 254, 227, 229, 239, 182, 0, 0, 0, 0, 73, 69, 78, 68, 174, 66, 96, 130];
+        fs::write(tmp.join("img.png"), three_pixels_wide).unwrap();
+        fs::write(tmp.join("a.txt"), "a").unwrap();
+        fs::write(tmp.join("b.txt"), "b").unwrap();
+
+        let run = |query: &str| run_query_against_dir(query, &tmp);
+        let averages = run("select avg(width), avg(width + 0) from __DIR__");
+        let per_file = run("select name, width + 0, width / height, 10 / width from __DIR__ order by name");
+        let extremes = run("select sum(width + 0), count(width + 0), min(width + 0) from __DIR__");
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(averages, vec![String::from("3\t3")]);
+        assert_eq!(
+            per_file,
+            vec![
+                String::from("a.txt"),
+                String::from("b.txt"),
+                String::from("img.png\t3\t3\t3.3333333333333335"),
+            ],
+            "text files have no width: every arithmetic cell stays empty, nothing errors"
+        );
+        assert_eq!(extremes, vec![String::from("3\t1\t3")]);
+    }
+
+    #[test]
+    fn a_scalar_subquery_without_rows_is_null_even_for_text_columns() {
+        let tmp = std::env::temp_dir().join("fselect_test_null_text_subquery");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(tmp.join("data")).unwrap();
+        fs::create_dir_all(tmp.join("empty")).unwrap();
+        fs::write(tmp.join("data").join("a.txt"), "a").unwrap();
+        fs::write(tmp.join("data").join("b.txt"), "bb").unwrap();
+        fs::write(tmp.join("data").join("noext"), "n").unwrap();
+
+        let run = |query: &str| run_query_against_dir(query, &tmp);
+        let not_equal = run("select name from __DIR__/data where name != (select name from __DIR__/empty)");
+        let equal = run("select name from __DIR__/data where name = (select name from __DIR__/empty)");
+        let greater = run("select name from __DIR__/data where name > (select name from __DIR__/empty)");
+        let filtered_away = run("select name from __DIR__/data where name != (select name from __DIR__/data where size > 100)");
+        let having = run("select ext, count(*) from __DIR__/data group by ext having max(name) != (select name from __DIR__/empty)");
+        let empty_text_is_a_value = run("select name from __DIR__/data where ext != 'zzz' order by name");
+        let real_value = run("select name from __DIR__/data where name != (select name from __DIR__/data where name = 'a.txt') order by name");
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert!(not_equal.is_empty(), "nothing compares unequal to NULL");
+        assert!(equal.is_empty());
+        assert!(greater.is_empty());
+        assert!(filtered_away.is_empty());
+        assert!(having.is_empty());
+        assert_eq!(empty_text_is_a_value, vec![String::from("a.txt"), String::from("b.txt"), String::from("noext")]);
+        assert_eq!(real_value, vec![String::from("b.txt"), String::from("noext")]);
+    }
+
+    #[test]
+    fn computed_aliases_resolve_when_referenced_directly() {
+        let tmp = std::env::temp_dir().join("fselect_test_direct_alias_references");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        fs::write(tmp.join("a.txt"), "a").unwrap();
+        fs::write(tmp.join("b.txt"), "bb").unwrap();
+
+        let run = |query: &str| run_query_against_dir(query, &tmp);
+        let arithmetic = run("select name, size + 1 as x, t.x from __DIR__ as t order by name");
+        let filtered = run("select name, size + 1 as x from __DIR__ as t where t.x > 2 order by name");
+        let function = run("select upper(name) as u, t.u from __DIR__ as t order by name");
+        let comparison = run("select name, (size > 1) as b, t.b + 0 from __DIR__ as t order by name");
+        let subquery = run("select name, (select count(*) from __DIR__) as c, t.c + 0 from __DIR__ as t order by name");
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(arithmetic, vec![String::from("a.txt\t2\t2"), String::from("b.txt\t3\t3")]);
+        assert_eq!(filtered, vec![String::from("b.txt\t3")]);
+        assert_eq!(function, vec![String::from("A.TXT\tA.TXT"), String::from("B.TXT\tB.TXT")]);
+        assert_eq!(comparison, vec![String::from("a.txt\tfalse\t0"), String::from("b.txt\ttrue\t1")]);
+        assert_eq!(subquery, vec![String::from("a.txt\t2\t2"), String::from("b.txt\t2\t2")]);
+    }
+
+    #[test]
+    fn null_never_matches_inside_an_in_list_or_through_nesting() {
+        let tmp = std::env::temp_dir().join("fselect_test_null_through_lists_and_nesting");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(tmp.join("data")).unwrap();
+        fs::create_dir_all(tmp.join("empty")).unwrap();
+        fs::write(tmp.join("data").join("a.txt"), "a").unwrap();
+        fs::write(tmp.join("data").join("b.txt"), "bb").unwrap();
+        fs::write(tmp.join("data").join("noext"), "n").unwrap();
+
+        let run = |query: &str| run_query_against_dir(query, &tmp);
+        let in_list = run("select name from __DIR__/data where ext in ((select name from __DIR__/empty), 'txt') order by name");
+        let nested = run("select name from __DIR__/data where name != (select (select name from __DIR__/empty) from __DIR__/data limit 1)");
+        let coalesced = run("select name from __DIR__/data where name != coalesce((select name from __DIR__/empty))");
+        let coalesced_fallback = run("select name from __DIR__/data where name != coalesce((select name from __DIR__/empty), 'a.txt') order by name");
+        let empty_max = run("select name from __DIR__/data where name != (select max(name) from __DIR__/empty)");
+        let empty_min = run("select name from __DIR__/data where name != (select min(name) from __DIR__/empty)");
+        let empty_count = run("select name from __DIR__/data where size >= (select count(*) from __DIR__/empty) order by name");
+        let empty_ext_fallback = run("select coalesce(ext, 'none') from __DIR__/data where name = 'noext'");
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(in_list, vec![String::from("a.txt"), String::from("b.txt")], "NULL in the list must not match the empty extension");
+        assert!(nested.is_empty(), "NULL survives a nested scalar subquery");
+        assert!(coalesced.is_empty(), "COALESCE of only NULL is NULL");
+        assert_eq!(coalesced_fallback, vec![String::from("b.txt"), String::from("noext")]);
+        assert!(empty_max.is_empty(), "MAX over no rows is NULL");
+        assert!(empty_min.is_empty(), "MIN over no rows is NULL");
+        assert_eq!(empty_count, vec![String::from("a.txt"), String::from("b.txt"), String::from("noext")], "COUNT over no rows is 0, not NULL");
+        assert_eq!(empty_ext_fallback, vec![String::from("none")], "an empty extension still falls through COALESCE");
+    }
+
+    #[test]
     fn comparisons_use_the_typed_operand_whichever_side_it_is_on() {
         let tmp = std::env::temp_dir().join("fselect_test_typed_comparison_sides");
         let _ = fs::remove_dir_all(&tmp);
@@ -7696,12 +7868,12 @@ e
 f
 ").unwrap();
 
-        let searcher = search_dir("select name, 1 / line_count from __DIR__ order by name", &tmp, Config::default(), true);
+        let searcher = search_dir("select name, 1 / (is_dir - 1) from __DIR__ order by name", &tmp, Config::default(), true);
         let rows: Vec<String> = searcher.output_buffer.iter_values().map(|row| row.trim_end().to_string()).collect();
         let _ = fs::remove_dir_all(&tmp);
 
-        assert_eq!(rows, vec!["deep", "leaf.txt	0.3333333333333333", "mid.txt	1", "sub", "top.txt	0.5"], "directories keep their row with an empty cell");
-        assert_eq!(searcher.error_count, 2, "the two directories fail to divide, nothing else");
+        assert_eq!(rows, vec!["deep", "leaf.txt	-1", "mid.txt	-1", "sub", "top.txt	-1"], "directories keep their row with an empty cell");
+        assert_eq!(searcher.error_count, 2, "the two directories divide by zero, nothing else");
     }
 
     #[test]

@@ -92,6 +92,7 @@ impl SortKey {
             Some(VariantType::Bool) => SortKey::Number(str_to_bool(value).map(|flag| if flag { 1.0 } else { 0.0 })),
             Some(VariantType::Int | VariantType::Float) => SortKey::Number(numeric_sort_key(value)),
             Some(VariantType::DateTime) => datetime(value),
+            Some(VariantType::String) if field.contains_numeric() => SortKey::Number(numeric_sort_key(value)),
             Some(VariantType::String) => SortKey::Direct,
             None if field.contains_numeric() => SortKey::Number(numeric_sort_key(value)),
             None if field.contains_datetime() => datetime(value),
@@ -2387,6 +2388,19 @@ mod tests {
             make("2024-01-05 09:30:00", VariantType::DateTime).cmp(&make("2026-06-11 10:00:00", VariantType::DateTime)),
             Ordering::Less
         );
+    }
+
+    #[test]
+    fn formatted_sizes_keep_numeric_order_although_their_values_are_text() {
+        let fields = Rc::new(vec![Expr::field(Field::FormattedSize)]);
+        let orderings = Rc::new(vec![true]);
+        let make = |value: &str| {
+            Criteria::with_types(fields.clone(), vec![String::from(value)], &[Some(VariantType::String)], orderings.clone())
+        };
+
+        assert_eq!(make("900B").cmp(&make("2KiB")), Ordering::Less);
+        assert_eq!(make("1.5MiB").cmp(&make("2KiB")), Ordering::Greater);
+        assert_eq!(make("").cmp(&make("2KiB")), Ordering::Greater, "unparseable sizes still sort last");
     }
 
     #[test]

@@ -693,6 +693,23 @@ impl Expr {
         }
     }
 
+    pub fn non_aggregated_entry_function(&self, grouping_keys: &[String]) -> Option<&Function> {
+        if self.function.as_ref().is_some_and(Function::is_aggregate_function) || grouping_keys.contains(&self.cache_key()) {
+            return None;
+        }
+        if let Some(ref function) = self.function
+            && function.reads_entry()
+        {
+            return Some(function);
+        }
+        self.left
+            .iter()
+            .chain(self.right.iter())
+            .map(Box::as_ref)
+            .chain(self.args.iter().flatten())
+            .find_map(|child| child.non_aggregated_entry_function(grouping_keys))
+    }
+
     pub fn merge_required_fields(into: &mut HashMap<Field, HashSet<String>>, from: HashMap<Field, HashSet<String>>) {
         for (field, keys) in from {
             into.entry(field).or_default().extend(keys);

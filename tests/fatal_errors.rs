@@ -73,7 +73,7 @@ fn grouped_query_errors_are_rejected_before_the_header() {
         "Cannot order by",
     );
     assert_rejected_without_output(
-        &format!("select count(*) from {} group by ext having ext in ('txt') into json", dir),
+        &format!("select count(*) from {} group by ext having exists (select name from {}) into json", dir, dir),
         "not supported in the HAVING clause",
     );
     assert_rejected_without_output(

@@ -153,6 +153,7 @@ pub struct Searcher<'a> {
     /// stored with that text: a text alone cannot tell `coalesce(name,
     /// is_file)` returning the file name "true" from the boolean true.
     cached_types: HashMap<String, (String, VariantType)>,
+    cached_nulls: HashSet<String>,
     conforms_map: HashMap<String, String>,
     subquery_cache: HashMap<String, Vec<String>>,
     /// The type each first-column value of a subquery's rows was produced
@@ -294,6 +295,7 @@ impl Membership {
 }
 
 const DEFERRED_COLUMN_WEIGHT: i32 = 16;
+const NULL_GROUP_KEY: &str = "\u{0}null";
 
 struct AggregatePlan {
     fields: Vec<(Field, String)>,
@@ -386,7 +388,7 @@ fn root_part_regex(part: &str) -> Result<Regex, SearchError> {
 /// HAVING is evaluated against group accumulators, where set membership and
 /// existence tests have no meaning.
 fn having_uses_unsupported_op(expr: &Expr) -> bool {
-    matches!(expr.op, Some(Op::In | Op::NotIn | Op::Exists | Op::NotExists))
+    matches!(expr.op, Some(Op::Exists | Op::NotExists))
         || expr.left.as_deref().is_some_and(having_uses_unsupported_op)
         || expr.right.as_deref().is_some_and(having_uses_unsupported_op)
 }
@@ -487,6 +489,7 @@ impl<'a> Searcher<'a> {
             git_cache: crate::util::git::GitCache::new(),
             file_map: HashMap::new(),
             cached_types: HashMap::new(),
+            cached_nulls: HashSet::new(),
             conforms_map: HashMap::new(),
             subquery_cache: HashMap::new(),
             subquery_type_cache: HashMap::new(),
@@ -561,7 +564,7 @@ impl<'a> Searcher<'a> {
         if let Some(ref having) = self.query.having
             && having_uses_unsupported_op(having) {
                 return Err(SearchError::fatal(
-                    "IN, NOT IN, EXISTS, and NOT EXISTS are not supported in the HAVING clause",
+                    "EXISTS and NOT EXISTS are not supported in the HAVING clause",
                 )
                 .with_source("query"));
             }
@@ -948,7 +951,9 @@ impl<'a> Searcher<'a> {
                 for (group_key, group_acc) in &accumulators {
                     let mut file_map = HashMap::new();
                     for (i, k) in group_keys.iter().enumerate() {
-                        let text = group_key.get(i).cloned().unwrap_or_default();
+                        let raw = group_key.get(i).cloned().unwrap_or_default();
+                        let null = raw == NULL_GROUP_KEY;
+                        let text = if null { String::new() } else { raw };
                         match group_acc.key_types.get(i).and_then(Option::as_ref) {
                             Some(value_type) => {
                                 self.cached_types.insert(k.clone(), (text.clone(), value_type.clone()));
@@ -956,6 +961,11 @@ impl<'a> Searcher<'a> {
                             None => {
                                 self.cached_types.remove(k);
                             }
+                        }
+                        if null {
+                            self.cached_nulls.insert(k.clone());
+                        } else {
+                            self.cached_nulls.remove(k);
                         }
                         file_map.insert(k.clone(), text);
                     }
@@ -1056,25 +1066,26 @@ impl<'a> Searcher<'a> {
                 let aliases = self.query.own_root_aliases();
                 self.reset_alias_failures(&aliases);
                 self.bind_group_context(&aliases, &[], &[], &[]);
+                let mut file_map = HashMap::new();
                 let mut passes_having = true;
                 if let Some(having_expr) = self.query.having.as_ref() {
                     if having_expr.has_correlated_subquery() {
-                        self.bind_aggregate_aliases(&aliases, &[], &mut HashMap::new(), ungrouped_acc, true)?;
+                        self.bind_aggregate_aliases(&aliases, &[], &mut file_map, ungrouped_acc, true)?;
                     }
                     passes_having =
-                        self.group_conforms(&mut HashMap::new(), ungrouped_acc, having_expr)?;
+                        self.group_conforms(&mut file_map, ungrouped_acc, having_expr)?;
                     self.alias_read_failure()?;
                 }
 
                 if passes_having {
-                    self.bind_aggregate_aliases(&aliases, &[], &mut HashMap::new(), ungrouped_acc, false)?;
+                    self.bind_aggregate_aliases(&aliases, &[], &mut file_map, ungrouped_acc, false)?;
                     let mut first_type = None;
                     for (index, column_expr) in self.query.fields.iter().enumerate() {
                         let value = self.get_column_expr_value(
                             None,
                             &None,
                             Path::new(""),
-                            &mut HashMap::new(),
+                            &mut file_map,
                             Some(ungrouped_acc),
                             column_expr
                         )?;
@@ -2166,9 +2177,13 @@ impl<'a> Searcher<'a> {
                 {
                     continue;
                 }
-                let value = match key_types.get(index).and_then(Option::as_ref) {
-                    Some(value_type) => variant_of_type(grouping_expr, text, value_type),
-                    None => typed_variant(grouping_expr, text),
+                let value = if text == NULL_GROUP_KEY {
+                    Variant::null()
+                } else {
+                    match key_types.get(index).and_then(Option::as_ref) {
+                        Some(value_type) => variant_of_type(grouping_expr, text, value_type),
+                        None => typed_variant(grouping_expr, text),
+                    }
                 };
                 if let Some(field) = grouping_expr.field
                     && !grouping_expr.minus
@@ -2314,6 +2329,11 @@ impl<'a> Searcher<'a> {
                             Some(val) => {
                                 let value = apply_minus(column_expr, val.clone());
                                 self.cached_types.insert(cache_key.clone(), (value.to_string(), value.get_type().clone()));
+                                if value.is_null() {
+                                    self.cached_nulls.insert(cache_key.clone());
+                                } else {
+                                    self.cached_nulls.remove(&cache_key);
+                                }
                                 file_map.insert(cache_key, value.to_string());
                                 value
                             }
@@ -2335,9 +2355,13 @@ impl<'a> Searcher<'a> {
         }
 
         if let Some(cached) = file_map.get(&cache_key) {
-            let value = match self.cached_types.get(&cache_key) {
-                Some((text, value_type)) if text == cached => variant_of_type(column_expr, cached, value_type),
-                _ => typed_variant(column_expr, cached),
+            let value = if cached.is_empty() && self.cached_nulls.contains(&cache_key) {
+                Variant::null()
+            } else {
+                match self.cached_types.get(&cache_key) {
+                    Some((text, value_type)) if text == cached => variant_of_type(column_expr, cached, value_type),
+                    _ => typed_variant(column_expr, cached),
+                }
             };
             if let Some(entry_key) = context_field {
                 let mut context = self.record_context.borrow_mut();
@@ -2569,6 +2593,11 @@ impl<'a> Searcher<'a> {
 
     fn remember_type(&mut self, cache_key: &str, value: &Variant) {
         self.cached_types.insert(cache_key.to_string(), (value.to_string(), value.get_type().clone()));
+        if value.is_null() {
+            self.cached_nulls.insert(cache_key.to_string());
+        } else {
+            self.cached_nulls.remove(cache_key);
+        }
     }
 
     fn cached_value_type(&self, cache_key: &str, text: &str) -> Option<VariantType> {
@@ -2587,6 +2616,7 @@ impl<'a> Searcher<'a> {
         let mut file_map = std::mem::take(&mut self.file_map);
         file_map.clear();
         self.cached_types.clear();
+        self.cached_nulls.clear();
         let result = self.check_file_inner(entry, root_path, file_info, &mut file_map);
         self.file_map = file_map;
         result
@@ -2604,9 +2634,10 @@ impl<'a> Searcher<'a> {
         root_path: &Path,
         current_alias: &str,
         required_columns: &[(String, Expr)],
+        file_map: &mut HashMap<String, String>,
     ) -> Result<(), SearchError> {
         let previous = std::mem::replace(&mut self.suppress_row_errors, true);
-        let outcome = self.bind_row_aliases_inner(entry, file_info, root_path, current_alias, required_columns);
+        let outcome = self.bind_row_aliases_inner(entry, file_info, root_path, current_alias, required_columns, file_map);
         self.suppress_row_errors = previous;
         outcome
     }
@@ -2618,18 +2649,39 @@ impl<'a> Searcher<'a> {
         root_path: &Path,
         current_alias: &str,
         required_columns: &[(String, Expr)],
+        file_map: &mut HashMap<String, String>,
     ) -> Result<(), SearchError> {
         let rounds = if required_columns.len() > 1 { required_columns.len() } else { 1 };
+        let self_contained: Vec<bool> = required_columns
+            .iter()
+            .map(|(_, column)| column.get_alias_references_in_subqueries(current_alias, true).is_empty())
+            .collect();
+        let mut bound: Vec<Option<Variant>> = vec![None; required_columns.len()];
         let mut failed: Vec<(usize, SearchError)> = Vec::new();
-        for _ in 0..rounds {
+        for round in 0..rounds {
             let mut changed = false;
             failed.clear();
             for (index, (name, column)) in required_columns.iter().enumerate() {
+                if round > 0 && self_contained[index] && bound[index].is_some() {
+                    continue;
+                }
                 let mut scratch = HashMap::new();
-                let value = match self.get_column_expr_value(Some(entry), file_info, root_path, &mut scratch, None, column) {
-                    Ok(value) => value,
+                let shared = required_columns[..index]
+                    .iter()
+                    .position(|(_, earlier)| earlier.cache_key() == column.cache_key())
+                    .and_then(|earlier| bound[earlier].clone());
+                let evaluated = match shared {
+                    Some(value) => Ok(value),
+                    None => self.get_column_expr_value(Some(entry), file_info, root_path, &mut scratch, None, column),
+                };
+                let value = match evaluated {
+                    Ok(value) => {
+                        bound[index] = Some(value.clone());
+                        value
+                    }
                     Err(err) if !err.is_fatal() => {
                         failed.push((index, err));
+                        bound[index] = None;
                         Variant::empty(VariantType::String)
                     }
                     Err(err) => return Err(err),
@@ -2647,6 +2699,7 @@ impl<'a> Searcher<'a> {
             }
         }
         if failed.is_empty() {
+            self.seed_bound_aliases(current_alias, required_columns, &bound, file_map);
             return Ok(());
         }
         for (index, err) in failed {
@@ -2671,7 +2724,34 @@ impl<'a> Searcher<'a> {
                 }
             }
             if !spread {
-                return Ok(());
+                break;
+            }
+        }
+        self.seed_bound_aliases(current_alias, required_columns, &bound, file_map);
+        Ok(())
+    }
+
+    fn seed_bound_aliases(
+        &mut self,
+        current_alias: &str,
+        required_columns: &[(String, Expr)],
+        bound: &[Option<Variant>],
+        file_map: &mut HashMap<String, String>,
+    ) {
+        for ((name, column), value) in required_columns.iter().zip(bound) {
+            let failed = self
+                .alias_failures
+                .borrow()
+                .pending
+                .get(current_alias)
+                .is_some_and(|keys| keys.contains_key(name));
+            if failed {
+                continue;
+            }
+            if let Some(value) = value {
+                let key = column.cache_key();
+                self.remember_type(&key, value);
+                file_map.insert(key, value.to_string());
             }
         }
     }
@@ -2730,7 +2810,7 @@ impl<'a> Searcher<'a> {
             }
 
             let required_columns = std::mem::take(&mut self.subquery_required_columns);
-            let outcome = self.bind_row_aliases(entry, file_info, root_path, current_alias, &required_columns);
+            let outcome = self.bind_row_aliases(entry, file_info, root_path, current_alias, &required_columns, file_map);
             self.subquery_required_columns = required_columns;
             outcome?;
         }
@@ -2764,7 +2844,11 @@ impl<'a> Searcher<'a> {
             let group_key: Vec<String> = plan
                 .grouping_keys
                 .iter()
-                .map(|key| file_map.get(key).cloned().unwrap_or_default())
+                .map(|key| match file_map.get(key) {
+                    Some(text) if text.is_empty() && self.cached_nulls.contains(key) => String::from(NULL_GROUP_KEY),
+                    Some(text) => text.clone(),
+                    None => String::new(),
+                })
                 .collect();
             let key_types: Vec<Option<VariantType>> = plan
                 .grouping_keys
@@ -2929,10 +3013,11 @@ impl<'a> Searcher<'a> {
     fn check_in_list(
         &mut self,
         expr: &Expr,
-        entry: &DirEntry,
+        entry: Option<&DirEntry>,
         file_info: &Option<FileInfo>,
         root_path: &Path,
         arg_map: &mut HashMap<String, String>,
+        accumulator: Option<&function::GroupAccumulator>,
         field_value: &Variant,
         negate: bool,
     ) -> Result<bool, SearchError> {
@@ -2959,10 +3044,10 @@ impl<'a> Searcher<'a> {
             {
                 self.in_list_comparisons += 1;
             }
-            arg_map.clear();
-            let arg_val = self.get_column_expr_value(
-                Some(entry), file_info, root_path, arg_map, None, arg,
-            )?;
+            if accumulator.is_none() {
+                arg_map.clear();
+            }
+            let arg_val = self.get_column_expr_value(entry, file_info, root_path, arg_map, accumulator, arg)?;
             if arg_val.is_null() {
                 continue;
             }
@@ -3159,11 +3244,11 @@ impl<'a> Searcher<'a> {
             result = match op {
                 Op::In => {
                     let mut arg_map = HashMap::new();
-                    self.check_in_list(expr, entry, file_info, root_path, &mut arg_map, &field_value, false)?
+                    self.check_in_list(expr, Some(entry), file_info, root_path, &mut arg_map, None, &field_value, false)?
                 }
                 Op::NotIn => {
                     let mut arg_map = HashMap::new();
-                    self.check_in_list(expr, entry, file_info, root_path, &mut arg_map, &field_value, true)?
+                    self.check_in_list(expr, Some(entry), file_info, root_path, &mut arg_map, None, &field_value, true)?
                 }
                 _ => self.compare_variants(op, &field_value, &value)?,
             };
@@ -3337,15 +3422,20 @@ impl<'a> Searcher<'a> {
         }
 
         if let Some(ref op) = expr.op {
-            if matches!(op, Op::In | Op::NotIn | Op::Exists | Op::NotExists) {
-                return Err(SearchError::fatal(
-                    "IN, NOT IN, EXISTS, and NOT EXISTS are not supported in the HAVING clause",
-                )
-                .with_source("query"));
+            if matches!(op, Op::Exists | Op::NotExists) {
+                return Err(SearchError::fatal("EXISTS and NOT EXISTS are not supported in the HAVING clause").with_source("query"));
             }
             let left_expr = expr.left.as_ref().ok_or_else(|| {
                 SearchError::fatal("Expected expression before operator in HAVING").with_source("query")
             })?;
+            if matches!(op, Op::In | Op::NotIn) {
+                let field_value = self.get_column_expr_value(
+                    None, &None, Path::new(""), file_map, Some(group_acc), left_expr,
+                )?;
+                return self.check_in_list(
+                    expr, None, &None, Path::new(""), file_map, Some(group_acc), &field_value, *op == Op::NotIn,
+                );
+            }
             if matches!(op, Op::IsNull | Op::IsNotNull) {
                 let value = self.get_column_expr_value(
                     None, &None, Path::new(""), file_map, Some(group_acc), left_expr,
@@ -7510,6 +7600,323 @@ mod tests {
         assert!(empty_min.is_empty(), "MIN over no rows is NULL");
         assert_eq!(empty_count, vec![String::from("a.txt"), String::from("b.txt"), String::from("noext")], "COUNT over no rows is 0, not NULL");
         assert_eq!(empty_ext_fallback, vec![String::from("none")], "an empty extension still falls through COALESCE");
+    }
+
+    #[test]
+    fn a_cached_null_stays_null_for_later_reads() {
+        let tmp = std::env::temp_dir().join("fselect_test_cached_null");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+
+        let run = |query: &str| run_query_against_dir(query, &tmp);
+        let null_first = run("select count(*) from __DIR__ having max(name) is null and max(name) != 'x'");
+        let null_last = run("select count(*) from __DIR__ having max(name) != 'x' and max(name) is null");
+        let only_null_check = run("select count(*) from __DIR__ having max(name) is null");
+        let selected_twice = run("select count(*), max(name), max(name) != 'x' from __DIR__");
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert!(null_first.is_empty(), "the second read of max(name) must still be NULL");
+        assert!(null_last.is_empty());
+        assert_eq!(only_null_check, vec![String::from("0")]);
+        assert_eq!(selected_twice, vec![String::from("0\t\tfalse")], "a NULL read twice in one SELECT list compares as unknown");
+    }
+
+    #[test]
+    fn aliases_and_their_references_agree_on_random_values() {
+        let tmp = std::env::temp_dir().join("fselect_test_random_alias_consistency");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        for i in 0..60 {
+            fs::write(tmp.join(format!("f{i}.txt")), "x").unwrap();
+        }
+
+        let run = |query: &str| run_query_against_dir(query, &tmp);
+        let cells = |row: &String| row.split('\t').map(str::to_string).collect::<Vec<_>>();
+        let direct = run("select name, random(1,2) as r, t.r from __DIR__ as t");
+        let filtered = run("select name, random(1,2) as r, t.r from __DIR__ as t where t.r = 1");
+        let dependent = run("select name, random(1,1000) as r, t.r + 1 as s from __DIR__ as t");
+        let correlated = run("select name, random(1,1000) as r, (select max(t.r) from __DIR__ limit 1) from __DIR__ as t");
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(direct.len(), 60);
+        for row in &direct {
+            let row = cells(row);
+            assert_eq!(row[1], row[2], "r and t.r differ in {row:?}");
+        }
+        assert!(!filtered.is_empty());
+        for row in &filtered {
+            let row = cells(row);
+            assert_eq!(row[1], "1", "a row passed `t.r = 1` but shows r = {}", row[1]);
+            assert_eq!(row[2], "1");
+        }
+        for row in &dependent {
+            let row = cells(row);
+            let r: i64 = row[1].parse().unwrap();
+            assert_eq!(row[2], (r + 1).to_string(), "s must be r + 1 in {row:?}");
+        }
+        for row in &correlated {
+            let row = cells(row);
+            assert_eq!(row[1], row[2], "a correlated subquery must see the same r in {row:?}");
+        }
+    }
+
+    #[test]
+    fn grouping_keys_keep_their_own_null_state_per_group() {
+        let tmp = std::env::temp_dir().join("fselect_test_group_key_null_state");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(tmp.join("data")).unwrap();
+        fs::create_dir_all(tmp.join("lookup")).unwrap();
+        fs::write(tmp.join("data").join("alpha.txt"), "a").unwrap();
+        fs::write(tmp.join("data").join("zulu.txt"), "z").unwrap();
+        fs::write(tmp.join("lookup").join("alpha.txt"), "a").unwrap();
+
+        let run = |query: &str| run_query_against_dir(query, &tmp);
+        let key = "(select name from __DIR__/lookup where name = t.name) as k";
+        let ascending = run(&format!("select {key}, count(*) from (select path from __DIR__/data order by name) as t group by k order by k"));
+        let descending = run(&format!("select {key}, count(*) from (select path from __DIR__/data order by name desc) as t group by k order by k"));
+        let having_value = run(&format!("select {key}, count(*) from (select path from __DIR__/data order by name) as t group by k having k = 'alpha.txt'"));
+        let having_null = run(&format!("select {key}, count(*) from (select path from __DIR__/data order by name) as t group by k having k is null"));
+        let having_not_equal = run(&format!("select {key}, count(*) from (select path from __DIR__/data order by name) as t group by k having k != 'x'"));
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(ascending, vec![String::from("\t1"), String::from("alpha.txt\t1")]);
+        assert_eq!(descending, ascending, "scan order must not change the groups");
+        assert_eq!(having_value, vec![String::from("alpha.txt\t1")]);
+        assert_eq!(having_null, vec![String::from("\t1")]);
+        assert_eq!(having_not_equal, vec![String::from("alpha.txt\t1")], "the NULL group is unknown, not unequal");
+    }
+
+    #[test]
+    fn two_random_aliases_agree_with_their_own_references() {
+        let tmp = std::env::temp_dir().join("fselect_test_two_random_aliases");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        for i in 0..100 {
+            fs::write(tmp.join(format!("f{i}.txt")), "x").unwrap();
+        }
+
+        let run = |query: &str| run_query_against_dir(query, &tmp);
+        let cells = |row: &String| row.split('\t').map(str::to_string).collect::<Vec<_>>();
+        let all = run("select name, random(1,2) as r, random(1,2) as s, t.r, t.s from __DIR__ as t");
+        let filtered = run("select name, random(1,2) as r, random(1,2) as s, t.r, t.s from __DIR__ as t where t.r = 1");
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(all.len(), 100);
+        for row in all.iter().chain(&filtered) {
+            let row = cells(row);
+            assert_eq!(row[1], row[3], "r and t.r differ in {row:?}");
+            assert_eq!(row[2], row[4], "s and t.s differ in {row:?}");
+        }
+        assert!(!filtered.is_empty());
+        for row in &filtered {
+            let row = cells(row);
+            assert_eq!(row[1], "1", "a row passed `t.r = 1` but shows r = {}", row[1]);
+        }
+    }
+
+    #[test]
+    fn a_null_grouping_key_is_not_the_empty_string_group() {
+        let tmp = std::env::temp_dir().join("fselect_test_null_vs_empty_group");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(tmp.join("data")).unwrap();
+        fs::create_dir_all(tmp.join("lookup")).unwrap();
+        fs::write(tmp.join("data").join("alpha"), "a").unwrap();
+        fs::write(tmp.join("data").join("zulu"), "z").unwrap();
+        fs::write(tmp.join("lookup").join("alpha"), "a").unwrap();
+
+        let run = |query: &str| run_query_against_dir(query, &tmp);
+        let key = "(select ext from __DIR__/lookup where name = t.name) as k";
+        let groups = run(&format!("select {key}, count(*) from (select path from __DIR__/data order by name) as t group by k"));
+        let empty_text = run(&format!("select {key}, count(*) from (select path from __DIR__/data order by name) as t group by k having k = ''"));
+        let empty_text_reversed = run(&format!("select {key}, count(*) from (select path from __DIR__/data order by name desc) as t group by k having k = ''"));
+        let null_group = run(&format!("select {key}, count(*) from (select path from __DIR__/data order by name) as t group by k having k is null"));
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(groups.len(), 2, "NULL and the empty extension are different groups: {groups:?}");
+        assert_eq!(empty_text, vec![String::from("\t1")], "only the successful lookup has an empty extension");
+        assert_eq!(empty_text_reversed, empty_text, "scan order must not matter");
+        assert_eq!(null_group.len(), 2, "IS NULL holds for the NULL group and, by the engine's rule, for an empty text as well");
+    }
+
+    #[test]
+    fn word_operators_form_conditions_in_select_columns() {
+        let tmp = std::env::temp_dir().join("fselect_test_word_operators_in_select");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        fs::write(tmp.join("a.txt"), "a").unwrap();
+        fs::write(tmp.join("bb.txt"), "bb").unwrap();
+        fs::write(tmp.join("noext"), "n").unwrap();
+
+        let run = |query: &str| run_query_against_dir(query, &tmp);
+        let gt = run("select name, size gt 1 from __DIR__ order by name");
+        let parenthesised = run("select name, (size gt 1) from __DIR__ order by name");
+        let like = run("select name, name like 'a%' from __DIR__ order by name");
+        let is_null = run("select name, ext is null from __DIR__ order by name");
+        let in_list = run("select name, ext in ('txt') from __DIR__ order by name");
+        let grouped = run("select size gt 1, count(*) from __DIR__ group by size gt 1 order by 1");
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(gt, vec![String::from("a.txt\tfalse"), String::from("bb.txt\ttrue"), String::from("noext\tfalse")]);
+        assert_eq!(parenthesised, gt);
+        assert_eq!(like, vec![String::from("a.txt\ttrue"), String::from("bb.txt\tfalse"), String::from("noext\tfalse")]);
+        assert_eq!(is_null, vec![String::from("a.txt\tfalse"), String::from("bb.txt\tfalse"), String::from("noext\ttrue")]);
+        assert_eq!(in_list, vec![String::from("a.txt\ttrue"), String::from("bb.txt\ttrue"), String::from("noext\tfalse")]);
+        assert_eq!(grouped, vec![String::from("false\t2"), String::from("true\t1")]);
+    }
+
+    #[test]
+    fn a_failing_alias_does_not_unsettle_the_other_aliases() {
+        let tmp = std::env::temp_dir().join("fselect_test_failing_alias_neighbours");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        for i in 0..60 {
+            fs::write(tmp.join(format!("f{i}.txt")), "x").unwrap();
+        }
+
+        let run = |query: &str| run_query_against_dir(query, &tmp);
+        let cells = |row: &String| row.split('\t').map(str::to_string).collect::<Vec<_>>();
+        let rows = run("select name, random(1,2) as r, t.r, 1 / (size - size) as boom, coalesce(name, t.boom) from __DIR__ as t");
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(rows.len(), 60, "boom is required but never read, so every row survives");
+        for row in &rows {
+            let row = cells(row);
+            assert_eq!(row[1], row[2], "r and t.r differ next to a failing alias in {row:?}");
+            assert!(row[3].is_empty(), "the failing alias stays empty in {row:?}");
+            assert_eq!(row[4], row[0]);
+        }
+    }
+
+    #[test]
+    fn negated_word_operators_work_outside_where() {
+        let tmp = std::env::temp_dir().join("fselect_test_negated_word_operators");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        fs::write(tmp.join("a.txt"), "a").unwrap();
+        fs::write(tmp.join("b.bin"), "b").unwrap();
+        fs::write(tmp.join("c.txt"), "c").unwrap();
+
+        let run = |query: &str| run_query_against_dir(query, &tmp);
+        let ordered = run("select name from __DIR__ order by name not like 'b%', name");
+        let columns = run("select name, name not like 'b%', ext not in ('txt'), size not between 2 and 3 from __DIR__ order by name");
+        let positive = run("select name, size between 1 and 2, name like 'b%' from __DIR__ order by name");
+        let grouped = run("select name not like 'b%', count(*) from __DIR__ group by name not like 'b%' order by 1");
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(ordered, vec![String::from("b.bin"), String::from("a.txt"), String::from("c.txt")]);
+        assert_eq!(
+            columns,
+            vec![
+                String::from("a.txt\ttrue\tfalse\ttrue"),
+                String::from("b.bin\tfalse\ttrue\ttrue"),
+                String::from("c.txt\ttrue\tfalse\ttrue"),
+            ]
+        );
+        assert_eq!(
+            positive,
+            vec![
+                String::from("a.txt\ttrue\tfalse"),
+                String::from("b.bin\ttrue\ttrue"),
+                String::from("c.txt\ttrue\tfalse"),
+            ]
+        );
+        assert_eq!(grouped, vec![String::from("false\t1"), String::from("true\t2")]);
+    }
+
+    #[test]
+    fn membership_works_in_aggregate_context() {
+        let tmp = std::env::temp_dir().join("fselect_test_aggregate_membership");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        fs::write(tmp.join("a.txt"), "a").unwrap();
+        fs::write(tmp.join("b.bin"), "b").unwrap();
+        fs::write(tmp.join("c.txt"), "c").unwrap();
+
+        let run = |query: &str| run_query_against_dir(query, &tmp);
+        let ungrouped = run("select count(*) in (3), count(*) not in (3) from __DIR__");
+        let grouped = run("select ext, count(*) in (2) from __DIR__ group by ext order by ext");
+        let having = run("select ext, count(*) from __DIR__ group by ext having count(*) in (2)");
+        let subquery = run("select count(*) in (select count(*) from __DIR__) from __DIR__");
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(ungrouped, vec![String::from("true\tfalse")]);
+        assert_eq!(grouped, vec![String::from("bin\tfalse"), String::from("txt\ttrue")]);
+        assert_eq!(having, vec![String::from("txt\t2")]);
+        assert_eq!(subquery, vec![String::from("true")]);
+    }
+
+    #[test]
+    fn random_aliases_agree_in_ungrouped_aggregates() {
+        let tmp = std::env::temp_dir().join("fselect_test_random_alias_ungrouped");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        fs::write(tmp.join("a.txt"), "a").unwrap();
+        fs::write(tmp.join("b.bin"), "b").unwrap();
+        fs::write(tmp.join("c.txt"), "c").unwrap();
+
+        let run = |query: &str| run_query_against_dir(query, &tmp);
+        let cells = |row: &String| row.split('\t').map(str::to_string).collect::<Vec<_>>();
+        for _ in 0..20 {
+            let plain = run("select count(*), random(1,1000000) as r, t.r from __DIR__ as t");
+            let row = cells(&plain[0]);
+            assert_eq!(row[1], row[2], "r and t.r differ in an ungrouped aggregate: {row:?}");
+
+            let having = run("select count(*), random(1,2) as r, t.r from __DIR__ as t having r = 1");
+            for row in having.iter().map(cells) {
+                assert_eq!(row[1], "1", "a row passed `having r = 1` but shows r = {}", row[1]);
+                assert_eq!(row[2], "1");
+            }
+
+            let grouped = run("select ext, random(1,1000000) as r, t.r from __DIR__ as t group by ext");
+            for row in grouped.iter().map(cells) {
+                assert_eq!(row[1], row[2], "r and t.r differ in a grouped aggregate: {row:?}");
+            }
+        }
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn grouped_in_lists_see_the_group_values() {
+        let tmp = std::env::temp_dir().join("fselect_test_grouped_in_list_fields");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        fs::write(tmp.join("a.txt"), "a").unwrap();
+        fs::write(tmp.join("b.bin"), "b").unwrap();
+        fs::write(tmp.join("c.txt"), "c").unwrap();
+
+        let run = |query: &str| run_query_against_dir(query, &tmp);
+        let having = run("select ext, count(*) from __DIR__ group by ext having ext in (ext) order by ext");
+        let mixed = run("select ext, count(*) from __DIR__ group by ext having ext in ('zzz', ext) order by ext");
+        let selected = run("select ext, ext in (ext), ext not in (ext), count(*) from __DIR__ group by ext order by ext");
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(having, vec![String::from("bin\t1"), String::from("txt\t2")]);
+        assert_eq!(mixed, having);
+        assert_eq!(selected, vec![String::from("bin\ttrue\tfalse\t1"), String::from("txt\ttrue\tfalse\t2")]);
+    }
+
+    #[test]
+    fn raw_timestamps_stay_numeric_after_grouping() {
+        let tmp = std::env::temp_dir().join("fselect_test_grouped_raw_timestamps");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        for (name, nanos) in [("one", 1_000_000), ("two", 2_000_000), ("ten", 10_000_000)] {
+            fs::write(tmp.join(name), "x").unwrap();
+            let stamp = std::time::SystemTime::UNIX_EPOCH + std::time::Duration::new(1_600_000_000, nanos);
+            fs::File::options().write(true).open(tmp.join(name)).unwrap().set_modified(stamp).unwrap();
+        }
+
+        let run = |query: &str| run_query_against_dir(query, &tmp);
+        let filtered = run("select mtime_nsec, count(*) from __DIR__ group by mtime_nsec having mtime_nsec < 5000000 order by mtime_nsec");
+        let descending = run("select mtime_nsec from __DIR__ group by mtime_nsec order by mtime_nsec desc");
+        let seconds = run("select mtime, count(*) from __DIR__ group by mtime having mtime > 1");
+        let rows = run("select name from __DIR__ where mtime_nsec < 5000000 order by mtime_nsec");
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(filtered, vec![String::from("1000000\t1"), String::from("2000000\t1")]);
+        assert_eq!(descending, vec![String::from("10000000"), String::from("2000000"), String::from("1000000")]);
+        assert_eq!(seconds, vec![String::from("1600000000\t3")]);
+        assert_eq!(rows, vec![String::from("one"), String::from("two")]);
     }
 
     #[test]

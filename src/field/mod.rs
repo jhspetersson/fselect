@@ -320,62 +320,62 @@ fields! {
         @description = "Returns a boolean signifying whether the file path is a socket file"
         IsSocket,
         
-        #[text = ["device"]]
+        #[text = ["device"], data_type = "numeric"]
         @weight = 1
         @description = "Returns the code of device the file is stored on"
         Device,
 
-        #[text = ["rdev"]]
+        #[text = ["rdev"], data_type = "numeric"]
         @weight = 1
         @description = "Returns the device ID for special files (character and block devices)"
         Rdev,
         
-        #[text = ["inode"]]
+        #[text = ["inode"], data_type = "numeric"]
         @weight = 1
         @description = "Returns the number of inode"
         Inode,
         
-        #[text = ["blocks"]]
+        #[text = ["blocks"], data_type = "numeric"]
         @weight = 1
         @description = "Returns the number of blocks (512 bytes) the file occupies"
         Blocks,
 
-        #[text = ["blksize", "block_size"]]
+        #[text = ["blksize", "block_size"], data_type = "numeric"]
         @weight = 1
         @description = "Returns the preferred block size for filesystem I/O in bytes"
         BlockSize,
 
-        #[text = ["hardlinks"]]
+        #[text = ["hardlinks"], data_type = "numeric"]
         @weight = 1
         @description = "Returns the number of hardlinks of the file"
         Hardlinks,
 
-        #[text = ["atime"]]
+        #[text = ["atime"], data_type = "numeric"]
         @weight = 1
         @description = "Returns the last access time as a Unix timestamp (seconds since epoch)"
         Atime,
 
-        #[text = ["atime_nsec"]]
+        #[text = ["atime_nsec"], data_type = "numeric"]
         @weight = 1
         @description = "Returns the nanosecond component of the last access time"
         AtimeNsec,
 
-        #[text = ["mtime"]]
+        #[text = ["mtime"], data_type = "numeric"]
         @weight = 1
         @description = "Returns the last modification time as a Unix timestamp (seconds since epoch)"
         Mtime,
 
-        #[text = ["mtime_nsec"]]
+        #[text = ["mtime_nsec"], data_type = "numeric"]
         @weight = 1
         @description = "Returns the nanosecond component of the last modification time"
         MtimeNsec,
 
-        #[text = ["ctime"]]
+        #[text = ["ctime"], data_type = "numeric"]
         @weight = 1
         @description = "Returns the last status change time as a Unix timestamp (seconds since epoch)"
         Ctime,
 
-        #[text = ["ctime_nsec"]]
+        #[text = ["ctime_nsec"], data_type = "numeric"]
         @weight = 1
         @description = "Returns the nanosecond component of the last status change time"
         CtimeNsec,
@@ -720,7 +720,7 @@ fields! {
         @description = "Returns F-number of the photo taken"
         ExifFNumber,
         
-        #[text = ["exif_iso_speed", "exif_iso"]]
+        #[text = ["exif_iso_speed", "exif_iso"], data_type = "numeric"]
         @weight = 16
         @description = "Returns ISO speed of the photo taken (EXIF 2.3 ISOSpeed tag)"
         ExifIsoSpeed,
@@ -830,17 +830,17 @@ fields! {
         @description = "Returns the user comment from EXIF metadata"
         ExifUserComment,
 
-        #[text = ["exif_image_width", "exif_width"]]
+        #[text = ["exif_image_width", "exif_width"], data_type = "numeric"]
         @weight = 16
         @description = "Returns the image width from EXIF metadata"
         ExifImageWidth,
 
-        #[text = ["exif_image_height", "exif_height"]]
+        #[text = ["exif_image_height", "exif_height"], data_type = "numeric"]
         @weight = 16
         @description = "Returns the image height from EXIF metadata"
         ExifImageHeight,
 
-        #[text = ["exif_max_aperture"]]
+        #[text = ["exif_max_aperture"], data_type = "numeric"]
         @weight = 16
         @description = "Returns the max aperture value of the lens"
         ExifMaxAperture,
@@ -969,6 +969,33 @@ fields! {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn raw_number_fields_are_numeric() {
+        for field in [
+            Field::Inode,
+            Field::Blocks,
+            Field::Hardlinks,
+            Field::ExifImageWidth,
+            Field::ExifImageHeight,
+            Field::Atime,
+            Field::AtimeNsec,
+            Field::Mtime,
+            Field::MtimeNsec,
+            Field::Ctime,
+            Field::CtimeNsec,
+            Field::Device,
+            Field::Rdev,
+            Field::BlockSize,
+            Field::ExifIsoSpeed,
+            Field::ExifMaxAperture,
+        ] {
+            assert!(field.is_numeric_field(), "{field:?} must compare and sort as a number after grouping");
+        }
+        assert!(!Field::Name.is_numeric_field());
+        assert!(!Field::Mode.is_numeric_field(), "mode is rendered text like rwxr-xr-x");
+        assert!(!Field::Track.is_numeric_field() && !Field::Disc.is_numeric_field(), "track and disc carry formats like 4/9");
+    }
 
     #[test]
     fn test_colorized() {

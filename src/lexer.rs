@@ -384,6 +384,9 @@ impl Lexer {
                     && !self.state.after_operator
                     && !self.state.after_as
                     && self.value_follows() => Some(Lexeme::Not),
+                "not" if self.state.in_column_expression() && self.state.after_value_end && self.word_operator_follows() => {
+                    Some(Lexeme::Not)
+                }
                 "group" if self.state.is_keyword_position(search_root_ctx) && self.next_word_is("by") => {
                     self.state.clause = Clause::GroupBy;
                     Some(Lexeme::Group)
@@ -414,7 +417,15 @@ impl Lexer {
                 "exists" | "notexists" if self.state.in_where() && !self.state.after_operator && !self.state.after_value_start && !self.state.in_value_set => Some(Lexeme::Operator(s.to_lowercase())),
                 "eq" | "ne" | "gt" | "lt" | "ge" | "le" | "gte" | "lte" | "eeq" | "ene"
                 | "regexp" | "rx" | "like" | "notlike" | "notrx"
-                | "between" | "notbetween" | "in" | "notin" | "is" if self.state.in_where() && !self.state.after_operator && !self.state.after_logical => Some(Lexeme::Operator(s.to_lowercase())),
+                | "between" | "notbetween" | "in" | "notin" | "is"
+                    if (self.state.in_where() && !self.state.after_operator && !self.state.after_logical)
+                        || (self.state.in_column_expression()
+                            && (self.state.after_value_end || self.state.after_not)
+                            && !self.state.after_operator
+                            && self.value_follows()) =>
+                {
+                    Some(Lexeme::Operator(s.to_lowercase()))
+                }
                 "mul" | "div" | "mod" | "plus" | "minus" if self.state.in_expression() && self.state.is_keyword_position(false) => Some(Lexeme::ArithmeticOperator(s)),
                 _ => Some(Lexeme::RawString(s)),
             },
@@ -462,6 +473,12 @@ impl Lexer {
         self.state.after_arithmetic = matches!(lexeme, Some(Lexeme::ArithmeticOperator(_)));
 
         lexeme
+    }
+
+    fn word_operator_follows(&self) -> bool {
+        ["like", "rlike", "regexp", "rx", "in", "between", "exists"]
+            .iter()
+            .any(|word| self.next_word_is(word))
     }
 
     fn next_word_is(&self, word: &str) -> bool {

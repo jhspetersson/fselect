@@ -149,7 +149,7 @@ impl <'a> Parser<'a> {
                 return Err("HAVING requires GROUP BY or an aggregate function; use WHERE to filter individual files".to_string());
             }
             if Self::contains_op_unsupported_in_having(having_expr) {
-                return Err("IN, NOT IN, EXISTS, and NOT EXISTS are not supported in the HAVING clause".to_string());
+                return Err("EXISTS and NOT EXISTS are not supported in the HAVING clause".to_string());
             }
             let allowed_fields: HashSet<Field> = grouping_fields
                 .iter()
@@ -162,6 +162,13 @@ impl <'a> Parser<'a> {
                         field.to_string().to_lowercase()
                     ));
                 }
+            }
+            let grouping_keys: Vec<String> = grouping_fields.iter().map(Expr::cache_key).collect();
+            if let Some(function) = having_expr.non_aggregated_entry_function(&grouping_keys) {
+                return Err(format!(
+                    "Cannot use '{}()' in HAVING: it reads each file; filter with WHERE or wrap it in an aggregate function",
+                    function.canonical_name()
+                ));
             }
         }
 
@@ -1518,7 +1525,11 @@ impl <'a> Parser<'a> {
         match fields.iter().find_map(|column| self.non_grouped_field(column, &grouping_keys)) {
             Some(field) => {
                 let prefix = field.root_alias.as_deref().map(|alias| format!("{alias}.")).unwrap_or_default();
-                let name = field.field.map(|field| field.to_string().to_lowercase()).unwrap_or_default();
+                let name = match (field.field, &field.function) {
+                    (Some(field), _) => field.to_string().to_lowercase(),
+                    (None, Some(function)) => format!("{}()", function.canonical_name()),
+                    (None, None) => String::new(),
+                };
                 Err(format!(
                     "Column '{prefix}{name}' must appear in GROUP BY or be used inside an aggregate function"
                 ))
@@ -1536,6 +1547,9 @@ impl <'a> Parser<'a> {
         }
         if !self.is_local_alias(expr.root_alias.as_deref()) {
             return None;
+        }
+        if expr.function.as_ref().is_some_and(Function::reads_entry) {
+            return Some(expr);
         }
         if expr.field.is_some() {
             return Some(expr);
@@ -1654,7 +1668,7 @@ impl <'a> Parser<'a> {
     }
 
     fn contains_op_unsupported_in_having(expr: &Expr) -> bool {
-        if matches!(expr.op, Some(Op::In) | Some(Op::NotIn) | Some(Op::Exists) | Some(Op::NotExists)) {
+        if matches!(expr.op, Some(Op::Exists) | Some(Op::NotExists)) {
             return true;
         }
         expr.left.as_ref().is_some_and(|e| Self::contains_op_unsupported_in_having(e))
@@ -3014,8 +3028,29 @@ mod tests {
     }
 
     #[test]
-    fn having_with_in_is_rejected() {
-        let query = "select ext, count(*) from /test group by ext having count(*) in (1, 2)";
+    fn track_and_disc_accept_slash_formats() {
+        assert!(parse_query("select name from /d where track = '4/9'").is_ok());
+        assert!(parse_query("select name from /d where disc in ('1/2', '2/2')").is_ok());
+        assert!(parse_query("select name from /d where track like '4/%'").is_ok());
+    }
+
+    #[test]
+    fn file_reading_functions_need_grouping_or_an_aggregate() {
+        let selected = parse_query("select contains('x'), count(*) from /d").unwrap_err();
+        assert!(selected.contains("contains()"), "unexpected error: {selected}");
+        let grouped = parse_query("select ext, count(*) from /d group by ext having contains('x')").unwrap_err();
+        assert!(grouped.contains("contains()") && grouped.contains("HAVING"), "unexpected error: {grouped}");
+        let has_xattr = parse_query("select ext, has_xattr('a'), count(*) from /d group by ext").unwrap_err();
+        assert!(has_xattr.contains("has_xattr()"), "unexpected error: {has_xattr}");
+
+        assert!(parse_query("select count(*) from /d where contains('x')").is_ok(), "WHERE is per file");
+        assert!(parse_query("select ext, count(*) from /d group by ext having max(size) > 1").is_ok());
+        assert!(parse_query("select ext, count(*) from /d group by ext, contains('x') having contains('x')").is_ok(), "a grouping key is allowed");
+    }
+
+    #[test]
+    fn having_with_exists_is_rejected() {
+        let query = "select ext, count(*) from /test group by ext having exists (select name from /test)";
         let mut lexer = Lexer::new(vec![query.to_string()]);
         let mut p = Parser::new(&mut lexer);
         let err = p.parse(false).unwrap_err();

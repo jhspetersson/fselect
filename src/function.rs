@@ -1033,7 +1033,9 @@ pub fn get_value(
         }
         #[cfg(unix)]
         Function::HasXattr => {
-            if let Some(entry) = entry {
+            if let Some(entry) = entry
+                && file_info.is_none()
+            {
                 if let Ok(file) = File::open(entry.path()) {
                     if let Ok(xattr) = file.get_xattr(&function_arg) {
                         return Ok(Variant::from_bool(xattr.is_some()));
@@ -1045,7 +1047,9 @@ pub fn get_value(
         }
         #[cfg(windows)]
         Function::HasXattr => {
-            if let Some(entry) = entry {
+            if let Some(entry) = entry
+                && file_info.is_none()
+            {
                 return Ok(Variant::from_bool(
                     crate::util::win_xattr::has_named_ads(&entry.path(), &function_arg),
                 ));
@@ -1055,7 +1059,9 @@ pub fn get_value(
         }
         #[cfg(unix)]
         Function::Xattr => {
-            if let Some(entry) = entry {
+            if let Some(entry) = entry
+                && file_info.is_none()
+            {
                 if let Ok(file) = File::open(entry.path()) {
                     if let Ok(Some(xattr)) = file.get_xattr(&function_arg) {
                         if let Ok(value) = String::from_utf8(xattr) {
@@ -1070,6 +1076,7 @@ pub fn get_value(
         #[cfg(windows)]
         Function::Xattr => {
             if let Some(entry) = entry
+                && file_info.is_none()
                 && let Some(value) =
                     crate::util::win_xattr::read_named_ads(&entry.path(), &function_arg)
                 {
@@ -2018,6 +2025,37 @@ impl GroupAccumulator {
 mod tests {
     use super::*;
     
+    #[test]
+    fn archive_members_do_not_inherit_the_containers_xattrs() {
+        let tmp = std::env::temp_dir().join("fselect_test_member_xattrs");
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        let container = tmp.join("files.zip");
+        std::fs::write(&container, "zip").unwrap();
+        #[cfg(windows)]
+        std::fs::write(tmp.join("files.zip:review"), "approved").unwrap();
+        let entry = std::fs::read_dir(&tmp).unwrap().map(Result::unwrap).find(|e| e.file_name() == "files.zip").unwrap();
+        let member = Some(crate::fileinfo::FileInfo {
+            name: String::from("member.txt"),
+            size: 1,
+            mode: None,
+            modified: None,
+            member: None,
+        });
+
+        #[cfg(windows)]
+        {
+            let on_container = get_value(&Function::HasXattr, String::from("review"), vec![], Some(&entry), &None).unwrap();
+            assert_eq!(on_container.to_string(), "true", "the container itself carries the attribute");
+        }
+        let has = get_value(&Function::HasXattr, String::from("review"), vec![], Some(&entry), &member).unwrap();
+        let value = get_value(&Function::Xattr, String::from("review"), vec![], Some(&entry), &member).unwrap();
+        let _ = std::fs::remove_dir_all(&tmp);
+
+        assert_ne!(has.to_string(), "true", "a member has no attributes of its own");
+        assert_eq!(value.to_string(), "");
+    }
+
     #[test]
     fn function_lower() {
         let function = Function::Lower;

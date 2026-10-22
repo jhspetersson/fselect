@@ -386,7 +386,7 @@ fn arithmetic_follows_precedence_and_mixes_with_fields() {
 
     assert_eq!(ok(&expressions), "11\t21\t-11\t24\t1\t5\t26\t7\t-12\t2.5\t12\t18\n");
     assert_eq!(ok(&filtered), "alpha.txt\n");
-    assert_eq!(ok(&ordered), "alpha.txt\t11\nalpha.txt\t1\nbeta.md\t1\ngamma.rs\t0\n");
+    assert_eq!(ok(&ordered), "alpha.txt\t11\nbeta.md\t1\nalpha.txt\t1\ngamma.rs\t0\n", "ties fall back to the relative path");
     assert_eq!(ok(&grouped_logic), "alpha.txt\ngamma.rs\n");
     assert_eq!(ok(&flat_logic), "alpha.txt\ngamma.rs\n");
     assert_eq!(division.code, Some(1), "{}", division.stderr);

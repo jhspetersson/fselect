@@ -243,3 +243,84 @@ fn grouped_in_lists_convert_operands_like_the_row_filter() {
     assert_eq!(grouped.1, "1.0\t1\n");
     assert_eq!(grouped_not.1, "other\t2\n");
 }
+
+#[test]
+fn group_identity_does_not_depend_on_whether_where_read_the_key() {
+    let dir = std::env::temp_dir().join("fselect_it_grouping_identity_where");
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    for name in ["a.txt", "b.txt", "c.txt", "d.txt"] {
+        fs::write(dir.join(name), "xx").unwrap();
+    }
+    let root = dir.display();
+
+    let by_size = fselect(&format!("select size, count(*) from {root} where name = 'a.txt' or size > 0 group by size order by 2"));
+    let by_ext = fselect(&format!("select ext, count(*) from {root} where name = 'a.txt' or ext = 'txt' group by ext"));
+    let by_type = fselect(&format!("select is_file, count(*) from {root} where name = 'a.txt' or is_file group by is_file"));
+    let having = fselect(&format!("select size, count(*) from {root} where name = 'a.txt' or size > 0 group by size having count(*) = 4"));
+    let _ = fs::remove_dir_all(&dir);
+
+    for result in [&by_size, &by_ext, &by_type, &having] {
+        assert_eq!(result.0, Some(0), "{}", result.2);
+    }
+    assert_eq!(by_size.1, "2\t4\n");
+    assert_eq!(by_ext.1, "txt\t4\n");
+    assert_eq!(by_type.1, "true\t4\n");
+    assert_eq!(having.1, "2\t4\n");
+}
+
+#[test]
+fn grouping_keeps_computed_values_built_on_unknown_comparisons() {
+    let dir = std::env::temp_dir().join("fselect_it_grouping_computed_unknown");
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    for name in ["a.txt", "b.txt", "c.txt", "d.txt"] {
+        fs::write(dir.join(name), "text").unwrap();
+    }
+    let root = dir.display();
+
+    let compared = fselect(&format!("select (width > 0) = false, count(*) from {root} group by (width > 0) = false"));
+    let negated = fselect(&format!("select -(width > 0), count(*) from {root} group by -(width > 0)"));
+    let absolute = fselect(&format!("select abs(-(width > 0)), count(*) from {root} group by -(width > 0)"));
+    let having = fselect(&format!("select -(width > 0), count(*) from {root} group by -(width > 0) having -(width > 0) = 0"));
+    let _ = fs::remove_dir_all(&dir);
+
+    for result in [&compared, &negated, &absolute, &having] {
+        assert_eq!(result.0, Some(0), "{}", result.2);
+    }
+    assert_eq!(compared.1, "true\t4\n");
+    assert_eq!(negated.1, "0\t4\n");
+    assert_eq!(absolute.1, "0\t4\n");
+    assert_eq!(having.1, "0\t4\n");
+}
+
+#[test]
+fn unknown_comparisons_stay_unknown_through_in_lists_compounds_and_aliases() {
+    let dir = std::env::temp_dir().join("fselect_it_grouping_unknown_forms");
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    for name in ["a.txt", "b.txt", "c.txt", "d.txt"] {
+        fs::write(dir.join(name), "text").unwrap();
+    }
+    let root = dir.display();
+
+    let in_list = fselect(&format!("select width in (0), width not in (0), count(*) from {root} group by width in (0)"));
+    let compound_unknown = fselect(&format!(
+        "select width > 0 and is_file, not (width > 0 and is_file), count(*) from {root} group by width > 0 and is_file"
+    ));
+    let compound_false = fselect(&format!(
+        "select width > 0 and size > 100, not (width > 0 and size > 100), count(*) from {root} group by width > 0 and size > 100"
+    ));
+    let through_where = fselect(&format!(
+        "select width > 0 as w, width <= 0, count(*) from {root} where width > 0 or size > 0 group by w"
+    ));
+    let _ = fs::remove_dir_all(&dir);
+
+    for result in [&in_list, &compound_unknown, &compound_false, &through_where] {
+        assert_eq!(result.0, Some(0), "{}", result.2);
+    }
+    assert_eq!(in_list.1, "false\tfalse\t4\n");
+    assert_eq!(compound_unknown.1, "false\tfalse\t4\n", "unknown AND true is unknown, so its negation is not true");
+    assert_eq!(compound_false.1, "false\ttrue\t4\n", "unknown AND false is false, so its negation is true");
+    assert_eq!(through_where.1, "false\tfalse\t4\n");
+}

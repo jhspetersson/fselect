@@ -155,7 +155,7 @@ pub struct Searcher<'a> {
     cached_types: HashMap<String, (String, VariantType)>,
     cached_nulls: HashSet<String>,
     unknown_conditions: HashSet<String>,
-    null_comparison: bool,
+    null_comparisons: HashSet<String>,
     conforms_map: HashMap<String, String>,
     subquery_cache: HashMap<String, Vec<String>>,
     /// The type each first-column value of a subquery's rows was produced
@@ -298,7 +298,7 @@ impl Membership {
 
 const DEFERRED_COLUMN_WEIGHT: i32 = 16;
 const NULL_GROUP_KEY: &str = "\u{0}null";
-const UNKNOWN_GROUP_KEY: &str = "\u{0}unknown";
+const UNKNOWN_GROUP_SUFFIX: &str = "\u{0}unknown";
 
 struct AggregatePlan {
     fields: Vec<(Field, String)>,
@@ -494,7 +494,7 @@ impl<'a> Searcher<'a> {
             cached_types: HashMap::new(),
             cached_nulls: HashSet::new(),
             unknown_conditions: HashSet::new(),
-            null_comparison: false,
+            null_comparisons: HashSet::new(),
             conforms_map: HashMap::new(),
             subquery_cache: HashMap::new(),
             subquery_type_cache: HashMap::new(),
@@ -958,13 +958,11 @@ impl<'a> Searcher<'a> {
                     for (i, k) in group_keys.iter().enumerate() {
                         let raw = group_key.get(i).cloned().unwrap_or_default();
                         let null = raw == NULL_GROUP_KEY;
-                        let unknown = raw == UNKNOWN_GROUP_KEY;
+                        let unknown = raw.ends_with(UNKNOWN_GROUP_SUFFIX);
                         let text = if null {
                             String::new()
-                        } else if unknown {
-                            String::from("false")
                         } else {
-                            raw
+                            raw.strip_suffix(UNKNOWN_GROUP_SUFFIX).unwrap_or(&raw).to_string()
                         };
                         if unknown {
                             self.unknown_conditions.insert(k.clone());
@@ -2002,6 +2000,40 @@ impl<'a> Searcher<'a> {
             .collect()
     }
 
+    fn condition_state(
+        &mut self,
+        entry: &DirEntry,
+        file_info: &Option<FileInfo>,
+        root_path: &Path,
+        expr: &Expr,
+    ) -> Result<Option<bool>, SearchError> {
+        if let Some(ref logical_op) = expr.logical_op {
+            let left = match expr.left {
+                Some(ref left) => self.condition_state(entry, file_info, root_path, left)?,
+                None => Some(false),
+            };
+            let right = match expr.right {
+                Some(ref right) => self.condition_state(entry, file_info, root_path, right)?,
+                None => Some(false),
+            };
+            return Ok(match logical_op {
+                LogicalOp::And => match (left, right) {
+                    (Some(false), _) | (_, Some(false)) => Some(false),
+                    (Some(true), Some(true)) => Some(true),
+                    _ => None,
+                },
+                LogicalOp::Or => match (left, right) {
+                    (Some(true), _) | (_, Some(true)) => Some(true),
+                    (Some(false), Some(false)) => Some(false),
+                    _ => None,
+                },
+            });
+        }
+        self.null_comparisons.clear();
+        let holds = self.conforms(entry, file_info, root_path, expr)?;
+        Ok(if self.null_comparisons.contains(&expr.cache_key()) { None } else { Some(holds) })
+    }
+
     fn grouped_condition_value(&self, file_map: &HashMap<String, String>, condition: &Expr) -> Option<bool> {
         let key = Self::condition_key(condition);
         let conditions = || {
@@ -2199,9 +2231,8 @@ impl<'a> Searcher<'a> {
                 }
                 let value = if text == NULL_GROUP_KEY {
                     Variant::null()
-                } else if text == UNKNOWN_GROUP_KEY {
-                    Variant::from_bool(false)
                 } else {
+                    let text = text.strip_suffix(UNKNOWN_GROUP_SUFFIX).unwrap_or(text);
                     match key_types.get(index).and_then(Option::as_ref) {
                         Some(value_type) => variant_of_type(grouping_expr, text, value_type),
                         None => typed_variant(grouping_expr, text),
@@ -2866,21 +2897,28 @@ impl<'a> Searcher<'a> {
             self.found += 1;
             for (field, key) in &plan.fields {
                 let value = self.get_field_value(entry, file_info, root_path, field).unwrap_or(Variant::empty(VariantType::String));
+                self.remember_type(key, &value);
                 file_map.insert(key.clone(), value.to_string());
             }
             let planned = plan.inner_exprs.iter().map(|(key, left)| (key, left))
                 .chain(plan.grouping_keys.iter().zip(&self.query.grouping_fields).map(|(key, field)| (key, field)));
             let mut unknown_keys: HashSet<String> = HashSet::new();
             for (key, expr) in planned {
-                if file_map.contains_key(key) {
+                let grouping_condition =
+                    (expr.op.is_some() || expr.logical_op.is_some()) && plan.grouping_keys.contains(key);
+                if file_map.contains_key(key) && !grouping_condition {
                     continue;
                 }
-                self.null_comparison = false;
-                let value = self.get_column_expr_value(Some(entry), file_info, root_path, file_map, None, expr)?;
-                if self.null_comparison && expr.op.as_ref().is_some_and(|op| op.is_relational()) {
-                    unknown_keys.insert(key.clone());
-                }
-                if !file_map.contains_key(key) {
+                let value = if grouping_condition {
+                    let state = self.condition_state(entry, file_info, root_path, expr)?;
+                    if state.is_none() {
+                        unknown_keys.insert(key.clone());
+                    }
+                    apply_minus(expr, Variant::from_bool(state.unwrap_or(false)))
+                } else {
+                    self.get_column_expr_value(Some(entry), file_info, root_path, file_map, None, expr)?
+                };
+                if grouping_condition || !file_map.contains_key(key) {
                     self.remember_type(key, &value);
                     file_map.insert(key.clone(), value.to_string());
                 }
@@ -2889,7 +2927,7 @@ impl<'a> Searcher<'a> {
                 .grouping_keys
                 .iter()
                 .map(|key| match file_map.get(key) {
-                    Some(_) if unknown_keys.contains(key) => String::from(UNKNOWN_GROUP_KEY),
+                    Some(text) if unknown_keys.contains(key) => format!("{text}{UNKNOWN_GROUP_SUFFIX}"),
                     Some(text) if text.is_empty() && self.cached_nulls.contains(key) => String::from(NULL_GROUP_KEY),
                     Some(text) => text.clone(),
                     None => String::new(),
@@ -2900,9 +2938,7 @@ impl<'a> Searcher<'a> {
                 .iter()
                 .zip(&group_key)
                 .map(|(key, text)| {
-                    if text == UNKNOWN_GROUP_KEY {
-                        return Some(VariantType::Bool);
-                    }
+                    let text = text.strip_suffix(UNKNOWN_GROUP_SUFFIX).unwrap_or(text);
                     self.cached_types
                         .get(key)
                         .filter(|(cached, _)| cached == text)
@@ -3074,7 +3110,7 @@ impl<'a> Searcher<'a> {
         // A missing numeric, datetime or boolean value is unknown, not 0 or
         // false: like `= 0`, neither IN nor NOT IN can match it.
         if expr.left.as_deref().is_some_and(|left| Self::is_null_operand(left, field_value)) {
-            self.null_comparison = true;
+            self.null_comparisons.insert(expr.cache_key());
             return Ok(false);
         }
         let right = expr.right.as_ref().unwrap();
@@ -3289,7 +3325,7 @@ impl<'a> Searcher<'a> {
                 && op.is_relational()
                 && (Self::is_null_operand(left_expr, &field_value) || Self::is_null_operand(right_expr, &value))
             {
-                self.null_comparison = true;
+                self.null_comparisons.insert(expr.cache_key());
                 return Ok(false);
             }
 

@@ -112,5 +112,5 @@ fn list_separates_values_with_nul_for_xargs() {
     let run = fselect(&format!("select name from {} order by name into list", dir.display()));
     let _ = fs::remove_dir_all(&dir);
 
-    assert_eq!(ok(&run), "a, b.txt\0c.md\0\n");
+    assert_eq!(ok(&run), "a, b.txt\0c.md\0");
 }

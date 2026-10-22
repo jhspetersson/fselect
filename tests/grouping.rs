@@ -324,3 +324,52 @@ fn unknown_comparisons_stay_unknown_through_in_lists_compounds_and_aliases() {
     assert_eq!(compound_false.1, "false\ttrue\t4\n", "unknown AND false is false, so its negation is true");
     assert_eq!(through_where.1, "false\tfalse\t4\n");
 }
+
+#[test]
+fn grouped_conditions_keep_their_short_circuit_guards() {
+    let dir = std::env::temp_dir().join("fselect_it_grouping_short_circuit");
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    fs::write(dir.join("empty.txt"), "").unwrap();
+    for name in ["a.txt", "b.txt", "c.txt"] {
+        fs::write(dir.join(name), "xx").unwrap();
+    }
+    let root = dir.display();
+
+    let guarded_or = fselect(&format!("select size = 0 or 10 / size > 1, count(*) from {root} group by size = 0 or 10 / size > 1"));
+    let guarded_and = fselect(&format!(
+        "select size > 0 and 10 / size > 1, count(*) from {root} group by size > 0 and 10 / size > 1 order by 1"
+    ));
+    let _ = fs::remove_dir_all(&dir);
+
+    for result in [&guarded_or, &guarded_and] {
+        assert_eq!(result.0, Some(0), "{}", result.2);
+        assert!(!result.2.contains("Division by zero"), "{}", result.2);
+    }
+    assert_eq!(guarded_or.1, "true\t4\n");
+    assert_eq!(guarded_and.1, "false\t1\ntrue\t3\n");
+}
+
+#[test]
+fn grouping_reuses_the_alias_value_where_already_evaluated() {
+    let dir = std::env::temp_dir().join("fselect_it_grouping_cached_alias");
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    for i in 0..40 {
+        fs::write(dir.join(format!("f{i}.txt")), "x").unwrap();
+    }
+    let root = dir.display();
+
+    let filtered = fselect(&format!("select random(0, 1) = 1 as flag, count(*) from {root} as t where t.flag = true group by flag"));
+    let contradiction = fselect(&format!(
+        "select random(0, 1) = 1 as flag, count(*) from {root} as t where t.flag = true group by flag having flag = false"
+    ));
+    let _ = fs::remove_dir_all(&dir);
+
+    for result in [&filtered, &contradiction] {
+        assert_eq!(result.0, Some(0), "{}", result.2);
+    }
+    assert_eq!(filtered.1.lines().count(), 1, "{}", filtered.1);
+    assert!(filtered.1.starts_with("true\t"), "{}", filtered.1);
+    assert_eq!(contradiction.1, "");
+}

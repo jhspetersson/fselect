@@ -2005,33 +2005,47 @@ impl<'a> Searcher<'a> {
         entry: &DirEntry,
         file_info: &Option<FileInfo>,
         root_path: &Path,
+        file_map: &HashMap<String, String>,
         expr: &Expr,
     ) -> Result<Option<bool>, SearchError> {
         if let Some(ref logical_op) = expr.logical_op {
             let left = match expr.left {
-                Some(ref left) => self.condition_state(entry, file_info, root_path, left)?,
+                Some(ref left) => self.condition_state(entry, file_info, root_path, file_map, left)?,
                 None => Some(false),
             };
+            match (logical_op, left) {
+                (LogicalOp::And, Some(false)) => return Ok(Some(false)),
+                (LogicalOp::Or, Some(true)) => return Ok(Some(true)),
+                _ => {}
+            }
             let right = match expr.right {
-                Some(ref right) => self.condition_state(entry, file_info, root_path, right)?,
+                Some(ref right) => self.condition_state(entry, file_info, root_path, file_map, right)?,
                 None => Some(false),
             };
             return Ok(match logical_op {
                 LogicalOp::And => match (left, right) {
-                    (Some(false), _) | (_, Some(false)) => Some(false),
+                    (_, Some(false)) => Some(false),
                     (Some(true), Some(true)) => Some(true),
                     _ => None,
                 },
                 LogicalOp::Or => match (left, right) {
-                    (Some(true), _) | (_, Some(true)) => Some(true),
+                    (_, Some(true)) => Some(true),
                     (Some(false), Some(false)) => Some(false),
                     _ => None,
                 },
             });
         }
-        self.null_comparisons.clear();
-        let holds = self.conforms(entry, file_info, root_path, expr)?;
-        Ok(if self.null_comparisons.contains(&expr.cache_key()) { None } else { Some(holds) })
+        let key = expr.cache_key();
+        let cached = file_map.get(&key).and_then(|cached| match cached.as_str() {
+            "-1" if expr.minus => Some(true),
+            "0" if expr.minus => Some(false),
+            text => str_to_bool(text),
+        });
+        let holds = match cached {
+            Some(holds) => holds,
+            None => self.conforms(entry, file_info, root_path, expr)?,
+        };
+        Ok(if self.null_comparisons.contains(&key) { None } else { Some(holds) })
     }
 
     fn grouped_condition_value(&self, file_map: &HashMap<String, String>, condition: &Expr) -> Option<bool> {
@@ -2852,6 +2866,7 @@ impl<'a> Searcher<'a> {
     }
 
     fn check_file_inner(&mut self, entry: &DirEntry, root_path: &Path, file_info: &Option<FileInfo>, file_map: &mut HashMap<String, String>) -> Result<(), SearchError> {
+        self.null_comparisons.clear();
         if let Some(ref current_alias) = self.current_alias.clone() {
             self.record_context.borrow_mut().entry(current_alias.to_string()).or_default().clear();
             {
@@ -2910,7 +2925,7 @@ impl<'a> Searcher<'a> {
                     continue;
                 }
                 let value = if grouping_condition {
-                    let state = self.condition_state(entry, file_info, root_path, expr)?;
+                    let state = self.condition_state(entry, file_info, root_path, file_map, expr)?;
                     if state.is_none() {
                         unknown_keys.insert(key.clone());
                     }

@@ -260,3 +260,136 @@ fn null_tests_detect_missing_metadata() {
     assert_eq!(ok(&never_null), "");
     assert_eq!(ok(&column), "beta.md\ttrue\tfalse\n");
 }
+
+#[test]
+fn size_literals_accept_units_and_sizes_format_with_units() {
+    let dir = fresh_dir("fselect_it_query_sizes");
+    write_files(&dir, &[("tiny.txt", "x"), ("two.txt", "yy")]);
+    fs::write(dir.join("kilo.bin"), vec![0u8; 1500]).unwrap();
+    fs::write(dir.join("mega.bin"), vec![0u8; 1_100_000]).unwrap();
+    let root = dir.display();
+
+    let over_kb = fselect(&format!("select name from {root} where size > 1kb order by name"));
+    let over_kib = fselect(&format!("select name from {root} where size > 1k order by name"));
+    let over_mb = fselect(&format!("select name from {root} where size >= 1mb order by name"));
+    let between = fselect(&format!("select name from {root} where size < 1m and size > 1 order by name"));
+    let formatted = fselect(&format!("select name, fsize, hsize from {root} where is_file order by size"));
+    let custom = fselect(&format!(
+        "select format_size(size, '%.2 d'), format_size(size, '%.0s'), format_size(size, '%.1 kb') from {root} where name = mega.bin"
+    ));
+    let _ = fs::remove_dir_all(&dir);
+
+    assert_eq!(ok(&over_kb), "kilo.bin\nmega.bin\n");
+    assert_eq!(ok(&over_kib), "kilo.bin\nmega.bin\n");
+    assert_eq!(ok(&over_mb), "mega.bin\n");
+    assert_eq!(ok(&between), "kilo.bin\ntwo.txt\n");
+    assert_eq!(ok(&formatted), "tiny.txt\t1B\t1B\ntwo.txt\t2B\t2B\nkilo.bin\t1.46KiB\t1.46KiB\nmega.bin\t1.05MiB\t1.05MiB\n");
+    assert_eq!(ok(&custom), "1.10 MB\t1M\t1100 KB\n");
+}
+
+#[test]
+fn extension_classes_are_derived_from_file_names() {
+    let dir = fresh_dir("fselect_it_query_extension_classes");
+    let names = [
+        "pic.png", "pic.jpg", "clip.mp4", "song.mp3", "arch.zip", "arch.tar.gz", "code.rs", "code.py", "text.pdf", "book.epub", "font.ttf", "doc.docx", "readme.txt",
+    ];
+    write_files(&dir, &names.map(|name| (name, "x")));
+    let root = dir.display();
+
+    let table = fselect(&format!(
+        "select name, is_image, is_video, is_audio, is_archive, is_source, is_doc, is_book, is_font from {root} order by name"
+    ));
+    let images = fselect(&format!("select name from {root} where is_image order by name"));
+    let both = fselect(&format!("select name from {root} where is_doc and is_book"));
+    let _ = fs::remove_dir_all(&dir);
+
+    assert_eq!(
+        ok(&table),
+        "arch.tar.gz\tfalse\tfalse\tfalse\ttrue\tfalse\tfalse\tfalse\tfalse\n\
+         arch.zip\tfalse\tfalse\tfalse\ttrue\tfalse\tfalse\tfalse\tfalse\n\
+         book.epub\tfalse\tfalse\tfalse\tfalse\tfalse\tfalse\ttrue\tfalse\n\
+         clip.mp4\tfalse\ttrue\tfalse\tfalse\tfalse\tfalse\tfalse\tfalse\n\
+         code.py\tfalse\tfalse\tfalse\tfalse\ttrue\tfalse\tfalse\tfalse\n\
+         code.rs\tfalse\tfalse\tfalse\tfalse\ttrue\tfalse\tfalse\tfalse\n\
+         doc.docx\tfalse\tfalse\tfalse\tfalse\tfalse\ttrue\tfalse\tfalse\n\
+         font.ttf\tfalse\tfalse\tfalse\tfalse\tfalse\tfalse\tfalse\ttrue\n\
+         pic.jpg\ttrue\tfalse\tfalse\tfalse\tfalse\tfalse\tfalse\tfalse\n\
+         pic.png\ttrue\tfalse\tfalse\tfalse\tfalse\tfalse\tfalse\tfalse\n\
+         readme.txt\tfalse\tfalse\tfalse\tfalse\tfalse\tfalse\tfalse\tfalse\n\
+         song.mp3\tfalse\tfalse\ttrue\tfalse\tfalse\tfalse\tfalse\tfalse\n\
+         text.pdf\tfalse\tfalse\tfalse\tfalse\tfalse\ttrue\ttrue\tfalse\n"
+    );
+    assert_eq!(ok(&images), "pic.jpg\npic.png\n");
+    assert_eq!(ok(&both), "text.pdf\n");
+}
+
+#[test]
+fn scalar_function_names_are_all_wired_through() {
+    let dir = query_dir("fselect_it_query_scalar_catalogue");
+    let root = dir.display();
+
+    let strings = fselect(&format!(
+        "select trim('  ab  '), ltrim('  ab'), rtrim('ab  '), locate('b', 'abc'), strpos('abc', 'c'), position('c', 'abc'), initcap('hello world'), concat_ws('-', 'a', 'b'), to_base64('hi'), from_base64('aGk='), len('abc'), lcase('AB'), ucase('ab'), substring('abcdef', -2), substr('abcdef', 2, 3) from {root} where name = beta.md"
+    ));
+    let numbers = fselect(&format!(
+        "select hex(255), bin(5), oct(8), floor(2.7), ceil(2.1), ceiling(2.1), sqrt(16), power(2, 10), pow(2, 3), log(100), ln(1), exp(0), round(pi(), 2), abs(-5), least(3, 1, 2), greatest(3, 1, 2), coalesce('', 'x'), random(5, 5), format_time(146), 7 % 3, 10 / 4, (1 + 2) * 3 from {root} where name = beta.md"
+    ));
+    let scripts = fselect(&format!(
+        "select contains_cyrillic('привет'), cyrillic('abc'), japanese('abc'), kana('カナ'), greek('αβ') from {root} where name = beta.md"
+    ));
+    let _ = fs::remove_dir_all(&dir);
+
+    assert_eq!(ok(&strings), "ab\tab\tab\t2\t3\t3\tHello World\ta-b\taGk=\thi\t3\tab\tAB\tef\tbcd\n");
+    assert_eq!(ok(&numbers), "ff\t101\t10\t2\t3\t3\t4\t1024\t8\t2\t0\t1\t3.14\t5\t1\t3\tx\t5\t2m 26s\t1\t2.5\t9\n");
+    assert_eq!(ok(&scripts), "true\tfalse\tfalse\ttrue\ttrue\n");
+}
+
+#[cfg(unix)]
+#[test]
+fn permission_fields_reflect_the_file_mode() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = fresh_dir("fselect_it_query_permissions");
+    write_files(&dir, &[("script.sh", "x"), ("private.txt", "x"), ("shared.txt", "x")]);
+    fs::set_permissions(dir.join("script.sh"), fs::Permissions::from_mode(0o755)).unwrap();
+    fs::set_permissions(dir.join("private.txt"), fs::Permissions::from_mode(0o600)).unwrap();
+    fs::set_permissions(dir.join("shared.txt"), fs::Permissions::from_mode(0o666)).unwrap();
+    let root = dir.display();
+
+    let modes = fselect(&format!("select name, mode, user_exec, other_write, other_read from {root} where is_file order by name"));
+    let executable = fselect(&format!("select name from {root} where user_exec order by name"));
+    let world_writable = fselect(&format!("select name from {root} where other_write"));
+    let _ = fs::remove_dir_all(&dir);
+
+    assert_eq!(
+        ok(&modes),
+        "private.txt\t-rw-------\tfalse\tfalse\tfalse\nscript.sh\t-rwxr-xr-x\ttrue\tfalse\ttrue\nshared.txt\t-rw-rw-rw-\tfalse\ttrue\ttrue\n"
+    );
+    assert_eq!(ok(&executable), "script.sh\n");
+    assert_eq!(ok(&world_writable), "shared.txt\n");
+}
+
+#[test]
+fn arithmetic_follows_precedence_and_mixes_with_fields() {
+    let dir = query_dir("fselect_it_query_arithmetic");
+    let root = dir.display();
+
+    let expressions = fselect(&format!(
+        "select size, size * 2 - 1, -size, 2 * (size + 1), size % 2, 10 - 2 - 3, 2 * 3 + 4 * 5, 7 / 2 * 2, -(size + 1), 1.5 + 1, size + '1', length(name) * 2 from {root} where name = alpha.txt and size > 1"
+    ));
+    let filtered = fselect(&format!("select name from {root} where size * 2 > 20 and size - 1 = 10"));
+    let ordered = fselect(&format!("select name, size from {root} where is_file order by -size, path"));
+    let grouped_logic = fselect(&format!("select name from {root} where is_file and (size > 5 or ext = rs) and not ext = md order by path"));
+    let flat_logic = fselect(&format!("select name from {root} where is_file and size > 5 or ext = rs order by path"));
+    let division = fselect(&format!("select name, size / 0 from {root} where name = beta.md"));
+    let _ = fs::remove_dir_all(&dir);
+
+    assert_eq!(ok(&expressions), "11\t21\t-11\t24\t1\t5\t26\t7\t-12\t2.5\t12\t18\n");
+    assert_eq!(ok(&filtered), "alpha.txt\n");
+    assert_eq!(ok(&ordered), "alpha.txt\t11\nalpha.txt\t1\nbeta.md\t1\ngamma.rs\t0\n");
+    assert_eq!(ok(&grouped_logic), "alpha.txt\ngamma.rs\n");
+    assert_eq!(ok(&flat_logic), "alpha.txt\ngamma.rs\n");
+    assert_eq!(division.code, Some(1), "{}", division.stderr);
+    assert_eq!(division.stdout, "beta.md\t\n", "the row is still printed with an empty cell");
+    assert!(division.stderr.contains("Division by zero"), "{}", division.stderr);
+}

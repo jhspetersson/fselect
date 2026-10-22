@@ -240,3 +240,54 @@ fn quoted_roots_may_contain_spaces() {
     assert_eq!(ok(&double), "sp.txt\n");
     assert_eq!(ok(&with_options), "sp.txt\n");
 }
+
+fn fselect_in(dir: &Path, query: &str) -> Run {
+    let output = Command::new(env!("CARGO_BIN_EXE_fselect"))
+        .arg("--nocolor")
+        .arg(query)
+        .current_dir(dir)
+        .env("NO_COLOR", "1")
+        .output()
+        .expect("failed to run fselect");
+    Run {
+        code: output.status.code(),
+        stdout: String::from_utf8_lossy(&output.stdout).to_string(),
+        stderr: String::from_utf8_lossy(&output.stderr).to_string(),
+    }
+}
+
+#[test]
+fn the_current_directory_is_the_default_root() {
+    let dir = fresh_dir("fselect_it_root_default");
+    write_files(&dir, &[("a.txt", "x"), ("sub/b.md", "yy")]);
+    let sep = std::path::MAIN_SEPARATOR;
+
+    let implicit = fselect_in(&dir, "select name, path where is_file order by name");
+    let dot = fselect_in(&dir, "select name, path from . where is_file order by name");
+    let relative = fselect_in(&dir, "select path, abspath from sub");
+    let dotted = fselect_in(&dir, "select path from ./sub");
+    let _ = fs::remove_dir_all(&dir);
+
+    assert_eq!(ok(&implicit), format!("a.txt\ta.txt\nb.md\tsub{sep}b.md\n"));
+    assert_eq!(ok(&dot), format!("a.txt\ta.txt\nb.md\tsub{sep}b.md\n"));
+    assert_eq!(ok(&relative), format!("b.md\t{}\n", dir.join("sub").join("b.md").display()));
+    assert_eq!(ok(&dotted), "b.md\n");
+}
+
+#[test]
+fn paths_are_relative_to_their_root() {
+    let dir = fresh_dir("fselect_it_root_relative_paths");
+    write_files(&dir, &[("sub/b.md", "x")]);
+    let root = dir.display();
+    let sep = std::path::MAIN_SEPARATOR;
+    let absolute = dir.join("sub").join("b.md").display().to_string();
+
+    let plain = fselect(&format!("select path, abspath from {root} where name = b.md"));
+    let trailing = fselect(&format!("select path, abspath from {root}{sep} where name = b.md"));
+    let deeper = fselect(&format!("select path, abspath from {root}{sep}sub where name = b.md"));
+    let _ = fs::remove_dir_all(&dir);
+
+    assert_eq!(ok(&plain), format!("sub{sep}b.md\t{absolute}\n"));
+    assert_eq!(ok(&trailing), format!("sub{sep}b.md\t{absolute}\n"), "a trailing separator changes nothing");
+    assert_eq!(ok(&deeper), format!("b.md\t{absolute}\n"));
+}

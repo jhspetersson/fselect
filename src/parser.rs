@@ -1534,17 +1534,22 @@ impl <'a> Parser<'a> {
         }
     }
 
+    fn is_condition(expr: &Expr) -> bool {
+        expr.op.is_some() || expr.logical_op.is_some()
+    }
+
     fn grouping_key(expr: &Expr) -> String {
         let mut bare = expr.clone();
         bare.alias = None;
-        bare.minus = false;
+        if Self::is_condition(expr) {
+            bare.minus = false;
+        }
         bare.cache_key()
     }
 
     fn matches_grouping_key(expr: &Expr, grouping_keys: &[String]) -> bool {
         grouping_keys.contains(&Self::grouping_key(expr))
-            || ((expr.op.is_some() || expr.logical_op.is_some())
-                && grouping_keys.contains(&Self::grouping_key(&expr.negated())))
+            || (Self::is_condition(expr) && grouping_keys.contains(&Self::grouping_key(&expr.negated())))
     }
 
     fn non_grouped_field<'e>(&self, expr: &'e Expr, grouping_keys: &[String]) -> Option<&'e Expr> {
@@ -2864,6 +2869,8 @@ mod tests {
             ("select ext, max(size), length(name) from /d group by ext", "name"),
             ("select name, count(*) from /d", "name"),
             ("select min(size), path from /d", "path"),
+            ("select size, count(*) from /d group by -size", "size"),
+            ("select length(name), count(*) from /d group by -length(name)", "name"),
             ("select name from /d having count(*) > 0", "name"),
             ("select contains('x') from /d having count(*) > 0", "contains()"),
             ("select t.name, count(*) from /d as t group by t.ext", "t.name"),
@@ -2884,6 +2891,8 @@ mod tests {
             "select ext, 'label', 1 + 2, count(*) from /d group by ext",
             "select ext, max(size) + min(size), abs(sum(size * 2) - 1) from /d group by ext",
             "select ext, count(*) from /d group by ext, size",
+            "select -size, count(*) from /d group by -size",
+            "select -(size > 2), count(*) from /d group by size > 2",
             "select t.ext, count(*) from /d as t group by t.ext",
             "select ext, (select count(*) from /e where ext = t.ext) from /d as t group by ext",
             "select name from /d group by name order by max(size) desc",

@@ -1987,25 +1987,25 @@ impl<'a> Searcher<'a> {
 
     fn grouped_condition_value(&self, file_map: &HashMap<String, String>, condition: &Expr) -> Option<bool> {
         let key = Self::condition_key(condition);
-        self.query.grouping_fields.iter().find_map(|grouping_expr| {
-            if grouping_expr.op.is_none() && grouping_expr.logical_op.is_none() {
-                return None;
-            }
-            let holds = if Self::condition_key(grouping_expr) == key {
-                true
-            } else if Self::condition_key(&grouping_expr.negated()) == key {
-                false
-            } else {
-                return None;
-            };
-            let text = file_map.get(&grouping_expr.cache_key())?;
-            let value = match text.as_str() {
-                "-1" if grouping_expr.minus => true,
-                "0" if grouping_expr.minus => false,
-                text => str_to_bool(text)?,
-            };
-            Some(value == holds)
-        })
+        let conditions = || {
+            self.query
+                .grouping_fields
+                .iter()
+                .filter(|grouping_expr| grouping_expr.op.is_some() || grouping_expr.logical_op.is_some())
+        };
+        let exact = conditions().find(|grouping_expr| Self::condition_key(grouping_expr) == key).map(|grouping_expr| (grouping_expr, true));
+        let (grouping_expr, holds) = exact.or_else(|| {
+            conditions()
+                .find(|grouping_expr| Self::condition_key(&grouping_expr.negated()) == key)
+                .map(|grouping_expr| (grouping_expr, false))
+        })?;
+        let text = file_map.get(&grouping_expr.cache_key())?;
+        let value = match text.as_str() {
+            "-1" if grouping_expr.minus => true,
+            "0" if grouping_expr.minus => false,
+            text => str_to_bool(text)?,
+        };
+        Some(value == holds)
     }
 
     fn condition_key(expr: &Expr) -> String {
@@ -6323,6 +6323,28 @@ mod tests {
         assert_eq!(ungrouped, vec!["15\t2\t2"]);
         assert_eq!(ungrouped_errors, 0, "no division by zero while rows are scanned");
         assert_eq!(grouped, vec!["md\t3\t10\t10", "txt\t12\t2.5\t2.5"]);
+    }
+
+    #[test]
+    fn grouped_conditions_prefer_their_own_key_over_a_complement() {
+        let tmp = std::env::temp_dir().join("fselect_test_grouped_complement");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        for name in ["a.txt", "b.txt", "c.txt", "d.txt"] {
+            fs::write(tmp.join(name), "text").unwrap();
+        }
+
+        let run = |query: &str| run_query_against_dir(query, &tmp);
+        let forward = run("select width > 0, width <= 0, count(*) from __DIR__ group by width > 0, width <= 0 having width <= 0");
+        let reversed = run("select width > 0, width <= 0, count(*) from __DIR__ group by width <= 0, width > 0 having width <= 0");
+        let positive = run("select width > 0, width <= 0, count(*) from __DIR__ group by width > 0, width <= 0 having width > 0");
+        let shown = run("select width > 0, width <= 0, count(*) from __DIR__ group by width > 0, width <= 0");
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(shown, vec![String::from("false	false	4")]);
+        assert!(forward.is_empty(), "{forward:?}");
+        assert!(reversed.is_empty(), "{reversed:?}");
+        assert!(positive.is_empty(), "{positive:?}");
     }
 
     #[test]

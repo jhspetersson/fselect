@@ -111,7 +111,7 @@ fn ungrouped_aggregates_summarise_the_whole_result() {
     let root = dir.display();
 
     let summary = fselect(&format!("select count(*), sum(size), min(size), max(size), avg(size) from {root} where is_file"));
-    let nothing = fselect(&format!("select count(*) from {root} where size > 1000"));
+    let nothing = fselect(&format!("select count(*) from {root} where is_file and size > 1000"));
     let _ = fs::remove_dir_all(&dir);
 
     assert_eq!(ok(&summary), "4\t13\t0\t11\t3.25\n");

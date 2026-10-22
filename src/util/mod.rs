@@ -80,6 +80,17 @@ enum SortKey {
 }
 
 impl SortKey {
+    fn rank(&self) -> u8 {
+        match self {
+            SortKey::Number(Some(_)) => 0,
+            SortKey::DateTime(_) => 1,
+            SortKey::Direct => 2,
+            SortKey::Number(None) => 3,
+        }
+    }
+}
+
+impl SortKey {
     fn new(field: &Expr, value: &str, value_type: Option<&VariantType>) -> SortKey {
         static EPOCH: LazyLock<NaiveDateTime> = LazyLock::new(|| {
             NaiveDate::from_ymd_opt(1970, 1, 1)
@@ -155,15 +166,10 @@ where
     {
         let comparison = match (&self.keys[i], &other.keys[i]) {
             (SortKey::Number(Some(a)), SortKey::Number(Some(b))) => a.partial_cmp(b).unwrap_or(Ordering::Equal),
-            // Numbers sort before non-numbers, so missing values land last
-            // in ascending order.
-            (SortKey::Number(Some(_)), SortKey::Number(None)) => Ordering::Less,
-            (SortKey::Number(None), SortKey::Number(Some(_))) => Ordering::Greater,
-            (SortKey::Number(Some(_)), SortKey::Direct) => Ordering::Less,
-            (SortKey::Direct, SortKey::Number(Some(_))) => Ordering::Greater,
-            (SortKey::Number(None), SortKey::Direct) => Ordering::Greater,
-            (SortKey::Direct, SortKey::Number(None)) => Ordering::Less,
             (SortKey::DateTime(a), SortKey::DateTime(b)) => a.cmp(b),
+            // Numbers, then dates, then text, then missing numbers: one rank
+            // order for every mixed pair keeps the comparison transitive.
+            (a, b) if a.rank() != b.rank() => a.rank().cmp(&b.rank()),
             // Neither side is numeric: fall back to plain string order. This
             // keeps datetime values produced by numeric expressions (e.g.
             // `max(modified)`, formatted as fixed-width YYYY-MM-DD HH:MM:SS)
@@ -2482,6 +2488,40 @@ mod tests {
         assert_eq!(order(&forward), order(&backward));
         assert_eq!(make("2", VariantType::Int).cmp(&make("15", VariantType::String)), Ordering::Less);
         assert_eq!(make("10", VariantType::Int).cmp(&make("15", VariantType::String)), Ordering::Less);
+    }
+
+    #[test]
+    fn mixed_numeric_and_datetime_keys_order_the_same_from_any_starting_order() {
+        use crate::function::Function;
+
+        let mut coalesce = Expr::function_left(Function::Coalesce, Some(Box::new(Expr::field(Field::Width))));
+        coalesce.args = Some(vec![Expr::field(Field::Modified)]);
+        let fields = Rc::new(vec![coalesce]);
+        let orderings = Rc::new(vec![true]);
+        let make = |value: &str, value_type: VariantType| {
+            Criteria::with_types(fields.clone(), vec![String::from(value)], &[Some(value_type)], orderings.clone())
+        };
+        let rows = || vec![
+            make("2024-05-01 10:00:00", VariantType::DateTime),
+            make("10", VariantType::Int),
+            make("2023-12-31 23:00:00", VariantType::DateTime),
+            make("2", VariantType::Int),
+            make("text", VariantType::String),
+        ];
+        let order = |rows: &[Criteria<String>]| rows.iter().map(|row| row.values[0].clone()).collect::<Vec<_>>();
+
+        let mut forward = rows();
+        forward.sort();
+        let mut rotated = rows();
+        rotated.rotate_left(2);
+        rotated.sort();
+        let mut backward = rows();
+        backward.reverse();
+        backward.sort();
+
+        assert_eq!(order(&forward), vec!["2", "10", "2023-12-31 23:00:00", "2024-05-01 10:00:00", "text"]);
+        assert_eq!(order(&forward), order(&rotated));
+        assert_eq!(order(&forward), order(&backward));
     }
 
     #[test]

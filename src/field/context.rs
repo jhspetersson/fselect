@@ -18,7 +18,7 @@ use crate::util::duration::get_duration;
 const MIME_SAMPLE_SIZE: u64 = 64 * 1024;
 
 fn archived_mime_type(archive: &Path, file_info: &FileInfo) -> Option<String> {
-    if file_info.name.ends_with('/') || file_info.name.ends_with('\\') {
+    if file_info.is_dir() {
         return None;
     }
     with_archived_entry(archive, file_info, |reader| {

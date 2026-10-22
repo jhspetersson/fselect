@@ -24,6 +24,12 @@ pub struct FileInfo {
 }
 
 impl FileInfo {
+    pub fn is_dir(&self) -> bool {
+        self.name.ends_with('/')
+            || self.name.ends_with('\\')
+            || self.mode.is_some_and(crate::mode::mode_is_directory)
+    }
+
     #[cfg(test)]
     pub fn named(name: &str) -> FileInfo {
         FileInfo {

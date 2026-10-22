@@ -8,7 +8,6 @@ use std::os::unix::fs::MetadataExt;
 use xattr::FileExt;
 
 use crate::field::context::FieldContext;
-use crate::fileinfo::FileInfo;
 use crate::mode;
 use crate::util::*;
 use crate::util::error::SearchError;
@@ -139,15 +138,9 @@ pub fn handle_formatted_size(ctx: &mut FieldContext) -> Result<Variant, SearchEr
     }
 }
 
-fn archived_entry_is_dir(file_info: &FileInfo) -> bool {
-    file_info.name.ends_with('/')
-        || file_info.name.ends_with('\\')
-        || file_info.mode.is_some_and(mode::mode_is_directory)
-}
-
 pub fn handle_is_dir(ctx: &mut FieldContext) -> Result<Variant, SearchError> {
     match ctx.file_info {
-        Some(file_info) => Ok(Variant::from_bool(archived_entry_is_dir(file_info))),
+        Some(file_info) => Ok(Variant::from_bool(file_info.is_dir())),
         _ => Ok(file_type_predicate(ctx, |m| m.is_dir(), |ft| ft.is_dir())),
     }
 }
@@ -155,7 +148,7 @@ pub fn handle_is_dir(ctx: &mut FieldContext) -> Result<Variant, SearchError> {
 pub fn handle_is_file(ctx: &mut FieldContext) -> Result<Variant, SearchError> {
     match ctx.file_info {
         Some(file_info) => Ok(Variant::from_bool(
-            !archived_entry_is_dir(file_info) && file_info.mode.is_none_or(mode::mode_is_regular),
+            !file_info.is_dir() && file_info.mode.is_none_or(mode::mode_is_regular),
         )),
         _ => Ok(file_type_predicate(ctx, |m| m.is_file(), |ft| ft.is_file())),
     }
@@ -319,7 +312,7 @@ pub fn handle_is_hidden(ctx: &mut FieldContext) -> Result<Variant, SearchError> 
 pub fn handle_is_empty(ctx: &mut FieldContext) -> Result<Variant, SearchError> {
     match ctx.file_info {
         Some(file_info) => {
-            if file_info.name.ends_with('/') || file_info.name.ends_with('\\') {
+            if file_info.is_dir() {
                 return Ok(match crate::fileinfo::archived_directory_has_children(&ctx.entry.path(), file_info) {
                     Some(has_children) => Variant::from_bool(!has_children),
                     None => Variant::empty(VariantType::Bool),
@@ -774,10 +767,18 @@ mod tests {
             let file_info = Some(FileInfo::named(inner));
             test_field(&entry, &file_info, &tmp, &Field::IsEmpty).to_string()
         };
+        let by_mode = |inner: &str, mode: u32| {
+            let mut file_info = FileInfo::named(inner);
+            file_info.mode = Some(mode);
+            let file_info = Some(file_info);
+            test_field(&entry, &file_info, &tmp, &Field::IsEmpty).to_string()
+        };
         let results = [is_empty("full/"), is_empty("full\\"), is_empty("empty/"), is_empty("blank.txt")];
+        let mode_results = [by_mode("full", 0o40755), by_mode("empty", 0o40755), by_mode("blank.txt", 0o100644)];
         let _ = fs::remove_dir_all(&tmp);
 
         assert_eq!(results, ["false", "false", "true", "true"]);
+        assert_eq!(mode_results, ["false", "true", "true"]);
     }
 
     #[test]

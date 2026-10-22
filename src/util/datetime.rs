@@ -14,6 +14,21 @@ static EXPLICIT_TIME_REGEX: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)\b[0-9]{1,2}\s*[:.]\s*[0-9]{2}\b|\b[0-9]{1,2}\s*[ap]m\b").unwrap()
 });
 
+static TWELVE_OCLOCK_REGEX: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)\b12(?::([0-9]{2})(?::([0-9]{2}))?)?\s*([ap])m\b").unwrap()
+});
+
+fn normalize_twelve_oclock(s: &str) -> std::borrow::Cow<'_, str> {
+    TWELVE_OCLOCK_REGEX.replace_all(s, |caps: &regex::Captures| {
+        let hour = if caps[3].eq_ignore_ascii_case("a") { "0" } else { "12" };
+        let minutes = caps.get(1).map_or("00", |m| m.as_str());
+        match caps.get(2) {
+            Some(seconds) => format!("{hour}:{minutes}:{}", seconds.as_str()),
+            None => format!("{hour}:{minutes}"),
+        }
+    })
+}
+
 static US_DATES: Mutex<bool> = Mutex::new(false);
 
 pub fn set_us_dates(us: bool) {
@@ -106,13 +121,14 @@ pub fn parse_datetime(s: &str) -> Result<(NaiveDateTime, NaiveDateTime), String>
                     true => Dialect::Us,
                     false => Dialect::Uk,
                 };
-                match parse_date_string(s, Local::now(), dialect) {
+                let normalized = normalize_twelve_oclock(s);
+                match parse_date_string(&normalized, Local::now(), dialect) {
                     Ok(date_time) => {
                         let date_time = date_time.naive_local();
                         let finish = if date_time.hour() == 0
                             && date_time.minute() == 0
                             && date_time.second() == 0
-                            && !EXPLICIT_TIME_REGEX.is_match(s)
+                            && !EXPLICIT_TIME_REGEX.is_match(&normalized)
                         {
                             date_time
                                 .with_hour(23)
@@ -283,6 +299,19 @@ mod tests {
         assert_eq!(parse_datetime("1 June 2024 00:00").unwrap(), (midnight, midnight));
         let noon = NaiveDate::from_ymd_opt(2024, 6, 1).unwrap().and_hms_opt(12, 0, 0).unwrap();
         assert_eq!(parse_datetime("1 June 2024 12:00").unwrap(), (noon, noon));
+    }
+
+    #[test]
+    fn twelve_oclock_follows_the_twelve_hour_clock() {
+        let at = |h, m, s| NaiveDate::from_ymd_opt(2024, 6, 1).unwrap().and_hms_opt(h, m, s).unwrap();
+
+        assert_eq!(parse_datetime("1 June 2024 12 am").unwrap(), (at(0, 0, 0), at(0, 0, 0)));
+        assert_eq!(parse_datetime("1 June 2024 12am").unwrap(), (at(0, 0, 0), at(0, 0, 0)));
+        assert_eq!(parse_datetime("1 June 2024 12 pm").unwrap(), (at(12, 0, 0), at(12, 0, 0)));
+        assert_eq!(parse_datetime("1 June 2024 12:30 am").unwrap(), (at(0, 30, 0), at(0, 30, 0)));
+        assert_eq!(parse_datetime("1 June 2024 12:30:15 PM").unwrap(), (at(12, 30, 15), at(12, 30, 15)));
+        assert_eq!(parse_datetime("1 June 2024 1 pm").unwrap(), (at(13, 0, 0), at(13, 0, 0)));
+        assert_eq!(parse_datetime("1 June 2024 1 am").unwrap(), (at(1, 0, 0), at(1, 0, 0)));
     }
 
     #[test]

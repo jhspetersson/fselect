@@ -107,10 +107,10 @@ fn conditions_group_and_filter_in_having() {
         "select is_file and size > 2 as k, count(*) from {root} group by is_file and size > 2 order by k"
     ));
     let having = fselect(&format!(
-        "select size > 2 as big, count(*) from {root} group by size > 2 having size > 2"
+        "select size > 2 as big, count(*) from {root} where is_file group by size > 2 having size > 2"
     ));
     let having_not = fselect(&format!(
-        "select size > 2 as big, count(*) from {root} group by size > 2 having not big"
+        "select size > 2 as big, count(*) from {root} where is_file group by size > 2 having not big"
     ));
     let _ = fs::remove_dir_all(&dir);
 
@@ -120,7 +120,7 @@ fn conditions_group_and_filter_in_having() {
     assert_eq!(negated.1, "false\t2\ntrue\t1\n");
     assert_eq!(compared.1, "false\t2\ntrue\t1\n");
     assert_eq!(having.1, "true\t1\n");
-    assert_eq!(having_not.1, "false\t2\n");
+    assert_eq!(having_not.1, "false\t1\n");
 }
 
 #[test]

@@ -64,6 +64,9 @@ fn pattern_and_list_operators_filter_rows() {
     let not_like = fselect(&format!("select name from {root} where is_file and name not like '%.txt' order by name"));
     let regex = fselect(&format!("select name from {root} where name =~ '^b'"));
     let regexp_keyword = fselect(&format!("select name from {root} where name regexp '^b'"));
+    let rlike = fselect(&format!("select name from {root} where name rlike '^b'"));
+    let not_rlike = fselect(&format!("select name from {root} where is_file and name not rlike '^b' order by path"));
+    let rlike_column = fselect(&format!("select name rlike '^b', count(*) from {root} where is_file group by name rlike '^b' order by 1"));
     let between = fselect(&format!("select name from {root} where size between 1 and 5 order by name"));
     let in_list = fselect(&format!("select name from {root} where ext in (md, rs) order by name"));
     let not_in_list = fselect(&format!("select name from {root} where is_file and ext not in (md, rs) order by path"));
@@ -73,6 +76,9 @@ fn pattern_and_list_operators_filter_rows() {
     assert_eq!(ok(&not_like), "beta.md\ngamma.rs\n");
     assert_eq!(ok(&regex), "beta.md\n");
     assert_eq!(ok(&regexp_keyword), "beta.md\n");
+    assert_eq!(ok(&rlike), "beta.md\n");
+    assert_eq!(ok(&not_rlike), "alpha.txt\ngamma.rs\nalpha.txt\n");
+    assert_eq!(ok(&rlike_column), "false\t3\ntrue\t1\n");
     assert_eq!(ok(&between), "alpha.txt\nbeta.md\n");
     assert_eq!(ok(&in_list), "beta.md\ngamma.rs\n");
     assert_eq!(ok(&not_in_list), "alpha.txt\nalpha.txt\n");

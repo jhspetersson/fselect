@@ -416,7 +416,7 @@ impl Lexer {
                 }
                 "exists" | "notexists" if self.state.in_where() && !self.state.after_operator && !self.state.after_value_start && !self.state.in_value_set => Some(Lexeme::Operator(s.to_lowercase())),
                 "eq" | "ne" | "gt" | "lt" | "ge" | "le" | "gte" | "lte" | "eeq" | "ene"
-                | "regexp" | "rx" | "like" | "notlike" | "notrx"
+                | "regexp" | "rx" | "rlike" | "like" | "notlike" | "notrx" | "notrlike"
                 | "between" | "notbetween" | "in" | "notin" | "is"
                     if (self.state.in_where() && !self.state.after_operator && !self.state.after_logical)
                         || (self.state.in_column_expression()

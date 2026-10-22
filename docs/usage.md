@@ -580,8 +580,8 @@ When you put a directory to search at, you can specify some options.
 * `>=` or `gte` or `ge`
 * `<` or `lt`
 * `<=` or `lte` or `le`
-* `=~` or `~=` or `regexp` or `rx`
-* `!=~` or `!~=` or `notrx`
+* `=~` or `~=` or `regexp` or `rx` or `rlike`
+* `!=~` or `!~=` or `notrx` or `notrlike`
 * `like`
 * `notlike`
 * `between`

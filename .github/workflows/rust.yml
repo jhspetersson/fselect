@@ -5,12 +5,14 @@ on:
     branches: [ master ]
     paths:
       - 'src/**'
+      - 'tests/**'
       - 'Cargo.toml'
       - 'Cargo.lock'
   pull_request:
     branches: [ master ]
     paths:
       - 'src/**'
+      - 'tests/**'
       - 'Cargo.toml'
       - 'Cargo.lock'
   workflow_dispatch:

@@ -92,7 +92,7 @@ impl SortKey {
             Some(VariantType::Bool) => SortKey::Number(str_to_bool(value).map(|flag| if flag { 1.0 } else { 0.0 })),
             Some(VariantType::Int | VariantType::Float) => SortKey::Number(numeric_sort_key(value)),
             Some(VariantType::DateTime) => datetime(value),
-            Some(VariantType::String) if field.contains_numeric() => SortKey::Number(numeric_sort_key(value)),
+            Some(VariantType::String) if field.yields_numeric() => SortKey::Number(numeric_sort_key(value)),
             Some(VariantType::String) => SortKey::Direct,
             None if field.contains_numeric() => SortKey::Number(numeric_sort_key(value)),
             None if field.contains_datetime() => datetime(value),
@@ -663,7 +663,7 @@ pub fn get_exif_metadata(entry: &DirEntry) -> Option<HashMap<String, String>> {
         && let Ok(reader) = exif::Reader::new().read_from_container(&mut BufReader::new(&file)) {
             let mut exif_info = HashMap::new();
 
-            for field in reader.fields() {
+            for field in reader.fields().filter(|field| field.ifd_num == exif::In::PRIMARY) {
                 let field_tag = format!("{}", field.tag);
                 match field.value {
                     exif::Value::Rational(ref vec)
@@ -2388,6 +2388,70 @@ mod tests {
             make("2024-01-05 09:30:00", VariantType::DateTime).cmp(&make("2026-06-11 10:00:00", VariantType::DateTime)),
             Ordering::Less
         );
+    }
+
+    #[test]
+    fn text_results_with_an_unused_numeric_fallback_sort_as_text() {
+        use crate::function::Function;
+
+        let mut coalesce = Expr::function_left(Function::Coalesce, Some(Box::new(Expr::field(Field::Name))));
+        coalesce.args = Some(vec![Expr::field(Field::Size)]);
+        assert!(!coalesce.yields_numeric());
+        let fields = Rc::new(vec![coalesce]);
+        let orderings = Rc::new(vec![true]);
+        let make = |value: &str| {
+            Criteria::with_types(fields.clone(), vec![String::from(value)], &[Some(VariantType::String)], orderings.clone())
+        };
+
+        assert_eq!(make("1.0").cmp(&make("10")), Ordering::Less);
+        assert_eq!(make("10").cmp(&make("2")), Ordering::Less);
+
+        let max = Expr::function_left(Function::Max, Some(Box::new(Expr::field(Field::Size))));
+        assert!(max.yields_numeric());
+        assert!(Expr::field(Field::FormattedSize).yields_numeric());
+    }
+
+    #[test]
+    fn exif_metadata_comes_from_the_primary_image_only() {
+        fn ifd(entries: &[(u16, &[u8])], next: u32, data: &mut Vec<u8>, data_base: u32) -> Vec<u8> {
+            let mut out = Vec::new();
+            out.extend_from_slice(&(entries.len() as u16).to_le_bytes());
+            for (tag, value) in entries {
+                out.extend_from_slice(&tag.to_le_bytes());
+                out.extend_from_slice(&2u16.to_le_bytes());
+                out.extend_from_slice(&(value.len() as u32).to_le_bytes());
+                out.extend_from_slice(&(data_base + data.len() as u32).to_le_bytes());
+                data.extend_from_slice(value);
+            }
+            out.extend_from_slice(&next.to_le_bytes());
+            out
+        }
+        let primary: &[(u16, &[u8])] = &[(0x010E, b"main\0"), (0x0132, b"2024:06:01 12:00:00\0")];
+        let thumbnail: &[(u16, &[u8])] = &[(0x010E, b"thumb\0"), (0x0132, b"2020:01:01 00:00:00\0")];
+        let ifd_len = |n: usize| 2 + 12 * n + 4;
+        let first = 8u32;
+        let second = first + ifd_len(primary.len()) as u32;
+        let data_base = second + ifd_len(thumbnail.len()) as u32;
+        let mut data = Vec::new();
+        let ifd0 = ifd(primary, second, &mut data, data_base);
+        let ifd1 = ifd(thumbnail, 0, &mut data, data_base);
+        let mut tiff = Vec::new();
+        tiff.extend_from_slice(b"II\x2a\x00");
+        tiff.extend_from_slice(&first.to_le_bytes());
+        tiff.extend(ifd0);
+        tiff.extend(ifd1);
+        tiff.extend(data);
+
+        let tmp = std::env::temp_dir().join("fselect_test_exif_thumbnail");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        fs::write(tmp.join("photo.tif"), &tiff).unwrap();
+        let entry = fs::read_dir(&tmp).unwrap().map(Result::unwrap).find(|e| e.file_name() == "photo.tif").unwrap();
+        let info = get_exif_metadata(&entry).expect("exif parsed");
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(info.get("ImageDescription").map(String::as_str), Some("main"));
+        assert_eq!(info.get("DateTime").map(String::as_str), Some("2024:06:01 12:00:00"));
     }
 
     #[test]

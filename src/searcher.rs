@@ -3432,6 +3432,10 @@ impl<'a> Searcher<'a> {
                 let field_value = self.get_column_expr_value(
                     None, &None, Path::new(""), file_map, Some(group_acc), left_expr,
                 )?;
+                let field_value = match expr.right {
+                    Some(ref right_expr) if !left_expr.is_literal() => Self::retype_value(left_expr, right_expr, field_value),
+                    _ => field_value,
+                };
                 return self.check_in_list(
                     expr, None, &None, Path::new(""), file_map, Some(group_acc), &field_value, *op == Op::NotIn,
                 );
@@ -7442,6 +7446,27 @@ mod tests {
         assert_eq!(compact, vec![String::from("a-new.txt")]);
         assert_eq!(coalesced_text, vec![String::from("z-old.txt\tz-old.txt"), String::from("a-new.txt\ta-new.txt")]);
         assert_eq!(grouped, vec![String::from("false\t1"), String::from("true\t1")]);
+    }
+
+    #[test]
+    fn grouped_in_lists_convert_operands_like_the_row_filter() {
+        let tmp = std::env::temp_dir().join("fselect_test_grouped_in_conversion");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        fs::write(tmp.join("1.0"), "x").unwrap();
+        fs::write(tmp.join("other"), "xy").unwrap();
+
+        let run = |query: &str| run_query_against_dir(query, &tmp);
+        let filtered = run("select name from __DIR__ where name in (size)");
+        let grouped = run("select name, size from __DIR__ group by name, size having name in (size)");
+        let grouped_not = run("select name, size from __DIR__ group by name, size having name not in (size) order by name");
+        let text_order = run("select name from __DIR__ order by coalesce(name, size)");
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(filtered, vec![String::from("1.0")]);
+        assert_eq!(grouped, vec![String::from("1.0\t1")]);
+        assert_eq!(grouped_not, vec![String::from("other\t2")]);
+        assert_eq!(text_order, vec![String::from("1.0"), String::from("other")]);
     }
 
     #[test]

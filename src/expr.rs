@@ -761,6 +761,27 @@ impl Expr {
         Self::contains_numeric_field(self)
     }
 
+    pub fn yields_numeric(&self) -> bool {
+        if self.arithmetic_op.is_some() || self.references_type("numeric") {
+            return true;
+        }
+        if self.op.is_some() || self.logical_op.is_some() {
+            return false;
+        }
+        if let Some(ref subquery) = self.subquery
+            && let Some(column) = subquery.fields.first()
+        {
+            return column.yields_numeric();
+        }
+        if let Some(ref function) = self.function {
+            if function.passes_argument_type_through() {
+                return self.left.iter().map(Box::as_ref).chain(self.args.iter().flatten()).any(Expr::yields_numeric);
+            }
+            return function.is_numeric_function();
+        }
+        self.field.as_ref().is_some_and(Field::is_numeric_field)
+    }
+
     fn contains_numeric_field(expr: &Expr) -> bool {
         if expr.arithmetic_op.is_some() || expr.references_type("numeric") {
             return true;

@@ -148,3 +148,115 @@ fn ordering_limit_and_offset_page_through_results() {
     assert_eq!(ok(&limited), "alpha.txt\nalpha.txt\n");
     assert_eq!(ok(&offset), "alpha.txt\nbeta.md\n");
 }
+
+#[test]
+fn hash_fields_digest_file_contents() {
+    let dir = fresh_dir("fselect_it_query_hashes");
+    write_files(&dir, &[("two_lines.txt", "hello world\nsecond line\n"), ("copy.txt", "hello world\nsecond line\n"), ("empty.txt", "")]);
+    let root = dir.display();
+
+    let digests = fselect(&format!("select sha1, sha256, sha512 from {root} where name = two_lines.txt"));
+    let empty = fselect(&format!("select sha1 from {root} where name = empty.txt"));
+    let duplicates = fselect(&format!("select sha256, count(*) from {root} where is_file group by sha256 having count(*) > 1"));
+    let _ = fs::remove_dir_all(&dir);
+
+    assert_eq!(
+        ok(&digests),
+        "ac481614b7dc8fa938c04b13510057fe3572177e\t1cf34cbeaca6f2ce821c4b6369c37c583b1cc10846122a8c77a4df77d0d5b7b8\t039445c839a89b3d7acbc2cc4e646845abad5ed16e54d21d2246785c9b0fa93360dd5f08ec4dfe5763a77aaf61b4ea4ce658c37da5453e339d6a5a653c62e15e\n"
+    );
+    assert_eq!(ok(&empty), "da39a3ee5e6b4b0d3255bfef95601890afd80709\n");
+    assert_eq!(ok(&duplicates), "1cf34cbeaca6f2ce821c4b6369c37c583b1cc10846122a8c77a4df77d0d5b7b8\t2\n");
+}
+
+#[test]
+fn text_analysis_fields_describe_file_contents() {
+    let dir = fresh_dir("fselect_it_query_text_fields");
+    write_files(&dir, &[("lf.txt", "hello world\nsecond line\n"), ("crlf.txt", "one\r\ntwo\r\n"), ("bom.txt", "\u{feff}bom text\n"), ("bare.txt", "abc")]);
+    fs::write(dir.join("bin.dat"), [0u8, 1, 2, 3, b'b', b'i', b'n']).unwrap();
+    let root = dir.display();
+
+    let described = fselect(&format!(
+        "select name, line_count, word_count, char_count, encoding, has_bom, line_ending, is_text, is_binary, mime from {root} where is_file order by name"
+    ));
+    let binary = fselect(&format!("select name from {root} where is_binary"));
+    let crlf = fselect(&format!("select name from {root} where line_ending = CRLF"));
+    let bom = fselect(&format!("select name from {root} where has_bom"));
+    let _ = fs::remove_dir_all(&dir);
+
+    assert_eq!(
+        ok(&described),
+        "bare.txt\t1\t1\t3\tASCII\tfalse\t\ttrue\tfalse\ttext/plain\n\
+         bin.dat\t0\t\t\t\tfalse\t\tfalse\ttrue\tapplication/octet-stream\n\
+         bom.txt\t1\t2\t9\tUTF-8\ttrue\tLF\ttrue\tfalse\ttext/plain\n\
+         crlf.txt\t2\t2\t10\tASCII\tfalse\tCRLF\ttrue\tfalse\ttext/plain\n\
+         lf.txt\t2\t4\t24\tASCII\tfalse\tLF\ttrue\tfalse\ttext/plain\n"
+    );
+    assert_eq!(ok(&binary), "bin.dat\n");
+    assert_eq!(ok(&crlf), "crlf.txt\n");
+    assert_eq!(ok(&bom), "bom.txt\n");
+}
+
+#[test]
+fn hidden_files_follow_platform_conventions() {
+    let dir = fresh_dir("fselect_it_query_hidden");
+    write_files(&dir, &[(".dot", "x"), ("plain.txt", "x"), ("flagged.txt", "x")]);
+    #[cfg(windows)]
+    {
+        let flagged = Command::new("attrib").arg("+h").arg(dir.join("flagged.txt")).status().map(|status| status.success()).unwrap_or(false);
+        if !flagged {
+            let _ = fs::remove_dir_all(&dir);
+            return;
+        }
+    }
+    let root = dir.display();
+
+    let listed = fselect(&format!("select name, is_hidden from {root} order by name"));
+    let hidden = fselect(&format!("select name from {root} where is_hidden order by name"));
+    let visible = fselect(&format!("select name from {root} where not is_hidden order by name"));
+    let _ = fs::remove_dir_all(&dir);
+
+    #[cfg(unix)]
+    {
+        assert_eq!(ok(&listed), ".dot\ttrue\nflagged.txt\tfalse\nplain.txt\tfalse\n");
+        assert_eq!(ok(&hidden), ".dot\n");
+        assert_eq!(ok(&visible), "flagged.txt\nplain.txt\n");
+    }
+    #[cfg(windows)]
+    {
+        assert_eq!(ok(&listed), ".dot\tfalse\nflagged.txt\ttrue\nplain.txt\tfalse\n", "Windows hides by attribute, not by a leading dot");
+        assert_eq!(ok(&hidden), "flagged.txt\n");
+        assert_eq!(ok(&visible), ".dot\nplain.txt\n");
+    }
+}
+
+#[test]
+fn keywords_fields_and_functions_are_case_insensitive() {
+    let dir = query_dir("fselect_it_query_case");
+    let root = dir.display();
+
+    let upper = fselect(&format!("SELECT NAME, SIZE FROM {root} WHERE IS_FILE AND EXT = txt ORDER BY SIZE DESC, PATH"));
+    let mixed = fselect(&format!("Select Upper(Name) From {root} Where Name Like 'al%' And Size > 1"));
+    let format = fselect(&format!("select name from {root} where name = beta.md INTO JSON"));
+    let _ = fs::remove_dir_all(&dir);
+
+    assert_eq!(ok(&upper), "alpha.txt\t11\nalpha.txt\t1\n");
+    assert_eq!(ok(&mixed), "ALPHA.TXT\n");
+    assert_eq!(ok(&format), "[{\"name\":\"beta.md\"}]");
+}
+
+#[test]
+fn null_tests_detect_missing_metadata() {
+    let dir = query_dir("fselect_it_query_nulls");
+    let root = dir.display();
+
+    let missing = fselect(&format!("select name from {root} where width is null and ext = txt order by path"));
+    let present = fselect(&format!("select name from {root} where width is not null"));
+    let never_null = fselect(&format!("select name from {root} where name is null"));
+    let column = fselect(&format!("select name, width is null, name is null from {root} where name = beta.md"));
+    let _ = fs::remove_dir_all(&dir);
+
+    assert_eq!(ok(&missing), "alpha.txt\nalpha.txt\n");
+    assert_eq!(ok(&present), "");
+    assert_eq!(ok(&never_null), "");
+    assert_eq!(ok(&column), "beta.md\ttrue\tfalse\n");
+}

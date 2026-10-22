@@ -133,3 +133,60 @@ fn exif_fields_come_from_the_primary_image_only() {
     assert_eq!(june.1, "photo.tif\n");
     assert_eq!(january.1, "", "the thumbnail's date must not leak into the search");
 }
+
+fn days_ago_at_noon(days: i64) -> SystemTime {
+    let day = chrono::Local::now().date_naive() - chrono::Duration::days(days);
+    SystemTime::from(chrono::Local.from_local_datetime(&day.and_hms_opt(12, 0, 0).unwrap()).single().unwrap())
+}
+
+#[test]
+fn relative_days_count_back_from_today() {
+    let dir = std::env::temp_dir().join("fselect_it_datetime_relative");
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    for (file, time) in [("now.txt", SystemTime::now()), ("yesterday.txt", days_ago_at_noon(1)), ("old.txt", days_ago_at_noon(3))] {
+        let path = dir.join(file);
+        fs::write(&path, "x").unwrap();
+        fs::File::options().write(true).open(&path).unwrap().set_modified(time).unwrap();
+    }
+
+    let today = names(&dir, "modified = today");
+    let yesterday = names(&dir, "modified = yesterday");
+    let minus_three = names(&dir, "modified = -3");
+    let recent = names(&dir, "modified >= -1");
+    let older = names(&dir, "modified < '2 days ago'");
+    let _ = fs::remove_dir_all(&dir);
+
+    for result in [&today, &yesterday, &minus_three, &recent, &older] {
+        assert_eq!(result.0, Some(0), "{}", result.2);
+    }
+    assert_eq!(today.1, "now.txt\n");
+    assert_eq!(yesterday.1, "yesterday.txt\n");
+    assert_eq!(minus_three.1, "old.txt\n");
+    assert_eq!(recent.1, "now.txt\nyesterday.txt\n");
+    assert_eq!(older.1, "old.txt\n");
+}
+
+#[test]
+fn date_functions_extract_and_shift_parts() {
+    let dir = timed_files("fselect_it_datetime_functions");
+    let root = dir.display();
+
+    let parts = fselect(&format!(
+        "select year(modified), month(modified), day(modified), dow(modified), dayname(modified), doy(modified), extract('hour', modified), extract('quarter', modified) from {root} where name = noon.txt"
+    ));
+    let arithmetic = fselect(&format!(
+        "select date_diff(modified, '2024-01-01'), date_diff('2024-01-01', modified), date_trunc('month', modified), last_day(modified), date_add(modified, 30), date_sub(modified, 1) from {root} where name = noon.txt"
+    ));
+    let filtered = names(&dir, "year(modified) = 2024 and extract('hour', modified) >= 1");
+    let truncated = names(&dir, "date_trunc('year', modified) = '2024-01-01'");
+    let _ = fs::remove_dir_all(&dir);
+
+    for result in [&parts, &arithmetic, &filtered, &truncated] {
+        assert_eq!(result.0, Some(0), "{}", result.2);
+    }
+    assert_eq!(parts.1, "2024\t6\t1\t7\tSaturday\t153\t12\t2\n");
+    assert_eq!(arithmetic.1, "152\t-152\t2024-06-01 00:00:00\t2024-06-30\t2024-07-01 12:00:00\t2024-05-31 12:00:00\n");
+    assert_eq!(filtered.1, "early.txt\nnoon.txt\n");
+    assert_eq!(truncated.1, "early.txt\nmidnight.txt\nnoon.txt\n");
+}

@@ -114,3 +114,47 @@ fn list_separates_values_with_nul_for_xargs() {
 
     assert_eq!(ok(&run), "a, b.txt\0c.md\0");
 }
+
+#[test]
+fn non_ascii_names_round_trip_as_utf8() {
+    let dir = fresh_dir("fselect_it_format_utf8");
+    write_files(&dir, &[("привет.txt", "x"), ("日本.md", "x")]);
+    let root = dir.display();
+
+    let listed = fselect(&format!("select name from {root} order by name"));
+    let matched = fselect(&format!("select name from {root} where name = 'привет.txt'"));
+    let json = fselect(&format!("select name from {root} where ext = md into json"));
+    let _ = fs::remove_dir_all(&dir);
+
+    assert_eq!(ok(&listed), "привет.txt\n日本.md\n");
+    assert_eq!(ok(&matched), "привет.txt\n");
+    assert_eq!(ok(&json), "[{\"name\":\"日本.md\"}]");
+}
+
+#[test]
+fn json_escapes_backslashes_in_paths() {
+    let dir = fresh_dir("fselect_it_format_json_paths");
+    write_files(&dir, &[("sub/file.txt", "x")]);
+    let expected_path = dir.join("sub").join("file.txt").display().to_string().replace('\\', "\\\\");
+
+    let run = fselect(&format!("select abspath from {} where is_file into json", dir.display()));
+    let _ = fs::remove_dir_all(&dir);
+
+    assert_eq!(ok(&run), format!("[{{\"abspath\":\"{expected_path}\"}}]"));
+}
+
+#[test]
+fn html_escapes_markup_characters_in_values() {
+    let dir = fresh_dir("fselect_it_format_html_escape");
+    write_files(&dir, &[("a&b'c.txt", "x")]);
+    #[cfg(unix)]
+    write_files(&dir, &[("<i>.txt", "x")]);
+
+    let run = fselect(&format!("select name from {} order by name into html", dir.display()));
+    let _ = fs::remove_dir_all(&dir);
+
+    let out = ok(&run);
+    assert!(out.contains("<td>a&amp;b'c.txt</td>"), "{out}");
+    #[cfg(unix)]
+    assert!(out.contains("<td>&lt;i&gt;.txt</td>"), "{out}");
+}

@@ -135,3 +135,64 @@ fn us_date_flag_switches_the_date_dialect() {
     assert_eq!(us.0, Some(0), "{}", us.2);
     assert_eq!(us.1, "june.txt\n");
 }
+
+#[test]
+fn config_file_flag_overrides_the_defaults() {
+    use chrono::TimeZone;
+
+    let tmp = std::env::temp_dir().join("fselect_cli_config");
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::create_dir_all(&tmp).unwrap();
+    let path = tmp.join("small.txt");
+    std::fs::write(&path, "hello world\nsecond line\n").unwrap();
+    let june_first = chrono::NaiveDate::from_ymd_opt(2024, 6, 1).unwrap().and_hms_opt(12, 0, 0).unwrap();
+    let time = std::time::SystemTime::from(chrono::Local.from_local_datetime(&june_first).single().unwrap());
+    std::fs::File::options().write(true).open(&path).unwrap().set_modified(time).unwrap();
+    std::fs::write(tmp.join("custom.toml"), "us_dates = true\ndefault_file_size_format = \"k\"\ncheck_for_updates = false\n").unwrap();
+    std::fs::write(tmp.join("bare.toml"), "check_for_updates = false\n").unwrap();
+    let custom = tmp.join("custom.toml").display().to_string();
+    let bare = tmp.join("bare.toml").display().to_string();
+    let missing = tmp.join("missing.toml").display().to_string();
+    let root = tmp.display();
+    let sizes = format!("select fsize from {root} where ext = txt");
+    let dates = format!("select name from {root} where modified = '06/01/2024'");
+
+    let custom_sizes = run_raw(&["--nocolor", "--config", &custom, &sizes]);
+    let custom_dates = run_raw(&["--nocolor", "-c", &custom, &dates]);
+    let bare_sizes = run_raw(&["--nocolor", "--config", &bare, &sizes]);
+    let bare_dates = run_raw(&["--nocolor", "--config", &bare, &dates]);
+    let unreadable = run_raw(&["--nocolor", "--config", &missing, &sizes]);
+    let _ = std::fs::remove_dir_all(&tmp);
+
+    assert_eq!(custom_sizes.0, Some(0), "{}", custom_sizes.2);
+    assert_eq!(custom_sizes.1, "0KiB\n");
+    assert_eq!(custom_dates.0, Some(0), "{}", custom_dates.2);
+    assert_eq!(custom_dates.1, "small.txt\n");
+    assert_eq!(bare_sizes.0, Some(0), "{}", bare_sizes.2);
+    assert_eq!(bare_sizes.1, "24B\n");
+    assert_eq!(bare_dates.0, Some(0), "{}", bare_dates.2);
+    assert_eq!(bare_dates.1, "", "without the setting 06/01 is the 6th of January");
+    assert_eq!(unreadable.0, Some(0), "{}", unreadable.2);
+    assert_eq!(unreadable.1, "24B\n", "a missing config file falls back to the defaults");
+    assert_eq!(error_lines(&unreadable.2), vec!["Could not open config file. Using default settings."]);
+}
+
+#[test]
+fn piped_output_carries_no_colour_codes_without_the_flag() {
+    let tmp = std::env::temp_dir().join("fselect_cli_pipe_colour");
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::create_dir_all(&tmp).unwrap();
+    std::fs::write(tmp.join("a.txt"), "x").unwrap();
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_fselect"))
+        .arg(format!("select name, size from {}", tmp.display()))
+        .env_remove("NO_COLOR")
+        .output()
+        .expect("failed to run fselect");
+    let _ = std::fs::remove_dir_all(&tmp);
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+    assert!(!stdout.contains('\u{1b}'), "{stdout:?}");
+    assert_eq!(stdout, "a.txt\t1\n");
+}

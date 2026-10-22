@@ -373,3 +373,132 @@ fn grouping_reuses_the_alias_value_where_already_evaluated() {
     assert!(filtered.1.starts_with("true\t"), "{}", filtered.1);
     assert_eq!(contradiction.1, "");
 }
+
+fn text_files(dir: &std::path::Path, names: &[&str]) {
+    for name in names {
+        fs::write(dir.join(name), "text").unwrap();
+    }
+}
+
+fn copy_png(dir: &std::path::Path) {
+    fs::copy(concat!(env!("CARGO_MANIFEST_DIR"), "/resources/test/image/rust-logo-blk.png"), dir.join("logo.png")).unwrap();
+}
+
+#[test]
+fn unknown_or_follows_three_valued_logic() {
+    let dir = std::env::temp_dir().join("fselect_it_grouping_unknown_or");
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    text_files(&dir, &["a.txt", "b.txt", "c.txt", "d.txt"]);
+    let root = dir.display();
+
+    let or_false = fselect(&format!(
+        "select width > 0 or size > 100, not (width > 0 or size > 100), count(*) from {root} group by width > 0 or size > 100"
+    ));
+    let or_true = fselect(&format!(
+        "select width > 0 or is_file, not (width > 0 or is_file), count(*) from {root} group by width > 0 or is_file"
+    ));
+    let _ = fs::remove_dir_all(&dir);
+
+    for result in [&or_false, &or_true] {
+        assert_eq!(result.0, Some(0), "{}", result.2);
+    }
+    assert_eq!(or_false.1, "false\tfalse\t4\n", "unknown OR false is unknown, so its negation is not true");
+    assert_eq!(or_true.1, "true\tfalse\t4\n", "unknown OR true is true");
+}
+
+#[test]
+fn known_and_unknown_comparisons_form_separate_groups() {
+    let dir = std::env::temp_dir().join("fselect_it_grouping_known_and_unknown");
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    text_files(&dir, &["a.txt", "b.txt", "c.txt"]);
+    copy_png(&dir);
+    let root = dir.display();
+
+    let shown = fselect(&format!("select width > 0, width <= 0, count(*) from {root} group by width > 0 order by 1"));
+    let complement = fselect(&format!("select width > 0, count(*) from {root} group by width > 0 having width <= 0"));
+    let positive = fselect(&format!("select width > 0, count(*) from {root} group by width > 0 having width > 0"));
+    let _ = fs::remove_dir_all(&dir);
+
+    for result in [&shown, &complement, &positive] {
+        assert_eq!(result.0, Some(0), "{}", result.2);
+    }
+    assert_eq!(shown.1, "false\tfalse\t3\ntrue\tfalse\t1\n", "the image is known, the texts are unknown");
+    assert_eq!(complement.1, "");
+    assert_eq!(positive.1, "true\t1\n");
+}
+
+#[test]
+fn cached_compound_keys_skip_the_leaf_where_already_skipped() {
+    let dir = std::env::temp_dir().join("fselect_it_grouping_cached_compound");
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    fs::write(dir.join("empty.txt"), "").unwrap();
+    for name in ["a.txt", "b.txt", "c.txt"] {
+        fs::write(dir.join(name), "xx").unwrap();
+    }
+    let root = dir.display();
+
+    let same_condition = fselect(&format!(
+        "select size = 0 or 10 / size > 1, count(*) from {root} where size = 0 or 10 / size > 1 group by size = 0 or 10 / size > 1"
+    ));
+    let through_alias = fselect(&format!(
+        "select size = 0 or 10 / size > 1 as ok, count(*) from {root} as t where t.ok = true group by ok"
+    ));
+    let _ = fs::remove_dir_all(&dir);
+
+    for result in [&same_condition, &through_alias] {
+        assert_eq!(result.0, Some(0), "{}", result.2);
+        assert!(!result.2.contains("Division by zero"), "{}", result.2);
+    }
+    assert_eq!(same_condition.1, "true\t4\n");
+    assert_eq!(through_alias.1, "true\t4\n");
+}
+
+#[test]
+fn having_sees_unknown_in_lists_and_compounds() {
+    let dir = std::env::temp_dir().join("fselect_it_grouping_having_unknown");
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    text_files(&dir, &["a.txt", "b.txt", "c.txt", "d.txt"]);
+    let root = dir.display();
+
+    let not_in = fselect(&format!("select count(*) from {root} group by width in (0) having width not in (0)"));
+    let in_list = fselect(&format!("select count(*) from {root} group by width in (0) having width in (0)"));
+    let not_compound = fselect(&format!(
+        "select count(*) from {root} group by width > 0 and is_file having not (width > 0 and is_file)"
+    ));
+    let known_false = fselect(&format!(
+        "select count(*) from {root} group by width > 0 and size > 100 having not (width > 0 and size > 100)"
+    ));
+    let _ = fs::remove_dir_all(&dir);
+
+    for result in [&not_in, &in_list, &not_compound, &known_false] {
+        assert_eq!(result.0, Some(0), "{}", result.2);
+    }
+    assert_eq!(not_in.1, "");
+    assert_eq!(in_list.1, "");
+    assert_eq!(not_compound.1, "");
+    assert_eq!(known_false.1, "4\n", "unknown AND false is false, so its negation holds");
+}
+
+#[test]
+fn negated_unknown_keys_keep_their_numeric_type_in_ordering() {
+    let dir = std::env::temp_dir().join("fselect_it_grouping_negated_unknown_order");
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    text_files(&dir, &["a.txt", "b.txt", "c.txt"]);
+    copy_png(&dir);
+    let root = dir.display();
+
+    let ascending = fselect(&format!("select -(width > 0) + 10, count(*) from {root} group by -(width > 0) order by 1"));
+    let descending = fselect(&format!("select -(width > 0) + 10, count(*) from {root} group by -(width > 0) order by 1 desc"));
+    let _ = fs::remove_dir_all(&dir);
+
+    for result in [&ascending, &descending] {
+        assert_eq!(result.0, Some(0), "{}", result.2);
+    }
+    assert_eq!(ascending.1, "9\t1\n10\t3\n", "9 before 10 only when the key is numeric");
+    assert_eq!(descending.1, "10\t3\n9\t1\n");
+}

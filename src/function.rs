@@ -1977,12 +1977,12 @@ impl FieldAccumulator {
                     self.count = 1;
                     self.sum = v;
                 } else {
-                    if v < self.min {
+                    if v < self.min || (v == self.min && self.min_raw.as_deref().is_some_and(|current| value < current)) {
                         self.min = v;
                         self.min_raw = Some(value.to_string());
                         self.min_raw_type = value_type.clone();
                     }
-                    if v > self.max {
+                    if v > self.max || (v == self.max && self.max_raw.as_deref().is_some_and(|current| value > current)) {
                         self.max = v;
                         self.max_raw = Some(value.to_string());
                         self.max_raw_type = value_type;
@@ -3641,6 +3641,20 @@ mod tests {
     }
 
     #[test]
+    fn numeric_ties_between_extremes_are_broken_by_text_regardless_of_order() {
+        for order in [["000", "-000", "002"], ["-000", "000", "002"], ["002", "000", "-000"]] {
+            let names = make_accumulator("val", &order);
+            assert_eq!(get_aggregate_value(&Function::Min, &names, "val".to_string(), &None), "-000", "{order:?}");
+            assert_eq!(get_aggregate_value(&Function::Max, &names, "val".to_string(), &None), "002", "{order:?}");
+        }
+        for order in [["2", "2.0", "002"], ["002", "2.0", "2"]] {
+            let twos = make_accumulator("val", &order);
+            assert_eq!(get_aggregate_value(&Function::Min, &twos, "val".to_string(), &None), "002", "{order:?}");
+            assert_eq!(get_aggregate_value(&Function::Max, &twos, "val".to_string(), &None), "2.0", "{order:?}");
+        }
+    }
+
+    #[test]
     fn min_and_max_keep_the_spelling_of_numeric_looking_text() {
         let padded = make_accumulator("val", &["002", "010", "1e3"]);
         assert_eq!(get_aggregate_value(&Function::Min, &padded, "val".to_string(), &None), "002");
@@ -4518,20 +4532,19 @@ mod tests {
     }
 
     #[test]
-    fn min_negative_zero_keeps_the_first_spelling() {
-        let acc = make_accumulator("val", &["-0", "0"]);
-        let result = get_aggregate_value(&Function::Min, &acc, "val".to_string(), &None);
-        assert_eq!(result, "-0");
-        let acc = make_accumulator("val", &["0", "-0"]);
-        let result = get_aggregate_value(&Function::Min, &acc, "val".to_string(), &None);
-        assert_eq!(result, "0");
+    fn min_negative_zero_is_the_textually_smaller_spelling() {
+        for order in [["-0", "0"], ["0", "-0"]] {
+            let acc = make_accumulator("val", &order);
+            assert_eq!(get_aggregate_value(&Function::Min, &acc, "val".to_string(), &None), "-0", "{order:?}");
+        }
     }
 
     #[test]
-    fn max_negative_zero_keeps_the_first_spelling() {
-        let acc = make_accumulator("val", &["-0", "0"]);
-        let result = get_aggregate_value(&Function::Max, &acc, "val".to_string(), &None);
-        assert_eq!(result, "-0");
+    fn max_negative_zero_is_the_textually_larger_spelling() {
+        for order in [["-0", "0"], ["0", "-0"]] {
+            let acc = make_accumulator("val", &order);
+            assert_eq!(get_aggregate_value(&Function::Max, &acc, "val".to_string(), &None), "0", "{order:?}");
+        }
     }
 
     #[test]

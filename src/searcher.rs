@@ -6070,7 +6070,7 @@ mod tests {
             &tmp,
         );
         let where_size_twice = run_query_against_dir(
-            "select name from __DIR__ where size > 1 and size * 2 > 5 order by name",
+            "select name from __DIR__ where is_file and size > 1 and size * 2 > 5 order by name",
             &tmp,
         );
         let _ = fs::remove_dir_all(&tmp);

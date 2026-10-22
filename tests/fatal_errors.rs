@@ -242,3 +242,36 @@ fn valid_queries_still_produce_complete_documents() {
     assert_eq!(run.code, Some(0), "{}", run.stderr);
     assert!(run.stdout.starts_with("<html>") && run.stdout.trim_end().ends_with("</html>"), "{}", run.stdout);
 }
+
+#[test]
+fn aggregates_only_in_having_do_not_bypass_grouping_validation() {
+    let dir = make_dir("fselect_test_fatal_having_aggregate");
+    let dir = dir.to_string_lossy();
+
+    assert_rejected_without_output(
+        &format!("select name from {dir} having count(*) > 0 into json"),
+        "Column 'name' must appear in GROUP BY",
+    );
+    assert_rejected_without_output(
+        &format!("select contains('x') from {dir} having count(*) > 0 into json"),
+        "Column 'contains()' must appear in GROUP BY",
+    );
+}
+
+#[test]
+fn having_fields_hidden_by_expression_grouping_are_rejected() {
+    let dir = make_dir("fselect_test_fatal_having_hidden_field");
+    let dir = dir.to_string_lossy();
+
+    assert_rejected_without_output(
+        &format!("select size % 2, count(*) from {dir} group by size % 2 having size > 0 into json"),
+        "Cannot use 'size' in HAVING",
+    );
+    assert_rejected_without_output(
+        &format!("select size % 2, count(*) from {dir} group by size % 2 having size is null into json"),
+        "Cannot use 'size' in HAVING",
+    );
+    let grouped_expression = fselect(&format!("select size % 2, count(*) from {dir} group by size % 2 having size % 2 = 1"));
+    assert_eq!(grouped_expression.code, Some(0), "{}", grouped_expression.stderr);
+    assert_eq!(grouped_expression.stdout, "1\t2\n");
+}

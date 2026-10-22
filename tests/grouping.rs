@@ -221,3 +221,25 @@ fn groups_separate_equal_texts_of_different_types_in_any_root_order() {
     assert_eq!(backward.1, forward.1);
     assert_eq!(backward_first.1, forward_first.1);
 }
+
+#[test]
+fn grouped_in_lists_convert_operands_like_the_row_filter() {
+    let dir = std::env::temp_dir().join("fselect_it_grouping_in_conversion");
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    fs::write(dir.join("1.0"), "x").unwrap();
+    fs::write(dir.join("other"), "xy").unwrap();
+    let root = dir.display();
+
+    let filtered = fselect(&format!("select name from {root} where name in (size)"));
+    let grouped = fselect(&format!("select name, size from {root} group by name, size having name in (size)"));
+    let grouped_not = fselect(&format!("select name, size from {root} group by name, size having name not in (size)"));
+    let _ = fs::remove_dir_all(&dir);
+
+    for result in [&filtered, &grouped, &grouped_not] {
+        assert_eq!(result.0, Some(0), "{}", result.2);
+    }
+    assert_eq!(filtered.1, "1.0\n");
+    assert_eq!(grouped.1, "1.0\t1\n");
+    assert_eq!(grouped_not.1, "other\t2\n");
+}

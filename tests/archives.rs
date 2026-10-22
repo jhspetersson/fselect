@@ -247,3 +247,96 @@ fn large_archives_are_scanned_in_linear_time() {
         "reading content fields of {members} members took {elapsed:?}; re-opening the archive per member would take minutes"
     );
 }
+
+fn set_unix_modes(archive: &std::path::Path, modes: &[(&str, u32)]) {
+    let mut bytes = fs::read(archive).unwrap();
+    let mut i = 0;
+    while i + 46 <= bytes.len() {
+        if &bytes[i..i + 4] != b"PK\x01\x02" {
+            i += 1;
+            continue;
+        }
+        let name_len = u16::from_le_bytes([bytes[i + 28], bytes[i + 29]]) as usize;
+        let extra_len = u16::from_le_bytes([bytes[i + 30], bytes[i + 31]]) as usize;
+        let comment_len = u16::from_le_bytes([bytes[i + 32], bytes[i + 33]]) as usize;
+        let name = String::from_utf8_lossy(&bytes[i + 46..i + 46 + name_len]).to_string();
+        if let Some((_, mode)) = modes.iter().find(|(entry, _)| *entry == name) {
+            bytes[i + 5] = 3;
+            bytes[i + 38..i + 42].copy_from_slice(&(mode << 16).to_le_bytes());
+        }
+        i += 46 + name_len + extra_len + comment_len;
+    }
+    fs::write(archive, bytes).unwrap();
+}
+
+#[test]
+fn archive_member_types_follow_their_unix_modes() {
+    let dir = std::env::temp_dir().join("fselect_it_archive_member_types");
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let archive = dir.join("pack.zip");
+    let mut zip = zip::ZipWriter::new(fs::File::create(&archive).unwrap());
+    let options = zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
+    for (name, content) in [("link", "target.txt"), ("fifo", ""), ("plain.txt", "hi"), ("full", ""), ("full/child.txt", "x"), ("empty", "")] {
+        zip.start_file(name, options).unwrap();
+        zip.write_all(content.as_bytes()).unwrap();
+    }
+    zip.finish().unwrap();
+    set_unix_modes(&archive, &[
+        ("link", 0o120777),
+        ("fifo", 0o10644),
+        ("plain.txt", 0o100644),
+        ("full", 0o40755),
+        ("full/child.txt", 0o100644),
+        ("empty", 0o40755),
+    ]);
+    let root = dir.display();
+
+    let kinds = fselect(&format!(
+        "select name, is_file, is_symlink, is_pipe, is_dir from {root} archives where name != 'pack.zip' order by name"
+    ));
+    let symlinks = fselect(&format!("select name from {root} archives where is_symlink"));
+    let empty_dirs = fselect(&format!("select name from {root} archives where is_dir and is_empty"));
+    let files = fselect(&format!("select name from {root} archives where is_file and name != 'pack.zip' order by name"));
+    let _ = fs::remove_dir_all(&dir);
+
+    for run in [&kinds, &symlinks, &empty_dirs, &files] {
+        assert_eq!(run.code, Some(0), "{}", run.stderr);
+    }
+    assert_eq!(
+        rows(&kinds),
+        vec![
+            "child.txt\ttrue\tfalse\tfalse\tfalse",
+            "empty\tfalse\tfalse\tfalse\ttrue",
+            "fifo\tfalse\tfalse\ttrue\tfalse",
+            "full\tfalse\tfalse\tfalse\ttrue",
+            "link\tfalse\ttrue\tfalse\tfalse",
+            "plain.txt\ttrue\tfalse\tfalse\tfalse",
+        ]
+    );
+    assert_eq!(rows(&symlinks), vec!["link"]);
+    assert_eq!(rows(&empty_dirs), vec!["empty"], "a populated directory known only by its mode is not empty");
+    assert_eq!(rows(&files), vec!["child.txt", "plain.txt"]);
+}
+
+#[cfg(windows)]
+#[test]
+fn archive_members_do_not_inherit_the_containers_attributes() {
+    let dir = make_archive_dir("fselect_it_archive_container_attrs", 2);
+    let archive = dir.join("pack.zip");
+    let mut perms = fs::metadata(&archive).unwrap().permissions();
+    perms.set_readonly(true);
+    fs::set_permissions(&archive, perms).unwrap();
+    let root = dir.display();
+
+    let members = fselect(&format!("select name from {root} archives where ext = txt and has_extattr('R')"));
+    let container = fselect(&format!("select name from {root} where has_extattr('R')"));
+    let mut perms = fs::metadata(&archive).unwrap().permissions();
+    perms.set_readonly(false);
+    fs::set_permissions(&archive, perms).unwrap();
+    let _ = fs::remove_dir_all(&dir);
+
+    assert_eq!(members.code, Some(0), "{}", members.stderr);
+    assert_eq!(rows(&members), Vec::<&str>::new(), "members carry no attributes of their own");
+    assert_eq!(rows(&container), vec!["pack.zip"]);
+}

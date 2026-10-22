@@ -644,15 +644,18 @@ impl Expr {
         }
     }
 
-    fn collect_alias_references_from_query(query: &Query, alias: &str, result: &mut HashSet<String>) {
-        let clauses = query
+    fn collect_clauses(query: &Query) -> impl Iterator<Item = &Expr> {
+        query
             .fields
             .iter()
             .chain(query.expr.iter())
             .chain(query.ordering_fields.iter())
             .chain(query.grouping_fields.iter())
-            .chain(query.having.iter());
-        for expr in clauses {
+            .chain(query.having.iter())
+    }
+
+    fn collect_alias_references_from_query(query: &Query, alias: &str, result: &mut HashSet<String>) {
+        for expr in Self::collect_clauses(query) {
             Self::collect_alias_references(expr, alias, true, result);
         }
         for root in &query.roots {
@@ -669,14 +672,7 @@ impl Expr {
     }
 
     fn collect_fields_required_from_query(query: &Query, alias: &str, result: &mut HashMap<Field, HashSet<String>>) {
-        let clauses = query
-            .fields
-            .iter()
-            .chain(query.expr.iter())
-            .chain(query.ordering_fields.iter())
-            .chain(query.grouping_fields.iter())
-            .chain(query.having.iter());
-        for expr in clauses {
+        for expr in Self::collect_clauses(query) {
             Self::merge_required_fields(result, expr.get_fields_required_in_subqueries(alias, true));
         }
         for root in &query.roots {

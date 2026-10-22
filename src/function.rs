@@ -1087,7 +1087,9 @@ pub fn get_value(
         }
         #[cfg(target_os = "linux")]
         Function::HasExtattr => {
-            if let Some(entry) = entry {
+            if let Some(entry) = entry
+                && file_info.is_none()
+            {
                 if let Ok(file) = File::open(entry.path()) {
                     if let Some(flags) = crate::util::extattrs::get_ext_attrs(&file) {
                         return Ok(Variant::from_bool(
@@ -1102,6 +1104,7 @@ pub fn get_value(
         #[cfg(windows)]
         Function::HasExtattr => {
             if let Some(entry) = entry
+                && file_info.is_none()
                 && let Ok(meta) = entry.metadata() {
                     let attrs = crate::util::win_attrs::get_attrs(&meta);
                     return Ok(Variant::from_bool(
@@ -1113,7 +1116,9 @@ pub fn get_value(
         }
         #[cfg(target_os = "linux")]
         Function::HasAclEntry => {
-            if let Some(entry) = entry {
+            if let Some(entry) = entry
+                && file_info.is_none()
+            {
                 if let Ok(file) = File::open(entry.path()) {
                     if let Ok(Some(acl_data)) = file.get_xattr("system.posix_acl_access") {
                         if let Some(entries) = crate::util::acl::parse_acl(&acl_data) {
@@ -1129,7 +1134,9 @@ pub fn get_value(
         }
         #[cfg(windows)]
         Function::HasAclEntry => {
-            if let Some(entry) = entry {
+            if let Some(entry) = entry
+                && file_info.is_none()
+            {
                 return Ok(Variant::from_bool(
                     crate::util::win_acl::find_acl_entry(&entry.path(), &function_arg).is_some(),
                 ));
@@ -1139,7 +1146,9 @@ pub fn get_value(
         }
         #[cfg(target_os = "linux")]
         Function::AclEntry => {
-            if let Some(entry) = entry {
+            if let Some(entry) = entry
+                && file_info.is_none()
+            {
                 if let Ok(file) = File::open(entry.path()) {
                     if let Ok(Some(acl_data)) = file.get_xattr("system.posix_acl_access") {
                         if let Some(entries) = crate::util::acl::parse_acl(&acl_data) {
@@ -1160,6 +1169,7 @@ pub fn get_value(
         #[cfg(windows)]
         Function::AclEntry => {
             if let Some(entry) = entry
+                && file_info.is_none()
                 && let Some(acl_entry) =
                     crate::util::win_acl::find_acl_entry(&entry.path(), &function_arg)
                 {
@@ -1170,7 +1180,9 @@ pub fn get_value(
         }
         #[cfg(target_os = "linux")]
         Function::HasDefaultAclEntry => {
-            if let Some(entry) = entry {
+            if let Some(entry) = entry
+                && file_info.is_none()
+            {
                 if entry.path().is_dir() {
                     if let Ok(file) = File::open(entry.path()) {
                         if let Ok(Some(acl_data)) = file.get_xattr("system.posix_acl_default") {
@@ -1189,6 +1201,7 @@ pub fn get_value(
         #[cfg(windows)]
         Function::HasDefaultAclEntry => {
             if let Some(entry) = entry
+                && file_info.is_none()
                 && entry.path().is_dir() {
                     return Ok(Variant::from_bool(
                         crate::util::win_acl::find_default_acl_entry(&entry.path(), &function_arg)
@@ -1200,7 +1213,9 @@ pub fn get_value(
         }
         #[cfg(target_os = "linux")]
         Function::DefaultAclEntry => {
-            if let Some(entry) = entry {
+            if let Some(entry) = entry
+                && file_info.is_none()
+            {
                 if entry.path().is_dir() {
                     if let Ok(file) = File::open(entry.path()) {
                         if let Ok(Some(acl_data)) = file.get_xattr("system.posix_acl_default") {
@@ -1223,6 +1238,7 @@ pub fn get_value(
         #[cfg(windows)]
         Function::DefaultAclEntry => {
             if let Some(entry) = entry
+                && file_info.is_none()
                 && entry.path().is_dir()
                 && let Some(acl_entry) =
                     crate::util::win_acl::find_default_acl_entry(&entry.path(), &function_arg)
@@ -1234,7 +1250,9 @@ pub fn get_value(
         }
         #[cfg(target_os = "linux")]
         Function::HasCapability => {
-            if let Some(entry) = entry {
+            if let Some(entry) = entry
+                && file_info.is_none()
+            {
                 if let Ok(file) = File::open(entry.path()) {
                     if let Ok(Some(caps_xattr)) = file.get_xattr("security.capability") {
                         let caps_string = crate::util::capabilities::parse_capabilities(caps_xattr);
@@ -2054,6 +2072,39 @@ mod tests {
 
         assert_ne!(has.to_string(), "true", "a member has no attributes of its own");
         assert_eq!(value.to_string(), "");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn archive_members_do_not_inherit_the_containers_extattrs() {
+        let tmp = std::env::temp_dir().join("fselect_test_member_extattrs");
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        let container = tmp.join("files.zip");
+        std::fs::write(&container, "zip").unwrap();
+        let mut perms = std::fs::metadata(&container).unwrap().permissions();
+        perms.set_readonly(true);
+        std::fs::set_permissions(&container, perms).unwrap();
+        let entry = std::fs::read_dir(&tmp).unwrap().map(Result::unwrap).find(|e| e.file_name() == "files.zip").unwrap();
+        let member = Some(crate::fileinfo::FileInfo {
+            name: String::from("writable.txt"),
+            size: 1,
+            mode: None,
+            modified: None,
+            member: None,
+        });
+
+        let on_container = get_value(&Function::HasExtattr, String::from("R"), vec![], Some(&entry), &None).unwrap();
+        let on_member = get_value(&Function::HasExtattr, String::from("R"), vec![], Some(&entry), &member).unwrap();
+        let acl_on_member = get_value(&Function::HasAclEntry, String::from("Everyone"), vec![], Some(&entry), &member).unwrap();
+        let mut perms = std::fs::metadata(&container).unwrap().permissions();
+        perms.set_readonly(false);
+        std::fs::set_permissions(&container, perms).unwrap();
+        let _ = std::fs::remove_dir_all(&tmp);
+
+        assert_eq!(on_container.to_string(), "true", "the container itself is read-only");
+        assert_ne!(on_member.to_string(), "true", "a member has no attributes of its own");
+        assert_ne!(acl_on_member.to_string(), "true", "a member has no ACL of its own");
     }
 
     #[test]

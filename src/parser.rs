@@ -139,7 +139,7 @@ impl <'a> Parser<'a> {
             }
         }
 
-        self.reject_non_grouped_columns(&fields, &grouping_fields)?;
+        self.reject_non_grouped_columns(&fields, &grouping_fields, having.as_ref())?;
 
         if let Some(ref having_expr) = having {
             let aggregate_context = having_expr.has_aggregate_function()
@@ -1516,8 +1516,10 @@ impl <'a> Parser<'a> {
         Ok(grouping)
     }
 
-    fn reject_non_grouped_columns(&self, fields: &[Expr], grouping_fields: &[Expr]) -> Result<(), String> {
-        let aggregated = !grouping_fields.is_empty() || fields.iter().any(Expr::has_aggregate_function);
+    fn reject_non_grouped_columns(&self, fields: &[Expr], grouping_fields: &[Expr], having: Option<&Expr>) -> Result<(), String> {
+        let aggregated = !grouping_fields.is_empty()
+            || fields.iter().any(Expr::has_aggregate_function)
+            || having.is_some_and(Expr::has_aggregate_function);
         if !aggregated {
             return Ok(());
         }
@@ -2855,6 +2857,8 @@ mod tests {
             ("select ext, max(size), length(name) from /d group by ext", "name"),
             ("select name, count(*) from /d", "name"),
             ("select min(size), path from /d", "path"),
+            ("select name from /d having count(*) > 0", "name"),
+            ("select contains('x') from /d having count(*) > 0", "contains()"),
             ("select t.name, count(*) from /d as t group by t.ext", "t.name"),
         ] {
             let err = parse_query(query).expect_err(query);

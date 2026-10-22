@@ -5054,7 +5054,7 @@ mod tests {
             zip.write_all(body.as_bytes()).unwrap();
         }
         zip.finish().unwrap();
-        let raw_name = zip::ZipArchive::new(fs::File::open(tmp.join("bs.zip")).unwrap()).unwrap().by_index_raw(0).unwrap().name().to_string();
+        let raw_name = zip::ZipArchive::new(fs::File::open(tmp.join("bs.zip")).unwrap()).unwrap().by_index_raw(0).unwrap().name().unwrap().to_string();
         assert!(raw_name.contains('\\'), "the fixture must keep its backslashes, got {raw_name}");
 
         let listing = run_query_against_dir("select path, depth, is_hidden from __DIR__ archives order by path", &tmp);

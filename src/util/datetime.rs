@@ -18,6 +18,38 @@ static TWELVE_OCLOCK_REGEX: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)(^|[^0-9:.])12(?::([0-9]{2})(?::([0-9]{2}))?)?\s*([ap])m\b").unwrap()
 });
 
+static TRAILING_TIME_REGEX: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)^(.*\S)\s+([0-9]{1,2})(?::([0-9]{2})(?::([0-9]{2}))?)?\s*([ap]m)?$").unwrap()
+});
+
+fn trailing_time(caps: &regex::Captures) -> Option<NaiveTime> {
+    let mut hour: u32 = caps[2].parse().ok()?;
+    if let Some(meridiem) = caps.get(5) {
+        if hour == 0 || hour > 12 {
+            return None;
+        }
+        hour %= 12;
+        if meridiem.as_str().eq_ignore_ascii_case("pm") {
+            hour += 12;
+        }
+    }
+    let minute = caps.get(3).map_or(Some(0), |m| m.as_str().parse().ok())?;
+    let second = caps.get(4).map_or(Some(0), |m| m.as_str().parse().ok())?;
+    NaiveTime::from_hms_opt(hour, minute, second)
+}
+
+fn parse_natural_datetime(s: &str, dialect: Dialect) -> Option<NaiveDateTime> {
+    let now = Local::now();
+    if let Some(caps) = TRAILING_TIME_REGEX.captures(s)
+        && (caps.get(3).is_some() || caps.get(5).is_some())
+    {
+        let time = trailing_time(&caps)?;
+        let date_time = parse_date_string(&caps[1], now, dialect).ok()?;
+        return Some(date_time.date_naive().and_time(time));
+    }
+    parse_date_string(s, now, dialect).ok().map(|date_time| date_time.naive_local())
+}
+
 fn normalize_twelve_oclock(s: &str) -> std::borrow::Cow<'_, str> {
     TWELVE_OCLOCK_REGEX.replace_all(s, |caps: &regex::Captures| {
         let before = &caps[1];
@@ -123,9 +155,8 @@ pub fn parse_datetime(s: &str) -> Result<(NaiveDateTime, NaiveDateTime), String>
                     false => Dialect::Uk,
                 };
                 let normalized = normalize_twelve_oclock(s);
-                match parse_date_string(&normalized, Local::now(), dialect) {
-                    Ok(date_time) => {
-                        let date_time = date_time.naive_local();
+                match parse_natural_datetime(&normalized, dialect) {
+                    Some(date_time) => {
                         let finish = if date_time.hour() == 0
                             && date_time.minute() == 0
                             && date_time.second() == 0
@@ -144,7 +175,7 @@ pub fn parse_datetime(s: &str) -> Result<(NaiveDateTime, NaiveDateTime), String>
 
                         Ok((date_time, finish))
                     }
-                    _ => Err("Error parsing date/time value: ".to_string() + s),
+                    None => Err("Error parsing date/time value: ".to_string() + s),
                 }
             } else {
                 Err("Error parsing date/time value: ".to_string() + s)
@@ -232,6 +263,19 @@ mod tests {
 
         assert_eq!(result.0, start);
         assert_eq!(result.1, start);
+    }
+
+    #[test]
+    fn relative_days_keep_an_explicit_trailing_time() {
+        let yesterday = Local::now().date_naive() - chrono::Duration::days(1);
+        let at = |h, m| yesterday.and_hms_opt(h, m, 0).unwrap();
+
+        assert_eq!(parse_datetime("yesterday 15:30").unwrap(), (at(15, 30), at(15, 30)));
+        assert_eq!(parse_datetime("yesterday 3pm").unwrap(), (at(15, 0), at(15, 0)));
+        assert_eq!(parse_datetime("yesterday 12am").unwrap(), (at(0, 0), at(0, 0)));
+        assert_eq!(parse_datetime("1 day ago 00:00").unwrap(), (at(0, 0), at(0, 0)));
+        assert!(parse_datetime("yesterday 25:00").is_err());
+        assert!(parse_datetime("yesterday 13pm").is_err());
     }
 
     #[test]

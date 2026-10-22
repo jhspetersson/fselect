@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::fs::File;
 use std::io::Read;
@@ -86,8 +87,9 @@ pub fn with_archived_entry<T>(archive: &Path, file_info: &FileInfo, read: impl F
 }
 
 pub fn archived_directory_has_children(archive: &Path, file_info: &FileInfo) -> Option<bool> {
-    fn has_children<'a>(prefix: &str, names: impl Iterator<Item = &'a str>) -> bool {
+    fn has_children<'a>(prefix: &str, names: impl Iterator<Item = zip::result::ZipResult<Cow<'a, str>>>) -> bool {
         names
+            .filter_map(Result::ok)
             .map(|name| name.replace('\\', "/"))
             .any(|name| name != prefix && name.starts_with(prefix))
     }
@@ -116,8 +118,12 @@ pub fn to_file_info<R>(zipped_file: &zip::read::ZipFile<R>, member: Option<Archi
 where
     R: std::io::Read + std::io::Seek
 {
+    let name = match zipped_file.name() {
+        Ok(name) => name.into_owned(),
+        Err(_) => String::from_utf8_lossy(zipped_file.name_raw()).into_owned(),
+    };
     FileInfo {
-        name: zipped_file.name().replace('\\', "/"),
+        name: name.replace('\\', "/"),
         size: zipped_file.size(),
         mode: zipped_file.unix_mode(),
         modified: zipped_file.last_modified(),

@@ -1,6 +1,5 @@
 //! Handles the parsing of the query string
 
-use std::collections::HashSet;
 use std::path::PathBuf;
 use std::str::FromStr;
 
@@ -151,24 +150,19 @@ impl <'a> Parser<'a> {
             if Self::contains_op_unsupported_in_having(having_expr) {
                 return Err("EXISTS and NOT EXISTS are not supported in the HAVING clause".to_string());
             }
-            let allowed_fields: HashSet<Field> = grouping_fields
-                .iter()
-                .flat_map(|f| f.get_required_fields())
-                .collect();
-            for field in having_expr.get_non_aggregated_fields() {
-                if !allowed_fields.contains(&field) {
-                    return Err(format!(
+            let grouping_keys: Vec<String> = grouping_fields.iter().map(Self::grouping_key).collect();
+            if let Some(ungrouped) = self.non_grouped_field(having_expr, &grouping_keys) {
+                return Err(match (ungrouped.field, &ungrouped.function) {
+                    (Some(field), _) => format!(
                         "Cannot use '{}' in HAVING: it is not a grouping column; wrap it in an aggregate function or filter with WHERE",
                         field.to_string().to_lowercase()
-                    ));
-                }
-            }
-            let grouping_keys: Vec<String> = grouping_fields.iter().map(Expr::cache_key).collect();
-            if let Some(function) = having_expr.non_aggregated_entry_function(&grouping_keys) {
-                return Err(format!(
-                    "Cannot use '{}()' in HAVING: it reads each file; filter with WHERE or wrap it in an aggregate function",
-                    function.canonical_name()
-                ));
+                    ),
+                    (None, Some(function)) => format!(
+                        "Cannot use '{}()' in HAVING: it reads each file; filter with WHERE or wrap it in an aggregate function",
+                        function.canonical_name()
+                    ),
+                    (None, None) => String::from("HAVING may only use grouping columns and aggregate functions"),
+                });
             }
         }
 
@@ -1523,7 +1517,7 @@ impl <'a> Parser<'a> {
         if !aggregated {
             return Ok(());
         }
-        let grouping_keys: Vec<String> = grouping_fields.iter().map(Expr::cache_key).collect();
+        let grouping_keys: Vec<String> = grouping_fields.iter().map(Self::grouping_key).collect();
         match fields.iter().find_map(|column| self.non_grouped_field(column, &grouping_keys)) {
             Some(field) => {
                 let prefix = field.root_alias.as_deref().map(|alias| format!("{alias}.")).unwrap_or_default();
@@ -1540,8 +1534,21 @@ impl <'a> Parser<'a> {
         }
     }
 
+    fn grouping_key(expr: &Expr) -> String {
+        let mut bare = expr.clone();
+        bare.alias = None;
+        bare.minus = false;
+        bare.cache_key()
+    }
+
+    fn matches_grouping_key(expr: &Expr, grouping_keys: &[String]) -> bool {
+        grouping_keys.contains(&Self::grouping_key(expr))
+            || ((expr.op.is_some() || expr.logical_op.is_some())
+                && grouping_keys.contains(&Self::grouping_key(&expr.negated())))
+    }
+
     fn non_grouped_field<'e>(&self, expr: &'e Expr, grouping_keys: &[String]) -> Option<&'e Expr> {
-        if expr.is_literal() || expr.subquery.is_some() || grouping_keys.contains(&expr.cache_key()) {
+        if expr.is_literal() || expr.subquery.is_some() || Self::matches_grouping_key(expr, grouping_keys) {
             return None;
         }
         if expr.function.as_ref().is_some_and(Function::is_aggregate_function) {
@@ -3020,6 +3027,26 @@ mod tests {
             "unexpected error: {}",
             err
         );
+    }
+
+    #[test]
+    fn having_rejects_fields_hidden_by_expression_grouping() {
+        for query in [
+            "select size % 2, count(*) from /d group by size % 2 having size > 0",
+            "select size % 2, count(*) from /d group by size % 2 having size is null",
+            "select length(name), count(*) from /d group by length(name) having name = a",
+        ] {
+            let err = parse_query(query).expect_err(query);
+            assert!(err.contains("not a grouping column"), "{query}: {err}");
+        }
+        for query in [
+            "select size % 2, count(*) from /d group by size % 2 having size % 2 = 0",
+            "select size % 2 as parity, count(*) from /d group by parity having parity = 0",
+            "select length(name), count(*) from /d group by length(name) having length(name) > 3",
+            "select ext, count(*) from /d group by ext, size having size > 0",
+        ] {
+            assert!(parse_query(query).is_ok(), "{query}: {:?}", parse_query(query).err());
+        }
     }
 
     #[test]

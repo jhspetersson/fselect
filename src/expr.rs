@@ -543,37 +543,6 @@ impl Expr {
         false
     }
 
-    pub fn get_non_aggregated_fields(&self) -> HashSet<Field> {
-        let mut result = HashSet::new();
-        Self::collect_non_aggregated_fields(self, &mut result);
-        result
-    }
-
-    fn collect_non_aggregated_fields(expr: &Expr, result: &mut HashSet<Field>) {
-        if let Some(ref function) = expr.function
-            && function.is_aggregate_function() {
-                return;
-            }
-
-        if let Some(field) = expr.field {
-            result.insert(field);
-        }
-
-        if let Some(ref left) = expr.left {
-            Self::collect_non_aggregated_fields(left, result);
-        }
-
-        if let Some(ref right) = expr.right {
-            Self::collect_non_aggregated_fields(right, result);
-        }
-
-        if let Some(ref args) = expr.args {
-            for arg in args {
-                Self::collect_non_aggregated_fields(arg, result);
-            }
-        }
-    }
-
     pub fn get_aggregate_exprs(&self) -> Vec<&Expr> {
         let mut result = vec![];
         Self::collect_aggregate_exprs(self, &mut result);
@@ -693,23 +662,6 @@ impl Expr {
         }
     }
 
-    pub fn non_aggregated_entry_function(&self, grouping_keys: &[String]) -> Option<&Function> {
-        if self.function.as_ref().is_some_and(Function::is_aggregate_function) || grouping_keys.contains(&self.cache_key()) {
-            return None;
-        }
-        if let Some(ref function) = self.function
-            && function.reads_entry()
-        {
-            return Some(function);
-        }
-        self.left
-            .iter()
-            .chain(self.right.iter())
-            .map(Box::as_ref)
-            .chain(self.args.iter().flatten())
-            .find_map(|child| child.non_aggregated_entry_function(grouping_keys))
-    }
-
     pub fn merge_required_fields(into: &mut HashMap<Field, HashSet<String>>, from: HashMap<Field, HashSet<String>>) {
         for (field, keys) in from {
             into.entry(field).or_default().extend(keys);
@@ -774,8 +726,12 @@ impl Expr {
             return column.yields_numeric();
         }
         if let Some(ref function) = self.function {
+            let mut arguments = self.left.iter().map(Box::as_ref).chain(self.args.iter().flatten());
             if function.passes_argument_type_through() {
-                return self.left.iter().map(Box::as_ref).chain(self.args.iter().flatten()).any(Expr::yields_numeric);
+                return arguments.any(Expr::yields_numeric);
+            }
+            if function.result_type_follows_all_arguments() {
+                return arguments.all(Expr::yields_numeric);
             }
             return function.is_numeric_function();
         }

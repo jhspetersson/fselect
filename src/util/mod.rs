@@ -2525,6 +2525,29 @@ mod tests {
     }
 
     #[test]
+    fn least_and_greatest_over_text_sort_as_text() {
+        use crate::function::Function;
+
+        let mut least = Expr::function_left(Function::Least, Some(Box::new(Expr::field(Field::Name))));
+        least.args = Some(vec![Expr::value(String::from("z"))]);
+        assert!(!least.yields_numeric());
+        let fields = Rc::new(vec![least]);
+        let orderings = Rc::new(vec![true]);
+        let make = |value: &str| {
+            Criteria::with_types(fields.clone(), vec![String::from(value)], &[Some(VariantType::String)], orderings.clone())
+        };
+
+        assert_eq!(make("10").cmp(&make("2")), Ordering::Less);
+
+        let mut numeric = Expr::function_left(Function::Greatest, Some(Box::new(Expr::field(Field::Size))));
+        numeric.args = Some(vec![Expr::value(String::from("5"))]);
+        assert!(!numeric.yields_numeric(), "a bare literal has no declared type");
+        let mut all_numeric = Expr::function_left(Function::Greatest, Some(Box::new(Expr::field(Field::Size))));
+        all_numeric.args = Some(vec![Expr::field(Field::Width)]);
+        assert!(all_numeric.yields_numeric());
+    }
+
+    #[test]
     fn formatted_sizes_keep_numeric_order_although_their_values_are_text() {
         let fields = Rc::new(vec![Expr::field(Field::FormattedSize)]);
         let orderings = Rc::new(vec![true]);

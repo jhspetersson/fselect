@@ -15,16 +15,17 @@ static EXPLICIT_TIME_REGEX: LazyLock<Regex> = LazyLock::new(|| {
 });
 
 static TWELVE_OCLOCK_REGEX: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i)\b12(?::([0-9]{2})(?::([0-9]{2}))?)?\s*([ap])m\b").unwrap()
+    Regex::new(r"(?i)(^|[^0-9:.])12(?::([0-9]{2})(?::([0-9]{2}))?)?\s*([ap])m\b").unwrap()
 });
 
 fn normalize_twelve_oclock(s: &str) -> std::borrow::Cow<'_, str> {
     TWELVE_OCLOCK_REGEX.replace_all(s, |caps: &regex::Captures| {
-        let hour = if caps[3].eq_ignore_ascii_case("a") { "0" } else { "12" };
-        let minutes = caps.get(1).map_or("00", |m| m.as_str());
-        match caps.get(2) {
-            Some(seconds) => format!("{hour}:{minutes}:{}", seconds.as_str()),
-            None => format!("{hour}:{minutes}"),
+        let before = &caps[1];
+        let hour = if caps[4].eq_ignore_ascii_case("a") { "0" } else { "12" };
+        let minutes = caps.get(2).map_or("00", |m| m.as_str());
+        match caps.get(3) {
+            Some(seconds) => format!("{before}{hour}:{minutes}:{}", seconds.as_str()),
+            None => format!("{before}{hour}:{minutes}"),
         }
     })
 }
@@ -312,6 +313,11 @@ mod tests {
         assert_eq!(parse_datetime("1 June 2024 12:30:15 PM").unwrap(), (at(12, 30, 15), at(12, 30, 15)));
         assert_eq!(parse_datetime("1 June 2024 1 pm").unwrap(), (at(13, 0, 0), at(13, 0, 0)));
         assert_eq!(parse_datetime("1 June 2024 1 am").unwrap(), (at(1, 0, 0), at(1, 0, 0)));
+        assert_eq!(parse_datetime("1 June 2024 1:12 am").unwrap(), (at(1, 12, 0), at(1, 12, 0)));
+        assert_eq!(parse_datetime("1 June 2024 1:12 pm").unwrap(), (at(13, 12, 0), at(13, 12, 0)));
+        assert_eq!(parse_datetime("1 June 2024 1:15:12 pm").unwrap(), (at(13, 15, 12), at(13, 15, 12)));
+        assert_eq!(parse_datetime("1 June 2024 12:12 am").unwrap(), (at(0, 12, 0), at(0, 12, 0)));
+        assert_eq!(parse_datetime("1 June 2024 12:12:12 pm").unwrap(), (at(12, 12, 12), at(12, 12, 12)));
     }
 
     #[test]

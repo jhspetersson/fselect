@@ -7461,12 +7461,18 @@ mod tests {
         let grouped = run("select name, size from __DIR__ group by name, size having name in (size)");
         let grouped_not = run("select name, size from __DIR__ group by name, size having name not in (size) order by name");
         let text_order = run("select name from __DIR__ order by coalesce(name, size)");
+        fs::write(tmp.join("10"), "x").unwrap();
+        fs::write(tmp.join("2"), "x").unwrap();
+        let least_desc = run("select name from __DIR__ where name != other order by least(name, 'z') desc limit 1");
+        let least_asc = run("select name from __DIR__ where name != other order by least(name, 'z')");
         let _ = fs::remove_dir_all(&tmp);
 
         assert_eq!(filtered, vec![String::from("1.0")]);
         assert_eq!(grouped, vec![String::from("1.0\t1")]);
         assert_eq!(grouped_not, vec![String::from("other\t2")]);
         assert_eq!(text_order, vec![String::from("1.0"), String::from("other")]);
+        assert_eq!(least_desc, vec![String::from("2")]);
+        assert_eq!(least_asc, vec![String::from("1.0"), String::from("10"), String::from("2")]);
     }
 
     #[test]

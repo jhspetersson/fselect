@@ -474,6 +474,10 @@ impl Function {
         matches!(self, Function::Min | Function::Max)
     }
 
+    pub fn result_type_follows_all_arguments(&self) -> bool {
+        matches!(self, Function::Least | Function::Greatest)
+    }
+
     pub fn datetime_argument_positions(&self) -> &'static [usize] {
         match self {
             Function::Year

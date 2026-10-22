@@ -146,3 +146,78 @@ fn unary_minus_turns_a_condition_into_zero_or_minus_one() {
     assert_eq!(filter.1, "f2\n");
     assert_eq!(having.1, "true\t1\n");
 }
+
+#[test]
+fn grouped_comparisons_over_missing_metadata_are_false_both_ways() {
+    let dir = std::env::temp_dir().join("fselect_it_grouping_missing_metadata");
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    for name in ["a.txt", "b.txt", "c.txt", "d.txt"] {
+        fs::write(dir.join(name), "text").unwrap();
+    }
+    let root = dir.display();
+
+    let shown = fselect(&format!("select width > 0, width <= 0, count(*) from {root} group by width > 0"));
+    let having = fselect(&format!("select width > 0, width <= 0, count(*) from {root} group by width > 0 having width <= 0"));
+    let negated = fselect(&format!("select width > 0, not (width > 0), count(*) from {root} group by width > 0"));
+    let _ = fs::remove_dir_all(&dir);
+
+    for result in [&shown, &having, &negated] {
+        assert_eq!(result.0, Some(0), "{}", result.2);
+    }
+    assert_eq!(shown.1, "false\tfalse\t4\n");
+    assert_eq!(having.1, "");
+    assert_eq!(negated.1, "false\tfalse\t4\n", "neither side of an unknown comparison holds");
+}
+
+#[test]
+fn negated_grouped_fields_are_computed_from_the_grouped_value() {
+    let dir = std::env::temp_dir().join("fselect_it_grouping_negated_fields");
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    fs::write(dir.join("a"), "x").unwrap();
+    fs::write(dir.join("bb"), "xx").unwrap();
+    fs::write(dir.join("cc"), "xx").unwrap();
+    let root = dir.display();
+
+    let field = fselect(&format!("select -size, count(*) from {root} group by size order by size"));
+    let function = fselect(&format!("select -length(name), count(*) from {root} group by length(name) order by length(name)"));
+    let having = fselect(&format!("select size, count(*) from {root} group by size having -size < -1"));
+    let _ = fs::remove_dir_all(&dir);
+
+    for result in [&field, &function, &having] {
+        assert_eq!(result.0, Some(0), "{}", result.2);
+    }
+    assert_eq!(field.1, "-1\t1\n-2\t2\n");
+    assert_eq!(function.1, "-1\t1\n-2\t2\n");
+    assert_eq!(having.1, "2\t2\n");
+}
+
+#[test]
+fn groups_separate_equal_texts_of_different_types_in_any_root_order() {
+    let dir = std::env::temp_dir().join("fselect_it_grouping_typed_keys");
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(dir.join("texts")).unwrap();
+    fs::create_dir_all(dir.join("images")).unwrap();
+    fs::write(dir.join("texts").join("144"), "x").unwrap();
+    fs::copy(
+        concat!(env!("CARGO_MANIFEST_DIR"), "/resources/test/image/rust-logo-blk.png"),
+        dir.join("images").join("logo.png"),
+    )
+    .unwrap();
+    let texts = dir.join("texts").display().to_string();
+    let images = dir.join("images").display().to_string();
+
+    let forward = fselect(&format!("select coalesce(width, name) as v, count(*) from {texts}, {images} group by v order by v"));
+    let backward = fselect(&format!("select coalesce(width, name) as v, count(*) from {images}, {texts} group by v order by v"));
+    let forward_first = fselect(&format!("select coalesce(width, name) as v from {texts}, {images} group by v order by v desc limit 1"));
+    let backward_first = fselect(&format!("select coalesce(width, name) as v from {images}, {texts} group by v order by v desc limit 1"));
+    let _ = fs::remove_dir_all(&dir);
+
+    for result in [&forward, &backward, &forward_first, &backward_first] {
+        assert_eq!(result.0, Some(0), "{}", result.2);
+    }
+    assert_eq!(forward.1, "144\t1\n144\t1\n", "a number and a text are different groups");
+    assert_eq!(backward.1, forward.1);
+    assert_eq!(backward_first.1, forward_first.1);
+}

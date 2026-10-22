@@ -1548,8 +1548,17 @@ impl <'a> Parser<'a> {
     }
 
     fn matches_grouping_key(expr: &Expr, grouping_keys: &[String]) -> bool {
-        grouping_keys.contains(&Self::grouping_key(expr))
-            || (Self::is_condition(expr) && grouping_keys.contains(&Self::grouping_key(&expr.negated())))
+        if grouping_keys.contains(&Self::grouping_key(expr)) {
+            return true;
+        }
+        if expr.minus {
+            let mut bare = expr.clone();
+            bare.minus = false;
+            if grouping_keys.contains(&Self::grouping_key(&bare)) {
+                return true;
+            }
+        }
+        Self::is_condition(expr) && grouping_keys.contains(&Self::grouping_key(&expr.negated()))
     }
 
     fn non_grouped_field<'e>(&self, expr: &'e Expr, grouping_keys: &[String]) -> Option<&'e Expr> {
@@ -2892,6 +2901,9 @@ mod tests {
             "select ext, max(size) + min(size), abs(sum(size * 2) - 1) from /d group by ext",
             "select ext, count(*) from /d group by ext, size",
             "select -size, count(*) from /d group by -size",
+            "select -size, count(*) from /d group by size",
+            "select -length(name), count(*) from /d group by length(name)",
+            "select size, count(*) from /d group by size having -size < -1",
             "select -(size > 2), count(*) from /d group by size > 2",
             "select t.ext, count(*) from /d as t group by t.ext",
             "select ext, (select count(*) from /e where ext = t.ext) from /d as t group by ext",

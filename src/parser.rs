@@ -42,6 +42,7 @@ pub struct Parser<'a> {
     /// How many NOTs enclose the condition being parsed.
     negation_depth: usize,
     select_aliases: Vec<Expr>,
+    declared_aliases: Vec<Expr>,
     nested: bool,
 }
 
@@ -59,6 +60,7 @@ impl <'a> Parser<'a> {
             root_aliases: vec![],
             negation_depth: 0,
             select_aliases: vec![],
+            declared_aliases: vec![],
             nested: false,
         }
     }
@@ -294,6 +296,25 @@ impl <'a> Parser<'a> {
         }
     }
 
+    fn push_field(&mut self, fields: &mut Vec<Expr>, field: Expr) {
+        if field.alias.is_some() {
+            self.declared_aliases.push(field.clone());
+        }
+        fields.push(field);
+    }
+
+    fn find_alias(aliases: &[Expr], name: &str) -> Option<Expr> {
+        aliases
+            .iter()
+            .find(|f| f.alias.as_deref().is_some_and(|a| a.eq_ignore_ascii_case(name)))
+            .cloned()
+    }
+
+    fn is_plain_identifier(s: &str) -> bool {
+        s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+            && s.chars().next().is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
+    }
+
     fn parse_fields(&mut self) -> Result<Vec<Expr>, String> {
         let mut fields = vec![];
 
@@ -334,7 +355,7 @@ impl <'a> Parser<'a> {
                         }
 
                         match self.parse_expr() {
-                            Ok(Some(field)) => fields.push(field),
+                            Ok(Some(field)) => self.push_field(&mut fields, field),
                             Err(e) => return Err(e),
                             _ => {}
                         }
@@ -343,7 +364,7 @@ impl <'a> Parser<'a> {
                 Some(Lexeme::Open) | Some(Lexeme::CurlyOpen) | Some(Lexeme::Not) => {
                     self.drop_lexeme();
                     match self.parse_expr() {
-                        Ok(Some(field)) => fields.push(field),
+                        Ok(Some(field)) => self.push_field(&mut fields, field),
                         Err(e) => return Err(e),
                         _ => {}
                     }
@@ -1327,11 +1348,7 @@ impl <'a> Parser<'a> {
                 Ok(Some(expr))
             }
             Some(Lexeme::RawString(ref s)) => {
-                if let Some(aliased) = self
-                    .select_aliases
-                    .iter()
-                    .find(|f| f.alias.as_deref().is_some_and(|a| a.eq_ignore_ascii_case(s)))
-                    .cloned()
+                if let Some(aliased) = Self::find_alias(&self.select_aliases, s)
                     && !self.call_follows()
                 {
                     let mut expr = aliased;
@@ -1350,6 +1367,16 @@ impl <'a> Parser<'a> {
                     return Ok(Some(expr));
                 }
 
+                if let Some(aliased) = Self::find_alias(&self.declared_aliases, s)
+                    && !self.call_follows()
+                {
+                    let mut expr = aliased;
+                    if minus {
+                        expr.minus = !expr.minus;
+                    }
+                    return Ok(Some(expr));
+                }
+
                 // Once a function name is recognised, argument errors must
                 // propagate: silently falling back to the literal "upper"
                 // would leave the already-consumed lexemes unrewound and
@@ -1360,6 +1387,10 @@ impl <'a> Parser<'a> {
                     let mut expr = self.parse_function(function)?;
                     expr.minus = minus;
                     return Ok(Some(expr));
+                }
+
+                if Self::is_plain_identifier(s) && !s.eq_ignore_ascii_case("not") && self.call_follows() {
+                    return Err(format!("Unknown function: {}", s));
                 }
 
                 // After a comparison operator the lexer emits a bare "-" as a
@@ -2684,6 +2715,31 @@ mod tests {
         let grouped = parse_query("select length(name) as len, count(*) from /d group by len, len % 2").unwrap();
         assert_eq!(grouped.grouping_fields[0].function, Some(Function::Length), "bare alias is the aliased expression");
         assert_eq!(grouped.grouping_fields[1].left.as_ref().unwrap().function, Some(Function::Length), "alias inside arithmetic is the aliased expression");
+    }
+
+    #[test]
+    fn declared_select_aliases_resolve_in_later_columns_and_in_where() {
+        let query = parse_query("select size + 1 as nxt, nxt * 2 from /d where nxt = 12").unwrap();
+        let second = &query.fields[1];
+        assert_eq!(second.arithmetic_op, Some(ArithmeticOp::Multiply));
+        assert_eq!(second.left.as_ref().unwrap().left.as_ref().unwrap().field, Some(Field::Size), "nxt is the aliased size + 1");
+        let condition = query.expr.unwrap();
+        assert_eq!(condition.left.as_ref().unwrap().left.as_ref().unwrap().field, Some(Field::Size));
+
+        let shadowed = parse_query("select upper(name) as name, name from /d where name = 'x'").unwrap();
+        assert_eq!(shadowed.fields[1].field, Some(Field::Name), "a real field is never shadowed by an alias");
+        assert_eq!(shadowed.expr.unwrap().left.unwrap().field, Some(Field::Name));
+
+        let function_name = parse_query("select length(name) as len, len - 1 from /d").unwrap();
+        assert_eq!(function_name.fields[1].left.as_ref().unwrap().function, Some(Function::Length), "a declared alias wins over a function name");
+    }
+
+    #[test]
+    fn unknown_function_names_are_rejected() {
+        assert_eq!(parse_err("select reverse('abc') from /d"), "Unknown function: reverse");
+        assert_eq!(parse_err("select name from /d where lpad(name, 3) = 'x'"), "Unknown function: lpad");
+        assert!(parse_query("select name from /d where not (size > 1) and ext in (txt)").is_ok());
+        assert!(parse_query("select not (size > 1) from /d").is_ok());
     }
 
     #[test]

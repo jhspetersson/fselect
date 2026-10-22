@@ -96,7 +96,13 @@ And yes, you should use quotes for glob-patterns or regular expressions in the q
 on Linux or macOS to prevent parameter expansion from the shell. 
 If you are on Windows, feel free to omit most of the quotes.
 
-Commas for column separation aren't needed as well. Column aliasing (with or without `as` keyword) is not supported.
+Commas for column separation aren't needed as well. A column can be given an alias with the `as` keyword;
+the alias can then be reused in later columns, in `where`, `group by`, `having` and `order by`:
+
+    fselect "size + 1 as next, next * 2 from /home/user where next > 1000 order by next"
+
+A real field name is never shadowed by an alias, and an unknown name followed by parentheses is
+reported as an unknown function instead of being read as text.
 
 `where` section can contain short syntax conditions for boolean columns (like `is_audio` or `other_write`).
 

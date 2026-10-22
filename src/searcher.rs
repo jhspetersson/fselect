@@ -2048,6 +2048,45 @@ impl<'a> Searcher<'a> {
         Ok(if self.null_comparisons.contains(&key) { None } else { Some(holds) })
     }
 
+    fn conforms_caching_leaves(
+        &mut self,
+        entry: &DirEntry,
+        file_info: &Option<FileInfo>,
+        root_path: &Path,
+        file_map: &mut HashMap<String, String>,
+        expr: &Expr,
+    ) -> Result<bool, SearchError> {
+        if let Some(ref logical_op) = expr.logical_op {
+            let left = match expr.left {
+                Some(ref left) => self.conforms_caching_leaves(entry, file_info, root_path, file_map, left)?,
+                None => false,
+            };
+            match (logical_op, left) {
+                (LogicalOp::And, false) => return Ok(false),
+                (LogicalOp::Or, true) => return Ok(true),
+                _ => {}
+            }
+            return match expr.right {
+                Some(ref right) => self.conforms_caching_leaves(entry, file_info, root_path, file_map, right),
+                None => Ok(false),
+            };
+        }
+        let key = expr.cache_key();
+        let cached = file_map.get(&key).and_then(|cached| match cached.as_str() {
+            "-1" if expr.minus => Some(true),
+            "0" if expr.minus => Some(false),
+            text => str_to_bool(text),
+        });
+        if let Some(holds) = cached {
+            return Ok(holds);
+        }
+        let holds = self.conforms(entry, file_info, root_path, expr)?;
+        let value = apply_minus(expr, Variant::from_bool(holds));
+        self.remember_type(&key, &value);
+        file_map.insert(key, value.to_string());
+        Ok(holds)
+    }
+
     fn grouped_condition_value(&self, file_map: &HashMap<String, String>, condition: &Expr) -> Option<bool> {
         let key = Self::condition_key(condition);
         let conditions = || {
@@ -2516,7 +2555,7 @@ impl<'a> Searcher<'a> {
         // it evaluates to a boolean, per row or per group.
         if column_expr.op.is_some() || column_expr.logical_op.is_some() {
             let holds = match (entry, accumulator) {
-                (Some(entry), _) => Some(self.conforms(entry, file_info, root_path, column_expr)?),
+                (Some(entry), _) => Some(self.conforms_caching_leaves(entry, file_info, root_path, file_map, column_expr)?),
                 (None, Some(accumulator)) => Some(self.group_conforms(file_map, accumulator, column_expr)?),
                 (None, None) => None,
             };
@@ -2741,6 +2780,7 @@ impl<'a> Searcher<'a> {
             .map(|(_, column)| column.get_alias_references_in_subqueries(current_alias, true).is_empty())
             .collect();
         let mut bound: Vec<Option<Variant>> = vec![None; required_columns.len()];
+        let mut scratches: Vec<HashMap<String, String>> = vec![HashMap::new(); required_columns.len()];
         let mut failed: Vec<(usize, SearchError)> = Vec::new();
         for round in 0..rounds {
             let mut changed = false;
@@ -2758,6 +2798,7 @@ impl<'a> Searcher<'a> {
                     Some(value) => Ok(value),
                     None => self.get_column_expr_value(Some(entry), file_info, root_path, &mut scratch, None, column),
                 };
+                scratches[index] = scratch;
                 let value = match evaluated {
                     Ok(value) => {
                         bound[index] = Some(value.clone());
@@ -2783,7 +2824,7 @@ impl<'a> Searcher<'a> {
             }
         }
         if failed.is_empty() {
-            self.seed_bound_aliases(current_alias, required_columns, &bound, file_map);
+            self.seed_bound_aliases(current_alias, required_columns, &bound, &scratches, file_map);
             return Ok(());
         }
         for (index, err) in failed {
@@ -2811,7 +2852,7 @@ impl<'a> Searcher<'a> {
                 break;
             }
         }
-        self.seed_bound_aliases(current_alias, required_columns, &bound, file_map);
+        self.seed_bound_aliases(current_alias, required_columns, &bound, &scratches, file_map);
         Ok(())
     }
 
@@ -2820,9 +2861,10 @@ impl<'a> Searcher<'a> {
         current_alias: &str,
         required_columns: &[(String, Expr)],
         bound: &[Option<Variant>],
+        scratches: &[HashMap<String, String>],
         file_map: &mut HashMap<String, String>,
     ) {
-        for ((name, column), value) in required_columns.iter().zip(bound) {
+        for (((name, column), value), scratch) in required_columns.iter().zip(bound).zip(scratches) {
             let failed = self
                 .alias_failures
                 .borrow()
@@ -2833,6 +2875,9 @@ impl<'a> Searcher<'a> {
                 continue;
             }
             if let Some(value) = value {
+                for (key, text) in scratch {
+                    file_map.entry(key.clone()).or_insert_with(|| text.clone());
+                }
                 let key = column.cache_key();
                 self.remember_type(&key, value);
                 file_map.insert(key, value.to_string());

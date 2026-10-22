@@ -393,3 +393,20 @@ fn arithmetic_follows_precedence_and_mixes_with_fields() {
     assert_eq!(division.stdout, "beta.md\t\n", "the row is still printed with an empty cell");
     assert!(division.stderr.contains("Division by zero"), "{}", division.stderr);
 }
+
+#[test]
+fn select_aliases_can_be_reused_in_later_columns_and_in_where() {
+    let dir = query_dir("fselect_it_query_alias_reuse");
+    let root = dir.display();
+
+    let arithmetic = fselect(&format!("select size + 1 as nxt, nxt * 2 from {root} where nxt = 12"));
+    let condition = fselect(&format!("select size > 5 as big, name from {root} where big and is_file order by name"));
+    let function_name = fselect(&format!("select length(name) as len, len - 1 from {root} where name = beta.md"));
+    let chained = fselect(&format!("select size as sz, sz + 1 as nxt, nxt * 2 from {root} where is_file and sz < 2 order by path"));
+    let _ = fs::remove_dir_all(&dir);
+
+    assert_eq!(ok(&arithmetic), "12\t24\n");
+    assert_eq!(ok(&condition), "true\talpha.txt\n");
+    assert_eq!(ok(&function_name), "7\t6\n", "a declared alias wins over a function of the same name");
+    assert_eq!(ok(&chained), "1\t2\t4\n0\t1\t2\n1\t2\t4\n");
+}

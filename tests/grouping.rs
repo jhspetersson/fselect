@@ -502,3 +502,27 @@ fn negated_unknown_keys_keep_their_numeric_type_in_ordering() {
     assert_eq!(ascending.1, "9\t1\n10\t3\n", "9 before 10 only when the key is numeric");
     assert_eq!(descending.1, "10\t3\n9\t1\n");
 }
+
+#[test]
+fn grouping_reuses_compound_alias_values_where_already_evaluated() {
+    let dir = std::env::temp_dir().join("fselect_it_grouping_cached_compound_alias");
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    for i in 0..60 {
+        fs::write(dir.join(format!("f{i}.txt")), "x").unwrap();
+    }
+    let root = dir.display();
+
+    let disjunction = fselect(&format!("select random(0, 1) = 1 or size < 0 as flag, count(*) from {root} as t where t.flag = true group by flag"));
+    let conjunction = fselect(&format!("select random(0, 1) = 1 and size >= 0 as flag, count(*) from {root} as t where t.flag = true group by flag"));
+    let nested = fselect(&format!(
+        "select (random(0, 1) = 1 or size < 0) and size >= 0 as flag, count(*) from {root} as t where t.flag = true group by flag"
+    ));
+    let _ = fs::remove_dir_all(&dir);
+
+    for result in [&disjunction, &conjunction, &nested] {
+        assert_eq!(result.0, Some(0), "{}", result.2);
+        assert_eq!(result.1.lines().count(), 1, "rows that passed WHERE must not regroup as false: {}", result.1);
+        assert!(result.1.starts_with("true\t"), "{}", result.1);
+    }
+}

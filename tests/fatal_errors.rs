@@ -275,3 +275,18 @@ fn having_fields_hidden_by_expression_grouping_are_rejected() {
     assert_eq!(grouped_expression.code, Some(0), "{}", grouped_expression.stderr);
     assert_eq!(grouped_expression.stdout, "1\t2\n");
 }
+
+#[test]
+fn an_unknown_function_name_is_rejected_before_the_header() {
+    let dir = make_dir("fselect_it_fatal_unknown_function");
+    let root = dir.display().to_string();
+
+    assert_rejected_without_output(&format!("select reverse('abc') from {root} into json"), "Unknown function: reverse");
+    assert_rejected_without_output(&format!("select name from {root} where lpad(name, 3) = 'x' into html"), "Unknown function: lpad");
+    assert_rejected_without_output(&format!("select name, median(size) from {root} order by name"), "Unknown function: median");
+
+    let still_fine = fselect(&format!("select name from {root} where not (size > 100) and ext in (txt, md) order by name"));
+    let _ = fs::remove_dir_all(&dir);
+    assert_eq!(still_fine.code, Some(0), "{}", still_fine.stderr);
+    assert_eq!(still_fine.stdout, "a.txt\nb.md\n");
+}

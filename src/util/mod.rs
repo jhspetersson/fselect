@@ -159,6 +159,10 @@ where
             // in ascending order.
             (SortKey::Number(Some(_)), SortKey::Number(None)) => Ordering::Less,
             (SortKey::Number(None), SortKey::Number(Some(_))) => Ordering::Greater,
+            (SortKey::Number(Some(_)), SortKey::Direct) => Ordering::Less,
+            (SortKey::Direct, SortKey::Number(Some(_))) => Ordering::Greater,
+            (SortKey::Number(None), SortKey::Direct) => Ordering::Greater,
+            (SortKey::Direct, SortKey::Number(None)) => Ordering::Less,
             (SortKey::DateTime(a), SortKey::DateTime(b)) => a.cmp(b),
             // Neither side is numeric: fall back to plain string order. This
             // keeps datetime values produced by numeric expressions (e.g.
@@ -2452,6 +2456,32 @@ mod tests {
 
         assert_eq!(info.get("ImageDescription").map(String::as_str), Some("main"));
         assert_eq!(info.get("DateTime").map(String::as_str), Some("2024:06:01 12:00:00"));
+    }
+
+    #[test]
+    fn mixed_numeric_and_text_keys_order_the_same_from_any_starting_order() {
+        use crate::function::Function;
+
+        let mut coalesce = Expr::function_left(Function::Coalesce, Some(Box::new(Expr::field(Field::Width))));
+        coalesce.args = Some(vec![Expr::field(Field::Name)]);
+        let fields = Rc::new(vec![coalesce]);
+        let orderings = Rc::new(vec![true]);
+        let make = |value: &str, value_type: VariantType| {
+            Criteria::with_types(fields.clone(), vec![String::from(value)], &[Some(value_type)], orderings.clone())
+        };
+        let rows = || vec![make("2", VariantType::Int), make("10", VariantType::Int), make("15", VariantType::String), make("", VariantType::String)];
+
+        let mut forward = rows();
+        forward.sort();
+        let mut backward = rows();
+        backward.reverse();
+        backward.sort();
+        let order = |rows: &[Criteria<String>]| rows.iter().map(|row| row.values[0].clone()).collect::<Vec<_>>();
+
+        assert_eq!(order(&forward), vec!["2", "10", "", "15"]);
+        assert_eq!(order(&forward), order(&backward));
+        assert_eq!(make("2", VariantType::Int).cmp(&make("15", VariantType::String)), Ordering::Less);
+        assert_eq!(make("10", VariantType::Int).cmp(&make("15", VariantType::String)), Ordering::Less);
     }
 
     #[test]

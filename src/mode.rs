@@ -235,14 +235,11 @@ pub fn mode_other_all(mode: u32) -> bool {
     mode_other_read(mode) && mode_other_write(mode) && mode_other_exec(mode)
 }
 
-#[cfg(unix)]
-pub fn mode_is_directory(mode: u32) -> bool {
-    mode & S_IFMT == S_IFDIR
-}
+mode_check!(mode_is_directory, S_IFMT, S_IFDIR);
+mode_check!(mode_is_link, S_IFMT, S_IFLNK);
 
-#[cfg(unix)]
-pub fn mode_is_link(mode: u32) -> bool {
-    mode & S_IFMT == S_IFLNK
+pub fn mode_is_regular(mode: u32) -> bool {
+    matches!(mode & S_IFMT, 0 | S_IFREG)
 }
 
 const S_IRUSR: u32 = 0o400;
@@ -263,11 +260,10 @@ const S_ISVTX: u32 = 0o1000;
 
 const S_IFMT: u32 = 0o170000;
 const S_IFBLK: u32 = 0o60000;
-#[cfg(unix)]
 const S_IFDIR: u32 = 0o40000;
 const S_IFCHR: u32 = 0o20000;
 const S_IFIFO: u32 = 0o10000;
-#[cfg(unix)]
+const S_IFREG: u32 = 0o100000;
 const S_IFLNK: u32 = 0o120000;
 const S_IFSOCK: u32 = 0o140000;
 

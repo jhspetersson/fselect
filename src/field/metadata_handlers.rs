@@ -8,6 +8,7 @@ use std::os::unix::fs::MetadataExt;
 use xattr::FileExt;
 
 use crate::field::context::FieldContext;
+use crate::fileinfo::FileInfo;
 use crate::mode;
 use crate::util::*;
 use crate::util::error::SearchError;
@@ -138,31 +139,31 @@ pub fn handle_formatted_size(ctx: &mut FieldContext) -> Result<Variant, SearchEr
     }
 }
 
+fn archived_entry_is_dir(file_info: &FileInfo) -> bool {
+    file_info.name.ends_with('/')
+        || file_info.name.ends_with('\\')
+        || file_info.mode.is_some_and(mode::mode_is_directory)
+}
+
 pub fn handle_is_dir(ctx: &mut FieldContext) -> Result<Variant, SearchError> {
     match ctx.file_info {
-        Some(file_info) => {
-            Ok(Variant::from_bool(
-                file_info.name.ends_with('/') || file_info.name.ends_with('\\'),
-            ))
-        }
+        Some(file_info) => Ok(Variant::from_bool(archived_entry_is_dir(file_info))),
         _ => Ok(file_type_predicate(ctx, |m| m.is_dir(), |ft| ft.is_dir())),
     }
 }
 
 pub fn handle_is_file(ctx: &mut FieldContext) -> Result<Variant, SearchError> {
     match ctx.file_info {
-        Some(file_info) => {
-            Ok(Variant::from_bool(!file_info.name.ends_with('/') && !file_info.name.ends_with('\\')))
-        }
+        Some(file_info) => Ok(Variant::from_bool(
+            !archived_entry_is_dir(file_info) && file_info.mode.is_none_or(mode::mode_is_regular),
+        )),
         _ => Ok(file_type_predicate(ctx, |m| m.is_file(), |ft| ft.is_file())),
     }
 }
 
 pub fn handle_is_symlink(ctx: &mut FieldContext) -> Result<Variant, SearchError> {
     match ctx.file_info {
-        Some(_) => {
-            Ok(Variant::from_bool(false))
-        }
+        Some(file_info) => Ok(Variant::from_bool(file_info.mode.is_some_and(mode::mode_is_link))),
         _ => {
             // `is_symlink` never follows the link, so the entry's own file
             // type answers it directly — reusing the type resolved during
@@ -669,6 +670,42 @@ mod tests {
         let _ = fs::remove_dir_all(&tmp);
 
         assert_eq!(values, vec![""; 6], "permission bits are a Unix concept and must be empty here");
+    }
+
+    #[test]
+    fn archive_entry_types_follow_their_recorded_unix_mode() {
+        let (tmp, entry) = make_entry("fselect_test_archive_entry_types");
+        let with_mode = |mode: Option<u32>| Some(FileInfo {
+            name: String::from("entry"),
+            size: 0,
+            mode,
+            modified: None,
+            member: None,
+        });
+        let kinds = |mode: Option<u32>| {
+            let info = with_mode(mode);
+            [Field::IsFile, Field::IsSymlink, Field::IsPipe, Field::IsSocket, Field::IsDir]
+                .iter()
+                .map(|field| test_field(&entry, &info, &tmp, field).to_string())
+                .collect::<Vec<_>>()
+        };
+
+        let symlink = kinds(Some(0o120777));
+        let fifo = kinds(Some(0o10644));
+        let socket = kinds(Some(0o140644));
+        let regular = kinds(Some(0o100644));
+        let permissions_only = kinds(Some(0o644));
+        let unknown = kinds(None);
+        let directory = kinds(Some(0o40755));
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(symlink, vec!["false", "true", "false", "false", "false"]);
+        assert_eq!(fifo, vec!["false", "false", "true", "false", "false"]);
+        assert_eq!(socket, vec!["false", "false", "false", "true", "false"]);
+        assert_eq!(regular, vec!["true", "false", "false", "false", "false"]);
+        assert_eq!(permissions_only, vec!["true", "false", "false", "false", "false"]);
+        assert_eq!(unknown, vec!["true", "false", "false", "false", "false"]);
+        assert_eq!(directory, vec!["false", "false", "false", "false", "true"]);
     }
 
     #[test]

@@ -10,6 +10,10 @@ static DATE_REGEX: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new("^([0-9]{4})(-|:)([0-9]{1,2})(-|:)([0-9]{1,2})(?:[ Tt]([0-9]{1,2})(?::([0-9]{1,2})(?::([0-9]{1,2}))?)?)?$").unwrap()
 });
 
+static EXPLICIT_TIME_REGEX: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)\b[0-9]{1,2}\s*[:.]\s*[0-9]{2}\b|\b[0-9]{1,2}\s*[ap]m\b").unwrap()
+});
+
 static US_DATES: Mutex<bool> = Mutex::new(false);
 
 pub fn set_us_dates(us: bool) {
@@ -108,6 +112,7 @@ pub fn parse_datetime(s: &str) -> Result<(NaiveDateTime, NaiveDateTime), String>
                         let finish = if date_time.hour() == 0
                             && date_time.minute() == 0
                             && date_time.second() == 0
+                            && !EXPLICIT_TIME_REGEX.is_match(s)
                         {
                             date_time
                                 .with_hour(23)
@@ -207,10 +212,9 @@ mod tests {
         let result = parse_datetime("2 days ago 00:00").unwrap();
         let two_days_ago = Local::now().date_naive() - chrono::Duration::days(2);
         let start = two_days_ago.and_hms_opt(0, 0, 0).unwrap();
-        let finish = two_days_ago.and_hms_opt(23, 59, 59).unwrap();
 
         assert_eq!(result.0, start);
-        assert_eq!(result.1, finish);
+        assert_eq!(result.1, start);
     }
 
     #[test]
@@ -267,6 +271,18 @@ mod tests {
         assert!(parse_datetime("2024-01-01 25:00:00").is_err());
         assert!(parse_datetime("2024-01-01 12:61:00").is_err());
         assert!(parse_datetime("2024-01-01 12:00:99").is_err());
+    }
+
+    #[test]
+    fn natural_language_dates_span_the_day_only_without_an_explicit_time() {
+        let midnight = NaiveDate::from_ymd_opt(2024, 6, 1).unwrap().and_hms_opt(0, 0, 0).unwrap();
+        let end_of_day = NaiveDate::from_ymd_opt(2024, 6, 1).unwrap().and_hms_opt(23, 59, 59).unwrap();
+
+        assert_eq!(parse_datetime("1 June 2024").unwrap(), (midnight, end_of_day));
+        assert_eq!(parse_datetime("1 June 2024 00:00:00").unwrap(), (midnight, midnight));
+        assert_eq!(parse_datetime("1 June 2024 00:00").unwrap(), (midnight, midnight));
+        let noon = NaiveDate::from_ymd_opt(2024, 6, 1).unwrap().and_hms_opt(12, 0, 0).unwrap();
+        assert_eq!(parse_datetime("1 June 2024 12:00").unwrap(), (noon, noon));
     }
 
     #[test]

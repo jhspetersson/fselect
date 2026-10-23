@@ -2819,7 +2819,7 @@ impl<'a> Searcher<'a> {
                 .map(|(key, value)| match value {
                     value if unknown_keys.contains(key) => format!("{value}{UNKNOWN_GROUP_SUFFIX}"),
                     value if value.is_null() => String::from(NULL_GROUP_KEY),
-                    value => value.to_string(),
+                    value => value.identity(),
                 })
                 .collect();
             let key_types: Vec<VariantType> = key_values.iter().map(|value| value.get_type().clone()).collect();

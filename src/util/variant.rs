@@ -150,6 +150,19 @@ impl Variant {
         &self.string_value
     }
 
+    pub fn identity(&self) -> String {
+        match self.value_type {
+            VariantType::Int => self.int_value.map_or_else(String::new, |value| value.to_string()),
+            VariantType::Float => self.float_value.map_or_else(String::new, |value| value.to_string()),
+            VariantType::Bool => self.bool_value.map_or_else(String::new, |value| value.to_string()),
+            VariantType::DateTime => match (self.dt_from, self.dt_to) {
+                (Some(from), Some(to)) => format!("{}..{}", from.and_utc().timestamp(), to.and_utc().timestamp()),
+                _ => String::new(),
+            },
+            VariantType::String => self.string_value.clone(),
+        }
+    }
+
     pub fn with_text(mut self, text: &str) -> Variant {
         self.string_value = text.to_string();
         self

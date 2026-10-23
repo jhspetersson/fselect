@@ -34,6 +34,29 @@ fn computed_grouping_alias_keeps_its_numeric_type_in_correlated_subqueries() {
 }
 
 #[test]
+fn values_that_render_alike_stay_in_separate_groups() {
+    let dir = std::env::temp_dir().join("fselect_it_grouping_formatted_sizes");
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    for (name, size) in [("a.bin", 10241), ("b.bin", 10242), ("c.bin", 10242)] {
+        fs::write(dir.join(name), vec![0u8; size]).unwrap();
+    }
+    let root = dir.display();
+
+    let grouped = fselect(&format!("select fsize, count(*) from {root} group by fsize order by fsize"));
+    let larger = fselect(&format!("select fsize, count(*) from {root} group by fsize having fsize = 10242"));
+    let smaller = fselect(&format!("select fsize, count(*) from {root} group by fsize having fsize = 10241"));
+    let _ = fs::remove_dir_all(&dir);
+
+    for result in [&grouped, &larger, &smaller] {
+        assert_eq!(result.0, Some(0), "{}", result.2);
+    }
+    assert_eq!(grouped.1, "10.00KiB\t1\n10.00KiB\t2\n");
+    assert_eq!(larger.1, "10.00KiB\t2\n");
+    assert_eq!(smaller.1, "10.00KiB\t1\n");
+}
+
+#[test]
 fn grouped_coalesce_alias_keeps_a_string_that_reads_as_boolean() {
     let dir = std::env::temp_dir().join("fselect_it_grouping_coalesce_alias_type");
     let _ = fs::remove_dir_all(&dir);

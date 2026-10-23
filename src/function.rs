@@ -99,6 +99,7 @@ macro_rules! functions {
                 }
             }
 
+            #[cfg(test)]
             pub fn all() -> Vec<Self> {
                 let mut all = Vec::new();
                 $(
@@ -106,18 +107,6 @@ macro_rules! functions {
                     all.push($enum_name::$variant);
                 )*
                 all
-            }
-
-            pub fn is_numeric_function(&self) -> bool {
-                self.data_type() == "numeric"
-            }
-
-            pub fn is_datetime_function(&self) -> bool {
-                self.data_type() == "datetime"
-            }
-
-            pub fn is_string_function(&self) -> bool {
-                self.data_type() == "string"
             }
 
             pub fn is_boolean_function(&self) -> bool {
@@ -462,10 +451,6 @@ impl Display for Arity {
 impl Function {
     pub fn passes_argument_type_through(&self) -> bool {
         matches!(self, Function::Min | Function::Max)
-    }
-
-    pub fn result_type_follows_all_arguments(&self) -> bool {
-        matches!(self, Function::Least | Function::Greatest)
     }
 
     pub fn datetime_argument_positions(&self) -> &'static [usize] {
@@ -1539,13 +1524,13 @@ functions! {
         @description = "Get e raised to the power of the specified number"
         Exp,
 
-        #[text = ["least"], data_type = "numeric"]
+        #[text = ["least"]]
         @args = "1.."
         @group = "Numeric"
         @description = "Get the smallest value"
         Least,
 
-        #[text = ["greatest"], data_type = "numeric"]
+        #[text = ["greatest"]]
         @args = "1.."
         @group = "Numeric"
         @description = "Get the largest value"

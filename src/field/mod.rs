@@ -100,15 +100,6 @@ macro_rules! fields {
                 }
             }
 
-            pub fn all() -> Vec<Self> {
-                let mut all = Vec::new();
-                $(
-                    $(#[$variant_attrs])*
-                    all.push($enum_name::$variant);
-                )*
-                all
-            }
-
             pub fn is_numeric_field(&self) -> bool {
                 self.data_type() == "numeric"
             }

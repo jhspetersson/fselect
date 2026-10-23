@@ -65,7 +65,7 @@ pub use self::human_duration::format_duration;
 pub use self::top_n::TopN;
 pub use self::variant::{Variant, VariantType};
 pub use self::wbuf::WritableBuffer;
-use crate::expr::Expr;
+use crate::expr::{Expr, ExprType};
 #[cfg(windows)]
 use crate::mode;
 pub use audio::AudioInfo;
@@ -99,14 +99,15 @@ impl SortKey {
                 .unwrap()
         });
         let datetime = |value: &str| SortKey::DateTime(parse_datetime(value).map(|(from, _)| from).unwrap_or(*EPOCH));
+        let declared = field.result_type();
         match value_type {
             Some(VariantType::Bool) => SortKey::Number(str_to_bool(value).map(|flag| if flag { 1.0 } else { 0.0 })),
             Some(VariantType::Int | VariantType::Float) => SortKey::Number(numeric_sort_key(value)),
             Some(VariantType::DateTime) => datetime(value),
-            Some(VariantType::String) if field.yields_numeric() => SortKey::Number(numeric_sort_key(value)),
+            Some(VariantType::String) if declared == ExprType::NUMERIC => SortKey::Number(numeric_sort_key(value)),
             Some(VariantType::String) => SortKey::Direct,
-            None if field.contains_numeric() => SortKey::Number(numeric_sort_key(value)),
-            None if field.contains_datetime() => datetime(value),
+            None if declared.may_be(ExprType::NUMERIC) => SortKey::Number(numeric_sort_key(value)),
+            None if declared.may_be(ExprType::DATETIME) => datetime(value),
             None => SortKey::Direct,
         }
     }
@@ -2406,7 +2407,7 @@ mod tests {
 
         let mut coalesce = Expr::function_left(Function::Coalesce, Some(Box::new(Expr::field(Field::Name))));
         coalesce.args = Some(vec![Expr::field(Field::Size)]);
-        assert!(!coalesce.yields_numeric());
+        assert_ne!(coalesce.result_type(), ExprType::NUMERIC);
         let fields = Rc::new(vec![coalesce]);
         let orderings = Rc::new(vec![true]);
         let make = |value: &str| {
@@ -2417,8 +2418,8 @@ mod tests {
         assert_eq!(make("10").cmp(&make("2")), Ordering::Less);
 
         let max = Expr::function_left(Function::Max, Some(Box::new(Expr::field(Field::Size))));
-        assert!(max.yields_numeric());
-        assert!(Expr::field(Field::FormattedSize).yields_numeric());
+        assert_eq!(max.result_type(), ExprType::NUMERIC);
+        assert_eq!(Expr::field(Field::FormattedSize).result_type(), ExprType::NUMERIC);
     }
 
     #[test]
@@ -2530,7 +2531,7 @@ mod tests {
 
         let mut least = Expr::function_left(Function::Least, Some(Box::new(Expr::field(Field::Name))));
         least.args = Some(vec![Expr::value(String::from("z"))]);
-        assert!(!least.yields_numeric());
+        assert_ne!(least.result_type(), ExprType::NUMERIC);
         let fields = Rc::new(vec![least]);
         let orderings = Rc::new(vec![true]);
         let make = |value: &str| {
@@ -2541,10 +2542,10 @@ mod tests {
 
         let mut numeric = Expr::function_left(Function::Greatest, Some(Box::new(Expr::field(Field::Size))));
         numeric.args = Some(vec![Expr::value(String::from("5"))]);
-        assert!(!numeric.yields_numeric(), "a bare literal has no declared type");
+        assert_eq!(numeric.result_type(), ExprType::NUMERIC.union(ExprType::UNTYPED), "a bare literal has no declared type");
         let mut all_numeric = Expr::function_left(Function::Greatest, Some(Box::new(Expr::field(Field::Size))));
         all_numeric.args = Some(vec![Expr::field(Field::Width)]);
-        assert!(all_numeric.yields_numeric());
+        assert_eq!(all_numeric.result_type(), ExprType::NUMERIC);
     }
 
     #[test]

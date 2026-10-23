@@ -17,7 +17,7 @@ use regex::Regex;
 use uzers::UsersCache;
 
 use crate::config::Config;
-use crate::expr::Expr;
+use crate::expr::{Expr, ExprType};
 use crate::field::Field;
 use crate::field::context::{FieldContext, FileMetadataState};
 use crate::field::dispatch;
@@ -225,14 +225,15 @@ fn variant_of_type(expr: &Expr, text: &str, value_type: &VariantType) -> Variant
 /// types it can produce, the text says which one it did: `coalesce(is_file,
 /// size)` may be numeric or boolean, and `true` is the boolean.
 fn typed_variant(expr: &Expr, text: &str) -> Variant {
+    let expected = expr.result_type();
     let mut typed = None;
-    if expr.contains_numeric() {
+    if expected.may_be(ExprType::NUMERIC) {
         typed = Variant::from_number_text(text);
     }
-    if typed.is_none() && expr.contains_datetime() {
+    if typed.is_none() && expected.may_be(ExprType::DATETIME) {
         typed = parse_datetime(text).ok().map(|(from, to)| Variant::from_datetime_range(from, to));
     }
-    if typed.is_none() && expr.contains_boolean() {
+    if typed.is_none() && expected.may_be(ExprType::BOOLEAN) {
         typed = str_to_bool(text).map(Variant::from_bool);
     }
     typed.unwrap_or_else(|| Variant::from_string(&text.to_string())).with_text(text)
@@ -3610,7 +3611,7 @@ impl<'a> Searcher<'a> {
     fn is_null_operand(operand: &Expr, value: &Variant) -> bool {
         value.is_null()
             || (!operand.is_literal()
-                && (operand.contains_numeric() || operand.contains_datetime() || operand.contains_boolean())
+                && operand.result_type().may_be(ExprType::NUMERIC.union(ExprType::DATETIME).union(ExprType::BOOLEAN))
                 && value.to_string().is_empty())
     }
 
@@ -3622,16 +3623,17 @@ impl<'a> Searcher<'a> {
         if !matches!(value.get_type(), VariantType::String) {
             return value;
         }
-        if left_expr.contains_datetime() || right_expr.contains_datetime() {
+        let expected = left_expr.result_type().union(right_expr.result_type());
+        if expected.may_be(ExprType::DATETIME) {
             if let Ok((dt_from, dt_to)) = value.to_datetime() {
                 return Variant::from_datetime_range(dt_from, dt_to);
             }
-        } else if (left_expr.contains_numeric() || right_expr.contains_numeric())
+        } else if expected.may_be(ExprType::NUMERIC)
             && let Ok(f) = value.to_string().parse::<f64>()
                 && f.is_finite() {
                     return Variant::from_float(f);
                 }
-        else if (left_expr.contains_boolean() || right_expr.contains_boolean())
+        else if expected.may_be(ExprType::BOOLEAN)
             && let Some(b) = str_to_bool(&value.to_string()) {
                 return Variant::from_bool(b);
             }

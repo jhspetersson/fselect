@@ -21,6 +21,48 @@ pub const IS_SOCKET: &str = "is_socket";
 pub const FILE_TYPE_PROPS: [&str; 6] = [IS_FILE, IS_DIR, IS_PIPE, IS_CHAR, IS_BLOCK, IS_SOCKET];
 const LOCAL_ROOT: &str = "local_root";
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct ExprType(u8);
+
+impl ExprType {
+    pub const EMPTY: ExprType = ExprType(0);
+    pub const NUMERIC: ExprType = ExprType(1);
+    pub const DATETIME: ExprType = ExprType(2);
+    pub const BOOLEAN: ExprType = ExprType(4);
+    pub const STRING: ExprType = ExprType(8);
+    pub const UNTYPED: ExprType = ExprType(16);
+
+    pub fn declared(data_type: &str) -> Option<ExprType> {
+        match data_type {
+            "numeric" => Some(ExprType::NUMERIC),
+            "datetime" => Some(ExprType::DATETIME),
+            "boolean" => Some(ExprType::BOOLEAN),
+            "string" => Some(ExprType::STRING),
+            _ => None,
+        }
+    }
+
+    pub fn union(self, other: ExprType) -> ExprType {
+        ExprType(self.0 | other.0)
+    }
+
+    pub fn may_be(self, kind: ExprType) -> bool {
+        self.0 & kind.0 != 0
+    }
+}
+
+impl Field {
+    pub fn result_type(&self) -> ExprType {
+        ExprType::declared(self.data_type()).unwrap_or(ExprType::STRING)
+    }
+}
+
+impl Function {
+    pub fn result_type(&self) -> Option<ExprType> {
+        ExprType::declared(self.data_type())
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Expr {
     pub left: Option<Box<Expr>>,
@@ -684,200 +726,52 @@ impl Expr {
 
     const REFERENCED_TYPE: &'static str = "referenced_type";
 
-    /// An alias reference (`t.sz`) is resolved at run time from the row
-    /// context, so the type of the column it names is recorded here for the
-    /// static type checks.
     pub fn remember_referenced_type(&mut self, column: &Expr) {
-        let kind = if column.contains_numeric() {
-            "numeric"
-        } else if column.contains_datetime() {
-            "datetime"
-        } else if column.contains_boolean() {
-            "boolean"
-        } else {
-            return;
-        };
-        self.set_prop(Self::REFERENCED_TYPE, Variant::from_string(&kind.to_string()));
-    }
-
-    fn references_type(&self, kind: &str) -> bool {
-        self.alias_reference_key().is_some()
-            && self.get_prop(Self::REFERENCED_TYPE).is_some_and(|value| value.to_string() == kind)
-    }
-
-    pub fn contains_numeric(&self) -> bool {
-        Self::contains_numeric_field(self)
-    }
-
-    pub fn yields_numeric(&self) -> bool {
-        if self.arithmetic_op.is_some() || self.references_type("numeric") {
-            return true;
+        let referenced = column.result_type();
+        if referenced != ExprType::EMPTY {
+            self.set_prop(Self::REFERENCED_TYPE, Variant::from_int(referenced.0 as i64));
         }
+    }
+
+    fn referenced_type(&self) -> Option<ExprType> {
+        self.alias_reference_key()?;
+        self.get_prop(Self::REFERENCED_TYPE).map(|value| ExprType(value.to_int() as u8))
+    }
+
+    pub fn result_type(&self) -> ExprType {
         if self.op.is_some() || self.logical_op.is_some() {
-            return false;
+            return ExprType::BOOLEAN;
         }
-        if let Some(ref subquery) = self.subquery
-            && let Some(column) = subquery.fields.first()
-        {
-            return column.yields_numeric();
+        if self.arithmetic_op.is_some() {
+            return ExprType::NUMERIC;
+        }
+        if let Some(referenced) = self.referenced_type() {
+            return referenced;
+        }
+        if let Some(ref subquery) = self.subquery {
+            return subquery.fields.first().map_or(ExprType::EMPTY, Expr::result_type);
         }
         if let Some(ref function) = self.function {
-            let mut arguments = self.left.iter().map(Box::as_ref).chain(self.args.iter().flatten());
-            if function.passes_argument_type_through() {
-                return arguments.any(Expr::yields_numeric);
-            }
-            if function.result_type_follows_all_arguments() {
-                return arguments.all(Expr::yields_numeric);
-            }
-            return function.is_numeric_function();
+            return function.result_type().unwrap_or_else(|| self.argument_types());
         }
-        self.field.as_ref().is_some_and(Field::is_numeric_field)
+        if let Some(ref field) = self.field {
+            return field.result_type();
+        }
+        if self.args.is_some() {
+            return self.argument_types();
+        }
+        if self.val.is_some() {
+            return ExprType::UNTYPED;
+        }
+        ExprType::EMPTY
     }
 
-    fn contains_numeric_field(expr: &Expr) -> bool {
-        if expr.arithmetic_op.is_some() || expr.references_type("numeric") {
-            return true;
-        }
-
-        if let Some(ref subquery) = expr.subquery
-            && let Some(column) = subquery.fields.first()
-        {
-            return Self::contains_numeric_field(column);
-        }
-
-        if let Some(ref function) = expr.function
-            && !function.passes_argument_type_through()
-        {
-            if function.is_numeric_function() {
-                return true;
-            }
-            if function.is_datetime_function() || function.is_string_function() || function.is_boolean_function() {
-                return false;
-            }
-        }
-
-        let field = match expr.field {
-            Some(ref field) => field.is_numeric_field(),
-            None => false,
-        };
-
-        if field {
-            return true;
-        }
-
-        if let Some(ref left) = expr.left
-            && Self::contains_numeric_field(left) {
-                return true;
-            }
-
-        if let Some(ref right) = expr.right
-            && Self::contains_numeric_field(right) {
-                return true;
-            }
-
-        if let Some(ref args) = expr.args {
-            for arg in args {
-                if Self::contains_numeric_field(arg) {
-                    return true;
-                }
-            }
-        }
-
-        false
-    }
-
-    pub fn contains_boolean(&self) -> bool {
-        Self::contains_boolean_field(self)
-    }
-
-    fn contains_boolean_field(expr: &Expr) -> bool {
-        if expr.arithmetic_op.is_some() {
-            return false;
-        }
-        if expr.references_type("boolean") {
-            return true;
-        }
-
-        if let Some(ref subquery) = expr.subquery
-            && let Some(column) = subquery.fields.first()
-        {
-            return Self::contains_boolean_field(column);
-        }
-
-        if let Some(ref function) = expr.function
-            && !function.passes_argument_type_through()
-        {
-            if function.is_boolean_function() {
-                return true;
-            }
-            if function.is_numeric_function() || function.is_string_function() || function.is_datetime_function() {
-                return false;
-            }
-        }
-
-        if expr.field.is_some_and(|field| field.is_boolean_field()) {
-            return true;
-        }
-
-        expr.left.as_deref().is_some_and(Self::contains_boolean_field)
-            || expr.right.as_deref().is_some_and(Self::contains_boolean_field)
-            || expr.args.as_ref().is_some_and(|args| args.iter().any(Self::contains_boolean_field))
-    }
-
-    pub fn contains_datetime(&self) -> bool {
-        Self::contains_datetime_field(self)
-    }
-
-    fn contains_datetime_field(expr: &Expr) -> bool {
-        if expr.references_type("datetime") {
-            return true;
-        }
-
-        if let Some(ref subquery) = expr.subquery
-            && let Some(column) = subquery.fields.first()
-        {
-            return Self::contains_datetime_field(column);
-        }
-
-        if let Some(ref function) = expr.function
-            && !function.passes_argument_type_through()
-        {
-            if function.is_datetime_function() {
-                return true;
-            }
-            if function.is_numeric_function() || function.is_string_function() || function.is_boolean_function() {
-                return false;
-            }
-        }
-
-        let field = match expr.field {
-            Some(ref field) => field.is_datetime_field(),
-            None => false,
-        };
-
-        if field {
-            return true;
-        }
-
-        if let Some(ref left) = expr.left
-            && Self::contains_datetime_field(left) {
-                return true;
-            }
-
-        if let Some(ref right) = expr.right
-            && Self::contains_datetime_field(right) {
-                return true;
-            }
-
-        if let Some(ref args) = expr.args {
-            for arg in args {
-                if Self::contains_datetime_field(arg) {
-                    return true;
-                }
-            }
-        }
-
-        false
+    fn argument_types(&self) -> ExprType {
+        self.left
+            .iter()
+            .map(Box::as_ref)
+            .chain(self.args.iter().flatten())
+            .fold(ExprType::EMPTY, |types, argument| types.union(argument.result_type()))
     }
 
     /// Walks the expression tree and validates string literals that are
@@ -1807,8 +1701,18 @@ mod tests {
     #[test]
     fn arithmetic_over_a_text_field_counts_as_numeric() {
         let expr = Expr::arithmetic_op(Expr::field(Field::Name), ArithmeticOp::Add, Expr::value(String::from("0")));
-        assert!(expr.contains_numeric());
-        assert!(!Expr::field(Field::Name).contains_numeric());
+        assert_eq!(expr.result_type(), ExprType::NUMERIC);
+        assert_eq!(Expr::field(Field::Name).result_type(), ExprType::STRING);
+    }
+
+    #[test]
+    fn literals_have_no_type_and_lists_take_the_types_of_their_members() {
+        assert_eq!(Expr::value(String::from("5")).result_type(), ExprType::UNTYPED);
+        let mut list = Expr::value(String::new());
+        list.set_args(vec![Expr::field(Field::Size), Expr::value(String::from("1"))]);
+        assert_eq!(list.result_type(), ExprType::NUMERIC.union(ExprType::UNTYPED));
+        assert!(list.result_type().may_be(ExprType::NUMERIC));
+        assert!(!list.result_type().may_be(ExprType::STRING));
     }
 
     #[test]
@@ -1818,20 +1722,20 @@ mod tests {
             crate::parser::Parser::new(&mut lexer).parse(false).unwrap()
         }
         let count = Expr::subquery(parse("select count(*) from /d"));
-        assert!(count.contains_numeric(), "count(*) subquery is numeric");
+        assert_eq!(count.result_type(), ExprType::NUMERIC, "count(*) subquery is numeric");
         let latest = Expr::subquery(parse("select max(modified) from /d"));
-        assert!(latest.contains_datetime(), "max(modified) subquery is a datetime");
+        assert_eq!(latest.result_type(), ExprType::DATETIME, "max(modified) subquery is a datetime");
         let names = Expr::subquery(parse("select name from /d"));
-        assert!(!names.contains_numeric() && !names.contains_datetime());
+        assert_eq!(names.result_type(), ExprType::STRING);
 
         let shifted = parse("select date_add(modified, 30) from /d").fields.remove(0);
-        assert!(shifted.contains_datetime());
+        assert_eq!(shifted.result_type(), ExprType::DATETIME);
         let from_epoch = parse("select from_unixtime(mtime) from /d").fields.remove(0);
-        assert!(from_epoch.contains_datetime(), "from_unixtime yields a datetime although its argument is numeric");
+        assert_eq!(from_epoch.result_type(), ExprType::DATETIME, "from_unixtime yields a datetime although its argument is numeric");
         let now = parse("select now() from /d").fields.remove(0);
-        assert!(now.contains_datetime());
+        assert_eq!(now.result_type(), ExprType::DATETIME);
         let fallback = parse("select coalesce(size, 0) from /d").fields.remove(0);
-        assert!(fallback.contains_numeric());
+        assert_eq!(fallback.result_type(), ExprType::NUMERIC.union(ExprType::UNTYPED));
     }
 
     #[test]
@@ -1840,45 +1744,35 @@ mod tests {
             "select dayname(modified), concat(size, ''), upper(name), hex(size), coalesce(size, 0), coalesce(modified, ''), length(name), date_add(modified, 1) from /d",
         )]);
         let fields = crate::parser::Parser::new(&mut lexer).parse(false).unwrap().fields;
-        let typed: Vec<(bool, bool)> = fields.iter().map(|f| (f.contains_numeric(), f.contains_datetime())).collect();
-        assert_eq!(typed[0], (false, false), "dayname(modified) is text");
-        assert_eq!(typed[1], (false, false), "concat(size, '') is text");
-        assert_eq!(typed[2], (false, false), "upper(name) is text");
-        assert_eq!(typed[3], (false, false), "hex(size) is text");
-        assert_eq!(typed[4], (true, false), "coalesce passes the numeric type through");
-        assert_eq!(typed[5], (false, true), "coalesce passes the datetime type through");
-        assert_eq!(typed[6], (true, false), "length(name) is numeric");
-        assert_eq!(typed[7], (false, true), "date_add(modified, 1) is a datetime");
+        let typed: Vec<ExprType> = fields.iter().map(Expr::result_type).collect();
+        assert_eq!(typed[0], ExprType::STRING, "dayname(modified) is text");
+        assert_eq!(typed[1], ExprType::STRING, "concat(size, '') is text");
+        assert_eq!(typed[2], ExprType::STRING, "upper(name) is text");
+        assert_eq!(typed[3], ExprType::STRING, "hex(size) is text");
+        assert_eq!(typed[4], ExprType::NUMERIC.union(ExprType::UNTYPED), "coalesce passes the numeric type through");
+        assert_eq!(typed[5], ExprType::DATETIME.union(ExprType::UNTYPED), "coalesce passes the datetime type through");
+        assert_eq!(typed[6], ExprType::NUMERIC, "length(name) is numeric");
+        assert_eq!(typed[7], ExprType::DATETIME, "date_add(modified, 1) is a datetime");
     }
 
     #[test]
-    fn contains_numeric_right_side_of_arithmetic() {
+    fn arithmetic_is_numeric_whichever_side_carries_the_field() {
         let expr = Expr::arithmetic_op(
             Expr::value("1".to_string()),
             ArithmeticOp::Add,
             Expr::field(Field::Size),
         );
-        assert!(expr.contains_numeric());
+        assert_eq!(expr.result_type(), ExprType::NUMERIC);
     }
 
     #[test]
-    fn contains_numeric_right_side_of_op() {
-        let expr = Expr::op(
-            Expr::value("100".to_string()),
-            Op::Gt,
-            Expr::field(Field::Size),
-        );
-        assert!(expr.contains_numeric());
-    }
-
-    #[test]
-    fn contains_datetime_right_side_of_op() {
-        let expr = Expr::op(
-            Expr::value("2024-01-01".to_string()),
-            Op::Lt,
-            Expr::field(Field::Accessed),
-        );
-        assert!(expr.contains_datetime());
+    fn comparisons_and_logical_operators_yield_booleans() {
+        let size = Expr::op(Expr::value("100".to_string()), Op::Gt, Expr::field(Field::Size));
+        assert_eq!(size.result_type(), ExprType::BOOLEAN);
+        let accessed = Expr::op(Expr::value("2024-01-01".to_string()), Op::Lt, Expr::field(Field::Accessed));
+        assert_eq!(accessed.result_type(), ExprType::BOOLEAN);
+        let both = Expr::logical_op(size, LogicalOp::And, accessed).unwrap();
+        assert_eq!(both.result_type(), ExprType::BOOLEAN);
     }
 
     #[test]
@@ -1895,20 +1789,20 @@ mod tests {
     fn a_string_function_is_text_whatever_its_arguments_are() {
         let mut expr = Expr::function(Function::Concat);
         expr.set_args(vec![Expr::field(Field::Size)]);
-        assert!(!expr.contains_numeric());
+        assert_eq!(expr.result_type(), ExprType::STRING);
         let mut expr = Expr::function(Function::Concat);
         expr.set_args(vec![Expr::field(Field::Accessed)]);
-        assert!(!expr.contains_datetime());
+        assert_eq!(expr.result_type(), ExprType::STRING);
     }
 
     #[test]
     fn min_and_max_take_the_type_of_their_argument() {
         let mut latest = Expr::function(Function::Max);
         latest.left = Some(Box::new(Expr::field(Field::Accessed)));
-        assert!(latest.contains_datetime() && !latest.contains_numeric());
+        assert_eq!(latest.result_type(), ExprType::DATETIME);
         let mut smallest = Expr::function(Function::Min);
         smallest.left = Some(Box::new(Expr::field(Field::Size)));
-        assert!(smallest.contains_numeric() && !smallest.contains_datetime());
+        assert_eq!(smallest.result_type(), ExprType::NUMERIC);
     }
 
     #[test]

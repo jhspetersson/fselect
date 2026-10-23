@@ -64,10 +64,39 @@
             font-size: 1.25rem;
             font-weight: 700;
             color: var(--accent);
+            text-decoration: none;
         }
         nav .logo span { color: var(--text-dim); font-weight: 400; }
         nav ul { list-style: none; display: flex; gap: 1.5rem; }
         nav ul a { color: var(--text-dim); font-size: 0.9rem; }
+        .to-top {
+            display: inline-block;
+            margin-top: 2rem;
+            font-size: 0.85rem;
+            color: var(--text-dim);
+            text-decoration: none;
+        }
+        .to-top:hover { color: var(--accent); }
+        .scroll-top {
+            position: fixed;
+            right: 1.5rem;
+            bottom: 1.5rem;
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            border: 1px solid var(--border);
+            background: var(--surface);
+            color: var(--accent);
+            font-size: 1.25rem;
+            line-height: 1;
+            cursor: pointer;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s, transform 0.15s;
+            z-index: 90;
+        }
+        .scroll-top.visible { opacity: 1; pointer-events: auto; }
+        .scroll-top:hover { transform: translateY(-2px); }
         nav ul a:hover { color: var(--text); }
         nav .hamburger {
             display: none;
@@ -390,7 +419,7 @@
 
 <nav>
     <div class="inner">
-        <div class="logo">fselect <span>v0.10.4</span></div>
+        <a href="#" class="logo">fselect <span>v0.10.4</span></a>
         <button class="hamburger" aria-label="Toggle menu" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('open')">
             <span></span><span></span><span></span>
         </button>
@@ -486,6 +515,7 @@
             <p>Run <code>fselect -i</code> and explore from a REPL: type queries without shell escaping, <code>cd</code> between directories, and recall them from history. See <a href="#interactive-mode">the examples</a>.</p>
         </div>
     </div>
+    <a class="to-top" href="#">&uarr; Back to top</a>
 </section>
 
 <div class="sep"></div>
@@ -547,6 +577,7 @@
             </p>
         </div>
     </div>
+    <a class="to-top" href="#">&uarr; Back to top</a>
 </section>
 
 <div class="sep"></div>
@@ -953,6 +984,7 @@
   where exif_make = 'Canon' and exif_iso = 100 and exif_f_num < 2.8
   order by exif_dto desc"</span></pre>
     </div>
+    <a class="to-top" href="#">&uarr; Back to top</a>
 </section>
 
 <div class="sep"></div>
@@ -964,6 +996,7 @@
     <div class="terminology-wrapper">
         <img src="terminology-dark.svg" alt="File naming terminology diagram showing how abspath, absdir, path, dir, name, filename, and ext relate to a file path">
     </div>
+    <a class="to-top" href="#">&uarr; Back to top</a>
 </section>
 
 <div class="sep"></div>
@@ -1213,6 +1246,7 @@
             <tr><td>html</td><td>HTML document with a table</td></tr>
         </tbody>
     </table></div>
+    <a class="to-top" href="#">&uarr; Back to top</a>
 </section>
 
 <div class="sep"></div>
@@ -1233,11 +1267,23 @@
     </p>
 </footer>
 
+<button class="scroll-top" aria-label="Scroll to top">&uarr;</button>
+
 <script>
 document.querySelectorAll('nav ul a').forEach(a => a.addEventListener('click', () => {
     document.querySelector('.hamburger').classList.remove('open');
     document.querySelector('nav ul').classList.remove('open');
 }));
+const toTop = (e) => {
+    e.preventDefault();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    history.replaceState(null, '', location.pathname);
+};
+document.querySelectorAll('nav .logo, .to-top, .scroll-top').forEach(el => el.addEventListener('click', toTop));
+const scrollTop = document.querySelector('.scroll-top');
+const toggleScrollTop = () => scrollTop.classList.toggle('visible', window.scrollY > 400);
+window.addEventListener('scroll', toggleScrollTop, { passive: true });
+toggleScrollTop();
 </script>
 </body>
 </html>

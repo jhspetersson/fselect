@@ -294,6 +294,40 @@ impl AggregatePlan {
     }
 }
 
+const NO_FILE_INFO: &Option<FileInfo> = &None;
+
+struct Row<'r> {
+    entry: Option<&'r DirEntry>,
+    file_info: &'r Option<FileInfo>,
+    root_path: &'r Path,
+    values: &'r mut HashMap<String, Variant>,
+    group: Option<&'r function::GroupAccumulator>,
+}
+
+impl<'r> Row<'r> {
+    fn new(
+        entry: Option<&'r DirEntry>,
+        file_info: &'r Option<FileInfo>,
+        root_path: &'r Path,
+        values: &'r mut HashMap<String, Variant>,
+        group: Option<&'r function::GroupAccumulator>,
+    ) -> Row<'r> {
+        Row { entry, file_info, root_path, values, group }
+    }
+
+    fn entry(entry: &'r DirEntry, file_info: &'r Option<FileInfo>, root_path: &'r Path, values: &'r mut HashMap<String, Variant>) -> Row<'r> {
+        Row::new(Some(entry), file_info, root_path, values, None)
+    }
+
+    fn group(group: &'r function::GroupAccumulator, values: &'r mut HashMap<String, Variant>) -> Row<'r> {
+        Row::new(None, NO_FILE_INFO, Path::new(""), values, Some(group))
+    }
+
+    fn scratch<'s>(&'s self, values: &'s mut HashMap<String, Variant>) -> Row<'s> {
+        Row::new(self.entry, self.file_info, self.root_path, values, self.group)
+    }
+}
+
 enum BufferedRow {
     Rendered(String, Option<Variant>),
     Pending(PendingRow),
@@ -907,30 +941,29 @@ impl<'a> Searcher<'a> {
                 let having_expr = self.query.having.as_ref();
                 let aliases = self.query.own_root_aliases();
                 for group_acc in accumulators.values() {
-                    let mut file_map = HashMap::new();
+                    let mut values = HashMap::new();
+                    let mut row = Row::group(group_acc, &mut values);
                     self.unknown_conditions = group_acc.unknown_keys.clone();
                     for (k, value) in group_keys.iter().zip(&group_acc.key_values) {
-                        file_map.insert(k.clone(), value.clone());
+                        row.values.insert(k.clone(), value.clone());
                     }
                     self.reset_alias_failures(&aliases);
                     self.bind_group_context(&aliases, &group_acc.key_values, &[]);
                     if let Some(having_expr) = having_expr {
                         if having_expr.has_correlated_subquery() {
-                            self.bind_aggregate_aliases(&aliases, &mut file_map, group_acc, true)?;
+                            self.bind_aggregate_aliases(&aliases, &mut row, true)?;
                         }
-                        let conforms = self.group_conforms(&mut file_map, group_acc, having_expr)?;
+                        let conforms = self.group_conforms(&mut row, having_expr)?;
                         self.alias_read_failure()?;
                         if !conforms {
                             continue;
                         }
                     }
-                    self.bind_aggregate_aliases(&aliases, &mut file_map, group_acc, false)?;
+                    self.bind_aggregate_aliases(&aliases, &mut row, false)?;
                     let mut items: Vec<(String, String)> = Vec::new();
                     let mut first_value = None;
                     for (index, column_expr) in self.query.fields.iter().enumerate() {
-                        let value = self.get_column_expr_value(
-                            None, &None, Path::new(""), &mut file_map, Some(group_acc), column_expr,
-                        )?;
+                        let value = self.get_column_expr_value(&mut row, column_expr)?;
                         first_value = first_value.or_else(|| self.first_column_value(index, &value));
                         items.push((column_expr.column_name(), value.to_string()));
                     }
@@ -942,17 +975,10 @@ impl<'a> Searcher<'a> {
                     let mut criteria_values: Vec<Variant> = Vec::with_capacity(sorting_indices.len());
                     for (index, ordering_expr) in sorting_indices.iter().zip(self.query.ordering_fields.iter()) {
                         let value = match index {
-                            Some(index) => file_map.get(&ordering_expr.cache_key()).cloned().unwrap_or_else(|| {
+                            Some(index) => row.values.get(&ordering_expr.cache_key()).cloned().unwrap_or_else(|| {
                                 Variant::from_string(&items.get(*index).map(|item| item.1.clone()).unwrap_or_default())
                             }),
-                            None => self.get_column_expr_value(
-                                None,
-                                &None,
-                                Path::new(""),
-                                &mut file_map,
-                                Some(group_acc),
-                                ordering_expr,
-                            )?,
+                            None => self.get_column_expr_value(&mut row, ordering_expr)?,
                         };
                         criteria_values.push(value);
                     }
@@ -991,29 +1017,23 @@ impl<'a> Searcher<'a> {
                 let aliases = self.query.own_root_aliases();
                 self.reset_alias_failures(&aliases);
                 self.bind_group_context(&aliases, &[], &[]);
-                let mut file_map = HashMap::new();
+                let mut values = HashMap::new();
+                let mut row = Row::group(ungrouped_acc, &mut values);
                 let mut passes_having = true;
                 if let Some(having_expr) = self.query.having.as_ref() {
                     if having_expr.has_correlated_subquery() {
-                        self.bind_aggregate_aliases(&aliases, &mut file_map, ungrouped_acc, true)?;
+                        self.bind_aggregate_aliases(&aliases, &mut row, true)?;
                     }
                     passes_having =
-                        self.group_conforms(&mut file_map, ungrouped_acc, having_expr)?;
+                        self.group_conforms(&mut row, having_expr)?;
                     self.alias_read_failure()?;
                 }
 
                 if passes_having {
-                    self.bind_aggregate_aliases(&aliases, &mut file_map, ungrouped_acc, false)?;
+                    self.bind_aggregate_aliases(&aliases, &mut row, false)?;
                     let mut first_value = None;
                     for (index, column_expr) in self.query.fields.iter().enumerate() {
-                        let value = self.get_column_expr_value(
-                            None,
-                            &None,
-                            Path::new(""),
-                            &mut file_map,
-                            Some(ungrouped_acc),
-                            column_expr
-                        )?;
+                        let value = self.get_column_expr_value(&mut row, column_expr)?;
                         first_value = first_value.or_else(|| self.first_column_value(index, &value));
                         items.push((column_expr.column_name(), value.to_string()));
                     }
@@ -1914,15 +1934,12 @@ impl<'a> Searcher<'a> {
 
     fn condition_state(
         &mut self,
-        entry: &DirEntry,
-        file_info: &Option<FileInfo>,
-        root_path: &Path,
-        file_map: &HashMap<String, Variant>,
+        row: &Row,
         expr: &Expr,
     ) -> Result<Option<bool>, SearchError> {
         if let Some(ref logical_op) = expr.logical_op {
             let left = match expr.left {
-                Some(ref left) => self.condition_state(entry, file_info, root_path, file_map, left)?,
+                Some(ref left) => self.condition_state(row, left)?,
                 None => Some(false),
             };
             match (logical_op, left) {
@@ -1931,7 +1948,7 @@ impl<'a> Searcher<'a> {
                 _ => {}
             }
             let right = match expr.right {
-                Some(ref right) => self.condition_state(entry, file_info, root_path, file_map, right)?,
+                Some(ref right) => self.condition_state(row, right)?,
                 None => Some(false),
             };
             return Ok(match logical_op {
@@ -1948,24 +1965,21 @@ impl<'a> Searcher<'a> {
             });
         }
         let key = expr.cache_key();
-        let holds = match file_map.get(&key).and_then(cached_condition) {
+        let holds = match row.values.get(&key).and_then(cached_condition) {
             Some(holds) => holds,
-            None => self.conforms(entry, file_info, root_path, expr)?,
+            None => self.conforms(row, expr)?,
         };
         Ok(if self.null_comparisons.contains(&key) { None } else { Some(holds) })
     }
 
     fn conforms_caching_leaves(
         &mut self,
-        entry: &DirEntry,
-        file_info: &Option<FileInfo>,
-        root_path: &Path,
-        file_map: &mut HashMap<String, Variant>,
+        row: &mut Row,
         expr: &Expr,
     ) -> Result<bool, SearchError> {
         if let Some(ref logical_op) = expr.logical_op {
             let left = match expr.left {
-                Some(ref left) => self.conforms_caching_leaves(entry, file_info, root_path, file_map, left)?,
+                Some(ref left) => self.conforms_caching_leaves(row, left)?,
                 None => false,
             };
             match (logical_op, left) {
@@ -1974,16 +1988,16 @@ impl<'a> Searcher<'a> {
                 _ => {}
             }
             return match expr.right {
-                Some(ref right) => self.conforms_caching_leaves(entry, file_info, root_path, file_map, right),
+                Some(ref right) => self.conforms_caching_leaves(row, right),
                 None => Ok(false),
             };
         }
         let key = expr.cache_key();
-        if let Some(holds) = file_map.get(&key).and_then(cached_condition) {
+        if let Some(holds) = row.values.get(&key).and_then(cached_condition) {
             return Ok(holds);
         }
-        let holds = self.conforms(entry, file_info, root_path, expr)?;
-        file_map.insert(key, apply_minus(expr, Variant::from_bool(holds)));
+        let holds = self.conforms(row, expr)?;
+        row.values.insert(key, apply_minus(expr, Variant::from_bool(holds)));
         Ok(holds)
     }
 
@@ -2024,13 +2038,15 @@ impl<'a> Searcher<'a> {
     fn bind_aggregate_aliases(
         &mut self,
         aliases: &HashSet<String>,
-        file_map: &mut HashMap<String, Variant>,
-        accumulator: &function::GroupAccumulator,
+        row: &mut Row,
         skip_failing_columns: bool,
     ) -> Result<(), SearchError> {
         if aliases.is_empty() {
             return Ok(());
         }
+        let Some(accumulator) = row.group else {
+            return Ok(());
+        };
         let query = self.query;
         let aliased: Vec<&Expr> = query
             .fields
@@ -2041,7 +2057,7 @@ impl<'a> Searcher<'a> {
             aliased.iter().partition(|column| column.needs_row_context());
         let mut values: Vec<(String, Variant)> = Vec::new();
         for column in independent {
-            match self.aggregate_alias_value(file_map, accumulator, column) {
+            match self.get_column_expr_value(row, column) {
                 Ok(value) => Self::upsert_alias_value(&mut values, column, value),
                 Err(err) if skip_failing_columns && !err.is_fatal() => self.mark_aggregate_alias_failed(aliases, column, err),
                 Err(err) => return Err(err),
@@ -2058,10 +2074,10 @@ impl<'a> Searcher<'a> {
         let mut failed: Vec<(&Expr, SearchError)> = Vec::new();
         for _ in 0..rounds {
             let before = values.clone();
-            scratch = file_map.clone();
+            scratch = row.values.clone();
             failed.clear();
             for column in &dependent {
-                match self.aggregate_alias_value(&mut scratch, accumulator, column) {
+                match self.get_column_expr_value(&mut row.scratch(&mut scratch), column) {
                     Ok(value) => {
                         Self::upsert_alias_value(&mut values, column, value);
                         self.bind_group_context(aliases, &accumulator.key_values, &values);
@@ -2078,7 +2094,7 @@ impl<'a> Searcher<'a> {
             if skip_failing_columns {
                 self.mark_aggregate_alias_failed(aliases, column, err);
             } else {
-                self.aggregate_alias_value(&mut scratch, accumulator, column)?;
+                self.get_column_expr_value(&mut row.scratch(&mut scratch), column)?;
             }
         }
         if skip_failing_columns {
@@ -2097,8 +2113,8 @@ impl<'a> Searcher<'a> {
                     // Start from the group's base map: the values cached
                     // during the rounds would serve a wrapper such as
                     // `coalesce(...)` without re-reading the failed alias.
-                    let mut probe = file_map.clone();
-                    let _ = self.aggregate_alias_value(&mut probe, accumulator, column);
+                    let mut probe = row.values.clone();
+                    let _ = self.get_column_expr_value(&mut row.scratch(&mut probe), column);
                     let hit = self.alias_failures.borrow_mut().hit.take();
                     if let Some((_, err)) = hit {
                         self.mark_aggregate_alias_failed(aliases, column, err);
@@ -2111,7 +2127,7 @@ impl<'a> Searcher<'a> {
             }
             self.alias_failures.borrow_mut().hit = None;
         }
-        file_map.extend(scratch);
+        row.values.extend(scratch);
         Ok(())
     }
 
@@ -2135,15 +2151,6 @@ impl<'a> Searcher<'a> {
         if failures.hit.as_ref().is_some_and(|(alias, _)| aliases.contains(alias)) {
             failures.hit = None;
         }
-    }
-
-    fn aggregate_alias_value(
-        &mut self,
-        file_map: &mut HashMap<String, Variant>,
-        accumulator: &function::GroupAccumulator,
-        column: &Expr,
-    ) -> Result<Variant, SearchError> {
-        self.get_column_expr_value(None, &None, Path::new(""), file_map, Some(accumulator), column)
     }
 
     fn upsert_alias_value(values: &mut Vec<(String, Variant)>, column: &Expr, value: Variant) {
@@ -2256,22 +2263,23 @@ impl<'a> Searcher<'a> {
     fn evaluate_deferred(
         &mut self,
         entry: &DirEntry,
-        row: &PendingRow,
+        pending: &PendingRow,
         items: &mut [(String, String)],
     ) -> Result<Option<Variant>, SearchError> {
         let mut first_value = None;
         let query = self.query;
-        let mut file_map = HashMap::new();
-        if self.use_colors && row.deferred.iter().any(|index| query.fields[*index].contains_colorized()) {
+        let mut values = HashMap::new();
+        let mut row = Row::entry(entry, &pending.file_info, &pending.root_path, &mut values);
+        if self.use_colors && pending.deferred.iter().any(|index| query.fields[*index].contains_colorized()) {
             self.fms.update_file_metadata(entry, self.current_follow_symlinks);
         }
-        for &index in &row.deferred {
+        for &index in &pending.deferred {
             let field = &query.fields[index];
-            let record = match self.get_column_expr_value(Some(entry), &row.file_info, &row.root_path, &mut file_map, None, field) {
+            let record = match self.get_column_expr_value(&mut row, field) {
                 Ok(record) => record,
                 Err(err) if err.is_fatal() => return Err(err),
                 Err(err) => {
-                    self.handle_nonfatal_error(err, &row.path);
+                    self.handle_nonfatal_error(err, &pending.path);
                     continue;
                 }
             };
@@ -2286,11 +2294,7 @@ impl<'a> Searcher<'a> {
 
     fn get_column_expr_value(
         &mut self,
-        entry: Option<&DirEntry>,
-        file_info: &Option<FileInfo>,
-        root_path: &Path,
-        file_map: &mut HashMap<String, Variant>,
-        accumulator: Option<&function::GroupAccumulator>,
+        row: &mut Row,
         column_expr: &Expr,
     ) -> Result<Variant, SearchError> {
         let cache_key = column_expr.cache_key();
@@ -2318,7 +2322,7 @@ impl<'a> Searcher<'a> {
                         return Ok(match ctx.get(&field_key) {
                             Some(val) => {
                                 let value = apply_minus(column_expr, val.clone());
-                                file_map.insert(cache_key, value.clone());
+                                row.values.insert(cache_key, value.clone());
                                 value
                             }
                             None => {
@@ -2338,7 +2342,7 @@ impl<'a> Searcher<'a> {
             }
         }
 
-        if let Some(cached) = file_map.get(&cache_key) {
+        if let Some(cached) = row.values.get(&cache_key) {
             let value = cached.clone();
             if let Some(entry_key) = context_field {
                 let mut context = self.record_context.borrow_mut();
@@ -2349,11 +2353,11 @@ impl<'a> Searcher<'a> {
             return Ok(value);
         }
 
-        if entry.is_none() && column_expr.minus && column_expr.op.is_none() && column_expr.logical_op.is_none() {
+        if row.entry.is_none() && column_expr.minus && column_expr.op.is_none() && column_expr.logical_op.is_none() {
             let mut bare = column_expr.clone();
             bare.minus = false;
             let bare_key = bare.cache_key();
-            if let Some(cached) = file_map.get(&bare_key) {
+            if let Some(cached) = row.values.get(&bare_key) {
                 return Ok(apply_minus(column_expr, cached.clone()));
             }
         }
@@ -2372,20 +2376,20 @@ impl<'a> Searcher<'a> {
 
         if let Some(ref _function) = column_expr.function {
             let result =
-                self.get_function_value(entry, file_info, root_path, file_map, accumulator, column_expr)?;
+                self.get_function_value(row, column_expr)?;
             let result = apply_minus(column_expr, result);
-            file_map.insert(cache_key, result.clone());
+            row.values.insert(cache_key, result.clone());
             return Ok(result);
         }
 
         if let Some(ref field) = column_expr.field {
-            if let Some(entry) = entry {
-                let raw = self.get_field_value(entry, file_info, root_path, field).unwrap_or(Variant::empty(VariantType::String));
+            if let Some(entry) = row.entry {
+                let raw = self.get_field_value(entry, row.file_info, row.root_path, field).unwrap_or(Variant::empty(VariantType::String));
                 // The record context feeds correlated subqueries: under the
                 // field name it holds the raw value, under an alias the value
                 // the column actually produces (negated when written `-size`).
                 let result = apply_minus(column_expr, raw.clone());
-                file_map.insert(cache_key, result.clone());
+                row.values.insert(cache_key, result.clone());
                 let mut context = self.record_context.borrow_mut();
                 let context_key = self.current_alias.clone().unwrap_or_else(|| String::from(""));
                 let context_entry = context.entry(context_key).or_default();
@@ -2394,7 +2398,7 @@ impl<'a> Searcher<'a> {
                     None => context_entry.insert(field.to_string(), raw),
                 };
                 return Ok(result);
-            } else if let Some(val) = file_map.get(&field.to_string()) {
+            } else if let Some(val) = row.values.get(&field.to_string()) {
                 return Ok(apply_minus(column_expr, val.clone()));
             } else {
                 return Ok(Variant::empty(VariantType::String));
@@ -2408,15 +2412,15 @@ impl<'a> Searcher<'a> {
         // A comparison used as a column (`select size > 2`) is a condition:
         // it evaluates to a boolean, per row or per group.
         if column_expr.op.is_some() || column_expr.logical_op.is_some() {
-            let holds = match (entry, accumulator) {
-                (Some(entry), _) => Some(self.conforms_caching_leaves(entry, file_info, root_path, file_map, column_expr)?),
-                (None, Some(accumulator)) => Some(self.group_conforms(file_map, accumulator, column_expr)?),
+            let holds = match (row.entry, row.group) {
+                (Some(_), _) => Some(self.conforms_caching_leaves(row, column_expr)?),
+                (None, Some(_)) => Some(self.group_conforms(row, column_expr)?),
                 (None, None) => None,
             };
             return Ok(match holds {
                 Some(holds) => {
                     let result = apply_minus(column_expr, Variant::from_bool(holds));
-                    file_map.insert(cache_key, result.clone());
+                    row.values.insert(cache_key, result.clone());
                     result
                 }
                 None => Variant::empty(VariantType::Bool),
@@ -2427,15 +2431,15 @@ impl<'a> Searcher<'a> {
 
         if let Some(ref left) = column_expr.left {
             let left_result =
-                self.get_column_expr_value(entry, file_info, root_path, file_map, accumulator, left)?;
+                self.get_column_expr_value(row, left)?;
 
             if let Some(ref op) = column_expr.arithmetic_op {
                 if let Some(ref right) = column_expr.right {
                     let right_result =
-                        self.get_column_expr_value(entry, file_info, root_path, file_map, accumulator, right)?;
+                        self.get_column_expr_value(row, right)?;
                         result = op.calc(&left_result, &right_result).map(|v| apply_minus(column_expr, v));
                         if let Ok(ref value) = result {
-                            file_map.insert(cache_key, value.clone());
+                            row.values.insert(cache_key, value.clone());
                         }
                 } else {
                     result = Ok(apply_minus(column_expr, left_result));
@@ -2452,11 +2456,7 @@ impl<'a> Searcher<'a> {
 
     fn get_function_value(
         &mut self,
-        entry: Option<&DirEntry>,
-        file_info: &Option<FileInfo>,
-        root_path: &Path,
-        file_map: &mut HashMap<String, Variant>,
-        accumulator: Option<&function::GroupAccumulator>,
+        row: &mut Row,
         column_expr: &Expr,
     ) -> Result<Variant, SearchError> {
         let dummy = Expr::value(String::from(""));
@@ -2470,8 +2470,8 @@ impl<'a> Searcher<'a> {
         let function = column_expr.function.as_ref().unwrap();
 
         if function.is_aggregate_function() {
-            if entry.is_some() {
-                self.get_column_expr_value(entry, file_info, root_path, file_map, accumulator, left_expr)?;
+            if row.entry.is_some() {
+                self.get_column_expr_value(row, left_expr)?;
             }
             let buffer_key = if left_expr.is_literal() && matches!(left_expr.val.as_deref(), Some("*") | Some("")) {
                 String::from("*")
@@ -2479,7 +2479,7 @@ impl<'a> Searcher<'a> {
                 left_expr.cache_key()
             };
             let empty_acc = function::GroupAccumulator::default();
-            let accumulator = accumulator.unwrap_or(&empty_acc);
+            let accumulator = row.group.unwrap_or(&empty_acc);
             let aggr_result = function::get_aggregate_value(function, accumulator, buffer_key, &column_expr.val);
             if aggr_result.as_str().is_empty() && *function != function::Function::Count {
                 return Ok(Variant::null());
@@ -2496,7 +2496,7 @@ impl<'a> Searcher<'a> {
                 match candidates.next() {
                     None => break if all_null { Variant::null() } else { Variant::empty(VariantType::String) },
                     Some(arg) => {
-                        let value = self.get_column_expr_value(entry, file_info, root_path, file_map, accumulator, arg)?;
+                        let value = self.get_column_expr_value(row, arg)?;
                         if !value.to_string().is_empty() {
                             break value;
                         }
@@ -2504,17 +2504,17 @@ impl<'a> Searcher<'a> {
                     }
                 }
             };
-            file_map.insert(column_expr.cache_key(), result.clone());
+            row.values.insert(column_expr.cache_key(), result.clone());
 
             Ok(result)
         } else {
             let function_arg =
-                self.get_column_expr_value(entry, file_info, root_path, file_map, accumulator, left_expr);
+                self.get_column_expr_value(row, left_expr);
             let mut function_args = vec![];
             if let Some(args) = &column_expr.args {
                 for arg in args {
                     let arg_value =
-                        self.get_column_expr_value(entry, file_info, root_path, file_map, accumulator, arg)?;
+                        self.get_column_expr_value(row, arg)?;
                     function_args.push(arg_value.to_string());
                 }
             }
@@ -2522,10 +2522,10 @@ impl<'a> Searcher<'a> {
                 function,
                 function_arg?.to_string(),
                 function_args,
-                entry,
-                file_info,
+                row.entry,
+                row.file_info,
             )?;
-            file_map.insert(column_expr.cache_key(), result.clone());
+            row.values.insert(column_expr.cache_key(), result.clone());
 
             Ok(result)
         }
@@ -2575,27 +2575,21 @@ impl<'a> Searcher<'a> {
     /// like any other row error.
     fn bind_row_aliases(
         &mut self,
-        entry: &DirEntry,
-        file_info: &Option<FileInfo>,
-        root_path: &Path,
+        row: &mut Row,
         current_alias: &str,
         required_columns: &[(String, Expr)],
-        file_map: &mut HashMap<String, Variant>,
     ) -> Result<(), SearchError> {
         let previous = std::mem::replace(&mut self.suppress_row_errors, true);
-        let outcome = self.bind_row_aliases_inner(entry, file_info, root_path, current_alias, required_columns, file_map);
+        let outcome = self.bind_row_aliases_inner(row, current_alias, required_columns);
         self.suppress_row_errors = previous;
         outcome
     }
 
     fn bind_row_aliases_inner(
         &mut self,
-        entry: &DirEntry,
-        file_info: &Option<FileInfo>,
-        root_path: &Path,
+        row: &mut Row,
         current_alias: &str,
         required_columns: &[(String, Expr)],
-        file_map: &mut HashMap<String, Variant>,
     ) -> Result<(), SearchError> {
         let rounds = if required_columns.len() > 1 { required_columns.len() } else { 1 };
         let self_contained: Vec<bool> = required_columns
@@ -2619,7 +2613,7 @@ impl<'a> Searcher<'a> {
                     .and_then(|earlier| bound[earlier].clone());
                 let evaluated = match shared {
                     Some(value) => Ok(value),
-                    None => self.get_column_expr_value(Some(entry), file_info, root_path, &mut scratch, None, column),
+                    None => self.get_column_expr_value(&mut row.scratch(&mut scratch), column),
                 };
                 scratches[index] = scratch;
                 let value = match evaluated {
@@ -2647,7 +2641,7 @@ impl<'a> Searcher<'a> {
             }
         }
         if failed.is_empty() {
-            self.seed_bound_aliases(current_alias, required_columns, &bound, &scratches, file_map);
+            self.seed_bound_aliases(current_alias, required_columns, &bound, &scratches, row.values);
             return Ok(());
         }
         for (index, err) in failed {
@@ -2664,7 +2658,7 @@ impl<'a> Searcher<'a> {
                 }
                 self.alias_failures.borrow_mut().hit = None;
                 let mut scratch = HashMap::new();
-                let _ = self.get_column_expr_value(Some(entry), file_info, root_path, &mut scratch, None, column);
+                let _ = self.get_column_expr_value(&mut row.scratch(&mut scratch), column);
                 let hit = self.alias_failures.borrow_mut().hit.take();
                 if let Some((_, err)) = hit {
                     self.mark_row_alias_failed(current_alias, name, err);
@@ -2675,7 +2669,7 @@ impl<'a> Searcher<'a> {
                 break;
             }
         }
-        self.seed_bound_aliases(current_alias, required_columns, &bound, &scratches, file_map);
+        self.seed_bound_aliases(current_alias, required_columns, &bound, &scratches, row.values);
         Ok(())
     }
 
@@ -2733,6 +2727,7 @@ impl<'a> Searcher<'a> {
 
     fn check_file_inner(&mut self, entry: &DirEntry, root_path: &Path, file_info: &Option<FileInfo>, file_map: &mut HashMap<String, Variant>) -> Result<(), SearchError> {
         self.null_comparisons.clear();
+        let mut row = Row::entry(entry, file_info, root_path, file_map);
         if let Some(ref current_alias) = self.current_alias.clone() {
             self.record_context.borrow_mut().entry(current_alias.to_string()).or_default().clear();
             {
@@ -2761,13 +2756,13 @@ impl<'a> Searcher<'a> {
             }
 
             let required_columns = std::mem::take(&mut self.subquery_required_columns);
-            let outcome = self.bind_row_aliases(entry, file_info, root_path, current_alias, &required_columns, file_map);
+            let outcome = self.bind_row_aliases(&mut row, current_alias, &required_columns);
             self.subquery_required_columns = required_columns;
             outcome?;
         }
 
         if let Some(ref expr) = self.query.expr {
-            let result = self.conforms(entry, file_info, root_path, expr)?;
+            let result = self.conforms(&row, expr)?;
             self.alias_read_failure()?;
             if !result {
                 return Ok(());
@@ -2778,34 +2773,34 @@ impl<'a> Searcher<'a> {
             self.found += 1;
             for (field, key) in &plan.fields {
                 let value = self.get_field_value(entry, file_info, root_path, field).unwrap_or(Variant::empty(VariantType::String));
-                file_map.insert(key.clone(), value);
+                row.values.insert(key.clone(), value);
             }
             let planned = plan.inner_exprs.iter().map(|(key, left)| (key, left))
-                .chain(plan.grouping_keys.iter().zip(&self.query.grouping_fields).map(|(key, field)| (key, field)));
+                .chain(plan.grouping_keys.iter().zip(&self.query.grouping_fields));
             let mut unknown_keys: HashSet<String> = HashSet::new();
             for (key, expr) in planned {
                 let grouping_condition =
                     (expr.op.is_some() || expr.logical_op.is_some()) && plan.grouping_keys.contains(key);
-                if file_map.contains_key(key) && !grouping_condition {
+                if row.values.contains_key(key) && !grouping_condition {
                     continue;
                 }
                 let value = if grouping_condition {
-                    let state = self.condition_state(entry, file_info, root_path, file_map, expr)?;
+                    let state = self.condition_state(&row, expr)?;
                     if state.is_none() {
                         unknown_keys.insert(key.clone());
                     }
                     apply_minus(expr, Variant::from_bool(state.unwrap_or(false)))
                 } else {
-                    self.get_column_expr_value(Some(entry), file_info, root_path, file_map, None, expr)?
+                    self.get_column_expr_value(&mut row, expr)?
                 };
-                if grouping_condition || !file_map.contains_key(key) {
-                    file_map.insert(key.clone(), value);
+                if grouping_condition || !row.values.contains_key(key) {
+                    row.values.insert(key.clone(), value);
                 }
             }
             let key_values: Vec<Variant> = plan
                 .grouping_keys
                 .iter()
-                .map(|key| file_map.get(key).cloned().unwrap_or_else(|| Variant::empty(VariantType::String)))
+                .map(|key| row.values.get(key).cloned().unwrap_or_else(|| Variant::empty(VariantType::String)))
                 .collect();
             let group_key: Vec<String> = plan
                 .grouping_keys
@@ -2832,7 +2827,7 @@ impl<'a> Searcher<'a> {
                 accumulator.unknown_keys = unknown_keys;
             }
             accumulator.increment_count();
-            for (key, value) in file_map.iter() {
+            for (key, value) in row.values.iter() {
                 accumulator.push(key, value);
             }
             return Ok(());
@@ -2851,7 +2846,7 @@ impl<'a> Searcher<'a> {
                 items.push((field.column_name(), String::new()));
                 continue;
             }
-            let record = match self.get_column_expr_value(Some(entry), file_info, root_path, file_map, None, field) {
+            let record = match self.get_column_expr_value(&mut row, field) {
                 Ok(record) => {
                     first_value = first_value.or_else(|| self.first_column_value(index, &record));
                     record
@@ -2878,16 +2873,16 @@ impl<'a> Searcher<'a> {
 
         let mut criteria: Vec<Variant> = Vec::with_capacity(self.query.ordering_fields.len());
         for field in &self.query.ordering_fields {
-            let value = match file_map.get(&field.cache_key()) {
+            let value = match row.values.get(&field.cache_key()) {
                 Some(record) => record.clone(),
-                None => self.get_column_expr_value(Some(entry), file_info, root_path, file_map, None, field)?,
+                None => self.get_column_expr_value(&mut row, field)?,
             };
             criteria.push(value);
         }
 
         self.alias_read_failure()?;
         if self.is_buffered() {
-            let row = if defer {
+            let buffered = if defer {
                 BufferedRow::Pending(PendingRow {
                     path: entry.path(),
                     root_path: root_path.to_path_buf(),
@@ -2905,7 +2900,7 @@ impl<'a> Searcher<'a> {
             self.found += 1;
             self.output_buffer.insert(
                 Criteria::typed(self.ordering_fields_rc.clone(), criteria, self.ordering_asc_rc.clone()),
-                row,
+                buffered,
             );
         } else {
             let mut buf = WritableBuffer::new();
@@ -2956,11 +2951,7 @@ impl<'a> Searcher<'a> {
     fn check_in_list(
         &mut self,
         expr: &Expr,
-        entry: Option<&DirEntry>,
-        file_info: &Option<FileInfo>,
-        root_path: &Path,
-        arg_map: &mut HashMap<String, Variant>,
-        accumulator: Option<&function::GroupAccumulator>,
+        row: &mut Row,
         field_value: &Variant,
         negate: bool,
     ) -> Result<bool, SearchError> {
@@ -2988,10 +2979,10 @@ impl<'a> Searcher<'a> {
             {
                 self.in_list_comparisons += 1;
             }
-            if accumulator.is_none() {
-                arg_map.clear();
+            if row.group.is_none() {
+                row.values.clear();
             }
-            let arg_val = self.get_column_expr_value(entry, file_info, root_path, arg_map, accumulator, arg)?;
+            let arg_val = self.get_column_expr_value(row, arg)?;
             if arg_val.is_null() {
                 continue;
             }
@@ -3090,18 +3081,26 @@ impl<'a> Searcher<'a> {
         }
     }
 
-    fn conforms(&mut self, entry: &DirEntry, file_info: &Option<FileInfo>, root_path: &Path, expr: &Expr) -> Result<bool, SearchError> {
+    fn evaluate_operand(&mut self, row: &Row, operand: &Expr) -> Result<Variant, SearchError> {
+        let mut scratch = std::mem::take(&mut self.conforms_map);
+        let value = self.get_column_expr_value(&mut row.scratch(&mut scratch), operand);
+        scratch.clear();
+        self.conforms_map = scratch;
+        value
+    }
+
+    fn conforms(&mut self, row: &Row, expr: &Expr) -> Result<bool, SearchError> {
         let mut result = false;
 
         if let Some(ref logical_op) = expr.logical_op {
             let left_result = match expr.left {
-                Some(ref left) => self.conforms(entry, file_info, root_path, left)?,
+                Some(ref left) => self.conforms(row, left)?,
                 None => false,
             };
 
             let right_result = |s: &mut Self| -> Result<bool, SearchError> {
                 match expr.right {
-                    Some(ref right) => s.conforms(entry, file_info, root_path, right),
+                    Some(ref right) => s.conforms(row, right),
                     None => Ok(false),
                 }
             };
@@ -3115,54 +3114,17 @@ impl<'a> Searcher<'a> {
                 Op::Exists => return self.check_exists(expr),
                 Op::NotExists => return self.check_exists(expr).map(|exists| !exists),
                 Op::IsNull | Op::IsNotNull => {
-                    let mut scratch = HashMap::new();
-                    let value = self.get_column_expr_value(Some(entry), file_info, root_path, &mut scratch, None, expr.left.as_ref().unwrap())?;
+                    let value = self.evaluate_operand(row, expr.left.as_ref().unwrap())?;
                     return Ok(value.to_string().is_empty() == (*op == Op::IsNull));
                 }
                 _ => {}
             }
 
-            let mut temp_map = std::mem::take(&mut self.conforms_map);
-            let field_value = match self.get_column_expr_value(
-                Some(entry),
-                file_info,
-                root_path,
-                &mut temp_map,
-                None,
-                expr.left.as_ref().unwrap(),
-            ) {
-                Ok(v) => v,
-                Err(e) => {
-                    temp_map.clear();
-                    self.conforms_map = temp_map;
-                    return Err(e);
-                }
-            };
-            temp_map.clear();
+            let field_value = self.evaluate_operand(row, expr.left.as_ref().unwrap())?;
             let value = match op {
                 Op::In | Op::NotIn => Variant::empty(VariantType::String),
-                _ => {
-                    match self.get_column_expr_value(
-                        Some(entry),
-                        file_info,
-                        root_path,
-                        &mut temp_map,
-                        None,
-                        expr.right.as_ref().unwrap(),
-                    ) {
-                        Ok(v) => {
-                            temp_map.clear();
-                            v
-                        }
-                        Err(e) => {
-                            temp_map.clear();
-                            self.conforms_map = temp_map;
-                            return Err(e);
-                        }
-                    }
-                }
+                _ => self.evaluate_operand(row, expr.right.as_ref().unwrap())?,
             };
-            self.conforms_map = temp_map;
 
             let (field_value, value) = match (&expr.left, &expr.right) {
                 (Some(left_expr), Some(right_expr)) => (
@@ -3183,11 +3145,11 @@ impl<'a> Searcher<'a> {
             result = match op {
                 Op::In => {
                     let mut arg_map = HashMap::new();
-                    self.check_in_list(expr, Some(entry), file_info, root_path, &mut arg_map, None, &field_value, false)?
+                    self.check_in_list(expr, &mut row.scratch(&mut arg_map), &field_value, false)?
                 }
                 Op::NotIn => {
                     let mut arg_map = HashMap::new();
-                    self.check_in_list(expr, Some(entry), file_info, root_path, &mut arg_map, None, &field_value, true)?
+                    self.check_in_list(expr, &mut row.scratch(&mut arg_map), &field_value, true)?
                 }
                 _ => self.compare_variants(op, &field_value, &value)?,
             };
@@ -3331,32 +3293,31 @@ impl<'a> Searcher<'a> {
 
     fn group_conforms(
         &mut self,
-        file_map: &mut HashMap<String, Variant>,
-        group_acc: &function::GroupAccumulator,
+        row: &mut Row,
         expr: &Expr,
     ) -> Result<bool, SearchError> {
         if (expr.op.is_some() || expr.logical_op.is_some())
-            && let Some(grouped) = self.grouped_condition_value(file_map, expr)
+            && let Some(grouped) = self.grouped_condition_value(row.values, expr)
         {
             return Ok(grouped);
         }
 
         if let Some(ref logical_op) = expr.logical_op {
             let left_result = match expr.left {
-                Some(ref left) => self.group_conforms(file_map, group_acc, left)?,
+                Some(ref left) => self.group_conforms(row, left)?,
                 None => false,
             };
 
-            let right_result = |s: &mut Self, file_map: &mut HashMap<String, Variant>| -> Result<bool, SearchError> {
+            let right_result = |s: &mut Self, row: &mut Row| -> Result<bool, SearchError> {
                 match expr.right {
-                    Some(ref right) => s.group_conforms(file_map, group_acc, right),
+                    Some(ref right) => s.group_conforms(row, right),
                     None => Ok(false),
                 }
             };
 
             return match logical_op {
-                LogicalOp::And => if !left_result { Ok(false) } else { right_result(self, file_map) },
-                LogicalOp::Or => if left_result { Ok(true) } else { right_result(self, file_map) },
+                LogicalOp::And => if !left_result { Ok(false) } else { right_result(self, row) },
+                LogicalOp::Or => if left_result { Ok(true) } else { right_result(self, row) },
             };
         }
 
@@ -3369,19 +3330,19 @@ impl<'a> Searcher<'a> {
             })?;
             if matches!(op, Op::In | Op::NotIn) {
                 let field_value = self.get_column_expr_value(
-                    None, &None, Path::new(""), file_map, Some(group_acc), left_expr,
+                    row, left_expr,
                 )?;
                 let field_value = match expr.right {
                     Some(ref right_expr) if !left_expr.is_literal() => Self::retype_value(left_expr, right_expr, field_value),
                     _ => field_value,
                 };
                 return self.check_in_list(
-                    expr, None, &None, Path::new(""), file_map, Some(group_acc), &field_value, *op == Op::NotIn,
+                    expr, row, &field_value, *op == Op::NotIn,
                 );
             }
             if matches!(op, Op::IsNull | Op::IsNotNull) {
                 let value = self.get_column_expr_value(
-                    None, &None, Path::new(""), file_map, Some(group_acc), left_expr,
+                    row, left_expr,
                 )?;
                 return Ok(value.to_string().is_empty() == (*op == Op::IsNull));
             }
@@ -3389,10 +3350,10 @@ impl<'a> Searcher<'a> {
                 SearchError::fatal("Expected expression after operator in HAVING").with_source("query")
             })?;
             let field_value = self.get_column_expr_value(
-                None, &None, Path::new(""), file_map, Some(group_acc), left_expr,
+                row, left_expr,
             )?;
             let value = self.get_column_expr_value(
-                None, &None, Path::new(""), file_map, Some(group_acc), right_expr,
+                row, right_expr,
             )?;
             let field_value = Self::retype_value(left_expr, right_expr, field_value);
             if op.is_relational()
@@ -3710,7 +3671,7 @@ mod tests {
 
         // Since current_alias is `b`, and the expression requests `a.name`,
         // get_column_expr_value should read the value from record_context rather than the current entry
-        let v = searcher.get_column_expr_value(None, &None, root_path, &mut file_map, None, &bound_expr);
+        let v = searcher.get_column_expr_value(&mut Row::new(None, &None, root_path, &mut file_map, None), &bound_expr);
         assert_eq!(v.unwrap().to_string(), "foo.txt");
     }
 
@@ -3724,9 +3685,7 @@ mod tests {
         bound_expr.root_alias = Some(String::from("x"));
 
         let mut file_map: HashMap<String, Variant> = HashMap::new();
-        let result = searcher.get_column_expr_value(
-            None, &None, Path::new("."), &mut file_map, None, &bound_expr,
-        );
+        let result = searcher.get_column_expr_value(&mut Row::new(None, &None, Path::new("."), &mut file_map, None), &bound_expr);
 
         match result {
             Err(e) => {
@@ -3751,9 +3710,7 @@ mod tests {
         bound_expr.root_alias = Some(String::from("x"));
 
         let mut file_map: HashMap<String, Variant> = HashMap::new();
-        let result = searcher.get_column_expr_value(
-            None, &None, Path::new("."), &mut file_map, None, &bound_expr,
-        );
+        let result = searcher.get_column_expr_value(&mut Row::new(None, &None, Path::new("."), &mut file_map, None), &bound_expr);
 
         assert!(
             matches!(result, Err(ref e) if e.is_fatal() && e.description.contains("Invalid root alias: x")),
@@ -3770,9 +3727,7 @@ mod tests {
 
         let literal = Expr::value(String::from("readme.md"));
         let mut file_map: HashMap<String, Variant> = HashMap::new();
-        let v = searcher.get_column_expr_value(
-            None, &None, Path::new("."), &mut file_map, None, &literal,
-        );
+        let v = searcher.get_column_expr_value(&mut Row::new(None, &None, Path::new("."), &mut file_map, None), &literal);
         assert_eq!(v.unwrap().to_string(), "readme.md");
     }
 
@@ -3785,9 +3740,7 @@ mod tests {
 
         let literal = Expr::value(String::from("readme.md"));
         let mut file_map: HashMap<String, Variant> = HashMap::new();
-        let v = searcher.get_column_expr_value(
-            None, &None, Path::new("."), &mut file_map, None, &literal,
-        );
+        let v = searcher.get_column_expr_value(&mut Row::new(None, &None, Path::new("."), &mut file_map, None), &literal);
         assert_eq!(v.unwrap().to_string(), "readme.md");
     }
 
@@ -3808,9 +3761,7 @@ mod tests {
         bound_expr.root_alias = Some(String::from("a"));
 
         let mut file_map: HashMap<String, Variant> = HashMap::new();
-        let v = searcher.get_column_expr_value(
-            None, &None, Path::new("."), &mut file_map, None, &bound_expr,
-        );
+        let v = searcher.get_column_expr_value(&mut Row::new(None, &None, Path::new("."), &mut file_map, None), &bound_expr);
         assert_eq!(v.unwrap().to_string(), "outer.txt");
     }
 
@@ -3841,9 +3792,7 @@ mod tests {
 
         let value_expr = Expr::alias_reference(String::from("a"), String::from("a.sz"));
         let mut file_map: HashMap<String, Variant> = HashMap::new();
-        let result = searcher.get_column_expr_value(
-            None, &None, Path::new("."), &mut file_map, None, &value_expr,
-        );
+        let result = searcher.get_column_expr_value(&mut Row::new(None, &None, Path::new("."), &mut file_map, None), &value_expr);
 
         let value = result.expect("a declared alias without a row is not an error");
         assert_eq!(value.to_string(), "");
@@ -4260,7 +4209,7 @@ mod tests {
             Expr::value(String::from("not-a-date")),
         );
 
-        let result = searcher.conforms(&entry, &None, &tmp, &expr);
+        let result = searcher.conforms(&Row::entry(&entry, &None, &tmp, &mut HashMap::new()), &expr);
 
         let _ = fs::remove_dir_all(&tmp);
 
@@ -4291,7 +4240,7 @@ mod tests {
             Expr::value(String::from("not-a-date")),
         );
 
-        let result = searcher.conforms(&entry, &None, &tmp, &expr);
+        let result = searcher.conforms(&Row::entry(&entry, &None, &tmp, &mut HashMap::new()), &expr);
 
         let _ = fs::remove_dir_all(&tmp);
 

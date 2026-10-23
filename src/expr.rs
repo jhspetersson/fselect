@@ -485,12 +485,9 @@ impl Expr {
             && !own.contains(alias) {
                 return Some(alias.clone());
             }
-        if let Some(ref left) = self.left
-            && let Some(alias) = left.find_external_alias(own) { return Some(alias); }
-        if let Some(ref right) = self.right
-            && let Some(alias) = right.find_external_alias(own) { return Some(alias); }
-        if let Some(ref args) = self.args
-            && let Some(alias) = args.iter().find_map(|a| a.find_external_alias(own)) { return Some(alias); }
+        if let Some(alias) = self.children().find_map(|child| child.find_external_alias(own)) {
+            return Some(alias);
+        }
         if let Some(ref sub) = self.subquery {
             let nested_own: HashSet<String> = sub.own_root_aliases()
                 .into_iter()
@@ -558,31 +555,28 @@ impl Expr {
 
 
 
+    pub fn children(&self) -> impl Iterator<Item = &Expr> {
+        self.left
+            .iter()
+            .chain(self.right.iter())
+            .map(Box::as_ref)
+            .chain(self.args.iter().flatten())
+    }
+
+    fn children_mut(&mut self) -> impl Iterator<Item = &mut Expr> {
+        self.left
+            .iter_mut()
+            .chain(self.right.iter_mut())
+            .map(Box::as_mut)
+            .chain(self.args.iter_mut().flatten())
+    }
+
+    fn is_aggregate_call(&self) -> bool {
+        self.function.as_ref().is_some_and(Function::is_aggregate_function)
+    }
+
     pub fn has_aggregate_function(&self) -> bool {
-        if let Some(ref left) = self.left
-            && left.has_aggregate_function() {
-                return true;
-            }
-
-        if let Some(ref right) = self.right
-            && right.has_aggregate_function() {
-                return true;
-            }
-
-        if let Some(ref function) = self.function
-            && function.is_aggregate_function() {
-                return true;
-            }
-
-        if let Some(ref args) = self.args {
-            for arg in args {
-                if arg.has_aggregate_function() {
-                    return true;
-                }
-            }
-        }
-
-        false
+        self.is_aggregate_call() || self.children().any(Expr::has_aggregate_function)
     }
 
     pub fn get_aggregate_exprs(&self) -> Vec<&Expr> {
@@ -592,51 +586,21 @@ impl Expr {
     }
 
     fn collect_aggregate_exprs<'a>(expr: &'a Expr, result: &mut Vec<&'a Expr>) {
-        if let Some(ref function) = expr.function
-            && function.is_aggregate_function() {
-                result.push(expr);
-                return;
-            }
-
-        if let Some(ref left) = expr.left {
-            Self::collect_aggregate_exprs(left, result);
+        if expr.is_aggregate_call() {
+            result.push(expr);
+            return;
         }
-
-        if let Some(ref right) = expr.right {
-            Self::collect_aggregate_exprs(right, result);
-        }
-
-        if let Some(ref args) = expr.args {
-            for arg in args {
-                Self::collect_aggregate_exprs(arg, result);
-            }
+        for child in expr.children() {
+            Self::collect_aggregate_exprs(child, result);
         }
     }
 
     pub fn get_required_fields(&self) -> HashSet<Field> {
-        let mut result = HashSet::new();
-
-        if let Some(ref left) = self.left {
-            result.extend(left.get_required_fields());
-        }
-
-        if let Some(ref right) = self.right {
-            result.extend(right.get_required_fields());
-        }
-
-        if let Some(field) = self.field {
-            result.insert(field);
-        }
-
-        if let Some(ref args) = self.args {
-            for arg in args {
-                result.extend(arg.get_required_fields());
-            }
-        }
-
+        let mut result: HashSet<Field> = self.children().flat_map(Expr::get_required_fields).collect();
+        result.extend(self.field);
         result
     }
-    
+
     pub fn get_fields_required_in_subqueries(&self, alias: &str, parent_subquery: bool) -> HashMap<Field, HashSet<String>> {
         let mut result = HashMap::new();
 
@@ -644,11 +608,8 @@ impl Expr {
             Self::collect_fields_required_from_query(subquery, alias, &mut result);
         }
 
-        for child in self.left.iter().chain(self.right.iter()) {
+        for child in self.children() {
             Self::merge_required_fields(&mut result, child.get_fields_required_in_subqueries(alias, parent_subquery));
-        }
-        for arg in self.args.iter().flatten() {
-            Self::merge_required_fields(&mut result, arg.get_fields_required_in_subqueries(alias, parent_subquery));
         }
 
         if let Some(ref expr_alias) = self.root_alias
@@ -678,11 +639,8 @@ impl Expr {
         if let Some(ref subquery) = expr.subquery {
             Self::collect_alias_references_from_query(subquery, alias, result);
         }
-        for child in expr.left.iter().chain(expr.right.iter()) {
+        for child in expr.children() {
             Self::collect_alias_references(child, alias, parent_subquery, result);
-        }
-        for arg in expr.args.iter().flatten() {
-            Self::collect_alias_references(arg, alias, parent_subquery, result);
         }
     }
 
@@ -781,12 +739,7 @@ impl Expr {
             Self::check_literal_side(right, left)?;
             Self::check_literal_side(left, right)?;
         }
-        for child in self.left.iter().chain(self.right.iter()) {
-            child.validate_literals()?;
-        }
-        for arg in self.args.iter().flatten() {
-            arg.validate_literals()?;
-        }
+        self.children().try_for_each(Expr::validate_literals)?;
         if let Some(ref subquery) = self.subquery
             && let Some(ref inner) = subquery.expr
         {
@@ -824,16 +777,10 @@ impl Expr {
         Ok(())
     }
 
-    /// Walk the expression tree and verify every plain literal compared
-    /// against a numeric field is a number or a file size (`12`, `0.5`,
-    /// `1kb`, `1.5 MiB`). Returns `Err` with the first offending literal so
-    /// the query fails at parse time instead of silently matching nothing.
-    ///
-    /// Rejects calls with the wrong number of arguments anywhere in the
-    /// expression tree, so the mistake is reported once, before the search,
-    /// instead of per file (or never, when extra arguments were ignored).
-    pub fn validate_date_function_literals(&self) -> Result<(), String> {
+    pub fn validate_functions(&self) -> Result<(), String> {
         if let Some(ref function) = self.function {
+            let given = usize::from(self.left.is_some()) + self.args.as_ref().map_or(0, Vec::len);
+            function.check_argument_count(given)?;
             for &position in function.datetime_argument_positions() {
                 let argument = match position {
                     0 => self.left.as_deref(),
@@ -849,53 +796,17 @@ impl Expr {
                     }
                 }
             }
-        }
-        for child in self.left.iter().chain(self.right.iter()) {
-            child.validate_date_function_literals()?;
-        }
-        for arg in self.args.iter().flatten() {
-            arg.validate_date_function_literals()?;
-        }
-        if let Some(ref subquery) = self.subquery {
-            for expr in subquery.fields.iter().chain(subquery.expr.iter()) {
-                expr.validate_date_function_literals()?;
+            if *function == Function::FormatSize
+                && let Some(modifier) = self.args.as_ref().and_then(|args| args.first())
+                && modifier.is_literal()
+                && let Some(ref val) = modifier.val
+            {
+                crate::util::format_filesize(0, val)?;
             }
         }
-        Ok(())
-    }
-
-    pub fn validate_format_size_modifiers(&self) -> Result<(), String> {
-        if self.function == Some(Function::FormatSize)
-            && let Some(modifier) = self.args.as_ref().and_then(|args| args.first())
-            && modifier.is_literal()
-            && let Some(ref val) = modifier.val
-        {
-            crate::util::format_filesize(0, val)?;
-        }
-        for child in self.left.iter().chain(self.right.iter()) {
-            child.validate_format_size_modifiers()?;
-        }
-        for arg in self.args.iter().flatten() {
-            arg.validate_format_size_modifiers()?;
-        }
+        self.children().try_for_each(Expr::validate_functions)?;
         if let Some(ref subquery) = self.subquery {
-            for expr in subquery.fields.iter().chain(subquery.expr.iter()) {
-                expr.validate_format_size_modifiers()?;
-            }
-        }
-        Ok(())
-    }
-
-    pub fn validate_function_arity(&self) -> Result<(), String> {
-        if let Some(ref function) = self.function {
-            let given = usize::from(self.left.is_some()) + self.args.as_ref().map_or(0, Vec::len);
-            function.check_argument_count(given)?;
-        }
-        for child in self.left.iter().chain(self.right.iter()) {
-            child.validate_function_arity()?;
-        }
-        for arg in self.args.iter().flatten() {
-            arg.validate_function_arity()?;
+            subquery.fields.iter().chain(subquery.expr.iter()).try_for_each(Expr::validate_functions)?;
         }
         Ok(())
     }
@@ -908,56 +819,21 @@ impl Expr {
     }
 
     pub fn contains_colorized(&self) -> bool {
-        Self::contains_colorized_field(self)
+        self.function.is_none()
+            && (self.field.is_some_and(|field| field.is_colorized_field()) || self.children().any(Expr::contains_colorized))
     }
 
     pub fn reads_entry(&self) -> bool {
-        self.function.as_ref().is_some_and(Function::reads_entry)
-            || self.left.as_ref().is_some_and(|left| left.reads_entry())
-            || self.right.as_ref().is_some_and(|right| right.reads_entry())
-            || self.args.as_ref().is_some_and(|args| args.iter().any(Expr::reads_entry))
+        self.function.as_ref().is_some_and(Function::reads_entry) || self.children().any(Expr::reads_entry)
     }
 
     pub fn has_correlated_subquery(&self) -> bool {
         self.subquery.as_ref().is_some_and(|subquery| subquery.is_correlated())
-            || self.left.as_ref().is_some_and(|left| left.has_correlated_subquery())
-            || self.right.as_ref().is_some_and(|right| right.has_correlated_subquery())
-            || self.args.as_ref().is_some_and(|args| args.iter().any(Expr::has_correlated_subquery))
+            || self.children().any(Expr::has_correlated_subquery)
     }
 
     pub fn needs_row_context(&self) -> bool {
-        self.subquery.is_some()
-            || self.root_alias.is_some()
-            || self.left.as_ref().is_some_and(|left| left.needs_row_context())
-            || self.right.as_ref().is_some_and(|right| right.needs_row_context())
-            || self.args.as_ref().is_some_and(|args| args.iter().any(Expr::needs_row_context))
-    }
-
-    fn contains_colorized_field(expr: &Expr) -> bool {
-        if expr.function.is_some() {
-            return false;
-        }
-
-        let field = match expr.field {
-            Some(ref field) => field.is_colorized_field(),
-            None => false,
-        };
-
-        if field {
-            return true;
-        }
-
-        if let Some(ref left) = expr.left
-            && Self::contains_colorized_field(left) {
-                return true;
-            }
-
-        if let Some(ref right) = expr.right
-            && Self::contains_colorized_field(right) {
-                return true;
-            }
-
-        false
+        self.subquery.is_some() || self.root_alias.is_some() || self.children().any(Expr::needs_row_context)
     }
 }
 
@@ -1009,11 +885,8 @@ impl Expr {
         {
             self.props.mark_local_root();
         }
-        for child in self.left.iter_mut().chain(self.right.iter_mut()) {
+        for child in self.children_mut() {
             child.mark_local_roots(own_aliases);
-        }
-        for arg in self.args.iter_mut().flatten() {
-            arg.mark_local_roots(own_aliases);
         }
     }
 

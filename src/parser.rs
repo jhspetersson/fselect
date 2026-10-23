@@ -117,9 +117,7 @@ impl <'a> Parser<'a> {
             .chain(having.iter())
             .chain(ordering_fields.iter());
         for clause in clauses {
-            clause.validate_function_arity()?;
-            clause.validate_date_function_literals()?;
-            clause.validate_format_size_modifiers()?;
+            clause.validate_functions()?;
         }
 
         // With a single root a qualifier is redundant (`t.size` is `size`),

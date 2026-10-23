@@ -146,6 +146,10 @@ impl Variant {
             .map(|number| number.with_text(text))
     }
 
+    pub fn as_str(&self) -> &str {
+        &self.string_value
+    }
+
     pub fn with_text(mut self, text: &str) -> Variant {
         self.string_value = text.to_string();
         self

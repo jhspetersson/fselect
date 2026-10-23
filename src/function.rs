@@ -101,12 +101,12 @@ macro_rules! functions {
 
             #[cfg(test)]
             pub fn all() -> Vec<Self> {
-                let mut all = Vec::new();
-                $(
-                    $(#[$variant_attrs])*
-                    all.push($enum_name::$variant);
-                )*
-                all
+                vec![
+                    $(
+                        $(#[$variant_attrs])*
+                        $enum_name::$variant,
+                    )*
+                ]
             }
 
             pub fn is_boolean_function(&self) -> bool {
@@ -449,10 +449,6 @@ impl Display for Arity {
 }
 
 impl Function {
-    pub fn passes_argument_type_through(&self) -> bool {
-        matches!(self, Function::Min | Function::Max)
-    }
-
     pub fn datetime_argument_positions(&self) -> &'static [usize] {
         match self {
             Function::Year
@@ -483,12 +479,6 @@ impl Function {
             ))
         }
     }
-}
-
-/// The extreme keeps the spelling it was pushed with (`000`, `-000`, `1e3`):
-/// the result must name a value that exists, so no spelling is rewritten.
-fn numeric_extreme_text(raw: &Option<String>) -> String {
-    raw.clone().unwrap_or_default()
 }
 
 fn snap_to_exact_power(val: f64, base: f64, approx: f64) -> f64 {
@@ -1298,96 +1288,48 @@ pub fn get_aggregate_value(
     accumulator: &GroupAccumulator,
     buffer_key: String,
     default_value: &Option<String>,
-) -> String {
+) -> Variant {
     let field_acc = accumulator.fields.get(&buffer_key);
+    let empty = || Variant::empty(VariantType::String);
     match function {
-        Function::Min => {
-            match field_acc {
-                // Numeric order when every value was a number, size order when
-                // every value was a file size, plain text order otherwise
-                // (datetimes, names, mixed columns).
-                Some(acc) if acc.all_numeric() => numeric_extreme_text(&acc.min_raw),
-                Some(acc) if acc.all_sizes() => acc.min_value.clone().unwrap_or_default(),
-                Some(acc) => acc.min_text.clone().unwrap_or_default(),
-                _ => String::new(),
-            }
-        }
-        Function::Max => {
-            match field_acc {
-                Some(acc) if acc.all_numeric() => numeric_extreme_text(&acc.max_raw),
-                Some(acc) if acc.all_sizes() => acc.max_value.clone().unwrap_or_default(),
-                Some(acc) => acc.max_text.clone().unwrap_or_default(),
-                _ => String::new(),
-            }
-        }
-        Function::Avg => {
-            match field_acc {
-                Some(acc) if acc.count > 0 => {
-                    let mean = acc.sum / acc.count as f64;
-                    if mean.is_finite() { mean.to_string() } else { String::new() }
-                }
-                _ => String::new(),
-            }
-        }
-        Function::Sum => {
-            match field_acc {
-                Some(acc) if acc.count > 0 => {
-                    if acc.sum.is_finite() { acc.sum.to_string() } else { String::new() }
-                }
-                _ => String::new(),
-            }
-        }
+        Function::Min => field_acc.and_then(|acc| acc.extreme(false)).cloned().unwrap_or_else(empty),
+        Function::Max => field_acc.and_then(|acc| acc.extreme(true)).cloned().unwrap_or_else(empty),
+        Function::Avg => match field_acc {
+            Some(acc) if acc.count > 0 => Variant::from_float(acc.sum / acc.count as f64),
+            _ => empty(),
+        },
+        Function::Sum => match field_acc {
+            Some(acc) if acc.count > 0 => Variant::from_float(acc.sum),
+            _ => empty(),
+        },
         Function::Count => {
             // COUNT(*) and bare COUNT count all rows in the group; COUNT(col)
             // follows SQL semantics and skips empty (NULL-like) values.
-            if buffer_key == "*" || buffer_key.is_empty() {
-                accumulator.total_count.to_string()
-            } else {
-                match field_acc {
-                    Some(acc) => acc.non_empty_count.to_string(),
-                    None => accumulator.total_count.to_string(),
-                }
-            }
+            let count = match field_acc {
+                Some(acc) if buffer_key != "*" && !buffer_key.is_empty() => acc.non_empty_count,
+                _ => accumulator.total_count,
+            };
+            Variant::from_int(count as i64)
         }
-        Function::StdDevPop => {
-            match field_acc {
-                Some(acc) if acc.count > 0 => {
-                    let variance = acc.m2 / acc.count as f64;
-                    if variance.is_finite() { variance.sqrt().to_string() } else { String::new() }
-                }
-                _ => String::new(),
-            }
-        }
-        Function::StdDevSamp => {
-            match field_acc {
-                Some(acc) if acc.count > 1 => {
-                    let variance = acc.m2 / (acc.count - 1) as f64;
-                    if variance.is_finite() { variance.sqrt().to_string() } else { String::new() }
-                }
-                _ => String::new(),
-            }
-        }
-        Function::VarPop => {
-            match field_acc {
-                Some(acc) if acc.count > 0 => {
-                    let variance = acc.m2 / acc.count as f64;
-                    if variance.is_finite() { variance.to_string() } else { String::new() }
-                }
-                _ => String::new(),
-            }
-        }
-        Function::VarSamp => {
-            match field_acc {
-                Some(acc) if acc.count > 1 => {
-                    let variance = acc.m2 / (acc.count - 1) as f64;
-                    if variance.is_finite() { variance.to_string() } else { String::new() }
-                }
-                _ => String::new(),
-            }
-        }
+        Function::StdDevPop => match field_acc {
+            Some(acc) if acc.count > 0 => Variant::from_float((acc.m2 / acc.count as f64).sqrt()),
+            _ => empty(),
+        },
+        Function::StdDevSamp => match field_acc {
+            Some(acc) if acc.count > 1 => Variant::from_float((acc.m2 / (acc.count - 1) as f64).sqrt()),
+            _ => empty(),
+        },
+        Function::VarPop => match field_acc {
+            Some(acc) if acc.count > 0 => Variant::from_float(acc.m2 / acc.count as f64),
+            _ => empty(),
+        },
+        Function::VarSamp => match field_acc {
+            Some(acc) if acc.count > 1 => Variant::from_float(acc.m2 / (acc.count - 1) as f64),
+            _ => empty(),
+        },
         _ => match &default_value {
-            Some(val) => val.to_owned(),
-            _ => String::new(),
+            Some(val) => Variant::from_string(val),
+            _ => empty(),
         },
     }
 }
@@ -1874,30 +1816,24 @@ pub struct FieldAccumulator {
     /// non-numeric columns: datetimes are formatted as fixed-width
     /// `YYYY-MM-DD HH:MM:SS`, so string order equals chronological order, and
     /// plain strings get SQL-style lexicographic MIN/MAX.
-    pub min_value: Option<String>,
-    pub max_value: Option<String>,
+    pub min_value: Option<Variant>,
+    pub max_value: Option<Variant>,
     min_size: Option<u64>,
     max_size: Option<u64>,
     numeric_like_count: usize,
     size_count: usize,
-    min_text: Option<String>,
-    max_text: Option<String>,
-    min_raw: Option<String>,
-    max_raw: Option<String>,
-    min_text_type: Option<VariantType>,
-    max_text_type: Option<VariantType>,
-    min_value_type: Option<VariantType>,
-    max_value_type: Option<VariantType>,
-    min_raw_type: Option<VariantType>,
-    max_raw_type: Option<VariantType>,
+    min_text: Option<Variant>,
+    max_text: Option<Variant>,
+    min_raw: Option<Variant>,
+    max_raw: Option<Variant>,
 }
 
 impl FieldAccumulator {
-    pub fn extreme_type(&self, maximum: bool) -> Option<&VariantType> {
+    pub fn extreme(&self, maximum: bool) -> Option<&Variant> {
         let (raw, value, text) = if maximum {
-            (&self.max_raw_type, &self.max_value_type, &self.max_text_type)
+            (&self.max_raw, &self.max_value, &self.max_text)
         } else {
-            (&self.min_raw_type, &self.min_value_type, &self.min_text_type)
+            (&self.min_raw, &self.min_value, &self.min_text)
         };
         if self.all_numeric() {
             raw.as_ref()
@@ -1908,57 +1844,49 @@ impl FieldAccumulator {
         }
     }
 
-    pub fn push_typed(&mut self, value: &str, value_type: Option<&VariantType>) {
-        let value_type = value_type.cloned();
-        if !value.is_empty() {
+    pub fn push(&mut self, value: &Variant) {
+        let text = value.as_str();
+        if !text.is_empty() {
             self.non_empty_count += 1;
-            if value.parse::<f64>().is_ok() {
+            if text.parse::<f64>().is_ok() {
                 self.numeric_like_count += 1;
             }
-            if self.min_text.as_deref().is_none_or(|current| value < current) {
-                self.min_text = Some(value.to_string());
-                self.min_text_type = value_type.clone();
+            if self.min_text.as_ref().is_none_or(|current| text < current.as_str()) {
+                self.min_text = Some(value.clone());
             }
-            if self.max_text.as_deref().is_none_or(|current| value > current) {
-                self.max_text = Some(value.to_string());
-                self.max_text_type = value_type.clone();
+            if self.max_text.as_ref().is_none_or(|current| text > current.as_str()) {
+                self.max_text = Some(value.clone());
             }
-            let size = parse_filesize(value);
+            let size = parse_filesize(text);
             if size.is_some() {
                 self.size_count += 1;
             }
-            if matches!(Self::compare(value, size, &self.min_value, self.min_size), None | Some(Ordering::Less)) {
-                self.min_value = Some(value.to_string());
+            if matches!(Self::compare(text, size, &self.min_value, self.min_size), None | Some(Ordering::Less)) {
+                self.min_value = Some(value.clone());
                 self.min_size = size;
-                self.min_value_type = value_type.clone();
             }
-            if matches!(Self::compare(value, size, &self.max_value, self.max_size), None | Some(Ordering::Greater)) {
-                self.max_value = Some(value.to_string());
+            if matches!(Self::compare(text, size, &self.max_value, self.max_size), None | Some(Ordering::Greater)) {
+                self.max_value = Some(value.clone());
                 self.max_size = size;
-                self.max_value_type = value_type.clone();
             }
         }
-        if let Ok(v) = value.parse::<f64>()
+        if let Ok(v) = text.parse::<f64>()
             && v.is_finite() {
                 if self.count == 0 {
                     self.min = v;
                     self.max = v;
-                    self.min_raw = Some(value.to_string());
-                    self.max_raw = Some(value.to_string());
-                    self.min_raw_type = value_type.clone();
-                    self.max_raw_type = value_type;
+                    self.min_raw = Some(value.clone());
+                    self.max_raw = Some(value.clone());
                     self.count = 1;
                     self.sum = v;
                 } else {
-                    if v < self.min || (v == self.min && self.min_raw.as_deref().is_some_and(|current| value < current)) {
+                    if v < self.min || (v == self.min && self.min_raw.as_ref().is_some_and(|current| text < current.as_str())) {
                         self.min = v;
-                        self.min_raw = Some(value.to_string());
-                        self.min_raw_type = value_type.clone();
+                        self.min_raw = Some(value.clone());
                     }
-                    if v > self.max || (v == self.max && self.max_raw.as_deref().is_some_and(|current| value > current)) {
+                    if v > self.max || (v == self.max && self.max_raw.as_ref().is_some_and(|current| text > current.as_str())) {
                         self.max = v;
-                        self.max_raw = Some(value.to_string());
-                        self.max_raw_type = value_type;
+                        self.max_raw = Some(value.clone());
                     }
                     let old_mean = self.sum / self.count as f64;
                     self.count += 1;
@@ -1979,7 +1907,7 @@ impl FieldAccumulator {
         self.size_count == self.non_empty_count
     }
 
-    fn compare(value: &str, size: Option<u64>, current: &Option<String>, current_size: Option<u64>) -> Option<Ordering> {
+    fn compare(value: &str, size: Option<u64>, current: &Option<Variant>, current_size: Option<u64>) -> Option<Ordering> {
         let current = current.as_ref()?;
         Some(match (size, current_size) {
             (Some(size), Some(current_size)) => size.cmp(&current_size),
@@ -1992,7 +1920,7 @@ impl FieldAccumulator {
 pub struct GroupAccumulator {
     pub total_count: usize,
     pub fields: HashMap<String, FieldAccumulator>,
-    pub key_types: Vec<Option<VariantType>>,
+    pub key_values: Vec<Variant>,
     /// Absolute path and root depth of the first entry that joined the group.
     /// Only recorded when the query drives an outer FROM-subselect, so each
     /// group can stand in for one filesystem entry there.
@@ -2005,12 +1933,12 @@ impl GroupAccumulator {
     }
 
     #[cfg(test)]
-    pub fn push(&mut self, field: &str, value: &str) {
-        self.push_typed(field, value, None);
+    pub fn push_text(&mut self, field: &str, value: &str) {
+        self.push(field, &Variant::from_string(&value.to_string()));
     }
 
-    pub fn push_typed(&mut self, field: &str, value: &str, value_type: Option<&VariantType>) {
-        self.fields.entry(field.to_string()).or_default().push_typed(value, value_type);
+    pub fn push(&mut self, field: &str, value: &Variant) {
+        self.fields.entry(field.to_string()).or_default().push(value);
     }
 }
 
@@ -3572,7 +3500,7 @@ mod tests {
         let mut acc = GroupAccumulator::default();
         for v in values {
             acc.increment_count();
-            acc.push(key, v);
+            acc.push_text(key, v);
         }
         acc
     }
@@ -3580,14 +3508,14 @@ mod tests {
     #[test]
     fn avg_truncates_to_integer() {
         let acc = make_accumulator("size", &["3", "4"]);
-        let result = get_aggregate_value(&Function::Avg, &acc, "size".to_string(), &None);
+        let result = get_aggregate_value(&Function::Avg, &acc, "size".to_string(), &None).to_string();
         assert_eq!(result, "3.5");
     }
 
     #[test]
     fn sum_ignores_negative_values() {
         let acc = make_accumulator("val", &["-5", "10"]);
-        let result = get_aggregate_value(&Function::Sum, &acc, "val".to_string(), &None);
+        let result = get_aggregate_value(&Function::Sum, &acc, "val".to_string(), &None).to_string();
         assert_eq!(result, "5");
     }
 
@@ -3630,94 +3558,95 @@ mod tests {
     #[test]
     fn min_max_compare_formatted_sizes_numerically() {
         let acc = make_accumulator("fsize", &["11.72KiB", "1.91MiB", "900B"]);
-        assert_eq!(get_aggregate_value(&Function::Min, &acc, "fsize".to_string(), &None), "900B");
-        assert_eq!(get_aggregate_value(&Function::Max, &acc, "fsize".to_string(), &None), "1.91MiB");
+        assert_eq!(get_aggregate_value(&Function::Min, &acc, "fsize".to_string(), &None).to_string(), "900B");
+        assert_eq!(get_aggregate_value(&Function::Max, &acc, "fsize".to_string(), &None).to_string(), "1.91MiB");
 
         let acc = make_accumulator("fsize", &["2 KB", "900 B", "1 MB"]);
-        assert_eq!(get_aggregate_value(&Function::Min, &acc, "fsize".to_string(), &None), "900 B");
-        assert_eq!(get_aggregate_value(&Function::Max, &acc, "fsize".to_string(), &None), "1 MB");
+        assert_eq!(get_aggregate_value(&Function::Min, &acc, "fsize".to_string(), &None).to_string(), "900 B");
+        assert_eq!(get_aggregate_value(&Function::Max, &acc, "fsize".to_string(), &None).to_string(), "1 MB");
     }
 
     #[test]
     fn min_and_max_report_the_type_of_the_selected_extreme() {
         let mut acc = GroupAccumulator::default();
-        acc.push_typed("val", "true", Some(&VariantType::String));
-        acc.push_typed("val", "false", Some(&VariantType::Bool));
-        let field = acc.fields.get("val").unwrap();
-        assert_eq!(get_aggregate_value(&Function::Max, &acc, "val".to_string(), &None), "true");
-        assert_eq!(field.extreme_type(true), Some(&VariantType::String), "the maximum is the file name");
-        assert_eq!(get_aggregate_value(&Function::Min, &acc, "val".to_string(), &None), "false");
-        assert_eq!(field.extreme_type(false), Some(&VariantType::Bool), "the minimum is the boolean");
+        acc.push("val", &Variant::from_string(&String::from("true")));
+        acc.push("val", &Variant::from_bool(false));
+        let largest = get_aggregate_value(&Function::Max, &acc, "val".to_string(), &None);
+        assert_eq!(largest.to_string(), "true");
+        assert_eq!(largest.get_type(), &VariantType::String, "the maximum is the file name");
+        let smallest = get_aggregate_value(&Function::Min, &acc, "val".to_string(), &None);
+        assert_eq!(smallest.to_string(), "false");
+        assert_eq!(smallest.get_type(), &VariantType::Bool, "the minimum is the boolean");
 
         let mut numeric = GroupAccumulator::default();
-        numeric.push_typed("n", "10", Some(&VariantType::Int));
-        numeric.push_typed("n", "9.5", Some(&VariantType::Float));
+        numeric.push("n", &Variant::from_int(10));
+        numeric.push("n", &Variant::from_float(9.5));
         let field = numeric.fields.get("n").unwrap();
-        assert_eq!(field.extreme_type(true), Some(&VariantType::Int));
-        assert_eq!(field.extreme_type(false), Some(&VariantType::Float));
+        assert_eq!(field.extreme(true).map(Variant::get_type), Some(&VariantType::Int));
+        assert_eq!(field.extreme(false).map(Variant::get_type), Some(&VariantType::Float));
 
         let mut sizes = GroupAccumulator::default();
-        sizes.push_typed("s", "900B", Some(&VariantType::String));
-        sizes.push_typed("s", "2KiB", None);
+        sizes.push("s", &Variant::from_string(&String::from("900B")));
+        sizes.push("s", &Variant::from_int(2048).with_text("2KiB"));
         let field = sizes.fields.get("s").unwrap();
-        assert_eq!(field.extreme_type(false), Some(&VariantType::String));
-        assert_eq!(field.extreme_type(true), None, "an untyped extreme stays unknown");
+        assert_eq!(field.extreme(false).map(Variant::get_type), Some(&VariantType::String));
+        assert_eq!(field.extreme(true).map(Variant::to_int), Some(2048), "the extreme keeps the value it was pushed with");
     }
 
     #[test]
     fn min_and_max_over_mixed_text_keep_every_value() {
         let mixed = make_accumulator("val", &["10", "9", "abc", "zeta", "Beta", "2x", ""]);
-        assert_eq!(get_aggregate_value(&Function::Min, &mixed, "val".to_string(), &None), "10");
-        assert_eq!(get_aggregate_value(&Function::Max, &mixed, "val".to_string(), &None), "zeta");
+        assert_eq!(get_aggregate_value(&Function::Min, &mixed, "val".to_string(), &None).to_string(), "10");
+        assert_eq!(get_aggregate_value(&Function::Max, &mixed, "val".to_string(), &None).to_string(), "zeta");
 
         let numeric = make_accumulator("val", &["10", "9", "", "100"]);
-        assert_eq!(get_aggregate_value(&Function::Min, &numeric, "val".to_string(), &None), "9");
-        assert_eq!(get_aggregate_value(&Function::Max, &numeric, "val".to_string(), &None), "100");
+        assert_eq!(get_aggregate_value(&Function::Min, &numeric, "val".to_string(), &None).to_string(), "9");
+        assert_eq!(get_aggregate_value(&Function::Max, &numeric, "val".to_string(), &None).to_string(), "100");
     }
 
     #[test]
     fn numeric_ties_between_extremes_are_broken_by_text_regardless_of_order() {
         for order in [["000", "-000", "002"], ["-000", "000", "002"], ["002", "000", "-000"]] {
             let names = make_accumulator("val", &order);
-            assert_eq!(get_aggregate_value(&Function::Min, &names, "val".to_string(), &None), "-000", "{order:?}");
-            assert_eq!(get_aggregate_value(&Function::Max, &names, "val".to_string(), &None), "002", "{order:?}");
+            assert_eq!(get_aggregate_value(&Function::Min, &names, "val".to_string(), &None).to_string(), "-000", "{order:?}");
+            assert_eq!(get_aggregate_value(&Function::Max, &names, "val".to_string(), &None).to_string(), "002", "{order:?}");
         }
         for order in [["2", "2.0", "002"], ["002", "2.0", "2"]] {
             let twos = make_accumulator("val", &order);
-            assert_eq!(get_aggregate_value(&Function::Min, &twos, "val".to_string(), &None), "002", "{order:?}");
-            assert_eq!(get_aggregate_value(&Function::Max, &twos, "val".to_string(), &None), "2.0", "{order:?}");
+            assert_eq!(get_aggregate_value(&Function::Min, &twos, "val".to_string(), &None).to_string(), "002", "{order:?}");
+            assert_eq!(get_aggregate_value(&Function::Max, &twos, "val".to_string(), &None).to_string(), "2.0", "{order:?}");
         }
     }
 
     #[test]
     fn min_and_max_keep_the_spelling_of_numeric_looking_text() {
         let padded = make_accumulator("val", &["002", "010", "1e3"]);
-        assert_eq!(get_aggregate_value(&Function::Min, &padded, "val".to_string(), &None), "002");
-        assert_eq!(get_aggregate_value(&Function::Max, &padded, "val".to_string(), &None), "1e3");
+        assert_eq!(get_aggregate_value(&Function::Min, &padded, "val".to_string(), &None).to_string(), "002");
+        assert_eq!(get_aggregate_value(&Function::Max, &padded, "val".to_string(), &None).to_string(), "1e3");
 
         let plain = make_accumulator("val", &["10", "9", "100"]);
-        assert_eq!(get_aggregate_value(&Function::Min, &plain, "val".to_string(), &None), "9");
-        assert_eq!(get_aggregate_value(&Function::Max, &plain, "val".to_string(), &None), "100");
+        assert_eq!(get_aggregate_value(&Function::Min, &plain, "val".to_string(), &None).to_string(), "9");
+        assert_eq!(get_aggregate_value(&Function::Max, &plain, "val".to_string(), &None).to_string(), "100");
     }
 
     #[test]
     fn min_drops_fractional_values() {
         let acc = make_accumulator("val", &["1.5", "2.5"]);
-        let result = get_aggregate_value(&Function::Min, &acc, "val".to_string(), &None);
+        let result = get_aggregate_value(&Function::Min, &acc, "val".to_string(), &None).to_string();
         assert_eq!(result, "1.5");
     }
 
     #[test]
     fn max_drops_fractional_values() {
         let acc = make_accumulator("val", &["1.5", "2.5"]);
-        let result = get_aggregate_value(&Function::Max, &acc, "val".to_string(), &None);
+        let result = get_aggregate_value(&Function::Max, &acc, "val".to_string(), &None).to_string();
         assert_eq!(result, "2.5");
     }
 
     #[test]
     fn sum_drops_fractional_values() {
         let acc = make_accumulator("val", &["1.5", "2.5"]);
-        let result = get_aggregate_value(&Function::Sum, &acc, "val".to_string(), &None);
+        let result = get_aggregate_value(&Function::Sum, &acc, "val".to_string(), &None).to_string();
         assert_eq!(result, "4");
     }
 
@@ -3732,11 +3661,11 @@ mod tests {
             ],
         );
         assert_eq!(
-            get_aggregate_value(&Function::Min, &acc, "Modified".to_string(), &None),
+            get_aggregate_value(&Function::Min, &acc, "Modified".to_string(), &None).to_string(),
             "2024-01-05 09:30:00"
         );
         assert_eq!(
-            get_aggregate_value(&Function::Max, &acc, "Modified".to_string(), &None),
+            get_aggregate_value(&Function::Max, &acc, "Modified".to_string(), &None).to_string(),
             "2026-06-11 10:00:00"
         );
     }
@@ -3744,22 +3673,22 @@ mod tests {
     #[test]
     fn min_max_over_string_values() {
         let acc = make_accumulator("Name", &["banana", "apple", "cherry"]);
-        assert_eq!(get_aggregate_value(&Function::Min, &acc, "Name".to_string(), &None), "apple");
-        assert_eq!(get_aggregate_value(&Function::Max, &acc, "Name".to_string(), &None), "cherry");
+        assert_eq!(get_aggregate_value(&Function::Min, &acc, "Name".to_string(), &None).to_string(), "apple");
+        assert_eq!(get_aggregate_value(&Function::Max, &acc, "Name".to_string(), &None).to_string(), "cherry");
     }
 
     #[test]
     fn min_max_skip_empty_values() {
         let acc = make_accumulator("Name", &["", "b", "a", ""]);
-        assert_eq!(get_aggregate_value(&Function::Min, &acc, "Name".to_string(), &None), "a");
-        assert_eq!(get_aggregate_value(&Function::Max, &acc, "Name".to_string(), &None), "b");
+        assert_eq!(get_aggregate_value(&Function::Min, &acc, "Name".to_string(), &None).to_string(), "a");
+        assert_eq!(get_aggregate_value(&Function::Max, &acc, "Name".to_string(), &None).to_string(), "b");
     }
 
     #[test]
     fn min_max_only_empty_values_returns_empty() {
         let acc = make_accumulator("Width", &["", ""]);
-        assert_eq!(get_aggregate_value(&Function::Min, &acc, "Width".to_string(), &None), "");
-        assert_eq!(get_aggregate_value(&Function::Max, &acc, "Width".to_string(), &None), "");
+        assert_eq!(get_aggregate_value(&Function::Min, &acc, "Width".to_string(), &None).to_string(), "");
+        assert_eq!(get_aggregate_value(&Function::Max, &acc, "Width".to_string(), &None).to_string(), "");
     }
 
     #[test]
@@ -3767,36 +3696,36 @@ mod tests {
         // A column mixing numeric and non-numeric values is a text column:
         // every value takes part, in the same order ORDER BY would use.
         let acc = make_accumulator("val", &["10", "9", "abc"]);
-        assert_eq!(get_aggregate_value(&Function::Min, &acc, "val".to_string(), &None), "10");
-        assert_eq!(get_aggregate_value(&Function::Max, &acc, "val".to_string(), &None), "abc");
+        assert_eq!(get_aggregate_value(&Function::Min, &acc, "val".to_string(), &None).to_string(), "10");
+        assert_eq!(get_aggregate_value(&Function::Max, &acc, "val".to_string(), &None).to_string(), "abc");
     }
 
     #[test]
     fn count_star_counts_all_rows() {
         let acc = make_accumulator("Width", &["100", "", "200"]);
-        assert_eq!(get_aggregate_value(&Function::Count, &acc, "*".to_string(), &None), "3");
+        assert_eq!(get_aggregate_value(&Function::Count, &acc, "*".to_string(), &None).to_string(), "3");
         // Bare COUNT (no argument) behaves like COUNT(*)
-        assert_eq!(get_aggregate_value(&Function::Count, &acc, String::new(), &None), "3");
+        assert_eq!(get_aggregate_value(&Function::Count, &acc, String::new(), &None).to_string(), "3");
     }
 
     #[test]
     fn count_column_skips_empty_values() {
         let acc = make_accumulator("Width", &["100", "", "200"]);
-        assert_eq!(get_aggregate_value(&Function::Count, &acc, "Width".to_string(), &None), "2");
+        assert_eq!(get_aggregate_value(&Function::Count, &acc, "Width".to_string(), &None).to_string(), "2");
     }
 
     #[test]
     fn count_column_includes_non_numeric_values() {
         let acc = make_accumulator("Name", &["a.txt", "b.txt", ""]);
-        assert_eq!(get_aggregate_value(&Function::Count, &acc, "Name".to_string(), &None), "2");
+        assert_eq!(get_aggregate_value(&Function::Count, &acc, "Name".to_string(), &None).to_string(), "2");
     }
 
     #[test]
     fn avg_wrong_with_unparseable_entries() {
         let mut acc = make_accumulator("val", &["10", "20"]);
         acc.increment_count();
-        acc.push("other_key", "999");
-        let result = get_aggregate_value(&Function::Avg, &acc, "val".to_string(), &None);
+        acc.push_text("other_key", "999");
+        let result = get_aggregate_value(&Function::Avg, &acc, "val".to_string(), &None).to_string();
         assert_eq!(result, "15");
     }
 
@@ -3804,8 +3733,8 @@ mod tests {
     fn variance_wrong_with_unparseable_entries() {
         let mut acc = make_accumulator("val", &["10", "20"]);
         acc.increment_count();
-        acc.push("other_key", "999");
-        let result = get_aggregate_value(&Function::VarPop, &acc, "val".to_string(), &None);
+        acc.push_text("other_key", "999");
+        let result = get_aggregate_value(&Function::VarPop, &acc, "val".to_string(), &None).to_string();
         let var: f64 = result.parse().unwrap();
         assert!((var - 25.0).abs() < 0.001);
     }
@@ -4114,42 +4043,42 @@ mod tests {
     #[test]
     fn var_samp_single_value_is_empty() {
         let acc = make_accumulator("val", &["5"]);
-        let result = get_aggregate_value(&Function::VarSamp, &acc, String::from("val"), &None);
+        let result = get_aggregate_value(&Function::VarSamp, &acc, String::from("val"), &None).to_string();
         assert_eq!(result, String::new());
     }
 
     #[test]
     fn stddev_samp_single_value_is_empty() {
         let acc = make_accumulator("val", &["5"]);
-        let result = get_aggregate_value(&Function::StdDevSamp, &acc, String::from("val"), &None);
+        let result = get_aggregate_value(&Function::StdDevSamp, &acc, String::from("val"), &None).to_string();
         assert_eq!(result, String::new());
     }
 
     #[test]
     fn var_pop_no_parseable_values_is_empty() {
         let acc = make_accumulator("val", &["abc", "def"]);
-        let result = get_aggregate_value(&Function::VarPop, &acc, String::from("val"), &None);
+        let result = get_aggregate_value(&Function::VarPop, &acc, String::from("val"), &None).to_string();
         assert_eq!(result, String::new());
     }
 
     #[test]
     fn min_no_parseable_values_falls_back_to_lexicographic() {
         let acc = make_accumulator("val", &["abc", "def"]);
-        let result = get_aggregate_value(&Function::Min, &acc, String::from("val"), &None);
+        let result = get_aggregate_value(&Function::Min, &acc, String::from("val"), &None).to_string();
         assert_eq!(result, "abc");
     }
 
     #[test]
     fn max_no_parseable_values_falls_back_to_lexicographic() {
         let acc = make_accumulator("val", &["abc", "def"]);
-        let result = get_aggregate_value(&Function::Max, &acc, String::from("val"), &None);
+        let result = get_aggregate_value(&Function::Max, &acc, String::from("val"), &None).to_string();
         assert_eq!(result, "def");
     }
 
     #[test]
     fn avg_no_parseable_values_is_empty() {
         let acc = make_accumulator("val", &["abc", "def"]);
-        let result = get_aggregate_value(&Function::Avg, &acc, String::from("val"), &None);
+        let result = get_aggregate_value(&Function::Avg, &acc, String::from("val"), &None).to_string();
         assert_eq!(result, String::new());
     }
 
@@ -4424,35 +4353,35 @@ mod tests {
     #[test]
     fn sum_no_parseable_values_is_empty() {
         let acc = make_accumulator("val", &["abc", "def"]);
-        let result = get_aggregate_value(&Function::Sum, &acc, String::from("val"), &None);
+        let result = get_aggregate_value(&Function::Sum, &acc, String::from("val"), &None).to_string();
         assert_eq!(result, String::new());
     }
 
     #[test]
     fn sum_ignores_nan_string_values() {
         let acc = make_accumulator("val", &["10", "NaN", "20"]);
-        let result = get_aggregate_value(&Function::Sum, &acc, "val".to_string(), &None);
+        let result = get_aggregate_value(&Function::Sum, &acc, "val".to_string(), &None).to_string();
         assert_eq!(result, "30");
     }
 
     #[test]
     fn sum_ignores_inf_string_values() {
         let acc = make_accumulator("val", &["10", "inf", "20"]);
-        let result = get_aggregate_value(&Function::Sum, &acc, "val".to_string(), &None);
+        let result = get_aggregate_value(&Function::Sum, &acc, "val".to_string(), &None).to_string();
         assert_eq!(result, "30");
     }
 
     #[test]
     fn avg_ignores_nan_string_values() {
         let acc = make_accumulator("val", &["10", "NaN", "20"]);
-        let result = get_aggregate_value(&Function::Avg, &acc, "val".to_string(), &None);
+        let result = get_aggregate_value(&Function::Avg, &acc, "val".to_string(), &None).to_string();
         assert_eq!(result, "15");
     }
 
     #[test]
     fn var_pop_ignores_nan_string_values() {
         let acc = make_accumulator("val", &["10", "NaN", "20"]);
-        let result = get_aggregate_value(&Function::VarPop, &acc, "val".to_string(), &None);
+        let result = get_aggregate_value(&Function::VarPop, &acc, "val".to_string(), &None).to_string();
         let var: f64 = result.parse().unwrap();
         assert!((var - 25.0).abs() < 0.001);
     }
@@ -4460,21 +4389,21 @@ mod tests {
     #[test]
     fn sum_all_nan_is_empty() {
         let acc = make_accumulator("val", &["NaN", "NaN"]);
-        let result = get_aggregate_value(&Function::Sum, &acc, "val".to_string(), &None);
+        let result = get_aggregate_value(&Function::Sum, &acc, "val".to_string(), &None).to_string();
         assert_eq!(result, String::new());
     }
 
     #[test]
     fn min_ignores_nan_string_values() {
         let acc = make_accumulator("val", &["10", "NaN", "5"]);
-        let result = get_aggregate_value(&Function::Min, &acc, "val".to_string(), &None);
+        let result = get_aggregate_value(&Function::Min, &acc, "val".to_string(), &None).to_string();
         assert_eq!(result, "5");
     }
 
     #[test]
     fn max_ignores_nan_string_values() {
         let acc = make_accumulator("val", &["10", "NaN", "5"]);
-        let result = get_aggregate_value(&Function::Max, &acc, "val".to_string(), &None);
+        let result = get_aggregate_value(&Function::Max, &acc, "val".to_string(), &None).to_string();
         assert_eq!(result, "10");
     }
 
@@ -4553,24 +4482,24 @@ mod tests {
     #[test]
     fn min_and_max_keep_all_zero_spellings() {
         let names = make_accumulator("val", &["000", "001", "002"]);
-        assert_eq!(get_aggregate_value(&Function::Min, &names, "val".to_string(), &None), "000");
-        assert_eq!(get_aggregate_value(&Function::Max, &names, "val".to_string(), &None), "002");
+        assert_eq!(get_aggregate_value(&Function::Min, &names, "val".to_string(), &None).to_string(), "000");
+        assert_eq!(get_aggregate_value(&Function::Max, &names, "val".to_string(), &None).to_string(), "002");
 
         let decimal = make_accumulator("val", &["0.0", "0.5"]);
-        assert_eq!(get_aggregate_value(&Function::Min, &decimal, "val".to_string(), &None), "0.0");
+        assert_eq!(get_aggregate_value(&Function::Min, &decimal, "val".to_string(), &None).to_string(), "0.0");
 
         let negative = make_accumulator("val", &["-0.0", "1"]);
-        assert_eq!(get_aggregate_value(&Function::Min, &negative, "val".to_string(), &None), "-0.0");
+        assert_eq!(get_aggregate_value(&Function::Min, &negative, "val".to_string(), &None).to_string(), "-0.0");
 
         let signed_names = make_accumulator("val", &["-000", "001"]);
-        assert_eq!(get_aggregate_value(&Function::Min, &signed_names, "val".to_string(), &None), "-000");
+        assert_eq!(get_aggregate_value(&Function::Min, &signed_names, "val".to_string(), &None).to_string(), "-000");
     }
 
     #[test]
     fn min_negative_zero_is_the_textually_smaller_spelling() {
         for order in [["-0", "0"], ["0", "-0"]] {
             let acc = make_accumulator("val", &order);
-            assert_eq!(get_aggregate_value(&Function::Min, &acc, "val".to_string(), &None), "-0", "{order:?}");
+            assert_eq!(get_aggregate_value(&Function::Min, &acc, "val".to_string(), &None).to_string(), "-0", "{order:?}");
         }
     }
 
@@ -4578,35 +4507,35 @@ mod tests {
     fn max_negative_zero_is_the_textually_larger_spelling() {
         for order in [["-0", "0"], ["0", "-0"]] {
             let acc = make_accumulator("val", &order);
-            assert_eq!(get_aggregate_value(&Function::Max, &acc, "val".to_string(), &None), "0", "{order:?}");
+            assert_eq!(get_aggregate_value(&Function::Max, &acc, "val".to_string(), &None).to_string(), "0", "{order:?}");
         }
     }
 
     #[test]
     fn sum_overflow_returns_empty() {
         let acc = make_accumulator("val", &["1e308", "1e308"]);
-        let result = get_aggregate_value(&Function::Sum, &acc, "val".to_string(), &None);
+        let result = get_aggregate_value(&Function::Sum, &acc, "val".to_string(), &None).to_string();
         assert_eq!(result, String::new());
     }
 
     #[test]
     fn avg_overflow_returns_empty() {
         let acc = make_accumulator("val", &["1e308", "1e308"]);
-        let result = get_aggregate_value(&Function::Avg, &acc, "val".to_string(), &None);
+        let result = get_aggregate_value(&Function::Avg, &acc, "val".to_string(), &None).to_string();
         assert_eq!(result, String::new());
     }
 
     #[test]
     fn var_pop_overflow_returns_empty() {
         let acc = make_accumulator("val", &["1e308", "-1e308"]);
-        let result = get_aggregate_value(&Function::VarPop, &acc, "val".to_string(), &None);
+        let result = get_aggregate_value(&Function::VarPop, &acc, "val".to_string(), &None).to_string();
         assert_eq!(result, String::new());
     }
 
     #[test]
     fn stddev_pop_overflow_returns_empty() {
         let acc = make_accumulator("val", &["1e308", "-1e308"]);
-        let result = get_aggregate_value(&Function::StdDevPop, &acc, "val".to_string(), &None);
+        let result = get_aggregate_value(&Function::StdDevPop, &acc, "val".to_string(), &None).to_string();
         assert_eq!(result, String::new());
     }
 

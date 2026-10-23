@@ -113,7 +113,7 @@ pub struct Searcher<'a> {
     user_cache: UsersCache,
     regex_cache: HashMap<String, Regex>,
     found: u32,
-    accumulators: HashMap<(Vec<String>, Vec<Option<VariantType>>), function::GroupAccumulator>,
+    accumulators: HashMap<(Vec<String>, Vec<VariantType>), function::GroupAccumulator>,
     output_buffer: TopN<Criteria<String>, BufferedRow>,
     deferred_columns: Vec<usize>,
     aggregate_plan: Option<Rc<AggregatePlan>>,
@@ -148,22 +148,11 @@ pub struct Searcher<'a> {
     fms: FileMetadataState,
     #[cfg(feature = "git")]
     git_cache: crate::util::git::GitCache,
-    file_map: HashMap<String, String>,
-    /// The type each cached text was produced with, keyed by cache key and
-    /// stored with that text: a text alone cannot tell `coalesce(name,
-    /// is_file)` returning the file name "true" from the boolean true.
-    cached_types: HashMap<String, (String, VariantType)>,
-    cached_nulls: HashSet<String>,
+    file_map: HashMap<String, Variant>,
     unknown_conditions: HashSet<String>,
     null_comparisons: HashSet<String>,
-    conforms_map: HashMap<String, String>,
-    subquery_cache: HashMap<String, Vec<String>>,
-    /// The type each first-column value of a subquery's rows was produced
-    /// with, keyed by the value's text, cached alongside the rows: a row is
-    /// handed back as text, which alone cannot tell the file name "true"
-    /// from the boolean true.
-    subquery_type_cache: HashMap<String, Vec<Option<VariantType>>>,
-    last_subquery_types: Vec<Option<VariantType>>,
+    conforms_map: HashMap<String, Variant>,
+    subquery_cache: HashMap<String, Vec<Variant>>,
     membership_cache: HashMap<(String, VariantType), Rc<Membership>>,
     silent_mode: bool,
     /// Runs a subquery on behalf of an enclosing searcher, whose aliases it
@@ -207,36 +196,11 @@ fn apply_minus(column_expr: &Expr, value: Variant) -> Variant {
         .unwrap_or(value)
 }
 
-/// Rebuilds a cached text with the type it was produced with.
-fn variant_of_type(expr: &Expr, text: &str, value_type: &VariantType) -> Variant {
-    let typed = match value_type {
-        VariantType::String => Some(Variant::from_string(&text.to_string())),
-        VariantType::Int | VariantType::Float => Variant::from_number_text(text),
-        VariantType::Bool => str_to_bool(text).map(Variant::from_bool),
-        VariantType::DateTime => parse_datetime(text).ok().map(|(from, to)| Variant::from_datetime_range(from, to)),
-    };
-    match typed {
-        Some(variant) => variant.with_text(text),
-        None => typed_variant(expr, text),
+fn cached_condition(value: &Variant) -> Option<bool> {
+    match value.get_type() {
+        VariantType::Bool | VariantType::Int | VariantType::Float => Some(value.to_bool()),
+        _ => str_to_bool(value.as_str()),
     }
-}
-
-/// Re-types a value that was rendered as text. The expression says which
-/// types it can produce, the text says which one it did: `coalesce(is_file,
-/// size)` may be numeric or boolean, and `true` is the boolean.
-fn typed_variant(expr: &Expr, text: &str) -> Variant {
-    let expected = expr.result_type();
-    let mut typed = None;
-    if expected.may_be(ExprType::NUMERIC) {
-        typed = Variant::from_number_text(text);
-    }
-    if typed.is_none() && expected.may_be(ExprType::DATETIME) {
-        typed = parse_datetime(text).ok().map(|(from, to)| Variant::from_datetime_range(from, to));
-    }
-    if typed.is_none() && expected.may_be(ExprType::BOOLEAN) {
-        typed = str_to_bool(text).map(Variant::from_bool);
-    }
-    typed.unwrap_or_else(|| Variant::from_string(&text.to_string())).with_text(text)
 }
 
 enum Membership {
@@ -331,15 +295,15 @@ impl AggregatePlan {
 }
 
 enum BufferedRow {
-    Rendered(String, Option<VariantType>),
+    Rendered(String, Option<Variant>),
     Pending(PendingRow),
 }
 
 impl BufferedRow {
-    fn first_type(&self) -> Option<VariantType> {
+    fn first_value(&self) -> Option<Variant> {
         match self {
-            BufferedRow::Rendered(_, first_type) => first_type.clone(),
-            BufferedRow::Pending(pending) => pending.first_type.clone(),
+            BufferedRow::Rendered(_, first_value) => first_value.clone(),
+            BufferedRow::Pending(pending) => pending.first_value.clone(),
         }
     }
 }
@@ -351,7 +315,7 @@ struct PendingRow {
     follow_symlinks: bool,
     items: Vec<(String, String)>,
     deferred: Vec<usize>,
-    first_type: Option<VariantType>,
+    first_value: Option<Variant>,
 }
 
 impl std::ops::Deref for BufferedRow {
@@ -484,14 +448,10 @@ impl<'a> Searcher<'a> {
             #[cfg(feature = "git")]
             git_cache: crate::util::git::GitCache::new(),
             file_map: HashMap::new(),
-            cached_types: HashMap::new(),
-            cached_nulls: HashSet::new(),
             unknown_conditions: HashSet::new(),
             null_comparisons: HashSet::new(),
             conforms_map: HashMap::new(),
             subquery_cache: HashMap::new(),
-            subquery_type_cache: HashMap::new(),
-            last_subquery_types: Vec::new(),
             membership_cache: HashMap::new(),
             silent_mode: false,
             is_nested: false,
@@ -937,7 +897,7 @@ impl<'a> Searcher<'a> {
                     })
                     .collect();
 
-                let mut grouped_results: TopN<Criteria<String>, (Vec<(String, String)>, Option<VariantType>)> =
+                let mut grouped_results: TopN<Criteria<String>, (Vec<(String, String)>, Option<Variant>)> =
                     if self.query.limit > 0 {
                         TopN::new(self.query.limit.saturating_add(self.query.offset))
                     } else {
@@ -949,39 +909,19 @@ impl<'a> Searcher<'a> {
                 for ((group_key, _), group_acc) in &accumulators {
                     let mut file_map = HashMap::new();
                     for (i, k) in group_keys.iter().enumerate() {
-                        let raw = group_key.get(i).cloned().unwrap_or_default();
-                        let null = raw == NULL_GROUP_KEY;
-                        let unknown = raw.ends_with(UNKNOWN_GROUP_SUFFIX);
-                        let text = if null {
-                            String::new()
-                        } else {
-                            raw.strip_suffix(UNKNOWN_GROUP_SUFFIX).unwrap_or(&raw).to_string()
-                        };
+                        let unknown = group_key.get(i).is_some_and(|raw| raw.ends_with(UNKNOWN_GROUP_SUFFIX));
                         if unknown {
                             self.unknown_conditions.insert(k.clone());
                         } else {
                             self.unknown_conditions.remove(k);
                         }
-                        match group_acc.key_types.get(i).and_then(Option::as_ref) {
-                            Some(value_type) => {
-                                self.cached_types.insert(k.clone(), (text.clone(), value_type.clone()));
-                            }
-                            None => {
-                                self.cached_types.remove(k);
-                            }
-                        }
-                        if null {
-                            self.cached_nulls.insert(k.clone());
-                        } else {
-                            self.cached_nulls.remove(k);
-                        }
-                        file_map.insert(k.clone(), text);
+                        file_map.insert(k.clone(), group_acc.key_values.get(i).cloned().unwrap_or_else(Variant::null));
                     }
                     self.reset_alias_failures(&aliases);
-                    self.bind_group_context(&aliases, group_key, &group_acc.key_types, &[]);
+                    self.bind_group_context(&aliases, &group_acc.key_values, &[]);
                     if let Some(having_expr) = having_expr {
                         if having_expr.has_correlated_subquery() {
-                            self.bind_aggregate_aliases(&aliases, group_key, &mut file_map, group_acc, true)?;
+                            self.bind_aggregate_aliases(&aliases, &mut file_map, group_acc, true)?;
                         }
                         let conforms = self.group_conforms(&mut file_map, group_acc, having_expr)?;
                         self.alias_read_failure()?;
@@ -989,14 +929,14 @@ impl<'a> Searcher<'a> {
                             continue;
                         }
                     }
-                    self.bind_aggregate_aliases(&aliases, group_key, &mut file_map, group_acc, false)?;
+                    self.bind_aggregate_aliases(&aliases, &mut file_map, group_acc, false)?;
                     let mut items: Vec<(String, String)> = Vec::new();
-                    let mut first_type = None;
+                    let mut first_value = None;
                     for (index, column_expr) in self.query.fields.iter().enumerate() {
                         let value = self.get_column_expr_value(
                             None, &None, Path::new(""), &mut file_map, Some(group_acc), column_expr,
                         )?;
-                        first_type = first_type.or(self.first_column_type(index, &value));
+                        first_value = first_value.or_else(|| self.first_column_value(index, &value));
                         items.push((column_expr.column_name(), value.to_string()));
                     }
                     if self.root_depth_column
@@ -1018,7 +958,7 @@ impl<'a> Searcher<'a> {
                                     .get(*index)
                                     .map(|item| item.1.clone())
                                     .unwrap_or_default();
-                                let value_type = self.cached_value_type(&ordering_expr.cache_key(), &value);
+                                let value_type = file_map.get(&ordering_expr.cache_key()).map(|cached| cached.get_type().clone());
                                 (value, value_type)
                             }
                             // Not selected: evaluate the ordering expression
@@ -1041,13 +981,13 @@ impl<'a> Searcher<'a> {
                     }
                     grouped_results.insert(
                         Criteria::with_types(ordering_fields_rc.clone(), criteria_values, &criteria_types, ordering_asc_rc.clone()),
-                        (items, first_type),
+                        (items, first_value),
                     );
                 }
 
                 let mut first = true;
                 let mut stdout = std::io::stdout().lock();
-                for (index, (items, first_type)) in grouped_results.iter_values().enumerate() {
+                for (index, (items, first_value)) in grouped_results.iter_values().enumerate() {
                     let mut buf = WritableBuffer::new();
                     self.results_writer.write_row(&mut buf, items.clone())?;
                     let rendered = String::from(buf);
@@ -1060,7 +1000,7 @@ impl<'a> Searcher<'a> {
                     }
                     self.output_buffer.insert(
                         Criteria::new(Rc::new(vec![]), vec![], Rc::new(vec![])),
-                        BufferedRow::Rendered(rendered, first_type.clone()),
+                        BufferedRow::Rendered(rendered, first_value.clone()),
                     );
                 }
                 drop(stdout);
@@ -1073,12 +1013,12 @@ impl<'a> Searcher<'a> {
                 let ungrouped_acc = accumulators.get(&(vec![], vec![])).unwrap_or(&empty_acc);
                 let aliases = self.query.own_root_aliases();
                 self.reset_alias_failures(&aliases);
-                self.bind_group_context(&aliases, &[], &[], &[]);
+                self.bind_group_context(&aliases, &[], &[]);
                 let mut file_map = HashMap::new();
                 let mut passes_having = true;
                 if let Some(having_expr) = self.query.having.as_ref() {
                     if having_expr.has_correlated_subquery() {
-                        self.bind_aggregate_aliases(&aliases, &[], &mut file_map, ungrouped_acc, true)?;
+                        self.bind_aggregate_aliases(&aliases, &mut file_map, ungrouped_acc, true)?;
                     }
                     passes_having =
                         self.group_conforms(&mut file_map, ungrouped_acc, having_expr)?;
@@ -1086,8 +1026,8 @@ impl<'a> Searcher<'a> {
                 }
 
                 if passes_having {
-                    self.bind_aggregate_aliases(&aliases, &[], &mut file_map, ungrouped_acc, false)?;
-                    let mut first_type = None;
+                    self.bind_aggregate_aliases(&aliases, &mut file_map, ungrouped_acc, false)?;
+                    let mut first_value = None;
                     for (index, column_expr) in self.query.fields.iter().enumerate() {
                         let value = self.get_column_expr_value(
                             None,
@@ -1097,7 +1037,7 @@ impl<'a> Searcher<'a> {
                             Some(ungrouped_acc),
                             column_expr
                         )?;
-                        first_type = first_type.or(self.first_column_type(index, &value));
+                        first_value = first_value.or_else(|| self.first_column_value(index, &value));
                         items.push((column_expr.column_name(), value.to_string()));
                     }
                     if self.root_depth_column
@@ -1110,7 +1050,7 @@ impl<'a> Searcher<'a> {
                     let rendered = String::from(buf);
                     self.output_buffer.insert(
                         Criteria::new(Rc::new(vec![]), vec![], Rc::new(vec![])),
-                        BufferedRow::Rendered(rendered.clone(), first_type),
+                        BufferedRow::Rendered(rendered.clone(), first_value),
                     );
 
                     // An ungrouped aggregate produces a single row; any OFFSET
@@ -1163,6 +1103,7 @@ impl<'a> Searcher<'a> {
         Ok(rows
             .into_iter()
             .map(|row| {
+                let row = row.to_string();
                 let mut columns = row.rsplitn(3, '\t');
                 // `<depth>` for a file, `<depth>@<member index>` for an
                 // archive member: two members may share a normalized name
@@ -1442,17 +1383,16 @@ impl<'a> Searcher<'a> {
         )
     }
 
-    fn get_list_from_subquery(&mut self, query: Query) -> Result<Vec<String>, SearchError> {
+    fn get_list_from_subquery(&mut self, query: Query) -> Result<Vec<Variant>, SearchError> {
         self.get_list_from_subquery_with(query, false)
     }
 
-    fn get_list_from_subquery_with(&mut self, query: Query, root_depth_column: bool) -> Result<Vec<String>, SearchError> {
+    fn get_list_from_subquery_with(&mut self, query: Query, root_depth_column: bool) -> Result<Vec<Variant>, SearchError> {
         let query_str = format!("{:?}#{}", query, root_depth_column);
 
         let ok_to_cache = is_subquery_cacheable(&query);
         if ok_to_cache
             && let Some(cached) = self.subquery_cache.get(&query_str) {
-                self.last_subquery_types = self.subquery_type_cache.get(&query_str).cloned().unwrap_or_default();
                 return Ok(cached.clone());
             }
 
@@ -1520,25 +1460,27 @@ impl<'a> Searcher<'a> {
         // tabs or line breaks of their own, and a mangled value would silently
         // drop the row later.
         let terminator = sub_searcher.results_writer.row_terminator();
+        let single_column = query.fields.len() == 1 && !root_depth_column;
         let result_values = sub_searcher.output_buffer.iter_values()
             .skip(query.offset as usize)
-            .map(|s| s.strip_suffix(terminator.as_str()).unwrap_or(s).to_string())
-            .collect::<Vec<String>>();
+            .map(|row| {
+                let text = row.strip_suffix(terminator.as_str()).unwrap_or(row);
+                match row.first_value() {
+                    Some(first) if single_column => first.with_text(text),
+                    _ => Variant::from_string(&text.to_string()),
+                }
+            })
+            .collect::<Vec<Variant>>();
 
-        self.last_subquery_types = sub_searcher.output_buffer.iter_values()
-            .skip(query.offset as usize)
-            .map(BufferedRow::first_type)
-            .collect();
         if ok_to_cache {
-            self.subquery_type_cache.insert(query_str.clone(), self.last_subquery_types.clone());
             self.subquery_cache.insert(query_str, result_values.clone());
         }
 
         Ok(result_values)
     }
 
-    fn first_column_type(&self, index: usize, value: &Variant) -> Option<VariantType> {
-        (index == 0 && self.is_nested && !value.is_null()).then(|| value.get_type().clone())
+    fn first_column_value(&self, index: usize, value: &Variant) -> Option<Variant> {
+        (index == 0 && self.is_nested).then(|| value.clone())
     }
 
     #[cfg(all(windows, feature = "everything"))]
@@ -1998,7 +1940,7 @@ impl<'a> Searcher<'a> {
         entry: &DirEntry,
         file_info: &Option<FileInfo>,
         root_path: &Path,
-        file_map: &HashMap<String, String>,
+        file_map: &HashMap<String, Variant>,
         expr: &Expr,
     ) -> Result<Option<bool>, SearchError> {
         if let Some(ref logical_op) = expr.logical_op {
@@ -2029,12 +1971,7 @@ impl<'a> Searcher<'a> {
             });
         }
         let key = expr.cache_key();
-        let cached = file_map.get(&key).and_then(|cached| match cached.as_str() {
-            "-1" if expr.minus => Some(true),
-            "0" if expr.minus => Some(false),
-            text => str_to_bool(text),
-        });
-        let holds = match cached {
+        let holds = match file_map.get(&key).and_then(cached_condition) {
             Some(holds) => holds,
             None => self.conforms(entry, file_info, root_path, expr)?,
         };
@@ -2046,7 +1983,7 @@ impl<'a> Searcher<'a> {
         entry: &DirEntry,
         file_info: &Option<FileInfo>,
         root_path: &Path,
-        file_map: &mut HashMap<String, String>,
+        file_map: &mut HashMap<String, Variant>,
         expr: &Expr,
     ) -> Result<bool, SearchError> {
         if let Some(ref logical_op) = expr.logical_op {
@@ -2065,22 +2002,15 @@ impl<'a> Searcher<'a> {
             };
         }
         let key = expr.cache_key();
-        let cached = file_map.get(&key).and_then(|cached| match cached.as_str() {
-            "-1" if expr.minus => Some(true),
-            "0" if expr.minus => Some(false),
-            text => str_to_bool(text),
-        });
-        if let Some(holds) = cached {
+        if let Some(holds) = file_map.get(&key).and_then(cached_condition) {
             return Ok(holds);
         }
         let holds = self.conforms(entry, file_info, root_path, expr)?;
-        let value = apply_minus(expr, Variant::from_bool(holds));
-        self.remember_type(&key, &value);
-        file_map.insert(key, value.to_string());
+        file_map.insert(key, apply_minus(expr, Variant::from_bool(holds)));
         Ok(holds)
     }
 
-    fn grouped_condition_value(&self, file_map: &HashMap<String, String>, condition: &Expr) -> Option<bool> {
+    fn grouped_condition_value(&self, file_map: &HashMap<String, Variant>, condition: &Expr) -> Option<bool> {
         let key = Self::condition_key(condition);
         let conditions = || {
             self.query
@@ -2097,12 +2027,7 @@ impl<'a> Searcher<'a> {
         if !holds && self.unknown_conditions.contains(&grouping_expr.cache_key()) {
             return Some(false);
         }
-        let text = file_map.get(&grouping_expr.cache_key())?;
-        let value = match text.as_str() {
-            "-1" if grouping_expr.minus => true,
-            "0" if grouping_expr.minus => false,
-            text => str_to_bool(text)?,
-        };
+        let value = cached_condition(file_map.get(&grouping_expr.cache_key())?)?;
         Some(value == holds)
     }
 
@@ -2122,8 +2047,7 @@ impl<'a> Searcher<'a> {
     fn bind_aggregate_aliases(
         &mut self,
         aliases: &HashSet<String>,
-        group_key: &[String],
-        file_map: &mut HashMap<String, String>,
+        file_map: &mut HashMap<String, Variant>,
         accumulator: &function::GroupAccumulator,
         skip_failing_columns: bool,
     ) -> Result<(), SearchError> {
@@ -2147,7 +2071,7 @@ impl<'a> Searcher<'a> {
             }
         }
         if !values.is_empty() {
-            self.bind_group_context(aliases, group_key, &accumulator.key_types, &values);
+            self.bind_group_context(aliases, &accumulator.key_values, &values);
         }
         if dependent.is_empty() {
             return Ok(());
@@ -2163,7 +2087,7 @@ impl<'a> Searcher<'a> {
                 match self.aggregate_alias_value(&mut scratch, accumulator, column) {
                     Ok(value) => {
                         Self::upsert_alias_value(&mut values, column, value);
-                        self.bind_group_context(aliases, group_key, &accumulator.key_types, &values);
+                        self.bind_group_context(aliases, &accumulator.key_values, &values);
                     }
                     Err(err) if !err.is_fatal() => failed.push((column, err)),
                     Err(err) => return Err(err),
@@ -2238,7 +2162,7 @@ impl<'a> Searcher<'a> {
 
     fn aggregate_alias_value(
         &mut self,
-        file_map: &mut HashMap<String, String>,
+        file_map: &mut HashMap<String, Variant>,
         accumulator: &function::GroupAccumulator,
         column: &Expr,
     ) -> Result<Variant, SearchError> {
@@ -2256,8 +2180,7 @@ impl<'a> Searcher<'a> {
     fn bind_group_context(
         &self,
         aliases: &HashSet<String>,
-        group_key: &[String],
-        key_types: &[Option<VariantType>],
+        key_values: &[Variant],
         aggregate_values: &[(String, Variant)],
     ) {
         let mut context = self.record_context.borrow_mut();
@@ -2267,7 +2190,7 @@ impl<'a> Searcher<'a> {
             for (alias_name, value) in aggregate_values {
                 entry.insert(alias_name.clone(), value.clone());
             }
-            for (index, (grouping_expr, text)) in self.query.grouping_fields.iter().zip(group_key).enumerate() {
+            for (grouping_expr, value) in self.query.grouping_fields.iter().zip(key_values) {
                 if grouping_expr
                     .root_alias
                     .as_deref()
@@ -2275,15 +2198,6 @@ impl<'a> Searcher<'a> {
                 {
                     continue;
                 }
-                let value = if text == NULL_GROUP_KEY {
-                    Variant::null()
-                } else {
-                    let text = text.strip_suffix(UNKNOWN_GROUP_SUFFIX).unwrap_or(text);
-                    match key_types.get(index).and_then(Option::as_ref) {
-                        Some(value_type) => variant_of_type(grouping_expr, text, value_type),
-                        None => typed_variant(grouping_expr, text),
-                    }
-                };
                 if let Some(field) = grouping_expr.field
                     && !grouping_expr.minus
                 {
@@ -2315,13 +2229,13 @@ impl<'a> Searcher<'a> {
         for (criteria, rows) in buffered.into_entries() {
             for row in rows {
                 let rendered = match row {
-                    BufferedRow::Rendered(text, first_type) => Some((text, first_type)),
-                    BufferedRow::Pending(pending) if position < offset => Some((String::new(), pending.first_type)),
+                    BufferedRow::Rendered(text, first_value) => Some((text, first_value)),
+                    BufferedRow::Pending(pending) if position < offset => Some((String::new(), pending.first_value)),
                     BufferedRow::Pending(pending) => self.render_pending(pending, &mut lookup)?,
                 };
                 position += 1;
-                if let Some((text, first_type)) = rendered {
-                    self.output_buffer.insert(criteria.clone(), BufferedRow::Rendered(text, first_type));
+                if let Some((text, first_value)) = rendered {
+                    self.output_buffer.insert(criteria.clone(), BufferedRow::Rendered(text, first_value));
                 }
             }
         }
@@ -2332,21 +2246,21 @@ impl<'a> Searcher<'a> {
         &mut self,
         row: PendingRow,
         lookup: &mut DirEntryLookup,
-    ) -> Result<Option<(String, Option<VariantType>)>, SearchError> {
+    ) -> Result<Option<(String, Option<Variant>)>, SearchError> {
         let (Some(directory), Some(file_name)) = (row.path.parent(), row.path.file_name()) else {
             self.error_count += 1;
             error_message(&row.path.to_string_lossy(), "cannot locate the entry again");
             return Ok(None);
         };
         let mut items = row.items.clone();
-        let mut first_type = row.first_type.clone();
+        let mut first_value = row.first_value.clone();
         match lookup.entry(directory, file_name) {
             Ok(Some(entry)) => {
                 self.fms.clear();
                 let follow_symlinks = std::mem::replace(&mut self.current_follow_symlinks, row.follow_symlinks);
                 let evaluated = self.evaluate_deferred(entry, &row, &mut items);
                 self.current_follow_symlinks = follow_symlinks;
-                first_type = first_type.or(evaluated?);
+                first_value = first_value.or(evaluated?);
             }
             Ok(None) => {
                 self.error_count += 1;
@@ -2359,7 +2273,7 @@ impl<'a> Searcher<'a> {
         }
         let mut buf = WritableBuffer::new();
         self.results_writer.write_row(&mut buf, items)?;
-        Ok(Some((String::from(buf), first_type)))
+        Ok(Some((String::from(buf), first_value)))
     }
 
     fn evaluate_deferred(
@@ -2367,8 +2281,8 @@ impl<'a> Searcher<'a> {
         entry: &DirEntry,
         row: &PendingRow,
         items: &mut [(String, String)],
-    ) -> Result<Option<VariantType>, SearchError> {
-        let mut first_type = None;
+    ) -> Result<Option<Variant>, SearchError> {
+        let mut first_value = None;
         let query = self.query;
         let mut file_map = HashMap::new();
         if self.use_colors && row.deferred.iter().any(|index| query.fields[*index].contains_colorized()) {
@@ -2384,13 +2298,13 @@ impl<'a> Searcher<'a> {
                     continue;
                 }
             };
-            first_type = first_type.or(self.first_column_type(index, &record));
+            first_value = first_value.or_else(|| self.first_column_value(index, &record));
             items[index].1 = match self.use_colors && field.contains_colorized() {
                 true => self.colorize(&record.to_string()),
                 false => record.to_string(),
             };
         }
-        Ok(first_type)
+        Ok(first_value)
     }
 
     fn get_column_expr_value(
@@ -2398,7 +2312,7 @@ impl<'a> Searcher<'a> {
         entry: Option<&DirEntry>,
         file_info: &Option<FileInfo>,
         root_path: &Path,
-        file_map: &mut HashMap<String, String>,
+        file_map: &mut HashMap<String, Variant>,
         accumulator: Option<&function::GroupAccumulator>,
         column_expr: &Expr,
     ) -> Result<Variant, SearchError> {
@@ -2427,13 +2341,7 @@ impl<'a> Searcher<'a> {
                         return Ok(match ctx.get(&field_key) {
                             Some(val) => {
                                 let value = apply_minus(column_expr, val.clone());
-                                self.cached_types.insert(cache_key.clone(), (value.to_string(), value.get_type().clone()));
-                                if value.is_null() {
-                                    self.cached_nulls.insert(cache_key.clone());
-                                } else {
-                                    self.cached_nulls.remove(&cache_key);
-                                }
-                                file_map.insert(cache_key, value.to_string());
+                                file_map.insert(cache_key, value.clone());
                                 value
                             }
                             None => {
@@ -2454,14 +2362,7 @@ impl<'a> Searcher<'a> {
         }
 
         if let Some(cached) = file_map.get(&cache_key) {
-            let value = if cached.is_empty() && self.cached_nulls.contains(&cache_key) {
-                Variant::null()
-            } else {
-                match self.cached_types.get(&cache_key) {
-                    Some((text, value_type)) if text == cached => variant_of_type(column_expr, cached, value_type),
-                    _ => typed_variant(column_expr, cached),
-                }
-            };
+            let value = cached.clone();
             if let Some(entry_key) = context_field {
                 let mut context = self.record_context.borrow_mut();
                 let context_key = self.current_alias.clone().unwrap_or_else(|| String::from(""));
@@ -2476,15 +2377,7 @@ impl<'a> Searcher<'a> {
             bare.minus = false;
             let bare_key = bare.cache_key();
             if let Some(cached) = file_map.get(&bare_key) {
-                let value = if cached.is_empty() && self.cached_nulls.contains(&bare_key) {
-                    Variant::null()
-                } else {
-                    match self.cached_types.get(&bare_key) {
-                        Some((text, value_type)) if text == cached => variant_of_type(&bare, cached, value_type),
-                        _ => typed_variant(&bare, cached),
-                    }
-                };
-                return Ok(apply_minus(column_expr, value));
+                return Ok(apply_minus(column_expr, cached.clone()));
             }
         }
 
@@ -2494,25 +2387,17 @@ impl<'a> Searcher<'a> {
                 subquery.limit = 1;
             }
             let list = self.get_list_from_subquery(*subquery)?;
-            return match list.first() {
-                Some(result) => {
-                    let value = match self.last_subquery_types.first() {
-                        Some(Some(value_type)) => variant_of_type(column_expr, result, value_type),
-                        Some(None) if result.is_empty() => Variant::null(),
-                        _ => typed_variant(column_expr, result),
-                    };
-                    Ok(apply_minus(column_expr, value))
-                }
-                None => Ok(Variant::null()),
-            };
+            return Ok(match list.into_iter().next() {
+                Some(value) => apply_minus(column_expr, value),
+                None => Variant::null(),
+            });
         }
 
         if let Some(ref _function) = column_expr.function {
             let result =
                 self.get_function_value(entry, file_info, root_path, file_map, accumulator, column_expr)?;
             let result = apply_minus(column_expr, result);
-            self.remember_type(&cache_key, &result);
-            file_map.insert(cache_key, result.to_string());
+            file_map.insert(cache_key, result.clone());
             return Ok(result);
         }
 
@@ -2523,8 +2408,7 @@ impl<'a> Searcher<'a> {
                 // field name it holds the raw value, under an alias the value
                 // the column actually produces (negated when written `-size`).
                 let result = apply_minus(column_expr, raw.clone());
-                self.remember_type(&cache_key, &result);
-                file_map.insert(cache_key, result.to_string());
+                file_map.insert(cache_key, result.clone());
                 let mut context = self.record_context.borrow_mut();
                 let context_key = self.current_alias.clone().unwrap_or_else(|| String::from(""));
                 let context_entry = context.entry(context_key).or_default();
@@ -2534,7 +2418,7 @@ impl<'a> Searcher<'a> {
                 };
                 return Ok(result);
             } else if let Some(val) = file_map.get(&field.to_string()) {
-                return Ok(apply_minus(column_expr, typed_variant(column_expr, val)));
+                return Ok(apply_minus(column_expr, val.clone()));
             } else {
                 return Ok(Variant::empty(VariantType::String));
             }
@@ -2555,8 +2439,7 @@ impl<'a> Searcher<'a> {
             return Ok(match holds {
                 Some(holds) => {
                     let result = apply_minus(column_expr, Variant::from_bool(holds));
-                    self.remember_type(&cache_key, &result);
-                    file_map.insert(cache_key, result.to_string());
+                    file_map.insert(cache_key, result.clone());
                     result
                 }
                 None => Variant::empty(VariantType::Bool),
@@ -2575,9 +2458,8 @@ impl<'a> Searcher<'a> {
                         self.get_column_expr_value(entry, file_info, root_path, file_map, accumulator, right)?;
                         result = op.calc(&left_result, &right_result).map(|v| apply_minus(column_expr, v));
                         if let Ok(ref value) = result {
-                            self.remember_type(&cache_key, value);
+                            file_map.insert(cache_key, value.clone());
                         }
-                        file_map.insert(cache_key, result.clone()?.to_string());
                 } else {
                     result = Ok(apply_minus(column_expr, left_result));
                 }
@@ -2596,7 +2478,7 @@ impl<'a> Searcher<'a> {
         entry: Option<&DirEntry>,
         file_info: &Option<FileInfo>,
         root_path: &Path,
-        file_map: &mut HashMap<String, String>,
+        file_map: &mut HashMap<String, Variant>,
         accumulator: Option<&function::GroupAccumulator>,
         column_expr: &Expr,
     ) -> Result<Variant, SearchError> {
@@ -2621,22 +2503,11 @@ impl<'a> Searcher<'a> {
             };
             let empty_acc = function::GroupAccumulator::default();
             let accumulator = accumulator.unwrap_or(&empty_acc);
-            let selected_type = if function.passes_argument_type_through() {
-                accumulator
-                    .fields
-                    .get(&buffer_key)
-                    .and_then(|field| field.extreme_type(*function == function::Function::Max))
-            } else {
-                None
-            };
             let aggr_result = function::get_aggregate_value(function, accumulator, buffer_key, &column_expr.val);
-            if aggr_result.is_empty() && *function != function::Function::Count {
+            if aggr_result.as_str().is_empty() && *function != function::Function::Count {
                 return Ok(Variant::null());
             }
-            Ok(match selected_type {
-                Some(value_type) => variant_of_type(column_expr, &aggr_result, value_type),
-                None => typed_variant(column_expr, &aggr_result),
-            })
+            Ok(aggr_result)
         } else if *function == function::Function::Coalesce {
             // COALESCE short-circuits: later arguments are evaluated only
             // while every earlier one came back empty, so a failing or
@@ -2656,7 +2527,7 @@ impl<'a> Searcher<'a> {
                     }
                 }
             };
-            file_map.insert(column_expr.cache_key(), result.to_string());
+            file_map.insert(column_expr.cache_key(), result.clone());
 
             Ok(result)
         } else {
@@ -2677,7 +2548,7 @@ impl<'a> Searcher<'a> {
                 entry,
                 file_info,
             )?;
-            file_map.insert(column_expr.cache_key(), result.to_string());
+            file_map.insert(column_expr.cache_key(), result.clone());
 
             Ok(result)
         }
@@ -2707,22 +2578,6 @@ impl<'a> Searcher<'a> {
         dispatch::get_field_value(&mut ctx, field)
     }
 
-    fn remember_type(&mut self, cache_key: &str, value: &Variant) {
-        self.cached_types.insert(cache_key.to_string(), (value.to_string(), value.get_type().clone()));
-        if value.is_null() {
-            self.cached_nulls.insert(cache_key.to_string());
-        } else {
-            self.cached_nulls.remove(cache_key);
-        }
-    }
-
-    fn cached_value_type(&self, cache_key: &str, text: &str) -> Option<VariantType> {
-        self.cached_types
-            .get(cache_key)
-            .filter(|(cached, _)| cached == text)
-            .map(|(_, value_type)| value_type.clone())
-    }
-
     fn check_file(&mut self, entry: &DirEntry, root_path: &Path, file_info: &Option<FileInfo>, file_type_hint: Option<FileType>) -> Result<(), SearchError> {
         self.fms.clear();
         // Reuse the file type the traversal already resolved, so is_dir /
@@ -2731,8 +2586,6 @@ impl<'a> Searcher<'a> {
 
         let mut file_map = std::mem::take(&mut self.file_map);
         file_map.clear();
-        self.cached_types.clear();
-        self.cached_nulls.clear();
         let result = self.check_file_inner(entry, root_path, file_info, &mut file_map);
         self.file_map = file_map;
         result
@@ -2750,7 +2603,7 @@ impl<'a> Searcher<'a> {
         root_path: &Path,
         current_alias: &str,
         required_columns: &[(String, Expr)],
-        file_map: &mut HashMap<String, String>,
+        file_map: &mut HashMap<String, Variant>,
     ) -> Result<(), SearchError> {
         let previous = std::mem::replace(&mut self.suppress_row_errors, true);
         let outcome = self.bind_row_aliases_inner(entry, file_info, root_path, current_alias, required_columns, file_map);
@@ -2765,7 +2618,7 @@ impl<'a> Searcher<'a> {
         root_path: &Path,
         current_alias: &str,
         required_columns: &[(String, Expr)],
-        file_map: &mut HashMap<String, String>,
+        file_map: &mut HashMap<String, Variant>,
     ) -> Result<(), SearchError> {
         let rounds = if required_columns.len() > 1 { required_columns.len() } else { 1 };
         let self_contained: Vec<bool> = required_columns
@@ -2773,7 +2626,7 @@ impl<'a> Searcher<'a> {
             .map(|(_, column)| column.get_alias_references_in_subqueries(current_alias, true).is_empty())
             .collect();
         let mut bound: Vec<Option<Variant>> = vec![None; required_columns.len()];
-        let mut scratches: Vec<HashMap<String, String>> = vec![HashMap::new(); required_columns.len()];
+        let mut scratches: Vec<HashMap<String, Variant>> = vec![HashMap::new(); required_columns.len()];
         let mut failed: Vec<(usize, SearchError)> = Vec::new();
         for round in 0..rounds {
             let mut changed = false;
@@ -2854,8 +2707,8 @@ impl<'a> Searcher<'a> {
         current_alias: &str,
         required_columns: &[(String, Expr)],
         bound: &[Option<Variant>],
-        scratches: &[HashMap<String, String>],
-        file_map: &mut HashMap<String, String>,
+        scratches: &[HashMap<String, Variant>],
+        file_map: &mut HashMap<String, Variant>,
     ) {
         for (((name, column), value), scratch) in required_columns.iter().zip(bound).zip(scratches) {
             let failed = self
@@ -2868,12 +2721,10 @@ impl<'a> Searcher<'a> {
                 continue;
             }
             if let Some(value) = value {
-                for (key, text) in scratch {
-                    file_map.entry(key.clone()).or_insert_with(|| text.clone());
+                for (key, cached) in scratch {
+                    file_map.entry(key.clone()).or_insert_with(|| cached.clone());
                 }
-                let key = column.cache_key();
-                self.remember_type(&key, value);
-                file_map.insert(key, value.to_string());
+                file_map.insert(column.cache_key(), value.clone());
             }
         }
     }
@@ -2903,7 +2754,7 @@ impl<'a> Searcher<'a> {
         }
     }
 
-    fn check_file_inner(&mut self, entry: &DirEntry, root_path: &Path, file_info: &Option<FileInfo>, file_map: &mut HashMap<String, String>) -> Result<(), SearchError> {
+    fn check_file_inner(&mut self, entry: &DirEntry, root_path: &Path, file_info: &Option<FileInfo>, file_map: &mut HashMap<String, Variant>) -> Result<(), SearchError> {
         self.null_comparisons.clear();
         if let Some(ref current_alias) = self.current_alias.clone() {
             self.record_context.borrow_mut().entry(current_alias.to_string()).or_default().clear();
@@ -2950,8 +2801,7 @@ impl<'a> Searcher<'a> {
             self.found += 1;
             for (field, key) in &plan.fields {
                 let value = self.get_field_value(entry, file_info, root_path, field).unwrap_or(Variant::empty(VariantType::String));
-                self.remember_type(key, &value);
-                file_map.insert(key.clone(), value.to_string());
+                file_map.insert(key.clone(), value);
             }
             let planned = plan.inner_exprs.iter().map(|(key, left)| (key, left))
                 .chain(plan.grouping_keys.iter().zip(&self.query.grouping_fields).map(|(key, field)| (key, field)));
@@ -2972,32 +2822,25 @@ impl<'a> Searcher<'a> {
                     self.get_column_expr_value(Some(entry), file_info, root_path, file_map, None, expr)?
                 };
                 if grouping_condition || !file_map.contains_key(key) {
-                    self.remember_type(key, &value);
-                    file_map.insert(key.clone(), value.to_string());
+                    file_map.insert(key.clone(), value);
                 }
             }
+            let key_values: Vec<Variant> = plan
+                .grouping_keys
+                .iter()
+                .map(|key| file_map.get(key).cloned().unwrap_or_else(|| Variant::empty(VariantType::String)))
+                .collect();
             let group_key: Vec<String> = plan
                 .grouping_keys
                 .iter()
-                .map(|key| match file_map.get(key) {
-                    Some(text) if unknown_keys.contains(key) => format!("{text}{UNKNOWN_GROUP_SUFFIX}"),
-                    Some(text) if text.is_empty() && self.cached_nulls.contains(key) => String::from(NULL_GROUP_KEY),
-                    Some(text) => text.clone(),
-                    None => String::new(),
+                .zip(&key_values)
+                .map(|(key, value)| match value {
+                    value if unknown_keys.contains(key) => format!("{value}{UNKNOWN_GROUP_SUFFIX}"),
+                    value if value.is_null() => String::from(NULL_GROUP_KEY),
+                    value => value.to_string(),
                 })
                 .collect();
-            let key_types: Vec<Option<VariantType>> = plan
-                .grouping_keys
-                .iter()
-                .zip(&group_key)
-                .map(|(key, text)| {
-                    let text = text.strip_suffix(UNKNOWN_GROUP_SUFFIX).unwrap_or(text);
-                    self.cached_types
-                        .get(key)
-                        .filter(|(cached, _)| cached == text)
-                        .map(|(_, value_type)| value_type.clone())
-                })
-                .collect();
+            let key_types: Vec<VariantType> = key_values.iter().map(|value| value.get_type().clone()).collect();
             let group_identity = (group_key, key_types);
             let identity = if self.root_depth_column && !self.accumulators.contains_key(&group_identity) {
                 Some(self.subquery_identity(entry, file_info, root_path))
@@ -3005,18 +2848,16 @@ impl<'a> Searcher<'a> {
                 None
             };
             self.alias_read_failure()?;
-            let key_types = group_identity.1.clone();
             let accumulator = self.accumulators.entry(group_identity).or_default();
             if identity.is_some() {
                 accumulator.representative = identity;
             }
-            if accumulator.key_types.is_empty() {
-                accumulator.key_types = key_types;
+            if accumulator.key_values.is_empty() {
+                accumulator.key_values = key_values;
             }
             accumulator.increment_count();
             for (key, value) in file_map.iter() {
-                let value_type = self.cached_types.get(key).filter(|(text, _)| text == value).map(|(_, value_type)| value_type);
-                accumulator.push_typed(key, value, value_type);
+                accumulator.push(key, value);
             }
             return Ok(());
         }
@@ -3028,7 +2869,7 @@ impl<'a> Searcher<'a> {
             self.fms.update_file_metadata(entry, self.current_follow_symlinks);
         }
 
-        let mut first_type = None;
+        let mut first_value = None;
         for (index, field) in self.query.fields.iter().enumerate() {
             if defer && self.deferred_columns.contains(&index) {
                 items.push((field.column_name(), String::new()));
@@ -3036,7 +2877,7 @@ impl<'a> Searcher<'a> {
             }
             let record = match self.get_column_expr_value(Some(entry), file_info, root_path, file_map, None, field) {
                 Ok(record) => {
-                    first_type = first_type.or(self.first_column_type(index, &record));
+                    first_value = first_value.or_else(|| self.first_column_value(index, &record));
                     record
                 }
                 Err(err) if err.is_fatal() => return Err(err),
@@ -3065,8 +2906,8 @@ impl<'a> Searcher<'a> {
             let key = field.cache_key();
             match file_map.get(&key) {
                 Some(record) => {
-                    criteria_types[idx] = self.cached_value_type(&key, record);
-                    criteria[idx] = record.clone();
+                    criteria_types[idx] = Some(record.get_type().clone());
+                    criteria[idx] = record.to_string();
                 }
                 None => {
                     let value = self.get_column_expr_value(Some(entry), file_info, root_path, file_map, None, field)?;
@@ -3086,12 +2927,12 @@ impl<'a> Searcher<'a> {
                     follow_symlinks: self.current_follow_symlinks,
                     items,
                     deferred: self.deferred_columns.clone(),
-                    first_type,
+                    first_value,
                 })
             } else {
                 let mut buf = WritableBuffer::new();
                 self.results_writer.write_row(&mut buf, items)?;
-                BufferedRow::Rendered(String::from(buf), first_type)
+                BufferedRow::Rendered(String::from(buf), first_value)
             };
             self.found += 1;
             self.output_buffer.insert(
@@ -3155,7 +2996,7 @@ impl<'a> Searcher<'a> {
         entry: Option<&DirEntry>,
         file_info: &Option<FileInfo>,
         root_path: &Path,
-        arg_map: &mut HashMap<String, String>,
+        arg_map: &mut HashMap<String, Variant>,
         accumulator: Option<&function::GroupAccumulator>,
         field_value: &Variant,
         negate: bool,
@@ -3223,16 +3064,10 @@ impl<'a> Searcher<'a> {
         if let Some(membership) = self.membership_cache.get(&key) {
             return Ok(Rc::clone(membership));
         }
-        let values = self.get_list_from_subquery(subquery.clone())?;
-        let column = subquery.fields.first();
-        let values: Vec<Variant> = values
-            .iter()
-            .zip(self.last_subquery_types.iter().chain(std::iter::repeat(&None)))
-            .filter(|(text, value_type)| value_type.is_some() || !text.is_empty())
-            .map(|(text, value_type)| match (column, value_type) {
-                (Some(column), Some(value_type)) => variant_of_type(column, text, value_type),
-                _ => Variant::from_string(text),
-            })
+        let values: Vec<Variant> = self
+            .get_list_from_subquery(subquery.clone())?
+            .into_iter()
+            .filter(|value| !value.is_null())
             .collect();
         let membership = Rc::new(Membership::new(&values, field_type));
         if is_subquery_cacheable(subquery) {
@@ -3533,7 +3368,7 @@ impl<'a> Searcher<'a> {
 
     fn group_conforms(
         &mut self,
-        file_map: &mut HashMap<String, String>,
+        file_map: &mut HashMap<String, Variant>,
         group_acc: &function::GroupAccumulator,
         expr: &Expr,
     ) -> Result<bool, SearchError> {
@@ -3549,7 +3384,7 @@ impl<'a> Searcher<'a> {
                 None => false,
             };
 
-            let right_result = |s: &mut Self, file_map: &mut HashMap<String, String>| -> Result<bool, SearchError> {
+            let right_result = |s: &mut Self, file_map: &mut HashMap<String, Variant>| -> Result<bool, SearchError> {
                 match expr.right {
                     Some(ref right) => s.group_conforms(file_map, group_acc, right),
                     None => Ok(false),
@@ -3907,7 +3742,7 @@ mod tests {
         let mut bound_expr = Expr::field(Field::Name);
         bound_expr.root_alias = Some(String::from("a"));
 
-        let mut file_map: HashMap<String, String> = HashMap::new();
+        let mut file_map: HashMap<String, Variant> = HashMap::new();
         let root_path = Path::new(".");
 
         // Since current_alias is `b`, and the expression requests `a.name`,
@@ -3925,7 +3760,7 @@ mod tests {
         let mut bound_expr = Expr::field(Field::Name);
         bound_expr.root_alias = Some(String::from("x"));
 
-        let mut file_map: HashMap<String, String> = HashMap::new();
+        let mut file_map: HashMap<String, Variant> = HashMap::new();
         let result = searcher.get_column_expr_value(
             None, &None, Path::new("."), &mut file_map, None, &bound_expr,
         );
@@ -3952,7 +3787,7 @@ mod tests {
         let mut bound_expr = Expr::field(Field::Name);
         bound_expr.root_alias = Some(String::from("x"));
 
-        let mut file_map: HashMap<String, String> = HashMap::new();
+        let mut file_map: HashMap<String, Variant> = HashMap::new();
         let result = searcher.get_column_expr_value(
             None, &None, Path::new("."), &mut file_map, None, &bound_expr,
         );
@@ -3971,7 +3806,7 @@ mod tests {
         let mut searcher = create_test_searcher();
 
         let literal = Expr::value(String::from("readme.md"));
-        let mut file_map: HashMap<String, String> = HashMap::new();
+        let mut file_map: HashMap<String, Variant> = HashMap::new();
         let v = searcher.get_column_expr_value(
             None, &None, Path::new("."), &mut file_map, None, &literal,
         );
@@ -3986,7 +3821,7 @@ mod tests {
         searcher.current_alias = Some(String::from("a"));
 
         let literal = Expr::value(String::from("readme.md"));
-        let mut file_map: HashMap<String, String> = HashMap::new();
+        let mut file_map: HashMap<String, Variant> = HashMap::new();
         let v = searcher.get_column_expr_value(
             None, &None, Path::new("."), &mut file_map, None, &literal,
         );
@@ -4009,7 +3844,7 @@ mod tests {
         let mut bound_expr = Expr::field(Field::Name);
         bound_expr.root_alias = Some(String::from("a"));
 
-        let mut file_map: HashMap<String, String> = HashMap::new();
+        let mut file_map: HashMap<String, Variant> = HashMap::new();
         let v = searcher.get_column_expr_value(
             None, &None, Path::new("."), &mut file_map, None, &bound_expr,
         );
@@ -4042,7 +3877,7 @@ mod tests {
         let mut searcher = Searcher::new(query, config, default_config, false);
 
         let value_expr = Expr::alias_reference(String::from("a"), String::from("a.sz"));
-        let mut file_map: HashMap<String, String> = HashMap::new();
+        let mut file_map: HashMap<String, Variant> = HashMap::new();
         let result = searcher.get_column_expr_value(
             None, &None, Path::new("."), &mut file_map, None, &value_expr,
         );
@@ -4372,7 +4207,7 @@ mod tests {
 
         // Simulate what accumulation does: evaluate inner expr and store in file_map
         let mut file_map = HashMap::new();
-        file_map.insert("size".to_string(), "100".to_string());
+        file_map.insert("size".to_string(), Variant::from_int(100));
 
         // After our fix, the inner expression should also be evaluated and stored
         // The key should match what get_aggregate_value uses for lookup

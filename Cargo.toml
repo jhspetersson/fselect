@@ -13,7 +13,7 @@ license = "MIT OR Apache-2.0"
 edition = "2024"
 
 [features]
-default = ["git", "users", "update-notifications", "interactive", "mkv"]
+default = ["git", "users", "interactive", "mkv"]
 git = ["dep:git2"]
 update-notifications = ["dep:update-informer"]
 users = ["dep:uzers"]

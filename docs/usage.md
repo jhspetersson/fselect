@@ -971,8 +971,9 @@ You can also specify a config location with a runtime option, e.g.:
 
 #### Check for updates
 
-**fselect** can be built with `update-notifications` feature, that enables automatic check for updates.
-This check is disabled by default. To enable it, put
+**fselect** can be built with the `update-notifications` feature (`cargo build --features update-notifications`,
+it is not part of the default build), which enables an automatic check for updates.
+The check is also disabled at run time by default. To enable it, put
 
     check_for_updates = true
 
@@ -1082,7 +1083,7 @@ Some functionality is behind Cargo features so that packagers can leave out depe
 | `git`                  | on      | `is_git_*` and `git_*` fields via libgit2                     |
 | `users`                | on      | `user` and `group` names on Unix                              |
 | `interactive`          | on      | the `-i` REPL                                                 |
-| `update-notifications` | on      | the check for a newer release                                 |
+| `update-notifications` | off     | the check for a newer release                                 |
 | `mkv`                  | on      | `width`, `height` and `duration` of Matroska and WebM files   |
 | `everything`           | off     | the *Everything* index on Windows                             |
 | `plocate`              | off     | the *plocate* index on Linux                                  |

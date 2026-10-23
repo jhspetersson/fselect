@@ -390,7 +390,7 @@
 
 <nav>
     <div class="inner">
-        <div class="logo">fselect <span>v0.10.3</span></div>
+        <div class="logo">fselect <span>v0.10.4</span></div>
         <button class="hamburger" aria-label="Toggle menu" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('open')">
             <span></span><span></span><span></span>
         </button>
@@ -432,7 +432,12 @@
         <div class="feature">
             <div class="icon">&#x1F4CA;</div>
             <h4>Aggregate Functions</h4>
-            <p>COUNT, SUM, AVG, MIN, MAX, STDDEV &mdash; get statistics about your files without piping through five different commands.</p>
+            <p>COUNT, SUM, AVG, MIN, MAX, STDDEV with GROUP BY and HAVING &mdash; get statistics about your files without piping through five different commands.</p>
+        </div>
+        <div class="feature">
+            <div class="icon">&#x1F3F7;</div>
+            <h4>Typed Values</h4>
+            <p>Sizes, dates, numbers and booleans compare, sort and group by their real values, <code>is null</code> tells a missing value from an empty one, and a literal that can never match is rejected before the search starts.</p>
         </div>
         <div class="feature">
             <div class="icon">&#x1F4E6;</div>
@@ -503,9 +508,9 @@
         </div>
         <div class="install-card">
             <h4>Debian / Ubuntu</h4>
-            <pre><span class="prompt">$ </span>dpkg -i fselect_0.10.3-1_amd64.deb</pre>
+            <pre><span class="prompt">$ </span>dpkg -i fselect_0.10.4-1_amd64.deb</pre>
             <p style="font-size:0.8rem;color:var(--text-dim);margin-top:0.5rem;">
-                <a href="https://github.com/jhspetersson/fselect/releases/download/0.10.3/fselect_0.10.3-1_amd64.deb">Download .deb</a>
+                <a href="https://github.com/jhspetersson/fselect/releases/download/0.10.4/fselect_0.10.4-1_amd64.deb">Download .deb</a>
             </p>
         </div>
         <div class="install-card">
@@ -523,16 +528,16 @@
         <div class="install-card">
             <h4>Windows (binary)</h4>
             <p style="font-size:0.8rem;color:var(--text-dim);margin-top:0.5rem;">
-                <a href="https://github.com/jhspetersson/fselect/releases/download/0.10.3/fselect-x86_64-win.zip">Download .zip</a>
+                <a href="https://github.com/jhspetersson/fselect/releases/download/0.10.4/fselect-x86_64-win.zip">Download .zip</a>
             </p>
         </div>
         <div class="install-card" style="grid-column: 1 / -1;">
             <h4>Linux (static musl binary)</h4>
-            <pre><span class="prompt">$ </span>curl -LO https://github.com/jhspetersson/fselect/releases/download/0.10.3/fselect-x86_64-linux-musl.gz
+            <pre><span class="prompt">$ </span>curl -LO https://github.com/jhspetersson/fselect/releases/download/0.10.4/fselect-x86_64-linux-musl.gz
 <span class="prompt">$ </span>gunzip fselect-x86_64-linux-musl.gz
 <span class="prompt">$ </span>chmod +x fselect-x86_64-linux-musl</pre>
             <p style="font-size:0.8rem;color:var(--text-dim);margin-top:0.5rem;">
-                <a href="https://github.com/jhspetersson/fselect/releases/download/0.10.3/fselect-x86_64-linux-musl.gz">Download .gz</a>
+                <a href="https://github.com/jhspetersson/fselect/releases/download/0.10.4/fselect-x86_64-linux-musl.gz">Download .gz</a>
             </p>
         </div>
     </div>
@@ -605,6 +610,11 @@
     </div>
 
     <!-- FILE TYPES -->
+    <div class="example-group">
+        <p>A value a file does not have is <code>null</code>, which is not the same as empty or zero:</p>
+<pre><span class="prompt">$ </span>fselect <span class="str">"name from ~/Pictures where ext = jpg and width is null"</span></pre>
+    </div>
+
     <h3><a id="file-types"></a>File Type Shortcuts <span class="badge badge-easy">easy</span></h3>
 
     <div class="example-group">
@@ -712,6 +722,11 @@
     <div class="example-group">
         <p>Group by multiple columns &mdash; refer to them by position with <code>group by 1, 2</code>:</p>
 <pre><span class="prompt">$ </span>fselect <span class="str">"ext, mime, <span class="func">count</span>(*) from /home/user/Downloads group by 1, 2"</span></pre>
+    </div>
+
+    <div class="example-group">
+        <p>Keep only the groups you care about with <code>having</code>:</p>
+<pre><span class="prompt">$ </span>fselect <span class="str">"ext, <span class="func">count</span>(*), <span class="func">sum</span>(size) from /tmp group by ext having <span class="func">count</span>(*) > 10"</span></pre>
     </div>
 
     <div class="example-group">
@@ -966,6 +981,7 @@
                 <li><code>dir</code> &mdash; relative directory</li>
                 <li><code>absdir</code> &mdash; absolute directory</li>
                 <li><code>link_target</code> / <code>symlink_target</code> &mdash; symlink target</li>
+                <li><code>depth</code> &mdash; depth below the search root</li>
             </ul>
         </div>
         <div class="col-group">
@@ -1081,7 +1097,7 @@
             <tr><td>!=</td><td>&lt;&gt;, ne</td><td>Not equal</td></tr>
             <tr><td>===</td><td>eeq</td><td>Strict equal (no glob/regex)</td></tr>
             <tr><td>!==</td><td>ene</td><td>Strict not equal (no glob/regex)</td></tr>
-            <tr><td>=~</td><td>~=, regexp, rx</td><td>Regex match</td></tr>
+            <tr><td>=~</td><td>~=, regexp, rx, rlike</td><td>Regex match</td></tr>
             <tr><td>!=~</td><td>!~=, notrx</td><td>Regex not match</td></tr>
             <tr><td>&gt;</td><td>gt</td><td>Greater than</td></tr>
             <tr><td>&gt;=</td><td>gte, ge</td><td>Greater than or equal</td></tr>
@@ -1095,6 +1111,8 @@
             <tr><td>not in</td><td>notin</td><td>Subquery NOT IN</td></tr>
             <tr><td>exists</td><td></td><td>Subquery EXISTS</td></tr>
             <tr><td>not exists</td><td>notexists</td><td>Subquery NOT EXISTS</td></tr>
+            <tr><td>is null</td><td></td><td>Value is missing</td></tr>
+            <tr><td>is not null</td><td></td><td>Value is present</td></tr>
             <tr><td>and</td><td>AND</td><td>Logical AND</td></tr>
             <tr><td>or</td><td>OR</td><td>Logical OR</td></tr>
             <tr><td>not</td><td>NOT</td><td>Logical NOT</td></tr>
@@ -1120,6 +1138,7 @@
             <tr><td>SUBSTRING, REPLACE, TRIM</td><td>String manipulation</td></tr>
             <tr><td>LTRIM, RTRIM</td><td>Trim leading / trailing whitespace</td></tr>
             <tr><td>LOCATE / POSITION</td><td>Find substring position</td></tr>
+            <tr><td>STRPOS</td><td>Find substring position, PostgreSQL argument order</td></tr>
             <tr><td>YEAR, MONTH, DAY, DOW, DOY</td><td>Date part extraction</td></tr>
             <tr><td>DAYNAME</td><td>Day of week name (Monday, Tuesday, ...)</td></tr>
             <tr><td>CURRENT_DATE, CURRENT_TIME</td><td>Current date / time</td></tr>
@@ -1143,6 +1162,7 @@
             <tr><td>CONTAINS_HIRAGANA, CONTAINS_KATAKANA</td><td>Hiragana / katakana detection</td></tr>
             <tr><td>CONTAINS_KANJI</td><td>Kanji character detection</td></tr>
             <tr><td>CONTAINS_GREEK</td><td>Greek character detection</td></tr>
+            <tr><td>CONTAINS_CYRILLIC</td><td>Cyrillic character detection</td></tr>
             <tr><td>HAS_XATTR, XATTR</td><td>Extended attribute access</td></tr>
             <tr><td>HAS_EXTATTR</td><td>Extended file attribute flag check (Linux)</td></tr>
             <tr><td>HAS_ACL_ENTRY, ACL_ENTRY</td><td>POSIX ACL entry check / read (Linux)</td></tr>

@@ -257,7 +257,7 @@
 
 <nav>
     <div class="inner">
-        <a href="/" class="logo">fselect <span>v0.10.3</span></a>
+        <a href="/" class="logo">fselect <span>v0.10.4</span></a>
         <button class="hamburger" aria-label="Toggle menu" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('open')">
             <span></span><span></span><span></span>
         </button>
@@ -321,6 +321,15 @@
                 </div>
                 <div class="example-query" data-query="select ext, mime, count(*) from /sandbox group by 1, 2">
                     <span class="kw">select</span> <span class="field">ext</span>, <span class="field">mime</span>, <span class="field">count(*)</span> <span class="kw">group by</span> <span class="num">1</span>, <span class="num">2</span>
+                </div>
+                <div class="example-query" data-query="select ext, count(*), sum(size) from /sandbox group by ext having count(*) > 2 order by 2 desc">
+                    <span class="kw">select</span> <span class="field">ext</span>, <span class="field">count(*)</span>, <span class="field">sum(size)</span> <span class="kw">group by</span> <span class="field">ext</span> <span class="kw">having</span> <span class="field">count(*)</span> <span class="op">&gt;</span> 2
+                </div>
+                <div class="example-query" data-query="select name, fsize from /sandbox where fsize > 5k order by fsize desc">
+                    <span class="kw">select</span> <span class="field">name</span>, <span class="field">fsize</span> <span class="kw">where</span> <span class="field">fsize</span> <span class="op">&gt;</span> 5k <span class="kw">order by</span> <span class="field">fsize</span> <span class="kw">desc</span>
+                </div>
+                <div class="example-query" data-query="select name, ext from /sandbox where ext in (png, jpg, svg) and width is null">
+                    <span class="kw">select</span> <span class="field">name</span>, <span class="field">ext</span> <span class="kw">where</span> <span class="field">ext</span> <span class="kw">in</span> (png, jpg, svg) <span class="kw">and</span> <span class="field">width</span> <span class="kw">is null</span>
                 </div>
                 <div class="example-query" data-query="select name, size from (select path from /sandbox where name = '*.md')">
                     <span class="kw">select</span> <span class="field">name</span>, <span class="field">size</span> <span class="kw">from</span> (<span class="kw">select</span> <span class="field">path</span> <span class="kw">where</span> <span class="field">name</span> <span class="op">=</span> <span class="str">'*.md'</span>)
@@ -839,7 +848,7 @@ term.writeln('\x1b[38;2;137;180;250;1m  __         _           _   ');
 term.writeln(' / _|___  ___| | ___  ___| |_ ');
 term.writeln('|  _/ __|/ _ \\ |/ _ \\/ __| __|');
 term.writeln('| | \\__ \\  __/ |  __/ (__| |_ ');
-term.writeln('|_| |___/\\___|_|\\___|\\___|\\__|  \x1b[38;2;88;91;112mv0.10.3\x1b[0m');
+term.writeln('|_| |___/\\___|_|\\___|\\___|\\__|  \x1b[38;2;88;91;112mv0.10.4\x1b[0m');
 term.writeln('');
 term.writeln('\x1b[38;2;88;91;112mFind files with SQL-like queries. Type a query or click an example.\x1b[0m');
 term.writeln('\x1b[38;2;88;91;112mType \x1b[38;2;166;227;161mhelp\x1b[38;2;88;91;112m for available fields, \x1b[38;2;166;227;161mclear\x1b[38;2;88;91;112m to reset.\x1b[0m');

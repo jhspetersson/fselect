@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.10.4] - 2026-10-23
+
 ### Added
 
 - `IS NULL` and `IS NOT NULL` operators.
@@ -146,7 +148,8 @@
 - HTML output escaping; config path forced to lowercase.
 - EXIF GPS rational values and division by zero.
 
-[Unreleased]: https://github.com/jhspetersson/fselect/compare/0.10.3...HEAD
+[Unreleased]: https://github.com/jhspetersson/fselect/compare/0.10.4...HEAD
+[0.10.4]: https://github.com/jhspetersson/fselect/compare/0.10.3...0.10.4
 [0.10.3]: https://github.com/jhspetersson/fselect/compare/0.10.2...0.10.3
 [0.10.2]: https://github.com/jhspetersson/fselect/compare/0.10.1...0.10.2
 [0.10.1]: https://github.com/jhspetersson/fselect/compare/0.10.0...0.10.1

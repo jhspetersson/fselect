@@ -99,6 +99,7 @@ impl SortKey {
                 .unwrap()
         });
         match value.get_type() {
+            VariantType::Bool if value.as_str().is_empty() => SortKey::Number(None),
             VariantType::Bool => SortKey::Number(Some(if value.to_bool() { 1.0 } else { 0.0 })),
             VariantType::Int | VariantType::Float => SortKey::Number(value.to_float_opt()),
             VariantType::DateTime => SortKey::DateTime(value.to_datetime().map(|(from, _)| from).unwrap_or(*EPOCH)),
@@ -2324,6 +2325,18 @@ mod tests {
         let fields = Rc::new(vec![Expr::field(Field::Size)]);
         let orderings = Rc::new(vec![asc]);
         Criteria::new(fields, vec![String::from(value)], orderings)
+    }
+
+    #[test]
+    fn missing_booleans_sort_after_false_and_true() {
+        let fields = Rc::new(vec![Expr::field(Field::IsFile)]);
+        let orderings = Rc::new(vec![true]);
+        let make = |value: Variant| Criteria::typed(fields.clone(), vec![value], orderings.clone());
+        let missing = make(Variant::empty(VariantType::Bool));
+        assert_eq!(make(Variant::from_bool(false)).cmp(&make(Variant::from_bool(true))), Ordering::Less);
+        assert_eq!(make(Variant::from_bool(true)).cmp(&missing), Ordering::Less);
+        assert_eq!(make(Variant::from_bool(false)).cmp(&missing), Ordering::Less);
+        assert_eq!(make(Variant::null()).cmp(&make(Variant::from_bool(true))), Ordering::Greater);
     }
 
     #[test]

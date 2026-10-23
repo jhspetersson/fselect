@@ -29,6 +29,7 @@ pub(crate) mod cyrillic;
 pub(crate) mod human_duration;
 pub(crate) mod japanese;
 mod top_n;
+pub mod typed_xattr;
 pub(crate) mod variant;
 mod wbuf;
 

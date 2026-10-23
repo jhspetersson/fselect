@@ -338,11 +338,17 @@ Supported platforms are Linux, macOS, FreeBSD, and NetBSD.
 | Function                     | Meaning                                                              | Example                                                             |
 |------------------------------|----------------------------------------------------------------------|---------------------------------------------------------------------|
 | HAS_XATTR                    | Check if xattr exists                                                | `select "name, has_xattr(user.test) from /home/user"`               |
-| XATTR                        | Get value of xattr                                                   | `select "name, xattr(user.test) from /home/user"`                   |
+| XATTR                        | Get value of xattr, decoding a leading type byte (see below)         | `select "name, xattr(user.test) from /home/user"`                   |
 | HAS_EXTATTR                  | Check if a specific extended file attribute flag is set (Linux and Windows) | `select "name from / where has_extattr('i')"`                |
 | HAS_ACL_ENTRY                | Check if a specific ACL entry exists (Linux and Windows)             | `select "name from /data where has_acl_entry('user:john')"`         |
 | ACL_ENTRY                    | Get permissions of a specific ACL entry (Linux and Windows)         | `select "name, acl_entry('group:staff') from /data"`                |
 | HAS_DEFAULT_ACL_ENTRY        | Check if a specific default ACL entry exists (Linux and Windows)    | `select "name from /data where has_default_acl_entry('user:john')"` |
+
+`XATTR` returns the stored bytes as text. A value that starts with a type byte, as written by typed-attribute
+filesystems such as MoobFS, is decoded instead: `0x01` string, `0x02` 64-bit integer, `0x03` double, `0x04` boolean,
+`0x05` time (nanoseconds since the epoch, shown in local time), `0x06` raw bytes. The byte counts as a type only
+when the payload fits that type, so `xattr(user.moob.kind) = 'decision'` and `xattr(user.moob.score) > 40` work
+while ordinary text attributes are unaffected. Values that are not valid UTF-8 text come back empty.
 | DEFAULT_ACL_ENTRY            | Get permissions of a specific default ACL entry (Linux and Windows) | `select "name, default_acl_entry('group:staff') from /data"`        |
 | HAS_CAPABILITY or HAS_CAP    | Check if given Linux capability exists for the file                  | `select "name, has_cap('cap_bpf') from /home/user"`                 |
 

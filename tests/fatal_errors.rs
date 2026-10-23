@@ -197,6 +197,21 @@ fn unparsable_date_function_literals_are_rejected_before_the_header() {
 }
 
 #[test]
+fn literals_that_cannot_match_a_typed_expression_are_rejected_before_the_header() {
+    let dir = make_dir("fselect_test_fatal_typed_expression_literal");
+    let dir = dir.to_string_lossy();
+
+    assert_rejected_without_output(
+        &format!("select name from {} where length(name) > 'abc' into json", dir),
+        "Can't parse number or file size 'abc' for length(name)",
+    );
+    assert_rejected_without_output(
+        &format!("select name from {} where date_add(modified, 1) < 'soon' into html", dir),
+        "Can't parse datetime: soon",
+    );
+}
+
+#[test]
 fn a_typo_in_the_order_direction_is_rejected_before_the_header() {
     let dir = make_dir("fselect_test_fatal_order_by_typo");
     let dir = dir.to_string_lossy();

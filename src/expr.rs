@@ -774,126 +774,53 @@ impl Expr {
             .fold(ExprType::EMPTY, |types, argument| types.union(argument.result_type()))
     }
 
-    /// Walks the expression tree and validates string literals that are
-    /// compared against datetime fields. Returns `Err` with the first
-    /// unparseable literal so the parser can fail the query once, up front,
-    /// rather than emitting one parse error per file scanned.
-    ///
-    /// Only literals adjacent to a datetime *field* are checked — comparisons
-    /// against datetime-returning function results are not validated here
-    /// because that would require tracking function return types. Per-file
-    /// degradation in `conforms()` still catches those silently.
-    pub fn validate_boolean_literals(&self) -> Result<(), String> {
-        if self.op.as_ref().is_some_and(|op| !op.checks_null()) {
-            let boolean_side = |side: &Option<Box<Expr>>| side.as_deref().and_then(|e| e.field).filter(Field::is_boolean_field);
-            if let Some(field) = boolean_side(&self.left)
-                && let Some(ref right) = self.right
-            {
-                Self::check_bool_value_side(right, &field)?;
-            }
-            if let Some(field) = boolean_side(&self.right)
-                && let Some(ref left) = self.left
-            {
-                Self::check_bool_value_side(left, &field)?;
-            }
+    pub fn validate_literals(&self) -> Result<(), String> {
+        if self.op.as_ref().is_some_and(|op| !op.checks_null())
+            && let (Some(left), Some(right)) = (&self.left, &self.right)
+        {
+            Self::check_literal_side(right, left)?;
+            Self::check_literal_side(left, right)?;
         }
         for child in self.left.iter().chain(self.right.iter()) {
-            child.validate_boolean_literals()?;
+            child.validate_literals()?;
         }
         for arg in self.args.iter().flatten() {
-            arg.validate_boolean_literals()?;
+            arg.validate_literals()?;
         }
         if let Some(ref subquery) = self.subquery
             && let Some(ref inner) = subquery.expr
         {
-            inner.validate_boolean_literals()?;
+            inner.validate_literals()?;
         }
         Ok(())
     }
 
-    fn check_bool_value_side(expr: &Expr, field: &Field) -> Result<(), String> {
-        if expr.function.is_some() {
-            // a function result is data-dependent; its arguments are not
-            // literals compared with the field (`concat('tr', 'ue')`)
-            return Ok(());
-        }
-        for arg in expr.args.iter().flatten() {
-            Self::check_bool_value_side(arg, field)?;
-        }
-        if expr.is_literal()
-            && let Some(ref val) = expr.val
-            && crate::util::str_to_bool(val).is_none()
+    fn check_literal_side(side: &Expr, typed: &Expr) -> Result<(), String> {
+        if side.function.is_none()
+            && let Some(ref args) = side.args
         {
-            return Err(format!("Can't parse boolean '{}' for field {}", val, field.to_string().to_lowercase()));
-        }
-        Ok(())
-    }
-
-    pub fn validate_datetime_literals(&self) -> Result<(), String> {
-        Self::validate_dt_node(self)
-    }
-
-    fn validate_dt_node(expr: &Expr) -> Result<(), String> {
-        if expr.op.as_ref().is_some_and(|op| !op.checks_null()) {
-            let left_is_dt = expr
-                .left
-                .as_deref()
-                .and_then(|l| l.field.as_ref())
-                .is_some_and(Field::is_datetime_field);
-            let right_is_dt = expr
-                .right
-                .as_deref()
-                .and_then(|r| r.field.as_ref())
-                .is_some_and(Field::is_datetime_field);
-
-            if left_is_dt
-                && let Some(ref right) = expr.right {
-                    Self::check_dt_value_side(right)?;
-                }
-            if right_is_dt
-                && let Some(ref left) = expr.left {
-                    Self::check_dt_value_side(left)?;
-                }
-        }
-
-        if let Some(ref left) = expr.left {
-            Self::validate_dt_node(left)?;
-        }
-        if let Some(ref right) = expr.right {
-            Self::validate_dt_node(right)?;
-        }
-        if let Some(ref args) = expr.args {
             for arg in args {
-                Self::validate_dt_node(arg)?;
+                Self::check_literal_side(arg, typed)?;
             }
-        }
-        if let Some(ref subquery) = expr.subquery
-            && let Some(ref inner) = subquery.expr {
-                Self::validate_dt_node(inner)?;
-            }
-
-        Ok(())
-    }
-
-    /// Validate the non-field side of a comparison against a datetime field.
-    /// Recurses into IN/NotIn arg lists; tries to parse plain literal `val`s.
-    fn check_dt_value_side(expr: &Expr) -> Result<(), String> {
-        if expr.function.is_some() {
-            // a function result is data-dependent; its arguments are not
-            // literals compared with the field (`date_add(created, 1)`)
             return Ok(());
         }
-        if let Some(ref args) = expr.args {
-            for arg in args {
-                Self::check_dt_value_side(arg)?;
-            }
-        }
-        if let Some(ref val) = expr.val
-            && expr.field.is_none() && expr.function.is_none() && expr.subquery.is_none()
-                && expr.root_alias.is_none()
-                && crate::util::parse_datetime(val).is_err() {
-                    return Err(format!("Can't parse datetime: {}", val));
+        if side.is_literal() {
+            let Some(ref val) = side.val else {
+                return Ok(());
+            };
+            let name = match typed.field {
+                Some(ref field) if typed.left.is_none() && typed.args.is_none() => format!("field {}", field.to_string().to_lowercase()),
+                _ => typed.to_string().to_lowercase(),
+            };
+            return match typed.result_type() {
+                ExprType::DATETIME if crate::util::parse_datetime(val).is_err() => Err(format!("Can't parse datetime: {}", val)),
+                ExprType::NUMERIC if Variant::from_string(val).to_float_opt().is_none() => {
+                    Err(format!("Can't parse number or file size '{}' for {}", val, name))
                 }
+                ExprType::BOOLEAN if str_to_bool(val).is_none() => Err(format!("Can't parse boolean '{}' for {}", val, name)),
+                _ => Ok(()),
+            };
+        }
         Ok(())
     }
 
@@ -970,76 +897,6 @@ impl Expr {
         for arg in self.args.iter().flatten() {
             arg.validate_function_arity()?;
         }
-        Ok(())
-    }
-
-    /// Like `validate_datetime_literals`, only literals adjacent to a numeric
-    /// *field* are checked; fields, functions and subqueries on the value side
-    /// are data-dependent and left to runtime (`compare_variants`).
-    pub fn validate_numeric_literals(&self) -> Result<(), String> {
-        Self::validate_num_node(self)
-    }
-
-    fn validate_num_node(expr: &Expr) -> Result<(), String> {
-        if expr.op.as_ref().is_some_and(|op| !op.checks_null()) {
-            let numeric_field = |side: &Option<Box<Expr>>| {
-                side.as_deref()
-                    .and_then(|e| e.field.as_ref())
-                    .filter(|f| f.is_numeric_field())
-                    .cloned()
-            };
-            if let Some(field) = numeric_field(&expr.left)
-                && let Some(ref right) = expr.right {
-                    Self::check_num_value_side(right, &field)?;
-                }
-            if let Some(field) = numeric_field(&expr.right)
-                && let Some(ref left) = expr.left {
-                    Self::check_num_value_side(left, &field)?;
-                }
-        }
-
-        if let Some(ref left) = expr.left {
-            Self::validate_num_node(left)?;
-        }
-        if let Some(ref right) = expr.right {
-            Self::validate_num_node(right)?;
-        }
-        if let Some(ref args) = expr.args {
-            for arg in args {
-                Self::validate_num_node(arg)?;
-            }
-        }
-        if let Some(ref subquery) = expr.subquery
-            && let Some(ref inner) = subquery.expr {
-                Self::validate_num_node(inner)?;
-            }
-
-        Ok(())
-    }
-
-    /// Validate the non-field side of a comparison against a numeric field.
-    /// Recurses into IN/NotIn arg lists; tries to coerce plain literal `val`s.
-    fn check_num_value_side(expr: &Expr, field: &Field) -> Result<(), String> {
-        if expr.function.is_some() {
-            // a function result is data-dependent; its arguments are not
-            // literals compared with the field (`locate(name, 'a')`)
-            return Ok(());
-        }
-        if let Some(ref args) = expr.args {
-            // an IN list: only its members matter, the holder's own val is a placeholder
-            for arg in args {
-                Self::check_num_value_side(arg, field)?;
-            }
-        } else if let Some(ref val) = expr.val
-            && expr.field.is_none() && expr.function.is_none() && expr.subquery.is_none()
-                && expr.root_alias.is_none()
-                && Variant::from_string(val).to_float_opt().is_none() {
-                    return Err(format!(
-                        "Can't parse number or file size '{}' for field {}",
-                        val,
-                        field.to_string().to_lowercase()
-                    ));
-                }
         Ok(())
     }
 
@@ -1909,7 +1766,7 @@ mod tests {
     #[test]
     fn validate_numeric_literals_rejects_non_numeric_and_empty() {
         for val in ["abc", "", "1x", "kb", "1..5"] {
-            let err = size_vs(val, Op::Gt).validate_numeric_literals().unwrap_err();
+            let err = size_vs(val, Op::Gt).validate_literals().unwrap_err();
             assert!(err.contains(&format!("'{}'", val)) && err.contains("size"), "literal {:?} gave: {}", val, err);
         }
     }
@@ -1917,41 +1774,56 @@ mod tests {
     #[test]
     fn validate_numeric_literals_accepts_numbers_and_file_sizes() {
         for val in ["0", "12", "0.5", "-3", "1k", "1kb", "1.5 MiB", "2gib", "3tb"] {
-            assert!(size_vs(val, Op::Gt).validate_numeric_literals().is_ok(), "literal {:?} rejected", val);
+            assert!(size_vs(val, Op::Gt).validate_literals().is_ok(), "literal {:?} rejected", val);
         }
         let mut negative = Expr::value(String::from("5"));
         negative.minus = true;
-        assert!(Expr::op(Expr::field(Field::Size), Op::Gt, negative).validate_numeric_literals().is_ok());
+        assert!(Expr::op(Expr::field(Field::Size), Op::Gt, negative).validate_literals().is_ok());
     }
 
     #[test]
     fn validate_numeric_literals_checks_literal_on_either_side() {
         let err = Expr::op(Expr::value(String::from("abc")), Op::Lt, Expr::field(Field::Size))
-            .validate_numeric_literals()
+            .validate_literals()
             .unwrap_err();
         assert!(err.contains("abc"));
     }
 
     #[test]
     fn validate_numeric_literals_skips_non_numeric_fields() {
-        assert!(Expr::op(Expr::field(Field::Name), Op::Eq, Expr::value(String::from("abc"))).validate_numeric_literals().is_ok());
-        assert!(Expr::op(Expr::field(Field::Modified), Op::Eq, Expr::value(String::from("yesterday"))).validate_numeric_literals().is_ok());
+        assert!(Expr::op(Expr::field(Field::Name), Op::Eq, Expr::value(String::from("abc"))).validate_literals().is_ok());
+        assert!(Expr::op(Expr::field(Field::Modified), Op::Eq, Expr::value(String::from("yesterday"))).validate_literals().is_ok());
     }
 
     #[test]
     fn validate_numeric_literals_skips_numeric_fields_with_string_values() {
         // declared numeric for sorting, but their values are strings
-        assert!(Expr::op(Expr::field(Field::FormattedSize), Op::Eq, Expr::value(String::from("12 B"))).validate_numeric_literals().is_ok());
-        assert!(Expr::op(Expr::field(Field::ExifExposureTime), Op::Eq, Expr::value(String::from("1/250"))).validate_numeric_literals().is_ok());
-        assert!(Expr::op(Expr::field(Field::ExifFNumber), Op::Eq, Expr::value(String::from("f/2.8"))).validate_numeric_literals().is_ok());
+        assert!(Expr::op(Expr::field(Field::FormattedSize), Op::Eq, Expr::value(String::from("12 B"))).validate_literals().is_ok());
+        assert!(Expr::op(Expr::field(Field::ExifExposureTime), Op::Eq, Expr::value(String::from("1/250"))).validate_literals().is_ok());
+        assert!(Expr::op(Expr::field(Field::ExifFNumber), Op::Eq, Expr::value(String::from("f/2.8"))).validate_literals().is_ok());
     }
 
     #[test]
     fn validate_numeric_literals_ignores_non_literal_value_side() {
-        assert!(parse_where_expr("select name from . where size > name").validate_numeric_literals().is_ok());
-        assert!(parse_where_expr("select name from . where size > length(name)").validate_numeric_literals().is_ok());
-        assert!(parse_where_expr("select name from . where size > 2 * 4").validate_numeric_literals().is_ok());
-        assert!(parse_where_expr("select name from . where size > abs(-5)").validate_numeric_literals().is_ok());
+        assert!(parse_where_expr("select name from . where size > name").validate_literals().is_ok());
+        assert!(parse_where_expr("select name from . where size > length(name)").validate_literals().is_ok());
+        assert!(parse_where_expr("select name from . where size > 2 * 4").validate_literals().is_ok());
+        assert!(parse_where_expr("select name from . where size > abs(-5)").validate_literals().is_ok());
+    }
+
+    #[test]
+    fn literals_are_validated_against_any_expression_with_one_type() {
+        fn parse(query: &str) -> Result<crate::query::Query, String> {
+            let mut lexer = crate::lexer::Lexer::new(vec![String::from(query)]);
+            crate::parser::Parser::new(&mut lexer).parse(false)
+        }
+        let rejected = |query: &str| parse(query).err().unwrap_or_default();
+        assert_eq!(rejected("select name from . where length(name) > 'abc'"), "Can't parse number or file size 'abc' for length(name)");
+        assert_eq!(rejected("select name from . where size + 1 in ('1kb', 'big')"), "Can't parse number or file size 'big' for size + 1");
+        assert_eq!(rejected("select name from . where date_add(modified, 1) > 'soon'"), "Can't parse datetime: soon");
+        assert_eq!(rejected("select name from . where 'maybe' = is_file and size > 1"), "Can't parse boolean 'maybe' for field isfile");
+        assert!(parse("select name from . where coalesce(size, 0) > 'x'").is_ok());
+        assert!(parse("select name from . where upper(name) = 'X' and size > 1kb").is_ok());
     }
 
     #[test]
@@ -1961,31 +1833,31 @@ mod tests {
             LogicalOp::And,
             size_vs("oops", Op::Eq),
         ).unwrap();
-        assert!(expr.validate_numeric_literals().unwrap_err().contains("oops"));
+        assert!(expr.validate_literals().unwrap_err().contains("oops"));
 
         let mut right = Expr::value(String::from(""));
         right.args = Some(vec![Expr::value(String::from("0")), Expr::value(String::from("bad"))]);
-        let err = Expr::op(Expr::field(Field::Size), Op::In, right).validate_numeric_literals().unwrap_err();
+        let err = Expr::op(Expr::field(Field::Size), Op::In, right).validate_literals().unwrap_err();
         assert!(err.contains("bad"));
 
         let mut right = Expr::value(String::from(""));
         right.args = Some(vec![Expr::value(String::from("0")), Expr::value(String::from("1kb"))]);
-        assert!(Expr::op(Expr::field(Field::Size), Op::In, right).validate_numeric_literals().is_ok());
+        assert!(Expr::op(Expr::field(Field::Size), Op::In, right).validate_literals().is_ok());
     }
 
     #[test]
     fn validate_numeric_literals_ignores_function_args() {
         // `locate('a', name)` returns a number; its string argument is not a
         // literal compared with size and must not be validated as one.
-        assert!(parse_where_expr("select name from . where size > locate('a', name)").validate_numeric_literals().is_ok());
-        assert!(parse_where_expr("select name from . where size > locate(name, 'a')").validate_numeric_literals().is_ok());
-        assert!(parse_where_expr("select name from . where size > length(concat(name, 'abc'))").validate_numeric_literals().is_ok());
+        assert!(parse_where_expr("select name from . where size > locate('a', name)").validate_literals().is_ok());
+        assert!(parse_where_expr("select name from . where size > locate(name, 'a')").validate_literals().is_ok());
+        assert!(parse_where_expr("select name from . where size > length(concat(name, 'abc'))").validate_literals().is_ok());
     }
 
     #[test]
     fn validate_datetime_literals_ignores_function_args() {
-        assert!(parse_where_expr("select name from . where modified > date_add(created, 1)").validate_datetime_literals().is_ok());
-        assert!(parse_where_expr("select name from . where modified > coalesce(created, 'not-a-date')").validate_datetime_literals().is_ok());
+        assert!(parse_where_expr("select name from . where modified > date_add(created, 1)").validate_literals().is_ok());
+        assert!(parse_where_expr("select name from . where modified > coalesce(created, 'not-a-date')").validate_literals().is_ok());
     }
 
     #[test]
@@ -1995,7 +1867,7 @@ mod tests {
             Op::Eq,
             Expr::value(String::from("2026-01-01")),
         );
-        assert!(expr.validate_datetime_literals().is_ok());
+        assert!(expr.validate_literals().is_ok());
     }
 
     #[test]
@@ -2005,7 +1877,7 @@ mod tests {
             Op::Gt,
             Expr::value(String::from("today")),
         );
-        assert!(expr.validate_datetime_literals().is_ok());
+        assert!(expr.validate_literals().is_ok());
     }
 
     #[test]
@@ -2015,7 +1887,7 @@ mod tests {
             Op::Eq,
             Expr::value(String::from("not-a-date")),
         );
-        let err = expr.validate_datetime_literals().unwrap_err();
+        let err = expr.validate_literals().unwrap_err();
         assert!(err.contains("not-a-date"), "expected error to mention bad literal, got: {}", err);
     }
 
@@ -2028,7 +1900,7 @@ mod tests {
             Op::Eq,
             Expr::value(String::from("not-a-date")),
         );
-        assert!(expr.validate_datetime_literals().is_ok());
+        assert!(expr.validate_literals().is_ok());
     }
 
     #[test]
@@ -2047,7 +1919,7 @@ mod tests {
                 Expr::value(String::from("oops")),
             ),
         ).unwrap();
-        let err = expr.validate_datetime_literals().unwrap_err();
+        let err = expr.validate_literals().unwrap_err();
         assert!(err.contains("oops"));
     }
 
@@ -2060,7 +1932,7 @@ mod tests {
             Expr::value(String::from("bad")),
         ]);
         let expr = Expr::op(Expr::field(Field::Modified), Op::In, right);
-        let err = expr.validate_datetime_literals().unwrap_err();
+        let err = expr.validate_literals().unwrap_err();
         assert!(err.contains("bad"));
     }
 
@@ -2072,7 +1944,7 @@ mod tests {
             Op::Eq,
             Expr::field(Field::Created),
         );
-        assert!(expr.validate_datetime_literals().is_ok());
+        assert!(expr.validate_literals().is_ok());
     }
 
     #[test]

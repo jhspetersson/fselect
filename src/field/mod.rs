@@ -104,10 +104,6 @@ macro_rules! fields {
                 self.data_type() == "numeric"
             }
 
-            pub fn is_datetime_field(&self) -> bool {
-                self.data_type() == "datetime"
-            }
-
             pub fn is_boolean_field(&self) -> bool {
                 self.data_type() == "boolean"
             }
@@ -1004,12 +1000,10 @@ mod tests {
     }
     
     #[test]
-    fn test_is_datetime_field() {
-        let field = Field::Created;
-        assert!(field.is_datetime_field());
-
-        let field = Field::Name;
-        assert!(!field.is_datetime_field());
+    fn test_result_type() {
+        use crate::expr::ExprType;
+        assert_eq!(Field::Created.result_type(), ExprType::DATETIME);
+        assert_eq!(Field::Name.result_type(), ExprType::STRING);
     }
     
     #[test]

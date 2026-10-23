@@ -91,24 +91,22 @@ impl SortKey {
 }
 
 impl SortKey {
-    fn new(field: &Expr, value: &str, value_type: Option<&VariantType>) -> SortKey {
+    fn of(field: &Expr, value: &Variant) -> SortKey {
         static EPOCH: LazyLock<NaiveDateTime> = LazyLock::new(|| {
             NaiveDate::from_ymd_opt(1970, 1, 1)
                 .unwrap()
                 .and_hms_opt(0, 0, 0)
                 .unwrap()
         });
-        let datetime = |value: &str| SortKey::DateTime(parse_datetime(value).map(|(from, _)| from).unwrap_or(*EPOCH));
-        let declared = field.result_type();
-        match value_type {
-            Some(VariantType::Bool) => SortKey::Number(str_to_bool(value).map(|flag| if flag { 1.0 } else { 0.0 })),
-            Some(VariantType::Int | VariantType::Float) => SortKey::Number(numeric_sort_key(value)),
-            Some(VariantType::DateTime) => datetime(value),
-            Some(VariantType::String) if declared == ExprType::NUMERIC => SortKey::Number(numeric_sort_key(value)),
-            Some(VariantType::String) => SortKey::Direct,
-            None if declared.may_be(ExprType::NUMERIC) => SortKey::Number(numeric_sort_key(value)),
-            None if declared.may_be(ExprType::DATETIME) => datetime(value),
-            None => SortKey::Direct,
+        match value.get_type() {
+            VariantType::Bool => SortKey::Number(Some(if value.to_bool() { 1.0 } else { 0.0 })),
+            VariantType::Int | VariantType::Float => SortKey::Number(value.to_float_opt()),
+            VariantType::DateTime => SortKey::DateTime(value.to_datetime().map(|(from, _)| from).unwrap_or(*EPOCH)),
+            VariantType::String => match field.result_type() {
+                ExprType::NUMERIC => SortKey::Number(numeric_sort_key(value.as_str())),
+                ExprType::DATETIME => SortKey::DateTime(parse_datetime(value.as_str()).map(|(from, _)| from).unwrap_or(*EPOCH)),
+                _ => SortKey::Direct,
+            },
         }
     }
 }
@@ -131,26 +129,13 @@ where
     T: Display,
 {
     pub fn new(fields: Rc<Vec<Expr>>, values: Vec<T>, orderings: Rc<Vec<bool>>) -> Criteria<T> {
-        Self::with_types(fields, values, &[], orderings)
-    }
-
-    pub fn with_types(
-        fields: Rc<Vec<Expr>>,
-        values: Vec<T>,
-        value_types: &[Option<VariantType>],
-        orderings: Rc<Vec<bool>>,
-    ) -> Criteria<T> {
         debug_assert_eq!(fields.len(), values.len());
         debug_assert_eq!(values.len(), orderings.len());
 
         let keys = fields
             .iter()
             .zip(&values)
-            .enumerate()
-            .map(|(index, (field, value))| {
-                let value_type = value_types.get(index).and_then(Option::as_ref);
-                SortKey::new(field, &value.to_string(), value_type)
-            })
+            .map(|(field, value)| SortKey::of(field, &Variant::from_string(&value.to_string())))
             .collect();
 
         Criteria {
@@ -182,6 +167,21 @@ where
             comparison
         } else {
             comparison.reverse()
+        }
+    }
+}
+
+impl Criteria<String> {
+    pub fn typed(fields: Rc<Vec<Expr>>, values: Vec<Variant>, orderings: Rc<Vec<bool>>) -> Criteria<String> {
+        debug_assert_eq!(fields.len(), values.len());
+        debug_assert_eq!(values.len(), orderings.len());
+
+        let keys = fields.iter().zip(&values).map(|(field, value)| SortKey::of(field, value)).collect();
+
+        Criteria {
+            values: values.iter().map(Variant::to_string).collect(),
+            keys,
+            orderings,
         }
     }
 }
@@ -2308,10 +2308,41 @@ mod tests {
         assert_eq!(parses, (64, 64), "every sort key must be parsed exactly once, when the row is built");
     }
 
+    fn typed(text: &str, value_type: VariantType) -> Variant {
+        match value_type {
+            VariantType::Bool => Variant::from_bool(str_to_bool(text).unwrap()),
+            VariantType::Int | VariantType::Float => Variant::from_number_text(text).unwrap(),
+            VariantType::DateTime => {
+                let (from, to) = parse_datetime(text).unwrap();
+                Variant::from_datetime_range(from, to)
+            }
+            VariantType::String => Variant::from_string(&text.to_string()),
+        }
+    }
+
     fn numeric_criteria(value: &str, asc: bool) -> Criteria<String> {
         let fields = Rc::new(vec![Expr::field(Field::Size)]);
         let orderings = Rc::new(vec![asc]);
         Criteria::new(fields, vec![String::from(value)], orderings)
+    }
+
+    #[test]
+    fn typed_sort_keys_use_the_value_and_never_parse_its_text() {
+        use crate::util::datetime::datetime_parses;
+        let fields = Rc::new(vec![Expr::field(Field::FormattedSize), Expr::field(Field::Modified)]);
+        let orderings = Rc::new(vec![true, true]);
+        let before = (datetime_parses(), numeric_key_parses());
+        let make = |bytes: i64, text: &str| {
+            let day = parse_datetime("2024-01-05").unwrap();
+            Criteria::typed(
+                fields.clone(),
+                vec![Variant::from_int(bytes).with_text(text), Variant::from_datetime_range(day.0, day.1)],
+                orderings.clone(),
+            )
+        };
+        assert_eq!(make(900, "900B").cmp(&make(1500, "1.46KiB")), Ordering::Less);
+        assert_eq!(make(2048, "2KiB").cmp(&make(1500, "1.46KiB")), Ordering::Greater);
+        assert_eq!((datetime_parses(), numeric_key_parses()), (before.0 + 4, before.1), "only the test's own date literals are parsed");
     }
 
     #[test]
@@ -2389,7 +2420,7 @@ mod tests {
         let fields = Rc::new(vec![recent]);
         let orderings = Rc::new(vec![true]);
         let make = |value: &str, value_type: VariantType| {
-            Criteria::with_types(fields.clone(), vec![String::from(value)], &[Some(value_type)], orderings.clone())
+            Criteria::typed(fields.clone(), vec![typed(value, value_type)], orderings.clone())
         };
 
         assert_eq!(make("false", VariantType::Bool).cmp(&make("true", VariantType::Bool)), Ordering::Less);
@@ -2411,7 +2442,7 @@ mod tests {
         let fields = Rc::new(vec![coalesce]);
         let orderings = Rc::new(vec![true]);
         let make = |value: &str| {
-            Criteria::with_types(fields.clone(), vec![String::from(value)], &[Some(VariantType::String)], orderings.clone())
+            Criteria::typed(fields.clone(), vec![typed(value, VariantType::String)], orderings.clone())
         };
 
         assert_eq!(make("1.0").cmp(&make("10")), Ordering::Less);
@@ -2474,7 +2505,7 @@ mod tests {
         let fields = Rc::new(vec![coalesce]);
         let orderings = Rc::new(vec![true]);
         let make = |value: &str, value_type: VariantType| {
-            Criteria::with_types(fields.clone(), vec![String::from(value)], &[Some(value_type)], orderings.clone())
+            Criteria::typed(fields.clone(), vec![typed(value, value_type)], orderings.clone())
         };
         let rows = || vec![make("2", VariantType::Int), make("10", VariantType::Int), make("15", VariantType::String), make("", VariantType::String)];
 
@@ -2500,7 +2531,7 @@ mod tests {
         let fields = Rc::new(vec![coalesce]);
         let orderings = Rc::new(vec![true]);
         let make = |value: &str, value_type: VariantType| {
-            Criteria::with_types(fields.clone(), vec![String::from(value)], &[Some(value_type)], orderings.clone())
+            Criteria::typed(fields.clone(), vec![typed(value, value_type)], orderings.clone())
         };
         let rows = || vec![
             make("2024-05-01 10:00:00", VariantType::DateTime),
@@ -2535,7 +2566,7 @@ mod tests {
         let fields = Rc::new(vec![least]);
         let orderings = Rc::new(vec![true]);
         let make = |value: &str| {
-            Criteria::with_types(fields.clone(), vec![String::from(value)], &[Some(VariantType::String)], orderings.clone())
+            Criteria::typed(fields.clone(), vec![typed(value, VariantType::String)], orderings.clone())
         };
 
         assert_eq!(make("10").cmp(&make("2")), Ordering::Less);
@@ -2553,7 +2584,7 @@ mod tests {
         let fields = Rc::new(vec![Expr::field(Field::FormattedSize)]);
         let orderings = Rc::new(vec![true]);
         let make = |value: &str| {
-            Criteria::with_types(fields.clone(), vec![String::from(value)], &[Some(VariantType::String)], orderings.clone())
+            Criteria::typed(fields.clone(), vec![typed(value, VariantType::String)], orderings.clone())
         };
 
         assert_eq!(make("900B").cmp(&make("2KiB")), Ordering::Less);

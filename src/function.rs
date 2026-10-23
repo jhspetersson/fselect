@@ -23,7 +23,7 @@ use serde::ser::{Serialize, Serializer};
 use xattr::FileExt;
 
 use crate::fileinfo::{FileInfo, with_archived_entry};
-use crate::util::{capitalize_initials, format_date, format_duration, format_time, parse_datetime, parse_filesize};
+use crate::util::{capitalize_initials, format_date, format_duration, format_time, parse_datetime};
 use std::cmp::Ordering;
 use crate::util::variant::{Variant, VariantType};
 
@@ -1805,114 +1805,80 @@ functions! {
 #[derive(Debug, Default)]
 pub struct FieldAccumulator {
     pub count: usize,
-    /// Number of pushed values that were not empty, regardless of whether they
-    /// were numeric. Backs SQL-style `COUNT(col)`, which skips NULL-like values.
     pub non_empty_count: usize,
     pub min: f64,
     pub max: f64,
     pub sum: f64,
     pub m2: f64,
-    /// Lexicographic extremes over the non-empty raw values. Back MIN/MAX for
-    /// non-numeric columns: datetimes are formatted as fixed-width
-    /// `YYYY-MM-DD HH:MM:SS`, so string order equals chronological order, and
-    /// plain strings get SQL-style lexicographic MIN/MAX.
-    pub min_value: Option<Variant>,
-    pub max_value: Option<Variant>,
-    min_size: Option<u64>,
-    max_size: Option<u64>,
-    numeric_like_count: usize,
-    size_count: usize,
     min_text: Option<Variant>,
     max_text: Option<Variant>,
-    min_raw: Option<Variant>,
-    max_raw: Option<Variant>,
+    min_number: Option<Variant>,
+    max_number: Option<Variant>,
+    numeric_like_count: usize,
+}
+
+fn numeric_value(value: &Variant) -> Option<f64> {
+    match value.get_type() {
+        VariantType::Int | VariantType::Float => value.to_float_opt(),
+        VariantType::String => value.as_str().parse::<f64>().ok(),
+        _ => None,
+    }
 }
 
 impl FieldAccumulator {
     pub fn extreme(&self, maximum: bool) -> Option<&Variant> {
-        let (raw, value, text) = if maximum {
-            (&self.max_raw, &self.max_value, &self.max_text)
+        let (number, text) = if maximum {
+            (&self.max_number, &self.max_text)
         } else {
-            (&self.min_raw, &self.min_value, &self.min_text)
+            (&self.min_number, &self.min_text)
         };
-        if self.all_numeric() {
-            raw.as_ref()
-        } else if self.all_sizes() {
-            value.as_ref()
-        } else {
-            text.as_ref()
-        }
+        if self.all_numeric() { number.as_ref() } else { text.as_ref() }
     }
 
     pub fn push(&mut self, value: &Variant) {
         let text = value.as_str();
         if !text.is_empty() {
             self.non_empty_count += 1;
-            if text.parse::<f64>().is_ok() {
-                self.numeric_like_count += 1;
-            }
             if self.min_text.as_ref().is_none_or(|current| text < current.as_str()) {
                 self.min_text = Some(value.clone());
             }
             if self.max_text.as_ref().is_none_or(|current| text > current.as_str()) {
                 self.max_text = Some(value.clone());
             }
-            let size = parse_filesize(text);
-            if size.is_some() {
-                self.size_count += 1;
-            }
-            if matches!(Self::compare(text, size, &self.min_value, self.min_size), None | Some(Ordering::Less)) {
-                self.min_value = Some(value.clone());
-                self.min_size = size;
-            }
-            if matches!(Self::compare(text, size, &self.max_value, self.max_size), None | Some(Ordering::Greater)) {
-                self.max_value = Some(value.clone());
-                self.max_size = size;
-            }
         }
-        if let Ok(v) = text.parse::<f64>()
-            && v.is_finite() {
-                if self.count == 0 {
-                    self.min = v;
-                    self.max = v;
-                    self.min_raw = Some(value.clone());
-                    self.max_raw = Some(value.clone());
-                    self.count = 1;
-                    self.sum = v;
-                } else {
-                    if v < self.min || (v == self.min && self.min_raw.as_ref().is_some_and(|current| text < current.as_str())) {
-                        self.min = v;
-                        self.min_raw = Some(value.clone());
-                    }
-                    if v > self.max || (v == self.max && self.max_raw.as_ref().is_some_and(|current| text > current.as_str())) {
-                        self.max = v;
-                        self.max_raw = Some(value.clone());
-                    }
-                    let old_mean = self.sum / self.count as f64;
-                    self.count += 1;
-                    self.sum += v;
-                    let new_mean = self.sum / self.count as f64;
-                    self.m2 += (v - old_mean) * (v - new_mean);
-                }
-            }
+        let Some(number) = numeric_value(value) else {
+            return;
+        };
+        self.numeric_like_count += 1;
+        if !number.is_finite() {
+            return;
+        }
+        if self.count == 0 {
+            self.min = number;
+            self.max = number;
+            self.min_number = Some(value.clone());
+            self.max_number = Some(value.clone());
+            self.count = 1;
+            self.sum = number;
+            return;
+        }
+        if number < self.min || (number == self.min && self.min_number.as_ref().is_some_and(|current| text < current.as_str())) {
+            self.min = number;
+            self.min_number = Some(value.clone());
+        }
+        if number > self.max || (number == self.max && self.max_number.as_ref().is_some_and(|current| text > current.as_str())) {
+            self.max = number;
+            self.max_number = Some(value.clone());
+        }
+        let old_mean = self.sum / self.count as f64;
+        self.count += 1;
+        self.sum += number;
+        let new_mean = self.sum / self.count as f64;
+        self.m2 += (number - old_mean) * (number - new_mean);
     }
-}
 
-impl FieldAccumulator {
     fn all_numeric(&self) -> bool {
         self.count > 0 && self.numeric_like_count == self.non_empty_count
-    }
-
-    fn all_sizes(&self) -> bool {
-        self.size_count == self.non_empty_count
-    }
-
-    fn compare(value: &str, size: Option<u64>, current: &Option<Variant>, current_size: Option<u64>) -> Option<Ordering> {
-        let current = current.as_ref()?;
-        Some(match (size, current_size) {
-            (Some(size), Some(current_size)) => size.cmp(&current_size),
-            _ => value.cmp(current.as_str()),
-        })
     }
 }
 
@@ -3556,14 +3522,18 @@ mod tests {
     }
 
     #[test]
-    fn min_max_compare_formatted_sizes_numerically() {
-        let acc = make_accumulator("fsize", &["11.72KiB", "1.91MiB", "900B"]);
+    fn min_max_compare_formatted_sizes_by_their_byte_count() {
+        let mut acc = GroupAccumulator::default();
+        for (bytes, text) in [(12001, "11.72KiB"), (2002781, "1.91MiB"), (900, "900B")] {
+            acc.push("fsize", &Variant::from_int(bytes).with_text(text));
+        }
         assert_eq!(get_aggregate_value(&Function::Min, &acc, "fsize".to_string(), &None).to_string(), "900B");
         assert_eq!(get_aggregate_value(&Function::Max, &acc, "fsize".to_string(), &None).to_string(), "1.91MiB");
+        assert_eq!(get_aggregate_value(&Function::Sum, &acc, "fsize".to_string(), &None).to_int(), 2015682);
 
-        let acc = make_accumulator("fsize", &["2 KB", "900 B", "1 MB"]);
-        assert_eq!(get_aggregate_value(&Function::Min, &acc, "fsize".to_string(), &None).to_string(), "900 B");
-        assert_eq!(get_aggregate_value(&Function::Max, &acc, "fsize".to_string(), &None).to_string(), "1 MB");
+        let text = make_accumulator("fsize", &["2 KB", "900 B", "1 MB"]);
+        assert_eq!(get_aggregate_value(&Function::Min, &text, "fsize".to_string(), &None).to_string(), "1 MB");
+        assert_eq!(get_aggregate_value(&Function::Max, &text, "fsize".to_string(), &None).to_string(), "900 B");
     }
 
     #[test]
@@ -3585,12 +3555,12 @@ mod tests {
         assert_eq!(field.extreme(true).map(Variant::get_type), Some(&VariantType::Int));
         assert_eq!(field.extreme(false).map(Variant::get_type), Some(&VariantType::Float));
 
-        let mut sizes = GroupAccumulator::default();
-        sizes.push("s", &Variant::from_string(&String::from("900B")));
-        sizes.push("s", &Variant::from_int(2048).with_text("2KiB"));
-        let field = sizes.fields.get("s").unwrap();
-        assert_eq!(field.extreme(false).map(Variant::get_type), Some(&VariantType::String));
-        assert_eq!(field.extreme(true).map(Variant::to_int), Some(2048), "the extreme keeps the value it was pushed with");
+        let mut mixed = GroupAccumulator::default();
+        mixed.push("s", &Variant::from_string(&String::from("900B")));
+        mixed.push("s", &Variant::from_int(2048).with_text("2KiB"));
+        let field = mixed.fields.get("s").unwrap();
+        assert_eq!(field.extreme(false).map(Variant::to_string), Some(String::from("2KiB")), "a column that is not all numeric orders as text");
+        assert_eq!(field.extreme(true).map(Variant::to_string), Some(String::from("900B")));
     }
 
     #[test]

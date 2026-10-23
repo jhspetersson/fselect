@@ -944,43 +944,25 @@ impl<'a> Searcher<'a> {
                     {
                         Self::push_subquery_identity(&mut items, own_path, *root_depth, *member_index);
                     }
-                    let mut criteria_values: Vec<String> =
-                        Vec::with_capacity(sorting_indices.len());
-                    let mut criteria_types: Vec<Option<VariantType>> =
-                        Vec::with_capacity(sorting_indices.len());
-                    for (index, ordering_expr) in
-                        sorting_indices.iter().zip(self.query.ordering_fields.iter())
-                    {
-                        let (value, value_type) = match index {
-                            // Reuse the value already rendered for the SELECT list
-                            Some(index) => {
-                                let value = items
-                                    .get(*index)
-                                    .map(|item| item.1.clone())
-                                    .unwrap_or_default();
-                                let value_type = file_map.get(&ordering_expr.cache_key()).map(|cached| cached.get_type().clone());
-                                (value, value_type)
-                            }
-                            // Not selected: evaluate the ordering expression
-                            // against this group's accumulator (aggregates) or
-                            // its grouping-key values in file_map.
-                            None => {
-                                let value = self.get_column_expr_value(
-                                    None,
-                                    &None,
-                                    Path::new(""),
-                                    &mut file_map,
-                                    Some(group_acc),
-                                    ordering_expr,
-                                )?;
-                                (value.to_string(), Some(value.get_type().clone()))
-                            }
+                    let mut criteria_values: Vec<Variant> = Vec::with_capacity(sorting_indices.len());
+                    for (index, ordering_expr) in sorting_indices.iter().zip(self.query.ordering_fields.iter()) {
+                        let value = match index {
+                            Some(index) => file_map.get(&ordering_expr.cache_key()).cloned().unwrap_or_else(|| {
+                                Variant::from_string(&items.get(*index).map(|item| item.1.clone()).unwrap_or_default())
+                            }),
+                            None => self.get_column_expr_value(
+                                None,
+                                &None,
+                                Path::new(""),
+                                &mut file_map,
+                                Some(group_acc),
+                                ordering_expr,
+                            )?,
                         };
                         criteria_values.push(value);
-                        criteria_types.push(value_type);
                     }
                     grouped_results.insert(
-                        Criteria::with_types(ordering_fields_rc.clone(), criteria_values, &criteria_types, ordering_asc_rc.clone()),
+                        Criteria::typed(ordering_fields_rc.clone(), criteria_values, ordering_asc_rc.clone()),
                         (items, first_value),
                     );
                 }
@@ -2900,21 +2882,13 @@ impl<'a> Searcher<'a> {
             Self::push_subquery_identity(&mut items, &own_path, root_depth, member_index);
         }
 
-        let mut criteria = vec!["".to_string(); self.query.ordering_fields.len()];
-        let mut criteria_types = vec![None; self.query.ordering_fields.len()];
-        for (idx, field) in self.query.ordering_fields.iter().enumerate() {
-            let key = field.cache_key();
-            match file_map.get(&key) {
-                Some(record) => {
-                    criteria_types[idx] = Some(record.get_type().clone());
-                    criteria[idx] = record.to_string();
-                }
-                None => {
-                    let value = self.get_column_expr_value(Some(entry), file_info, root_path, file_map, None, field)?;
-                    criteria_types[idx] = Some(value.get_type().clone());
-                    criteria[idx] = value.to_string();
-                }
-            }
+        let mut criteria: Vec<Variant> = Vec::with_capacity(self.query.ordering_fields.len());
+        for field in &self.query.ordering_fields {
+            let value = match file_map.get(&field.cache_key()) {
+                Some(record) => record.clone(),
+                None => self.get_column_expr_value(Some(entry), file_info, root_path, file_map, None, field)?,
+            };
+            criteria.push(value);
         }
 
         self.alias_read_failure()?;
@@ -2936,12 +2910,7 @@ impl<'a> Searcher<'a> {
             };
             self.found += 1;
             self.output_buffer.insert(
-                Criteria::with_types(
-                    self.ordering_fields_rc.clone(),
-                    criteria,
-                    &criteria_types,
-                    self.ordering_asc_rc.clone(),
-                ),
+                Criteria::typed(self.ordering_fields_rc.clone(), criteria, self.ordering_asc_rc.clone()),
                 row,
             );
         } else {

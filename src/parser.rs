@@ -91,9 +91,7 @@ impl <'a> Parser<'a> {
         // `modified = 'not-a-date'` or `size > 'abc'` would otherwise be
         // silently coerced per file scanned.
         if let Some(ref where_expr) = expr {
-            where_expr.validate_datetime_literals()?;
-            where_expr.validate_numeric_literals()?;
-            where_expr.validate_boolean_literals()?;
+            where_expr.validate_literals()?;
         }
         let mut grouping_fields = self.parse_group_by(&fields)?;
         let mut having = self.parse_having(&fields)?.map(|expr| Self::ensure_boolean_conditions(expr, "HAVING")).transpose()?;

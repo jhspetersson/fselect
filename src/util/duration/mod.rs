@@ -1,9 +1,11 @@
+#[cfg(feature = "mkv")]
 mod mkv;
 mod mp4;
 
 use std::io;
 use std::path::Path;
 
+#[cfg(feature = "mkv")]
 use mkv::MkvDurationExtractor;
 use mp4::Mp4DurationExtractor;
 
@@ -21,8 +23,9 @@ pub trait DurationExtractor {
     fn try_read_duration(&self, path: &Path) -> io::Result<Option<Duration>>;
 }
 
-const EXTRACTORS: [&dyn DurationExtractor; 2] = [
+const EXTRACTORS: &[&dyn DurationExtractor] = &[
     &Mp4DurationExtractor,
+    #[cfg(feature = "mkv")]
     &MkvDurationExtractor,
 ];
 

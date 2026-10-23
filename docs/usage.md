@@ -1073,6 +1073,24 @@ source ~/.bashrc
 | `--plocate`                               | Use the *plocate* index as the file source (Linux, requires the `plocate` build feature) |
 | `--help` or `-h` or `/?` or `/h`          | Show help and exit                           |
 
+### Build features
+
+Some functionality is behind Cargo features so that packagers can leave out dependencies they cannot ship.
+
+| Feature                | Default | Provides                                                      |
+|------------------------|---------|---------------------------------------------------------------|
+| `git`                  | on      | `is_git_*` and `git_*` fields via libgit2                     |
+| `users`                | on      | `user` and `group` names on Unix                              |
+| `interactive`          | on      | the `-i` REPL                                                 |
+| `update-notifications` | on      | the check for a newer release                                 |
+| `mkv`                  | on      | `width`, `height` and `duration` of Matroska and WebM files   |
+| `everything`           | off     | the *Everything* index on Windows                             |
+| `plocate`              | off     | the *plocate* index on Linux                                  |
+
+```
+cargo build --release --no-default-features --features git,users,interactive
+```
+
 ### Index-backed search (Everything / plocate)
 
 **fselect** can optionally use an external file-name index as the source of candidate paths instead

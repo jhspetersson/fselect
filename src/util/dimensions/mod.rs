@@ -1,12 +1,14 @@
 use std::io;
 
 mod image;
+#[cfg(feature = "mkv")]
 mod mkv;
 mod mp4;
 mod svg;
 
 use self::svg::SvgDimensionsExtractor;
 use image::ImageDimensionsExtractor;
+#[cfg(feature = "mkv")]
 use mkv::MkvDimensionsExtractor;
 use mp4::Mp4DimensionsExtractor;
 use std::path::Path;
@@ -22,7 +24,8 @@ pub trait DimensionsExtractor {
     fn try_read_dimensions(&self, path: &Path) -> io::Result<Option<Dimensions>>;
 }
 
-const EXTRACTORS: [&dyn DimensionsExtractor; 4] = [
+const EXTRACTORS: &[&dyn DimensionsExtractor] = &[
+    #[cfg(feature = "mkv")]
     &MkvDimensionsExtractor,
     &Mp4DimensionsExtractor,
     &SvgDimensionsExtractor,

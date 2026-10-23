@@ -13,11 +13,12 @@ license = "MIT OR Apache-2.0"
 edition = "2024"
 
 [features]
-default = ["git", "users", "update-notifications", "interactive"]
+default = ["git", "users", "update-notifications", "interactive", "mkv"]
 git = ["dep:git2"]
 update-notifications = ["dep:update-informer"]
 users = ["dep:uzers"]
 interactive = ["dep:rustyline", "dep:directories"]
+mkv = ["dep:matroska"]
 everything = []
 plocate = []
 
@@ -33,7 +34,7 @@ imagesize = "0.15"
 kamadak-exif = "0.6"
 lofty = "0.25"
 lscolors = { version = "0.21", features = [ "nu-ansi-term" ] }
-matroska = "0.30"
+matroska = { version = "0.30", optional = true }
 memchr = "2"
 mp4parse = "0.17"
 nu-ansi-term = "0.50"

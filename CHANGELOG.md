@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Matroska and WebM metadata is behind the `mkv` build feature, enabled by default.
+
 ## [0.10.4] - 2026-10-23
 
 ### Added

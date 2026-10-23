@@ -138,6 +138,14 @@ impl Variant {
         }
     }
 
+    pub fn from_number_text(text: &str) -> Option<Variant> {
+        text.parse::<i64>()
+            .map(Variant::from_int)
+            .or_else(|_| text.parse::<f64>().map(Variant::from_float))
+            .ok()
+            .map(|number| number.with_text(text))
+    }
+
     pub fn with_text(mut self, text: &str) -> Variant {
         self.string_value = text.to_string();
         self
@@ -156,7 +164,7 @@ impl Variant {
         Variant {
             value_type: VariantType::DateTime,
             string_value: format_datetime(&value),
-            int_value: Some(0),
+            int_value: None,
             float_value: None,
             bool_value: None,
             dt_from: Some(value),

@@ -91,37 +91,34 @@ macro_rules! fields {
                 }
             }
 
+            pub fn data_type(&self) -> &'static str {
+                match self {
+                    $(
+                        $(#[$variant_attrs])*
+                        $enum_name::$variant => concat!("" $(, $data_type)?),
+                    )*
+                }
+            }
+
+            pub fn all() -> Vec<Self> {
+                let mut all = Vec::new();
+                $(
+                    $(#[$variant_attrs])*
+                    all.push($enum_name::$variant);
+                )*
+                all
+            }
+
             pub fn is_numeric_field(&self) -> bool {
-                match self {
-                    $(
-                        $(#[$variant_attrs])*
-                        $enum_name::$variant => {
-                            stringify!($($data_type)?) .replace("\"", "") == "numeric"
-                        }
-                    )*
-                }
+                self.data_type() == "numeric"
             }
-            
+
             pub fn is_datetime_field(&self) -> bool {
-                match self {
-                    $(
-                        $(#[$variant_attrs])*
-                        $enum_name::$variant => {
-                            stringify!($($data_type)?) .replace("\"", "") == "datetime"
-                        }
-                    )*
-                }
+                self.data_type() == "datetime"
             }
-            
+
             pub fn is_boolean_field(&self) -> bool {
-                match self {
-                    $(
-                        $(#[$variant_attrs])*
-                        $enum_name::$variant => {
-                            stringify!($($data_type)?) .replace("\"", "") == "boolean"
-                        }
-                    )*
-                }
+                self.data_type() == "boolean"
             }
             
             pub fn is_colorized_field(&self) -> bool {
@@ -700,22 +697,22 @@ fields! {
         @description = "Returns the version of EXIF metadata"
         ExifVersion,
         
-        #[text = ["exif_exposure_time", "exif_exptime"], data_type = "numeric"]
+        #[text = ["exif_exposure_time", "exif_exptime"]]
         @weight = 16
         @description = "Returns exposure time of the photo taken"
         ExifExposureTime,
         
-        #[text = ["exif_aperture"], data_type = "numeric"]
+        #[text = ["exif_aperture"]]
         @weight = 16
         @description = "Returns aperture value of the photo taken"
         ExifAperture,
         
-        #[text = ["exif_shutter_speed"], data_type = "numeric"]
+        #[text = ["exif_shutter_speed"]]
         @weight = 16
         @description = "Returns shutter speed of the photo taken"
         ExifShutterSpeed,
         
-        #[text = ["exif_f_number", "exif_f_num"], data_type = "numeric"]
+        #[text = ["exif_f_number", "exif_f_num"]]
         @weight = 16
         @description = "Returns F-number of the photo taken"
         ExifFNumber,
@@ -730,7 +727,7 @@ fields! {
         @description = "Returns photographic sensitivity (ISO) of the photo taken"
         ExifPhotographicSensitivity,
         
-        #[text = ["exif_focal_length", "exif_focal_len"], data_type = "numeric"]
+        #[text = ["exif_focal_length", "exif_focal_len"]]
         @weight = 16
         @description = "Returns focal length of the photo taken"
         ExifFocalLength,
@@ -780,7 +777,7 @@ fields! {
         @description = "Returns the exposure program used"
         ExifExposureProgram,
 
-        #[text = ["exif_exposure_bias", "exif_exp_bias"], data_type = "numeric"]
+        #[text = ["exif_exposure_bias", "exif_exp_bias"]]
         @weight = 16
         @description = "Returns the exposure bias value"
         ExifExposureBias,
@@ -845,7 +842,7 @@ fields! {
         @description = "Returns the max aperture value of the lens"
         ExifMaxAperture,
 
-        #[text = ["exif_digital_zoom", "exif_dzoom"], data_type = "numeric"]
+        #[text = ["exif_digital_zoom", "exif_dzoom"]]
         @weight = 16
         @description = "Returns the digital zoom ratio"
         ExifDigitalZoom,

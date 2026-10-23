@@ -1091,7 +1091,7 @@ impl Expr {
             let numeric_field = |side: &Option<Box<Expr>>| {
                 side.as_deref()
                     .and_then(|e| e.field.as_ref())
-                    .filter(|f| compares_numerically(f))
+                    .filter(|f| f.is_numeric_field())
                     .cloned()
             };
             if let Some(field) = numeric_field(&expr.left)
@@ -1412,24 +1412,6 @@ fn write_operand(out: &mut dyn fmt::Write, operand: &Expr, mode: Rendering) -> f
     }
 
     Ok(())
-}
-
-/// Numeric fields whose runtime values are actually strings (`fsize` is
-/// "12 KiB", exif ratios are "1/250" or "f/2.8"); the `numeric` data type on
-/// them only drives sorting, so literal validation must skip them.
-fn compares_numerically(field: &Field) -> bool {
-    field.is_numeric_field()
-        && !matches!(
-            field,
-            Field::FormattedSize
-                | Field::ExifExposureTime
-                | Field::ExifAperture
-                | Field::ExifShutterSpeed
-                | Field::ExifFNumber
-                | Field::ExifFocalLength
-                | Field::ExifExposureBias
-                | Field::ExifDigitalZoom
-        )
 }
 
 #[cfg(test)]

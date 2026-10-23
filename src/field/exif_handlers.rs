@@ -89,6 +89,11 @@ pub fn handle_exif_string(ctx: &mut FieldContext, field: &Field) -> Result<Varia
         _ => return Err(SearchError::fatal(format!("Unexpected field in handle_exif_string: {:?}", field))),
     };
     if let Some(val) = ctx.fms.get_exif_string(ctx.entry, key) {
+        if field.is_numeric_field()
+            && let Some(number) = Variant::from_number_text(&val.to_string())
+        {
+            return Ok(number);
+        }
         return Ok(val);
     }
     Ok(Variant::empty(VariantType::String))

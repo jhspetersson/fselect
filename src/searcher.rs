@@ -211,11 +211,7 @@ fn apply_minus(column_expr: &Expr, value: Variant) -> Variant {
 fn variant_of_type(expr: &Expr, text: &str, value_type: &VariantType) -> Variant {
     let typed = match value_type {
         VariantType::String => Some(Variant::from_string(&text.to_string())),
-        VariantType::Int | VariantType::Float => text
-            .parse::<i64>()
-            .map(Variant::from_int)
-            .or_else(|_| text.parse::<f64>().map(Variant::from_float))
-            .ok(),
+        VariantType::Int | VariantType::Float => Variant::from_number_text(text),
         VariantType::Bool => str_to_bool(text).map(Variant::from_bool),
         VariantType::DateTime => parse_datetime(text).ok().map(|(from, to)| Variant::from_datetime_range(from, to)),
     };
@@ -231,11 +227,7 @@ fn variant_of_type(expr: &Expr, text: &str, value_type: &VariantType) -> Variant
 fn typed_variant(expr: &Expr, text: &str) -> Variant {
     let mut typed = None;
     if expr.contains_numeric() {
-        typed = text
-            .parse::<i64>()
-            .map(Variant::from_int)
-            .or_else(|_| text.parse::<f64>().map(Variant::from_float))
-            .ok();
+        typed = Variant::from_number_text(text);
     }
     if typed.is_none() && expr.contains_datetime() {
         typed = parse_datetime(text).ok().map(|(from, to)| Variant::from_datetime_range(from, to));

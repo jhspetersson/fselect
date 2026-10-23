@@ -23,7 +23,7 @@ use serde::ser::{Serialize, Serializer};
 use xattr::FileExt;
 
 use crate::fileinfo::{FileInfo, with_archived_entry};
-use crate::util::{capitalize_initials, format_date, format_duration, format_time, format_datetime, parse_datetime, parse_filesize};
+use crate::util::{capitalize_initials, format_date, format_duration, format_time, parse_datetime, parse_filesize};
 use std::cmp::Ordering;
 use crate::util::variant::{Variant, VariantType};
 
@@ -90,48 +90,38 @@ macro_rules! functions {
         }
         
         impl $enum_name {
-            pub fn is_numeric_function(&self) -> bool {
+            pub fn data_type(&self) -> &'static str {
                 match self {
                     $(
                         $(#[$variant_attrs])*
-                        $enum_name::$variant => {
-                            stringify!($($data_type)?) .replace("\"", "") == "numeric"
-                        }
+                        $enum_name::$variant => concat!("" $(, $data_type)?),
                     )*
                 }
             }
-            
+
+            pub fn all() -> Vec<Self> {
+                let mut all = Vec::new();
+                $(
+                    $(#[$variant_attrs])*
+                    all.push($enum_name::$variant);
+                )*
+                all
+            }
+
+            pub fn is_numeric_function(&self) -> bool {
+                self.data_type() == "numeric"
+            }
+
             pub fn is_datetime_function(&self) -> bool {
-                match self {
-                    $(
-                        $(#[$variant_attrs])*
-                        $enum_name::$variant => {
-                            stringify!($($data_type)?) .replace("\"", "") == "datetime"
-                        }
-                    )*
-                }
+                self.data_type() == "datetime"
             }
 
             pub fn is_string_function(&self) -> bool {
-                match self {
-                    $(
-                        $(#[$variant_attrs])*
-                        $enum_name::$variant => {
-                            stringify!($($data_type)?) .replace("\"", "") == "string"
-                        }
-                    )*
-                }
+                self.data_type() == "string"
             }
 
             pub fn is_boolean_function(&self) -> bool {
-                match self {
-                    $(
-                        $(#[$variant_attrs])*
-                        $enum_name::$variant => {
-                            stringify!($($data_type)?) .replace("\"", "") == "boolean"
-                        }
-                    )*
-                }
+                self.data_type() == "boolean"
             }
             
             pub fn is_aggregate_function(&self) -> bool {
@@ -524,6 +514,12 @@ fn snap_to_exact_power(val: f64, base: f64, approx: f64) -> f64 {
     if exact { rounded } else { approx }
 }
 
+fn date_variant(date: NaiveDate) -> Variant {
+    let start = date.and_hms_opt(0, 0, 0).unwrap();
+    let end = date.and_hms_opt(23, 59, 59).unwrap();
+    Variant::from_datetime_range(start, end).with_text(&format_date(&date))
+}
+
 fn unary_float(arg: &str, f: impl FnOnce(f64) -> Result<Variant, String>) -> Result<Variant, String> {
     match arg.parse::<f64>() {
         Ok(val) => f(val),
@@ -804,18 +800,12 @@ pub fn get_value(
             .map_or_else(|| Variant::empty(VariantType::String), |formatted| Variant::from_string(&formatted))),
 
         // ===== Datetime functions =====
-        Function::CurrentDate => {
-            let now = Local::now().date_naive();
-            Ok(Variant::from_string(&format_date(&now)))
-        }
+        Function::CurrentDate => Ok(date_variant(Local::now().date_naive())),
         Function::CurrentTime => {
             let now = Local::now().time();
             Ok(Variant::from_string(&format_time(&now)))
         }
-        Function::CurrentTimestamp => {
-            let now = Local::now().naive_local();
-            Ok(Variant::from_string(&format_datetime(&now)))
-        }
+        Function::CurrentTimestamp => Ok(Variant::from_datetime(Local::now().naive_local())),
         Function::Year => match parse_datetime(&function_arg) {
             Ok(date) => Ok(Variant::from_int(date.0.year() as i64)),
             _ => Ok(Variant::empty(VariantType::Int)),
@@ -862,11 +852,11 @@ pub fn get_value(
             match parse_datetime(&function_arg) {
                 Ok(date) => {
                     match chrono::Duration::try_days(days).and_then(|duration| date.0.checked_add_signed(duration)) {
-                        Some(result) => Ok(Variant::from_string(&format_datetime(&result))),
+                        Some(result) => Ok(Variant::from_datetime(result)),
                         None => Err(format!("Number of days out of range: {}", days)),
                     }
                 }
-                _ => Ok(Variant::empty(VariantType::String)),
+                _ => Ok(Variant::empty(VariantType::DateTime)),
             }
         }
         Function::DateSub => {
@@ -880,11 +870,11 @@ pub fn get_value(
             match parse_datetime(&function_arg) {
                 Ok(date) => {
                     match chrono::Duration::try_days(days).and_then(|duration| date.0.checked_sub_signed(duration)) {
-                        Some(result) => Ok(Variant::from_string(&format_datetime(&result))),
+                        Some(result) => Ok(Variant::from_datetime(result)),
                         None => Err(format!("Number of days out of range: {}", days)),
                     }
                 }
-                _ => Ok(Variant::empty(VariantType::String)),
+                _ => Ok(Variant::empty(VariantType::DateTime)),
             }
         }
         Function::DateDiff => {
@@ -905,12 +895,12 @@ pub fn get_value(
         Function::FromUnixtime => {
             let timestamp: i64 = match function_arg.parse() {
                 Ok(t) => t,
-                Err(_) => return Ok(Variant::empty(VariantType::String)),
+                Err(_) => return Ok(Variant::empty(VariantType::DateTime)),
             };
             match DateTime::from_timestamp(timestamp, 0) {
                 // Render as local time: every other datetime in the tool is local-naive
-                Some(dt) => Ok(Variant::from_string(&format_datetime(&dt.with_timezone(&Local).naive_local()))),
-                None => Ok(Variant::empty(VariantType::String)),
+                Some(dt) => Ok(Variant::from_datetime(dt.with_timezone(&Local).naive_local())),
+                None => Ok(Variant::empty(VariantType::DateTime)),
             }
         }
         Function::LastDay => match parse_datetime(&function_arg) {
@@ -924,13 +914,11 @@ pub fn get_value(
                     chrono::NaiveDate::from_ymd_opt(y, m + 1, 1)
                 };
                 match last.and_then(|d| d.pred_opt()) {
-                    Some(last_day) => {
-                        Ok(Variant::from_string(&format_date(&last_day)))
-                    }
-                    None => Ok(Variant::empty(VariantType::String)),
+                    Some(last_day) => Ok(date_variant(last_day)),
+                    None => Ok(Variant::empty(VariantType::DateTime)),
                 }
             }
-            _ => Ok(Variant::empty(VariantType::String)),
+            _ => Ok(Variant::empty(VariantType::DateTime)),
         },
         Function::Extract => {
             if function_args.is_empty() {
@@ -973,7 +961,7 @@ pub fn get_value(
             }
             let dt = match parse_datetime(&function_args[0]) {
                 Ok(d) => d.0,
-                _ => return Ok(Variant::empty(VariantType::String)),
+                _ => return Ok(Variant::empty(VariantType::DateTime)),
             };
             let unit = function_arg.to_ascii_lowercase();
             let truncated: Option<NaiveDateTime> = match unit.as_str() {
@@ -1000,8 +988,8 @@ pub fn get_value(
                 _ => return Err(format!("Unsupported DATE_TRUNC unit: {}", function_arg)),
             };
             match truncated {
-                Some(t) => Ok(Variant::from_string(&format_datetime(&t))),
-                None => Ok(Variant::empty(VariantType::String)),
+                Some(t) => Ok(Variant::from_datetime(t)),
+                None => Ok(Variant::empty(VariantType::DateTime)),
             }
         }
 
@@ -1830,13 +1818,13 @@ functions! {
         @description = "Gets a random number from 0 to the value, or between two values"
         Random,
 
-        #[text = ["min"], data_type = "numeric"]
+        #[text = ["min"]]
         @is_aggregate = true
         @group = "Aggregate"
         @description = "Get the minimum value"
         Min,
 
-        #[text = ["max"], data_type = "numeric"]
+        #[text = ["max"]]
         @is_aggregate = true
         @group = "Aggregate"
         @description = "Get the maximum value"
@@ -2046,6 +2034,7 @@ impl GroupAccumulator {
 #[allow(clippy::approx_constant)]
 mod tests {
     use super::*;
+    use crate::util::format_datetime;
     
     #[test]
     fn archive_members_do_not_inherit_the_containers_xattrs() {
@@ -2677,6 +2666,67 @@ mod tests {
         for function in [Function::Upper, Function::Length, Function::Count, Function::Year, Function::Random] {
             assert!(!function.reads_entry(), "{}", function);
         }
+    }
+
+    #[test]
+    fn declared_types_match_produced_values() {
+        let sample = |function: &Function| -> Vec<(String, Vec<String>)> {
+            match function {
+                Function::DateAdd | Function::DateSub => vec![(String::from("2023-10-01"), vec![String::from("10")])],
+                Function::DateDiff => vec![(String::from("2023-10-11"), vec![String::from("2023-10-01")])],
+                Function::Extract => vec![(String::from("year"), vec![String::from("2023-10-01")])],
+                Function::DateTrunc => vec![(String::from("month"), vec![String::from("2023-10-17 10:20:30")])],
+                Function::FromUnixtime => vec![(String::from("1696118400"), vec![])],
+                Function::Power | Function::Log => vec![(String::from("2"), vec![String::from("3")])],
+                Function::Locate | Function::Strpos => vec![(String::from("hello"), vec![String::from("l")])],
+                Function::Substring => vec![(String::from("hello"), vec![String::from("2")])],
+                Function::Replace => vec![(String::from("hello"), vec![String::from("l"), String::from("L")])],
+                Function::Least | Function::Greatest => vec![(String::from("2"), vec![String::from("3")])],
+                Function::Round => vec![(String::from("2.5"), vec![])],
+                Function::FormatSize => vec![(String::from("1024"), vec![])],
+                Function::FormatTime => vec![(String::from("90"), vec![])],
+                Function::Year | Function::Month | Function::Day | Function::DayOfWeek | Function::DayName
+                | Function::DayOfYear | Function::LastDay => vec![(String::from("2023-10-01"), vec![])],
+                Function::Bin | Function::Hex | Function::Oct | Function::Abs | Function::Sqrt | Function::Ln
+                | Function::Exp | Function::Floor | Function::Ceil | Function::Length => vec![(String::from("7"), vec![])],
+                _ => vec![(String::from("hello"), vec![])],
+            }
+        };
+        let mut checked = 0;
+        for function in Function::all() {
+            if function.is_aggregate_function() || function.reads_entry() || function.data_type().is_empty() {
+                continue;
+            }
+            for (arg, args) in sample(&function) {
+                let Ok(value) = get_value(&function, arg.clone(), args.clone(), None, &None) else {
+                    continue;
+                };
+                let expected = match function.data_type() {
+                    "numeric" => matches!(value.get_type(), VariantType::Int | VariantType::Float),
+                    "datetime" => matches!(value.get_type(), VariantType::DateTime),
+                    "boolean" => matches!(value.get_type(), VariantType::Bool),
+                    "string" => matches!(value.get_type(), VariantType::String),
+                    other => panic!("unknown data type {other}"),
+                };
+                assert!(expected, "{function}({arg}, {args:?}) is declared {} but produced {:?} {:?}", function.data_type(), value.get_type(), value.to_string());
+                checked += 1;
+            }
+        }
+        assert!(checked > 40, "only {checked} functions were checked");
+    }
+
+    #[test]
+    fn date_results_keep_their_span_and_text() {
+        let today = get_value(&Function::CurrentDate, String::new(), vec![], None, &None).unwrap();
+        let (from, to) = today.to_datetime().unwrap();
+        assert_eq!(from, Local::now().date_naive().and_hms_opt(0, 0, 0).unwrap());
+        assert_eq!(to.date(), from.date());
+        assert_eq!(today.to_string(), format_date(&from.date()));
+        let last = get_value(&Function::LastDay, String::from("2024-02-10"), vec![], None, &None).unwrap();
+        assert_eq!(last.to_string(), "2024-02-29");
+        assert_eq!(last.to_datetime().unwrap().1.time(), chrono::NaiveTime::from_hms_opt(23, 59, 59).unwrap());
+        let shifted = get_value(&Function::DateAdd, String::from("2023-10-01"), vec![String::from("10")], None, &None).unwrap();
+        assert_eq!(shifted.to_datetime().unwrap().0, NaiveDate::from_ymd_opt(2023, 10, 11).unwrap().and_hms_opt(0, 0, 0).unwrap());
     }
 
     #[test]

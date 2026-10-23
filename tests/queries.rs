@@ -274,6 +274,7 @@ fn size_literals_accept_units_and_sizes_format_with_units() {
     let over_mb = fselect(&format!("select name from {root} where size >= 1mb order by name"));
     let between = fselect(&format!("select name from {root} where size < 1m and size > 1 order by name"));
     let formatted = fselect(&format!("select name, fsize, hsize from {root} where is_file order by size"));
+    let by_formatted = fselect(&format!("select name from {root} where fsize > 1kb and fsize < 2mb order by fsize desc"));
     let custom = fselect(&format!(
         "select format_size(size, '%.2 d'), format_size(size, '%.0s'), format_size(size, '%.1 kb') from {root} where name = mega.bin"
     ));
@@ -285,6 +286,7 @@ fn size_literals_accept_units_and_sizes_format_with_units() {
     assert_eq!(ok(&between), "kilo.bin\ntwo.txt\n");
     assert_eq!(ok(&formatted), "tiny.txt\t1B\t1B\ntwo.txt\t2B\t2B\nkilo.bin\t1.46KiB\t1.46KiB\nmega.bin\t1.05MiB\t1.05MiB\n");
     assert_eq!(ok(&custom), "1.10 MB\t1M\t1100 KB\n");
+    assert_eq!(ok(&by_formatted), "mega.bin\nkilo.bin\n");
 }
 
 #[test]

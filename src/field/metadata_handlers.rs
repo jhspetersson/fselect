@@ -113,29 +113,20 @@ pub fn handle_size(ctx: &mut FieldContext) -> Result<Variant, SearchError> {
 
 pub fn handle_formatted_size(ctx: &mut FieldContext) -> Result<Variant, SearchError> {
     match ctx.file_info {
-        Some(file_info) => {
-            Ok(Variant::from_string(&format_filesize(
-                file_info.size,
-                ctx.config
-                    .default_file_size_format
-                    .as_ref()
-                    .unwrap_or(&String::new()),
-            )?))
-        }
+        Some(file_info) => formatted_size(ctx, file_info.size),
         _ => {
             ctx.fms.update_file_metadata(ctx.entry, ctx.follow_symlinks);
-            if let Some(attrs) = ctx.fms.get_file_metadata() {
-                return Ok(Variant::from_string(&format_filesize(
-                    attrs.len(),
-                    ctx.config
-                        .default_file_size_format
-                        .as_ref()
-                        .unwrap_or(&String::new()),
-                )?));
+            match ctx.fms.get_file_metadata() {
+                Some(attrs) => formatted_size(ctx, attrs.len()),
+                None => Ok(Variant::empty(VariantType::Int)),
             }
-            Ok(Variant::empty(VariantType::String))
         }
     }
+}
+
+fn formatted_size(ctx: &FieldContext, size: u64) -> Result<Variant, SearchError> {
+    let format = ctx.config.default_file_size_format.as_deref().unwrap_or("");
+    Ok(Variant::from_int(size as i64).with_text(&format_filesize(size, format)?))
 }
 
 pub fn handle_is_dir(ctx: &mut FieldContext) -> Result<Variant, SearchError> {

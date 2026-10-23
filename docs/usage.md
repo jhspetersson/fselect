@@ -338,7 +338,7 @@ Supported platforms are Linux, macOS, FreeBSD, and NetBSD.
 | Function                     | Meaning                                                              | Example                                                             |
 |------------------------------|----------------------------------------------------------------------|---------------------------------------------------------------------|
 | HAS_XATTR                    | Check if xattr exists                                                | `select "name, has_xattr(user.test) from /home/user"`               |
-| XATTR                        | Get value of xattr                                                   | `select "name, xattr(user.test) from /home/user"`                   |
+| XATTR                        | Get value of xattr as text, or as `0x..` hex when it is not UTF-8    | `select "name, xattr(user.test) from /home/user"`                   |
 | HAS_EXTATTR                  | Check if a specific extended file attribute flag is set (Linux and Windows) | `select "name from / where has_extattr('i')"`                |
 | HAS_ACL_ENTRY                | Check if a specific ACL entry exists (Linux and Windows)             | `select "name from /data where has_acl_entry('user:john')"`         |
 | ACL_ENTRY                    | Get permissions of a specific ACL entry (Linux and Windows)         | `select "name, acl_entry('group:staff') from /data"`                |

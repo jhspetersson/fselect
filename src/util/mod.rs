@@ -545,6 +545,19 @@ pub fn format_filesize(size: u64, modifier: &str) -> Result<String, String> {
     Ok(result)
 }
 
+pub fn xattr_text(bytes: Vec<u8>) -> String {
+    match String::from_utf8(bytes) {
+        Ok(text) => text,
+        Err(err) => {
+            let mut hex = String::from("0x");
+            for byte in err.as_bytes() {
+                hex.push_str(&format!("{:02x}", byte));
+            }
+            hex
+        }
+    }
+}
+
 pub fn str_to_bool(val: &str) -> Option<bool> {
     let str_val = val.to_ascii_lowercase();
     match str_val.as_str() {
@@ -2624,6 +2637,14 @@ mod tests {
             orderings,
         );
         assert_eq!(parseable.cmp(&unparseable), Ordering::Equal);
+    }
+
+    #[test]
+    fn xattr_values_are_text_when_valid_and_hex_otherwise() {
+        assert_eq!(xattr_text(b"decision".to_vec()), "decision");
+        assert_eq!(xattr_text(vec![0x01, b'd', b'e']), "\u{1}de");
+        assert_eq!(xattr_text(vec![0x02, 0x2a, 0x00, 0xff]), "0x022a00ff");
+        assert_eq!(xattr_text(Vec::new()), "");
     }
 
     #[test]

@@ -1029,12 +1029,10 @@ pub fn get_value(
             if let Some(entry) = entry
                 && file_info.is_none()
             {
-                if let Ok(file) = File::open(entry.path()) {
-                    if let Ok(Some(xattr)) = file.get_xattr(&function_arg) {
-                        if let Ok(value) = String::from_utf8(xattr) {
-                            return Ok(Variant::from_string(&value));
-                        }
-                    }
+                if let Ok(file) = File::open(entry.path())
+                    && let Ok(Some(xattr)) = file.get_xattr(&function_arg)
+                {
+                    return Ok(Variant::from_string(&crate::util::xattr_text(xattr)));
                 }
             }
 
@@ -1047,7 +1045,7 @@ pub fn get_value(
                 && let Some(value) =
                     crate::util::win_xattr::read_named_ads(&entry.path(), &function_arg)
                 {
-                    return Ok(Variant::from_string(&value));
+                    return Ok(Variant::from_string(&crate::util::xattr_text(value)));
                 }
 
             Ok(Variant::empty(VariantType::String))

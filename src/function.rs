@@ -1,7 +1,7 @@
 //! Functions for processing values in the query language.
 //! This module contains both the regular and aggregate functions used in the query language.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt::Display;
 use std::fmt::Error;
 use std::fmt::Formatter;
@@ -1887,6 +1887,7 @@ pub struct GroupAccumulator {
     pub total_count: usize,
     pub fields: HashMap<String, FieldAccumulator>,
     pub key_values: Vec<Variant>,
+    pub unknown_keys: HashSet<String>,
     /// Absolute path and root depth of the first entry that joined the group.
     /// Only recorded when the query drives an outer FROM-subselect, so each
     /// group can stand in for one filesystem entry there.

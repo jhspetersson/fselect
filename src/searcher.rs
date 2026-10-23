@@ -113,7 +113,7 @@ pub struct Searcher<'a> {
     user_cache: UsersCache,
     regex_cache: HashMap<String, Regex>,
     found: u32,
-    accumulators: HashMap<(Vec<String>, Vec<VariantType>), function::GroupAccumulator>,
+    accumulators: HashMap<Vec<String>, function::GroupAccumulator>,
     output_buffer: TopN<Criteria<String>, BufferedRow>,
     deferred_columns: Vec<usize>,
     aggregate_plan: Option<Rc<AggregatePlan>>,
@@ -255,7 +255,7 @@ impl Membership {
 
 const DEFERRED_COLUMN_WEIGHT: i32 = 16;
 const NULL_GROUP_KEY: &str = "\u{0}null";
-const UNKNOWN_GROUP_SUFFIX: &str = "\u{0}unknown";
+const UNKNOWN_GROUP_KEY: &str = "\u{0}unknown";
 
 struct AggregatePlan {
     fields: Vec<(Field, String)>,
@@ -906,16 +906,11 @@ impl<'a> Searcher<'a> {
 
                 let having_expr = self.query.having.as_ref();
                 let aliases = self.query.own_root_aliases();
-                for ((group_key, _), group_acc) in &accumulators {
+                for group_acc in accumulators.values() {
                     let mut file_map = HashMap::new();
-                    for (i, k) in group_keys.iter().enumerate() {
-                        let unknown = group_key.get(i).is_some_and(|raw| raw.ends_with(UNKNOWN_GROUP_SUFFIX));
-                        if unknown {
-                            self.unknown_conditions.insert(k.clone());
-                        } else {
-                            self.unknown_conditions.remove(k);
-                        }
-                        file_map.insert(k.clone(), group_acc.key_values.get(i).cloned().unwrap_or_else(Variant::null));
+                    self.unknown_conditions = group_acc.unknown_keys.clone();
+                    for (k, value) in group_keys.iter().zip(&group_acc.key_values) {
+                        file_map.insert(k.clone(), value.clone());
                     }
                     self.reset_alias_failures(&aliases);
                     self.bind_group_context(&aliases, &group_acc.key_values, &[]);
@@ -992,7 +987,7 @@ impl<'a> Searcher<'a> {
 
                 let accumulators = std::mem::take(&mut self.accumulators);
                 let empty_acc = function::GroupAccumulator::default();
-                let ungrouped_acc = accumulators.get(&(vec![], vec![])).unwrap_or(&empty_acc);
+                let ungrouped_acc = accumulators.get(&Vec::new()).unwrap_or(&empty_acc);
                 let aliases = self.query.own_root_aliases();
                 self.reset_alias_failures(&aliases);
                 self.bind_group_context(&aliases, &[], &[]);
@@ -2817,25 +2812,24 @@ impl<'a> Searcher<'a> {
                 .iter()
                 .zip(&key_values)
                 .map(|(key, value)| match value {
-                    value if unknown_keys.contains(key) => format!("{value}{UNKNOWN_GROUP_SUFFIX}"),
+                    _ if unknown_keys.contains(key) => String::from(UNKNOWN_GROUP_KEY),
                     value if value.is_null() => String::from(NULL_GROUP_KEY),
-                    value => value.identity(),
+                    value => format!("{:?}:{}", value.get_type(), value.identity()),
                 })
                 .collect();
-            let key_types: Vec<VariantType> = key_values.iter().map(|value| value.get_type().clone()).collect();
-            let group_identity = (group_key, key_types);
-            let identity = if self.root_depth_column && !self.accumulators.contains_key(&group_identity) {
+            let identity = if self.root_depth_column && !self.accumulators.contains_key(&group_key) {
                 Some(self.subquery_identity(entry, file_info, root_path))
             } else {
                 None
             };
             self.alias_read_failure()?;
-            let accumulator = self.accumulators.entry(group_identity).or_default();
+            let accumulator = self.accumulators.entry(group_key).or_default();
             if identity.is_some() {
                 accumulator.representative = identity;
             }
             if accumulator.key_values.is_empty() {
                 accumulator.key_values = key_values;
+                accumulator.unknown_keys = unknown_keys;
             }
             accumulator.increment_count();
             for (key, value) in file_map.iter() {

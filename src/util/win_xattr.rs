@@ -160,14 +160,14 @@ pub fn has_named_ads(path: &Path, name: &str) -> bool {
 
 /// Reads the content of a named alternate data stream as a UTF-8 string.
 /// Returns `None` if the stream does not exist or cannot be read as UTF-8.
-pub fn read_named_ads(path: &Path, name: &str) -> Option<Vec<u8>> {
+pub fn read_named_ads(path: &Path, name: &str) -> Option<String> {
     use std::fs::File;
     use std::io::Read;
 
     let stream_path = format!("{}:{}", path.display(), name);
     let mut file = File::open(&stream_path).ok()?;
-    let mut contents = Vec::new();
-    file.read_to_end(&mut contents).ok()?;
+    let mut contents = String::new();
+    file.read_to_string(&mut contents).ok()?;
     Some(contents)
 }
 

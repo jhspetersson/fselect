@@ -137,7 +137,7 @@ pub fn has_named_ads(path: &Path, name: &str) -> bool {
 
     loop {
         let stream = stream_name_from_data(&stream_data);
-        if stream.eq_ignore_ascii_case(&target) {
+        if eq_ignore_case(&stream, &target) {
             unsafe { FindClose(handle) };
             return true;
         }
@@ -156,6 +156,10 @@ pub fn has_named_ads(path: &Path, name: &str) -> bool {
 
     unsafe { FindClose(handle) };
     false
+}
+
+fn eq_ignore_case(a: &str, b: &str) -> bool {
+    a.chars().flat_map(char::to_uppercase).eq(b.chars().flat_map(char::to_uppercase))
 }
 
 /// Reads the content of a named alternate data stream as a UTF-8 string.
@@ -207,4 +211,31 @@ mod tests {
         );
         assert!(!result);
     }
+    #[test]
+    fn named_ads_lookup_ignores_unicode_case() {
+        use std::fs;
+        use std::io::Write;
+
+        let tmp = env::temp_dir().join("fselect_test_unicode_ads");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        let file = tmp.join("tagged.txt");
+        fs::write(&file, "x").unwrap();
+        for stream in ["\u{e9}cole", "\u{444}\u{430}\u{439}\u{43b}"] {
+            let mut ads = fs::File::create(format!("{}:{}", file.display(), stream)).unwrap();
+            ads.write_all(b"v").unwrap();
+        }
+
+        let accented = has_named_ads(&file, "\u{c9}COLE");
+        let cyrillic = has_named_ads(&file, "\u{424}\u{410}\u{419}\u{41b}");
+        let exact = has_named_ads(&file, "\u{e9}cole");
+        let missing = has_named_ads(&file, "\u{e9}col");
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert!(exact, "exact");
+        assert!(accented, "accented");
+        assert!(cyrillic, "cyrillic");
+        assert!(!missing, "missing");
+    }
+
 }

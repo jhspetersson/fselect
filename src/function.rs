@@ -383,7 +383,10 @@ fn least_or_greatest(first: &Variant, rest: &[Variant], pick: Ordering) -> Varia
 }
 
 fn float_of(value: &Variant) -> Option<f64> {
-    value.to_float_opt().or_else(|| value.as_str().parse::<f64>().ok())
+    match value.get_type() {
+        VariantType::String => value.as_str().parse::<f64>().ok(),
+        _ => value.to_float_opt(),
+    }
 }
 
 /// 1-based character position of `needle` in `haystack`, searching from the
@@ -654,10 +657,10 @@ pub fn evaluate(
         },
         Function::Abs => unary_float(&arg, |val| Ok(Variant::from_float(val.abs()))),
         Function::Power => unary_float(&arg, |val| {
-            let power = match function_args.first() {
-                Some(power) => match power.parse::<f64>() {
-                    Ok(p) => p,
-                    Err(_) => return Err(format!("Could not parse exponent argument of POWER function: {}", power)),
+            let power = match args.first() {
+                Some(power) => match float_of(power) {
+                    Some(p) => p,
+                    None => return Err(format!("Could not parse exponent argument of POWER function: {}", power)),
                 },
                 _ => 0.0,
             };
@@ -676,10 +679,10 @@ pub fn evaluate(
             }
         }),
         Function::Log => unary_float(&arg, |val| {
-            let base = match function_args.first() {
-                Some(base) => match base.parse::<f64>() {
-                    Ok(b) => b,
-                    Err(_) => return Err(format!("Could not parse base argument of LOG function: {}", base)),
+            let base = match args.first() {
+                Some(base) => match float_of(base) {
+                    Some(b) => b,
+                    None => return Err(format!("Could not parse base argument of LOG function: {}", base)),
                 },
                 _ => 10.0,
             };
@@ -722,10 +725,10 @@ pub fn evaluate(
         Function::Floor => unary_float(&arg, |val| Ok(Variant::from_float(val.floor()))),
         Function::Ceil => unary_float(&arg, |val| Ok(Variant::from_float(val.ceil()))),
         Function::Round => unary_float(&arg, |val| {
-            let precision: i32 = match function_args.first() {
-                Some(p) => match p.parse::<i32>() {
-                    Ok(p) => p,
-                    Err(_) => return Err(format!("Could not parse precision argument of ROUND function: {}", p)),
+            let precision: i32 = match args.first() {
+                Some(p) => match p.to_exact_int().and_then(|p| i32::try_from(p).ok()) {
+                    Some(p) => p,
+                    None => return Err(format!("Could not parse precision argument of ROUND function: {}", p)),
                 },
                 _ => 0,
             };
@@ -1275,9 +1278,9 @@ pub fn evaluate(
                             Ok(Variant::from_int(rng.random_range(0..=val)))
                         }
                     } else {
-                        let limit = function_args.first().unwrap();
-                        match limit.parse::<i64>() {
-                            Ok(limit) => {
+                        let limit = args.first().unwrap();
+                        match limit.to_exact_int() {
+                            Some(limit) => {
                                 let (lo, hi) = if val <= limit { (val, limit) } else { (limit, val) };
                                 Ok(Variant::from_int(rng.random_range(lo..=hi)))
                             }
@@ -4804,5 +4807,17 @@ mod tests {
         assert!(result.to_bool(), "Contains must find substrings that span chunks");
 
         let _ = std::fs::remove_file(&path);
+    }
+    #[test]
+    fn extrema_compare_size_like_strings_as_text() {
+        let kib = Variant::from_string(&String::from("2KiB"));
+        let bytes = Variant::from_string(&String::from("2048B"));
+        let greatest = evaluate(&Function::Greatest, kib.clone(), vec![bytes.clone()], None, &None).unwrap();
+        let least = evaluate(&Function::Least, kib.clone(), vec![bytes.clone()], None, &None).unwrap();
+        let same = evaluate(&Function::Greatest, kib.clone(), vec![kib.clone()], None, &None).unwrap();
+        assert_eq!(greatest.to_string(), "2KiB");
+        assert_eq!(least.to_string(), "2048B");
+        assert_eq!(same.to_string(), "2KiB");
+        assert_eq!(same.get_type(), &VariantType::String);
     }
 }

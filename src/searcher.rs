@@ -9021,6 +9021,48 @@ f
     }
 
     #[test]
+    fn extrema_functions_keep_size_like_text_as_text() {
+        let tmp = std::env::temp_dir().join("fselect_test_extrema_size_like_names");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        for name in ["2KiB", "2048B", "2048"] {
+            fs::write(tmp.join(name), "x").unwrap();
+        }
+
+        let run = |query: &str| run_query_against_dir(query, &tmp);
+        let shown = run("select greatest(name, name), least(name, name) from __DIR__ order by name");
+        let grouped = run("select count(*) from __DIR__ group by greatest(name, name)");
+        let filtered = run("select name from __DIR__ where greatest(name, name) like '%KiB'");
+        let ordered = run("select name from __DIR__ order by least(name, name) desc");
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(shown, vec!["2048	2048", "2048B	2048B", "2KiB	2KiB"]);
+        assert_eq!(grouped, vec!["1", "1", "1"]);
+        assert_eq!(filtered, vec!["2KiB"]);
+        assert_eq!(ordered, vec!["2KiB", "2048B", "2048"]);
+    }
+
+    #[test]
+    fn secondary_numeric_arguments_read_the_byte_count_of_fsize() {
+        let tmp = std::env::temp_dir().join("fselect_test_fsize_secondary_args");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        fs::write(tmp.join("two.bin"), vec![0u8; 2]).unwrap();
+
+        let searcher = search_dir(
+            "select random(fsize, fsize), power(fsize, fsize), log(fsize, fsize), round(1.25, fsize), power(fsize, size), round(1.25, size) from __DIR__",
+            &tmp,
+            Config::default(),
+            true,
+        );
+        let rows: Vec<String> = searcher.output_buffer.iter_values().map(|s| s.trim_end().to_string()).collect();
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(searcher.error_count, 0);
+        assert_eq!(rows, vec!["2	4	1	1.25	4	1.25"]);
+    }
+
+    #[test]
     fn archive_entries_produce_rectangular_rows() {
         use std::io::Write;
         use std::path::MAIN_SEPARATOR_STR as SEP;

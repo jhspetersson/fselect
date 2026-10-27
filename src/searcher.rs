@@ -203,7 +203,12 @@ fn cached_condition(value: &Variant) -> Option<bool> {
     }
 }
 
-enum Membership {
+struct Membership {
+    values: MembershipValues,
+    has_null: bool,
+}
+
+enum MembershipValues {
     Strings(HashSet<String>),
     Ints(HashSet<i64>),
     Floats(Vec<f64>),
@@ -216,36 +221,37 @@ fn datetime_seconds((from, to): (NaiveDateTime, NaiveDateTime)) -> (i64, i64) {
 }
 
 impl Membership {
-    fn new(values: &[Variant], field_type: &VariantType) -> Membership {
-        let variants = values.iter();
-        match field_type {
-            VariantType::String => Membership::Strings(values.iter().map(Variant::to_string).collect()),
-            VariantType::Int => Membership::Ints(variants.filter_map(|v| v.to_exact_int()).collect()),
-            VariantType::Float => Membership::Floats(variants.filter_map(|v| v.to_float_opt()).collect()),
+    fn new(values: &[Variant], field_type: &VariantType, has_null: bool) -> Membership {
+        let variants = values.iter().filter(|v| !v.is_null());
+        let values = match field_type {
+            VariantType::String => MembershipValues::Strings(variants.map(Variant::to_string).collect()),
+            VariantType::Int => MembershipValues::Ints(variants.filter_map(|v| v.to_exact_int()).collect()),
+            VariantType::Float => MembershipValues::Floats(variants.filter_map(|v| v.to_float_opt()).collect()),
             VariantType::Bool => {
                 let mut bools = (false, false);
-                for value in values {
+                for value in variants {
                     match str_to_bool(&value.to_string()) {
                         Some(true) => bools.0 = true,
                         Some(false) => bools.1 = true,
                         None => {}
                     }
                 }
-                Membership::Bools { has_true: bools.0, has_false: bools.1 }
+                MembershipValues::Bools { has_true: bools.0, has_false: bools.1 }
             }
             VariantType::DateTime => {
-                Membership::DateTimes(variants.filter_map(|v| v.to_datetime().ok().map(datetime_seconds)).collect())
+                MembershipValues::DateTimes(variants.filter_map(|v| v.to_datetime().ok().map(datetime_seconds)).collect())
             }
-        }
+        };
+        Membership { values, has_null }
     }
 
     fn contains(&self, field_value: &Variant) -> bool {
-        match self {
-            Membership::Strings(set) => set.contains(field_value.to_string().as_str()),
-            Membership::Ints(set) => set.contains(&field_value.to_int()),
-            Membership::Floats(list) => list.contains(&field_value.to_float()),
-            Membership::Bools { has_true, has_false } => if field_value.to_bool() { *has_true } else { *has_false },
-            Membership::DateTimes(intervals) => match field_value.to_datetime().map(datetime_seconds) {
+        match &self.values {
+            MembershipValues::Strings(set) => set.contains(field_value.to_string().as_str()),
+            MembershipValues::Ints(set) => set.contains(&field_value.to_int()),
+            MembershipValues::Floats(list) => list.contains(&field_value.to_float()),
+            MembershipValues::Bools { has_true, has_false } => if field_value.to_bool() { *has_true } else { *has_false },
+            MembershipValues::DateTimes(intervals) => match field_value.to_datetime().map(datetime_seconds) {
                 Ok((from, to)) => intervals.iter().any(|(start, finish)| from <= *finish && *start <= to),
                 Err(_) => false,
             },
@@ -2965,15 +2971,23 @@ impl<'a> Searcher<'a> {
         let args: &[Expr] = match &right.args {
             Some(args) => args,
             None => {
-                let found = match &right.subquery {
-                    Some(subquery) => self.subquery_membership(subquery, field_value.get_type())?.contains(field_value),
-                    None => false,
+                let (found, has_null) = match &right.subquery {
+                    Some(subquery) => {
+                        let membership = self.subquery_membership(subquery, field_value.get_type())?;
+                        (membership.contains(field_value), membership.has_null)
+                    }
+                    None => (false, false),
                 };
+                if !found && has_null {
+                    self.null_comparisons.insert(expr.cache_key());
+                    return Ok(false);
+                }
                 return Ok(if negate { !found } else { found });
             }
         };
         let field_type = field_value.get_type();
         let mut found = false;
+        let mut has_null = false;
         for arg in args {
             #[cfg(test)]
             {
@@ -2983,7 +2997,8 @@ impl<'a> Searcher<'a> {
                 row.values.clear();
             }
             let arg_val = self.get_column_expr_value(row, arg)?;
-            if arg_val.is_null() {
+            if Self::is_null_operand(arg, &arg_val) {
+                has_null = true;
                 continue;
             }
             let matches = match field_type {
@@ -3010,6 +3025,10 @@ impl<'a> Searcher<'a> {
                 break;
             }
         }
+        if !found && has_null {
+            self.null_comparisons.insert(expr.cache_key());
+            return Ok(false);
+        }
         Ok(if negate { !found } else { found })
     }
 
@@ -3018,12 +3037,12 @@ impl<'a> Searcher<'a> {
         if let Some(membership) = self.membership_cache.get(&key) {
             return Ok(Rc::clone(membership));
         }
-        let values: Vec<Variant> = self
-            .get_list_from_subquery(subquery.clone())?
-            .into_iter()
-            .filter(|value| !value.is_null())
-            .collect();
-        let membership = Rc::new(Membership::new(&values, field_type));
+        let values = self.get_list_from_subquery(subquery.clone())?;
+        let has_null = match subquery.fields.first() {
+            Some(column) => values.iter().any(|value| Self::is_null_operand(column, value)),
+            None => values.iter().any(Variant::is_null),
+        };
+        let membership = Rc::new(Membership::new(&values, field_type, has_null));
         if is_subquery_cacheable(subquery) {
             self.membership_cache.insert(key, Rc::clone(&membership));
         }
@@ -6456,6 +6475,35 @@ mod tests {
         assert_eq!(not_zero, vec!["2020-01-01"], "missing year is unknown for NOT IN as well");
         assert_eq!(membership, vec!["2020-01-01"], "membership through a subquery");
         assert_eq!(is_null, vec!["notes.txt", "sub"]);
+    }
+
+    #[test]
+    fn in_lists_treat_null_members_as_unknown() {
+        let tmp = std::env::temp_dir().join("fselect_test_in_null_members");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(tmp.join("empty")).unwrap();
+        fs::write(tmp.join("three.txt"), "xxx").unwrap();
+        fs::write(tmp.join("five.txt"), "xxxxx").unwrap();
+
+        let run = |condition: &str| {
+            run_query_against_dir(&format!("select name from __DIR__ where is_file and {condition} order by name"), &tmp)
+        };
+        let not_in_null_aggregate = run("size not in (select max(size) from __DIR__/empty)");
+        let not_in_empty_set = run("size not in (select size from __DIR__/empty)");
+        let not_in_null_column = run("size not in (width)");
+        let not_in_null_subquery_column = run("size not in (select width from __DIR__)");
+        let not_in_list_with_null = run("size not in (3, width)");
+        let in_list_with_null = run("size in (3, width)");
+        let not_in_null_or_size = run("(size not in (3, width) or size = 5)");
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(not_in_null_aggregate, Vec::<String>::new(), "a NULL aggregate makes NOT IN unknown");
+        assert_eq!(not_in_empty_set, vec!["five.txt", "three.txt"], "an empty set keeps NOT IN true");
+        assert_eq!(not_in_null_column, Vec::<String>::new(), "a NULL column member makes NOT IN unknown");
+        assert_eq!(not_in_null_subquery_column, Vec::<String>::new(), "NULL rows from a subquery make NOT IN unknown");
+        assert_eq!(not_in_list_with_null, Vec::<String>::new(), "no match plus a NULL member is unknown");
+        assert_eq!(in_list_with_null, vec!["three.txt"], "a match still wins over a NULL member");
+        assert_eq!(not_in_null_or_size, vec!["five.txt"], "unknown OR true is true");
     }
 
     #[cfg(windows)]

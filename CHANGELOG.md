@@ -7,6 +7,10 @@
 - Matroska and WebM metadata is behind the `mkv` build feature, enabled by default.
 - The `update-notifications` build feature is no longer enabled by default.
 
+### Fixed
+
+- `NOT IN` no longer accepts a row when the list or subquery contains a NULL member and nothing matches
+
 ## [0.10.4] - 2026-10-23
 
 ### Added

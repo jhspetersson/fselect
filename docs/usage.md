@@ -723,7 +723,9 @@ where name not in (
 )
 ```
 
-**Important Note:** `NOT IN` can produce unexpected results if the subquery returns any NULL/empty values. 
+**Important Note:** `NOT IN` follows SQL three-valued logic. If the subquery returns any NULL/empty values
+(for example `max(size)` over an empty directory, or `width` of a non-image file) and no member matches,
+the condition is unknown and the row is not selected. An empty result set still makes `NOT IN` true.
 When in doubt, use `NOT EXISTS` instead (see below).
 
 #### `EXISTS` Operator

@@ -1838,6 +1838,7 @@ pub struct FieldAccumulator {
 fn numeric_value(value: &Variant) -> Option<f64> {
     match value.get_type() {
         VariantType::Int | VariantType::Float => value.to_float_opt(),
+        VariantType::Bool if !value.as_str().is_empty() => value.to_float_opt(),
         VariantType::String => value.as_str().parse::<f64>().ok(),
         _ => None,
     }

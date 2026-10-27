@@ -9063,6 +9063,24 @@ f
     }
 
     #[test]
+    fn aggregates_read_boolean_values_as_numbers() {
+        let tmp = std::env::temp_dir().join("fselect_test_boolean_aggregates");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        for name in ["a.txt", "b.txt", "c.md", "d.md"] {
+            fs::write(tmp.join(name), "x").unwrap();
+        }
+
+        let run = |query: &str| run_query_against_dir(query, &tmp);
+        let totals = run("select sum(ext = 'txt'), avg(ext = 'txt'), count(ext = 'txt'), min(ext = 'txt'), max(ext = 'txt'), var_pop(ext = 'txt'), stddev(ext = 'txt') from __DIR__");
+        let having = run("select ext, count(*) from __DIR__ group by ext having sum(ext = 'txt') > 0");
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(totals, vec!["2	0.5	4	false	true	0.25	0.5"]);
+        assert_eq!(having, vec!["txt	2"]);
+    }
+
+    #[test]
     fn archive_entries_produce_rectangular_rows() {
         use std::io::Write;
         use std::path::MAIN_SEPARATOR_STR as SEP;

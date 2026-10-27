@@ -457,6 +457,10 @@ impl Display for Arity {
 }
 
 impl Function {
+    pub fn is_volatile(&self) -> bool {
+        matches!(self, Function::Random)
+    }
+
     pub fn datetime_argument_positions(&self) -> &'static [usize] {
         match self {
             Function::Year

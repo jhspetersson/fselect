@@ -151,7 +151,6 @@ pub struct Searcher<'a> {
     file_map: HashMap<String, Variant>,
     unknown_conditions: HashSet<String>,
     null_comparisons: HashSet<String>,
-    conforms_map: HashMap<String, Variant>,
     subquery_cache: HashMap<String, Vec<Variant>>,
     membership_cache: HashMap<(String, VariantType), Rc<Membership>>,
     silent_mode: bool,
@@ -490,7 +489,6 @@ impl<'a> Searcher<'a> {
             file_map: HashMap::new(),
             unknown_conditions: HashSet::new(),
             null_comparisons: HashSet::new(),
-            conforms_map: HashMap::new(),
             subquery_cache: HashMap::new(),
             membership_cache: HashMap::new(),
             silent_mode: false,
@@ -1940,7 +1938,7 @@ impl<'a> Searcher<'a> {
 
     fn condition_state(
         &mut self,
-        row: &Row,
+        row: &mut Row,
         expr: &Expr,
     ) -> Result<Option<bool>, SearchError> {
         if let Some(ref logical_op) = expr.logical_op {
@@ -2766,7 +2764,7 @@ impl<'a> Searcher<'a> {
         }
 
         if let Some(ref expr) = self.query.expr {
-            let result = self.conforms(&row, expr)?;
+            let result = self.conforms(&mut row, expr)?;
             self.alias_read_failure()?;
             if !result {
                 return Ok(());
@@ -2789,7 +2787,7 @@ impl<'a> Searcher<'a> {
                     continue;
                 }
                 let value = if grouping_condition {
-                    let state = self.condition_state(&row, expr)?;
+                    let state = self.condition_state(&mut row, expr)?;
                     if state.is_none() {
                         unknown_keys.insert(key.clone());
                     }
@@ -3100,15 +3098,11 @@ impl<'a> Searcher<'a> {
         }
     }
 
-    fn evaluate_operand(&mut self, row: &Row, operand: &Expr) -> Result<Variant, SearchError> {
-        let mut scratch = std::mem::take(&mut self.conforms_map);
-        let value = self.get_column_expr_value(&mut row.scratch(&mut scratch), operand);
-        scratch.clear();
-        self.conforms_map = scratch;
-        value
+    fn evaluate_operand(&mut self, row: &mut Row, operand: &Expr) -> Result<Variant, SearchError> {
+        self.get_column_expr_value(row, operand)
     }
 
-    fn conforms(&mut self, row: &Row, expr: &Expr) -> Result<bool, SearchError> {
+    fn conforms(&mut self, row: &mut Row, expr: &Expr) -> Result<bool, SearchError> {
         let mut result = false;
 
         if let Some(ref logical_op) = expr.logical_op {
@@ -3117,16 +3111,17 @@ impl<'a> Searcher<'a> {
                 None => false,
             };
 
-            let right_result = |s: &mut Self| -> Result<bool, SearchError> {
-                match expr.right {
-                    Some(ref right) => s.conforms(row, right),
-                    None => Ok(false),
-                }
+            let needs_right = match logical_op {
+                LogicalOp::And => left_result,
+                LogicalOp::Or => !left_result,
             };
-
-            result = match logical_op {
-                LogicalOp::And => if !left_result { false } else { right_result(self)? },
-                LogicalOp::Or => if left_result { true } else { right_result(self)? },
+            result = if !needs_right {
+                left_result
+            } else {
+                match expr.right {
+                    Some(ref right) => self.conforms(row, right)?,
+                    None => false,
+                }
             };
         } else if let Some(ref op) = expr.op {
             match op {
@@ -4228,7 +4223,7 @@ mod tests {
             Expr::value(String::from("not-a-date")),
         );
 
-        let result = searcher.conforms(&Row::entry(&entry, &None, &tmp, &mut HashMap::new()), &expr);
+        let result = searcher.conforms(&mut Row::entry(&entry, &None, &tmp, &mut HashMap::new()), &expr);
 
         let _ = fs::remove_dir_all(&tmp);
 
@@ -4259,7 +4254,7 @@ mod tests {
             Expr::value(String::from("not-a-date")),
         );
 
-        let result = searcher.conforms(&Row::entry(&entry, &None, &tmp, &mut HashMap::new()), &expr);
+        let result = searcher.conforms(&mut Row::entry(&entry, &None, &tmp, &mut HashMap::new()), &expr);
 
         let _ = fs::remove_dir_all(&tmp);
 
@@ -9078,6 +9073,28 @@ f
 
         assert_eq!(totals, vec!["2	0.5	4	false	true	0.25	0.5"]);
         assert_eq!(having, vec!["txt	2"]);
+    }
+
+    #[test]
+    fn random_values_are_stable_within_a_row() {
+        let tmp = std::env::temp_dir().join("fselect_test_random_per_row");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        for i in 0..64 {
+            fs::write(tmp.join(format!("f{i}.txt")), "x").unwrap();
+        }
+
+        let run = |query: &str| run_query_against_dir(query, &tmp);
+        let all = run("select random() from __DIR__");
+        let impossible = run("select name from __DIR__ where random(0, 1) between 1 and 0");
+        let certain = run("select name from __DIR__ where random(0, 1000000) between 0 and 1000000");
+        let repeated = run("select name from __DIR__ where random(0, 1000000) = random(0, 1000000)");
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(all.len(), 64);
+        assert_eq!(impossible, Vec::<String>::new());
+        assert_eq!(certain.len(), 64);
+        assert_eq!(repeated.len(), 64);
     }
 
     #[test]

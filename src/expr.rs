@@ -827,6 +827,10 @@ impl Expr {
         self.function.as_ref().is_some_and(Function::reads_entry) || self.children().any(Expr::reads_entry)
     }
 
+    pub fn is_volatile(&self) -> bool {
+        self.function.as_ref().is_some_and(Function::is_volatile) || self.children().any(Expr::is_volatile)
+    }
+
     pub fn has_correlated_subquery(&self) -> bool {
         self.subquery.as_ref().is_some_and(|subquery| subquery.is_correlated())
             || self.children().any(Expr::has_correlated_subquery)

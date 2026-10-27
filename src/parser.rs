@@ -183,6 +183,7 @@ impl <'a> Parser<'a> {
             && !fields.iter().any(|expr| expr.has_aggregate_function())
             && !fields.iter().any(|expr| expr.has_correlated_subquery())
             && !fields.iter().any(Expr::reads_entry)
+            && !fields.iter().any(Expr::is_volatile)
             && fields
                 .iter()
                 .all(|expr| expr.get_required_fields().is_empty())
@@ -3254,6 +3255,18 @@ mod tests {
         ] {
             let parsed = parse_query(query).unwrap();
             assert_eq!(parsed.limit, 1, "{}: a constant SELECT still collapses", query);
+        }
+    }
+
+    #[test]
+    fn no_implicit_limit_for_random_values() {
+        for query in [
+            "select random() from /test",
+            "select random(1, 10) + 1 from /test",
+            "select 1, upper(rand()) from /test",
+        ] {
+            let parsed = parse_query(query).unwrap();
+            assert_eq!(parsed.limit, 0, "{}: the value differs per row", query);
         }
     }
 

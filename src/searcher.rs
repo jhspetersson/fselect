@@ -3035,11 +3035,13 @@ impl<'a> Searcher<'a> {
         if let Some(membership) = self.membership_cache.get(&key) {
             return Ok(Rc::clone(membership));
         }
-        let values = self.get_list_from_subquery(subquery.clone())?;
-        let has_null = match subquery.fields.first() {
-            Some(column) => values.iter().any(|value| Self::is_null_operand(column, value)),
-            None => values.iter().any(Variant::is_null),
-        };
+        let mut values = self.get_list_from_subquery(subquery.clone())?;
+        let before = values.len();
+        match subquery.fields.first() {
+            Some(column) => values.retain(|value| !Self::is_null_operand(column, value)),
+            None => values.retain(|value| !value.is_null()),
+        }
+        let has_null = values.len() != before;
         let membership = Rc::new(Membership::new(&values, field_type, has_null));
         if is_subquery_cacheable(subquery) {
             self.membership_cache.insert(key, Rc::clone(&membership));
@@ -6634,6 +6636,24 @@ mod tests {
         assert_eq!(not_equal, Vec::<String>::new(), "not equal is unknown too");
         assert_eq!(having, Vec::<String>::new(), "having");
         assert_eq!(populated, vec!["a.txt", "b.txt"], "a populated subquery still compares");
+    }
+
+    #[test]
+    fn in_subqueries_skip_missing_metadata() {
+        let tmp = std::env::temp_dir().join("fselect_test_in_subquery_missing_metadata");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(tmp.join("data")).unwrap();
+        fs::write(tmp.join("data").join("noext"), "x").unwrap();
+        fs::write(tmp.join("data").join("a.txt"), "x").unwrap();
+
+        let subquery = run_query_against_dir("select name from __DIR__/data where ext in (select width from __DIR__/data)", &tmp);
+        let negated = run_query_against_dir("select name from __DIR__/data where ext not in (select width from __DIR__/data)", &tmp);
+        let list = run_query_against_dir("select name from __DIR__/data where ext in (width)", &tmp);
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(subquery, Vec::<String>::new(), "subquery");
+        assert_eq!(negated, Vec::<String>::new(), "negated");
+        assert_eq!(list, Vec::<String>::new(), "list");
     }
 
     #[test]

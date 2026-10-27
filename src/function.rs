@@ -361,13 +361,13 @@ fn file_contains<R: Read>(mut reader: R, needle_text: &str) -> bool {
 /// values skipped too; otherwise all arguments are compared as strings, as in
 /// MySQL. `pick` is the ordering a candidate must have against the current
 /// best to replace it.
-fn least_or_greatest(first: &str, rest: &[String], pick: Ordering) -> Variant {
-    let values: Vec<&str> = std::iter::once(first)
-        .chain(rest.iter().map(String::as_str))
-        .filter(|value| !value.is_empty())
+fn least_or_greatest(first: &Variant, rest: &[Variant], pick: Ordering) -> Variant {
+    let values: Vec<&Variant> = std::iter::once(first)
+        .chain(rest.iter())
+        .filter(|value| !value.as_str().is_empty())
         .collect();
 
-    let numbers: Option<Vec<f64>> = values.iter().map(|value| value.parse::<f64>().ok()).collect();
+    let numbers: Option<Vec<f64>> = values.iter().map(|value| float_of(value)).collect();
     match numbers {
         Some(numbers) => numbers
             .into_iter()
@@ -376,9 +376,14 @@ fn least_or_greatest(first: &str, rest: &[String], pick: Ordering) -> Variant {
             .map_or_else(|| Variant::empty(VariantType::String), Variant::from_float),
         None => values
             .into_iter()
-            .reduce(|best, value| if value.cmp(best) == pick { value } else { best })
-            .map_or_else(|| Variant::empty(VariantType::String), |value| Variant::from_string(&value.to_string())),
+            .map(Variant::to_string)
+            .reduce(|best, value| if value.cmp(&best) == pick { value } else { best })
+            .map_or_else(|| Variant::empty(VariantType::String), |value| Variant::from_string(&value)),
     }
+}
+
+fn float_of(value: &Variant) -> Option<f64> {
+    value.to_float_opt().or_else(|| value.as_str().parse::<f64>().ok())
 }
 
 /// 1-based character position of `needle` in `haystack`, searching from the
@@ -495,10 +500,10 @@ fn date_variant(date: NaiveDate) -> Variant {
     Variant::from_datetime_range(start, end).with_text(&format_date(&date))
 }
 
-fn unary_float(arg: &str, f: impl FnOnce(f64) -> Result<Variant, String>) -> Result<Variant, String> {
-    match arg.parse::<f64>() {
-        Ok(val) => f(val),
-        Err(_) => Ok(Variant::empty(VariantType::String)),
+fn unary_float(arg: &Variant, f: impl FnOnce(f64) -> Result<Variant, String>) -> Result<Variant, String> {
+    match float_of(arg) {
+        Some(val) => f(val),
+        None => Ok(Variant::empty(VariantType::String)),
     }
 }
 
@@ -520,6 +525,24 @@ pub fn get_value(
     entry: Option<&DirEntry>,
     file_info: &Option<FileInfo>,
 ) -> Result<Variant, String> {
+    evaluate(
+        function,
+        Variant::from_string(&function_arg),
+        function_args.iter().map(|arg| Variant::from_string(arg)).collect(),
+        entry,
+        file_info,
+    )
+}
+
+pub fn evaluate(
+    function: &Function,
+    arg: Variant,
+    args: Vec<Variant>,
+    entry: Option<&DirEntry>,
+    file_info: &Option<FileInfo>,
+) -> Result<Variant, String> {
+    let function_arg = arg.to_string();
+    let function_args: Vec<String> = args.iter().map(Variant::to_string).collect();
     match function {
         // ===== String functions =====
         Function::Lower => Ok(Variant::from_string(&function_arg.to_lowercase())),
@@ -617,20 +640,20 @@ pub fn get_value(
         }
 
         // ===== Numeric functions =====
-        Function::Bin => match function_arg.parse::<i64>() {
-            Ok(val) => Ok(Variant::from_string(&format!("{:b}", val))),
+        Function::Bin => match arg.to_exact_int() {
+            Some(val) => Ok(Variant::from_string(&format!("{:b}", val))),
             _ => Ok(Variant::empty(VariantType::String)),
         },
-        Function::Hex => match function_arg.parse::<i64>() {
-            Ok(val) => Ok(Variant::from_string(&format!("{:x}", val))),
+        Function::Hex => match arg.to_exact_int() {
+            Some(val) => Ok(Variant::from_string(&format!("{:x}", val))),
             _ => Ok(Variant::empty(VariantType::String)),
         },
-        Function::Oct => match function_arg.parse::<i64>() {
-            Ok(val) => Ok(Variant::from_string(&format!("{:o}", val))),
+        Function::Oct => match arg.to_exact_int() {
+            Some(val) => Ok(Variant::from_string(&format!("{:o}", val))),
             _ => Ok(Variant::empty(VariantType::String)),
         },
-        Function::Abs => unary_float(&function_arg, |val| Ok(Variant::from_float(val.abs()))),
-        Function::Power => unary_float(&function_arg, |val| {
+        Function::Abs => unary_float(&arg, |val| Ok(Variant::from_float(val.abs()))),
+        Function::Power => unary_float(&arg, |val| {
             let power = match function_args.first() {
                 Some(power) => match power.parse::<f64>() {
                     Ok(p) => p,
@@ -645,14 +668,14 @@ pub fn get_value(
             }
             Ok(Variant::from_float(result))
         }),
-        Function::Sqrt => unary_float(&function_arg, |val| {
+        Function::Sqrt => unary_float(&arg, |val| {
             if val < 0.0 {
                 Ok(Variant::empty(VariantType::String))
             } else {
                 Ok(Variant::from_float(val.sqrt()))
             }
         }),
-        Function::Log => unary_float(&function_arg, |val| {
+        Function::Log => unary_float(&arg, |val| {
             let base = match function_args.first() {
                 Some(base) => match base.parse::<f64>() {
                     Ok(b) => b,
@@ -677,28 +700,28 @@ pub fn get_value(
             };
             Ok(Variant::from_float(result))
         }),
-        Function::Ln => unary_float(&function_arg, |val| {
+        Function::Ln => unary_float(&arg, |val| {
             if val <= 0.0 {
                 Ok(Variant::empty(VariantType::String))
             } else {
                 Ok(Variant::from_float(val.ln()))
             }
         }),
-        Function::Exp => unary_float(&function_arg, |val| {
+        Function::Exp => unary_float(&arg, |val| {
             let result = val.exp();
             if result.is_infinite() {
                 return Ok(Variant::empty(VariantType::String));
             }
             Ok(Variant::from_float(result))
         }),
-        Function::Least => Ok(least_or_greatest(&function_arg, &function_args, Ordering::Less)),
-        Function::Greatest => Ok(least_or_greatest(&function_arg, &function_args, Ordering::Greater)),
+        Function::Least => Ok(least_or_greatest(&arg, &args, Ordering::Less)),
+        Function::Greatest => Ok(least_or_greatest(&arg, &args, Ordering::Greater)),
         Function::Pi => {
             Ok(Variant::from_float(std::f64::consts::PI))
         }
-        Function::Floor => unary_float(&function_arg, |val| Ok(Variant::from_float(val.floor()))),
-        Function::Ceil => unary_float(&function_arg, |val| Ok(Variant::from_float(val.ceil()))),
-        Function::Round => unary_float(&function_arg, |val| {
+        Function::Floor => unary_float(&arg, |val| Ok(Variant::from_float(val.floor()))),
+        Function::Ceil => unary_float(&arg, |val| Ok(Variant::from_float(val.ceil()))),
+        Function::Round => unary_float(&arg, |val| {
             let precision: i32 = match function_args.first() {
                 Some(p) => match p.parse::<i32>() {
                     Ok(p) => p,
@@ -748,17 +771,11 @@ pub fn get_value(
                 return Ok(Variant::empty(VariantType::String));
             }
 
-            let size = function_arg
-                .parse::<u64>()
-                .ok()
-                .or_else(|| {
-                    function_arg
-                        .parse::<f64>()
-                        .ok()
-                        .filter(|size| size.is_finite() && *size >= 0.0)
-                        .map(|size| size.round() as u64)
-                })
-                .or_else(|| crate::util::parse_filesize(&function_arg));
+            let size = arg
+                .to_exact_int()
+                .filter(|size| *size >= 0)
+                .map(|size| size as u64)
+                .or_else(|| float_of(&arg).filter(|size| size.is_finite() && *size >= 0.0).map(|size| size.round() as u64));
 
             if let Some(size) = size {
                 let modifier = match function_args.first() {
@@ -1249,8 +1266,8 @@ pub fn get_value(
                 return Ok(Variant::from_int(rng.random_range(0..i64::MAX)));
             }
 
-            match function_arg.parse::<i64>() {
-                Ok(val) => {
+            match arg.to_exact_int() {
+                Some(val) => {
                     if function_args.is_empty() {
                         if val <= 0 {
                             Ok(Variant::from_int(0))

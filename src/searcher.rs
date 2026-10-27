@@ -2519,14 +2519,12 @@ impl<'a> Searcher<'a> {
             let mut function_args = vec![];
             if let Some(args) = &column_expr.args {
                 for arg in args {
-                    let arg_value =
-                        self.get_column_expr_value(row, arg)?;
-                    function_args.push(arg_value.to_string());
+                    function_args.push(self.get_column_expr_value(row, arg)?);
                 }
             }
-            let result = function::get_value(
+            let result = function::evaluate(
                 function,
-                function_arg?.to_string(),
+                function_arg?,
                 function_args,
                 row.entry,
                 row.file_info,
@@ -8969,6 +8967,37 @@ f
 
         assert_ne!(smallest, largest);
         assert_eq!(aggregated, vec![format!("{}	{}", smallest[0], largest[0])]);
+    }
+
+    #[test]
+    fn numeric_functions_read_the_byte_count_of_fsize() {
+        let tmp = std::env::temp_dir().join("fselect_test_fsize_functions");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        for bytes in [2usize, 10, 900, 10241] {
+            fs::write(tmp.join(format!("f{bytes}.bin")), vec![0u8; bytes]).unwrap();
+        }
+
+        let run = |query: &str| run_query_against_dir(query, &tmp);
+        let numeric = run("select name, abs(fsize), greatest(fsize, 1000), least(fsize, 1000), hex(fsize), fsize + 0 from __DIR__ order by size");
+        let text = run("select fsize, length(fsize) from __DIR__ order by size");
+        let capped = run("select name from __DIR__ where greatest(fsize, 1000) = 1000 order by size");
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(
+            numeric,
+            vec![
+                "f2.bin\t2\t1000\t2\t2\t2",
+                "f10.bin\t10\t1000\t10\ta\t10",
+                "f900.bin\t900\t1000\t900\t384\t900",
+                "f10241.bin\t10241\t10241\t1000\t2801\t10241",
+            ]
+        );
+        for row in &text {
+            let (formatted, length) = row.split_once('\t').unwrap();
+            assert_eq!(length, formatted.chars().count().to_string(), "string functions keep the formatted text: {row}");
+        }
+        assert_eq!(capped, vec!["f2.bin", "f10.bin", "f900.bin"]);
     }
 
     #[test]

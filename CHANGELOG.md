@@ -10,6 +10,7 @@
 ### Fixed
 
 - `NOT IN` no longer accepts a row when the list or subquery contains a NULL member and nothing matches
+- Numeric functions such as `ABS`, `GREATEST` and `HEX` read the byte count of `fsize` instead of its formatted text
 
 ## [0.10.4] - 2026-10-23
 

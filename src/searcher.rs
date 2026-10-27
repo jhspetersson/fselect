@@ -116,6 +116,7 @@ pub struct Searcher<'a> {
     accumulators: HashMap<Vec<String>, function::GroupAccumulator>,
     output_buffer: TopN<Criteria<String>, BufferedRow>,
     deferred_columns: Vec<usize>,
+    deferred_keys: HashSet<String>,
     aggregate_plan: Option<Rc<AggregatePlan>>,
     ordering_fields_rc: Rc<Vec<Expr>>,
     ordering_asc_rc: Rc<Vec<bool>>,
@@ -335,7 +336,7 @@ impl<'r> Row<'r> {
 
 enum BufferedRow {
     Rendered(String, Option<Variant>),
-    Pending(PendingRow),
+    Pending(Box<PendingRow>),
 }
 
 impl BufferedRow {
@@ -353,6 +354,7 @@ struct PendingRow {
     file_info: Option<FileInfo>,
     follow_symlinks: bool,
     items: Vec<(String, String)>,
+    values: HashMap<String, Variant>,
     deferred: Vec<usize>,
     first_value: Option<Variant>,
 }
@@ -446,6 +448,7 @@ impl<'a> Searcher<'a> {
             found: 0,
             accumulators: HashMap::new(),
             deferred_columns: Self::deferred_columns(query),
+            deferred_keys: Self::deferred_keys(query),
             aggregate_plan: AggregatePlan::new(query),
             output_buffer: if limit == 0 {
                 TopN::limitless()
@@ -1936,6 +1939,20 @@ impl<'a> Searcher<'a> {
             .collect()
     }
 
+    fn deferred_keys(query: &Query) -> HashSet<String> {
+        fn collect(expr: &Expr, keys: &mut HashSet<String>) {
+            keys.insert(expr.cache_key());
+            for child in expr.children() {
+                collect(child, keys);
+            }
+        }
+        let mut keys = HashSet::new();
+        for index in Self::deferred_columns(query) {
+            collect(&query.fields[index], &mut keys);
+        }
+        keys
+    }
+
     fn condition_state(
         &mut self,
         row: &mut Row,
@@ -2219,7 +2236,7 @@ impl<'a> Searcher<'a> {
                 let rendered = match row {
                     BufferedRow::Rendered(text, first_value) => Some((text, first_value)),
                     BufferedRow::Pending(pending) if position < offset => Some((String::new(), pending.first_value)),
-                    BufferedRow::Pending(pending) => self.render_pending(pending, &mut lookup)?,
+                    BufferedRow::Pending(pending) => self.render_pending(*pending, &mut lookup)?,
                 };
                 position += 1;
                 if let Some((text, first_value)) = rendered {
@@ -2232,7 +2249,7 @@ impl<'a> Searcher<'a> {
 
     fn render_pending(
         &mut self,
-        row: PendingRow,
+        mut row: PendingRow,
         lookup: &mut DirEntryLookup,
     ) -> Result<Option<(String, Option<Variant>)>, SearchError> {
         let (Some(directory), Some(file_name)) = (row.path.parent(), row.path.file_name()) else {
@@ -2242,11 +2259,12 @@ impl<'a> Searcher<'a> {
         };
         let mut items = row.items.clone();
         let mut first_value = row.first_value.clone();
+        let mut values = std::mem::take(&mut row.values);
         match lookup.entry(directory, file_name) {
             Ok(Some(entry)) => {
                 self.fms.clear();
                 let follow_symlinks = std::mem::replace(&mut self.current_follow_symlinks, row.follow_symlinks);
-                let evaluated = self.evaluate_deferred(entry, &row, &mut items);
+                let evaluated = self.evaluate_deferred(entry, &row, &mut values, &mut items);
                 self.current_follow_symlinks = follow_symlinks;
                 first_value = first_value.or(evaluated?);
             }
@@ -2268,12 +2286,12 @@ impl<'a> Searcher<'a> {
         &mut self,
         entry: &DirEntry,
         pending: &PendingRow,
+        values: &mut HashMap<String, Variant>,
         items: &mut [(String, String)],
     ) -> Result<Option<Variant>, SearchError> {
         let mut first_value = None;
         let query = self.query;
-        let mut values = HashMap::new();
-        let mut row = Row::entry(entry, &pending.file_info, &pending.root_path, &mut values);
+        let mut row = Row::entry(entry, &pending.file_info, &pending.root_path, values);
         if self.use_colors && pending.deferred.iter().any(|index| query.fields[*index].contains_colorized()) {
             self.fms.update_file_metadata(entry, self.current_follow_symlinks);
         }
@@ -2372,10 +2390,12 @@ impl<'a> Searcher<'a> {
                 subquery.limit = 1;
             }
             let list = self.get_list_from_subquery(*subquery)?;
-            return Ok(match list.into_iter().next() {
+            let result = match list.into_iter().next() {
                 Some(value) => apply_minus(column_expr, value),
                 None => Variant::null(),
-            });
+            };
+            row.values.insert(cache_key, result.clone());
+            return Ok(result);
         }
 
         if let Some(ref _function) = column_expr.function {
@@ -2885,15 +2905,21 @@ impl<'a> Searcher<'a> {
         self.alias_read_failure()?;
         if self.is_buffered() {
             let buffered = if defer {
-                BufferedRow::Pending(PendingRow {
+                BufferedRow::Pending(Box::new(PendingRow {
                     path: entry.path(),
                     root_path: root_path.to_path_buf(),
                     file_info: file_info.clone(),
                     follow_symlinks: self.current_follow_symlinks,
                     items,
+                    values: row
+                        .values
+                        .iter()
+                        .filter(|(key, _)| self.deferred_keys.contains(*key))
+                        .map(|(key, value)| (key.clone(), value.clone()))
+                        .collect(),
                     deferred: self.deferred_columns.clone(),
                     first_value,
-                })
+                }))
             } else {
                 let mut buf = WritableBuffer::new();
                 self.results_writer.write_row(&mut buf, items)?;
@@ -2988,9 +3014,6 @@ impl<'a> Searcher<'a> {
             #[cfg(test)]
             {
                 self.in_list_comparisons += 1;
-            }
-            if row.group.is_none() {
-                row.values.clear();
             }
             let arg_val = self.get_column_expr_value(row, arg)?;
             if Self::is_null_operand(arg, &arg_val) {
@@ -3157,14 +3180,8 @@ impl<'a> Searcher<'a> {
             }
 
             result = match op {
-                Op::In => {
-                    let mut arg_map = HashMap::new();
-                    self.check_in_list(expr, &mut row.scratch(&mut arg_map), &field_value, false)?
-                }
-                Op::NotIn => {
-                    let mut arg_map = HashMap::new();
-                    self.check_in_list(expr, &mut row.scratch(&mut arg_map), &field_value, true)?
-                }
+                Op::In => self.check_in_list(expr, row, &field_value, false)?,
+                Op::NotIn => self.check_in_list(expr, row, &field_value, true)?,
                 _ => self.compare_variants(op, &field_value, &value)?,
             };
         }
@@ -9073,6 +9090,83 @@ f
 
         assert_eq!(totals, vec!["2	0.5	4	false	true	0.25	0.5"]);
         assert_eq!(having, vec!["txt	2"]);
+    }
+
+    #[test]
+    fn in_lists_see_the_random_value_the_row_already_drew() {
+        let tmp = std::env::temp_dir().join("fselect_test_random_in_list");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        for i in 0..64 {
+            fs::write(tmp.join(format!("f{i}.txt")), "x").unwrap();
+        }
+
+        let run = |query: &str| run_query_against_dir(query, &tmp);
+        let member = run("select name from __DIR__ where random(0, 1) in (random(0, 1))");
+        let not_member = run("select name from __DIR__ where random(0, 1) not in (random(0, 1))");
+        let shifted = run("select name from __DIR__ where random(0, 1) in (random(0, 1) + 1)");
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(member.len(), 64);
+        assert_eq!(not_member, Vec::<String>::new());
+        assert_eq!(shifted, Vec::<String>::new());
+    }
+
+    #[test]
+    fn correlated_scalar_subqueries_are_evaluated_once_per_row() {
+        let tmp = std::env::temp_dir().join("fselect_test_random_correlated_once");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(tmp.join("many")).unwrap();
+        fs::create_dir_all(tmp.join("other")).unwrap();
+        for i in 0..64 {
+            fs::write(tmp.join("many").join(format!("f{i}.txt")), "x").unwrap();
+        }
+        fs::write(tmp.join("other").join("one.txt"), "x").unwrap();
+
+        let run = |query: &str| run_query_against_dir(query, &tmp);
+        let cells = |row: &String| row.split('\t').map(str::to_string).collect::<Vec<_>>();
+        let impossible = run("select name from __DIR__/many as t where (select random(0, 1) from __DIR__/other where size = t.size) between 1 and 0");
+        let certain = run("select name from __DIR__/many as t where (select random(0, 1) from __DIR__/other where size = t.size) between 0 and 1");
+        let shown = run("select name, (select random(0, 1) from __DIR__/other where size = t.size) as r, t.r from __DIR__/many as t where t.r = 1");
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(impossible, Vec::<String>::new());
+        assert_eq!(certain.len(), 64);
+        assert!(!shown.is_empty());
+        for row in &shown {
+            let row = cells(row);
+            assert_eq!(row[1], "1", "a row passed `t.r = 1` but shows r = {}", row[1]);
+            assert_eq!(row[2], "1");
+        }
+    }
+
+    #[test]
+    fn deferred_columns_reuse_the_random_values_of_their_row() {
+        let tmp = std::env::temp_dir().join("fselect_test_random_deferred");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        for i in 0..64 {
+            fs::write(tmp.join(format!("f{i}.txt")), "x").unwrap();
+        }
+
+        let run = |query: &str| run_query_against_dir(query, &tmp);
+        let cells = |row: &String| row.split('\t').map(str::to_string).collect::<Vec<_>>();
+        let filtered = run("select name, random(0, 1), length(sha256) + random(0, 1) from __DIR__ where random(0, 1) = 1 order by name limit 100");
+        let unfiltered = run("select name, random(0, 1000000), length(sha256) + random(0, 1000000) from __DIR__ order by name limit 100");
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert!(!filtered.is_empty());
+        for row in &filtered {
+            let row = cells(row);
+            assert_eq!(row[1], "1", "a row passed `random(0, 1) = 1` but shows {}", row[1]);
+            assert_eq!(row[2], "65", "the deferred column drew a different random value in {row:?}");
+        }
+        assert_eq!(unfiltered.len(), 64);
+        for row in &unfiltered {
+            let row = cells(row);
+            let r: i64 = row[1].parse().unwrap();
+            assert_eq!(row[2], (r + 64).to_string(), "the deferred column must reuse the row's random value in {row:?}");
+        }
     }
 
     #[test]

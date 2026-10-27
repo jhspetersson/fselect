@@ -7,6 +7,7 @@
 use std::path::Path;
 
 use windows_sys::Win32::Foundation::{HANDLE, INVALID_HANDLE_VALUE};
+use windows_sys::Win32::Globalization::{CompareStringOrdinal, CSTR_EQUAL};
 use windows_sys::Win32::Storage::FileSystem::{
     FindClose, FindFirstStreamW, FindNextStreamW, FindStreamInfoStandard, WIN32_FIND_STREAM_DATA,
 };
@@ -159,7 +160,9 @@ pub fn has_named_ads(path: &Path, name: &str) -> bool {
 }
 
 fn eq_ignore_case(a: &str, b: &str) -> bool {
-    a.chars().flat_map(char::to_uppercase).eq(b.chars().flat_map(char::to_uppercase))
+    let a: Vec<u16> = a.encode_utf16().collect();
+    let b: Vec<u16> = b.encode_utf16().collect();
+    unsafe { CompareStringOrdinal(a.as_ptr(), a.len() as i32, b.as_ptr(), b.len() as i32, 1) == CSTR_EQUAL }
 }
 
 /// Reads the content of a named alternate data stream as a UTF-8 string.
@@ -221,7 +224,7 @@ mod tests {
         fs::create_dir_all(&tmp).unwrap();
         let file = tmp.join("tagged.txt");
         fs::write(&file, "x").unwrap();
-        for stream in ["\u{e9}cole", "\u{444}\u{430}\u{439}\u{43b}"] {
+        for stream in ["\u{e9}cole", "\u{444}\u{430}\u{439}\u{43b}", "stra\u{df}e", "\u{fb00}", "\u{131}"] {
             let mut ads = fs::File::create(format!("{}:{}", file.display(), stream)).unwrap();
             ads.write_all(b"v").unwrap();
         }
@@ -230,12 +233,18 @@ mod tests {
         let cyrillic = has_named_ads(&file, "\u{424}\u{410}\u{419}\u{41b}");
         let exact = has_named_ads(&file, "\u{e9}cole");
         let missing = has_named_ads(&file, "\u{e9}col");
+        let sharp_s = has_named_ads(&file, "STRASSE");
+        let ligature = has_named_ads(&file, "FF");
+        let dotless = has_named_ads(&file, "I");
         let _ = fs::remove_dir_all(&tmp);
 
         assert!(exact, "exact");
         assert!(accented, "accented");
         assert!(cyrillic, "cyrillic");
         assert!(!missing, "missing");
+        assert!(!sharp_s, "full case mapping of sharp s");
+        assert!(!ligature, "full case mapping of a ligature");
+        assert!(!dotless, "dotless i is not folded by NTFS");
     }
 
 }

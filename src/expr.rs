@@ -974,6 +974,15 @@ impl Expr {
             }
         } else if let Some(ref left) = self.left {
             write_operand(out, left, mode)?;
+        } else if let Some(ref args) = self.args {
+            out.write_char('(')?;
+            for (i, arg) in args.iter().enumerate() {
+                if i > 0 {
+                    out.write_str(", ")?;
+                }
+                arg.render(out, mode)?;
+            }
+            out.write_char(')')?;
         }
 
         if let Some(ref op) = self.arithmetic_op {
@@ -1056,6 +1065,19 @@ mod tests {
         let backslash = Expr::value(String::from("a\\', 'b"));
         let plain = Expr::value(String::from("a\\\\', 'b"));
         assert_ne!(backslash.cache_key(), plain.cache_key());
+    }
+
+    #[test]
+    fn cache_key_includes_in_list_members() {
+        let mut txt_list = Expr::new();
+        txt_list.set_args(vec![Expr::value(String::from("txt"))]);
+        let mut md_list = Expr::new();
+        md_list.set_args(vec![Expr::value(String::from("md"))]);
+        let in_txt = Expr::op(Expr::field(Field::Extension), Op::In, txt_list);
+        let in_md = Expr::op(Expr::field(Field::Extension), Op::In, md_list);
+        assert_ne!(in_txt.cache_key(), in_md.cache_key());
+        assert_eq!(in_txt.cache_key(), "Extension In (\"txt\")");
+        assert_eq!(in_txt.to_string(), "Extension In (txt)");
     }
 
     #[test]

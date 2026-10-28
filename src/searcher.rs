@@ -2624,11 +2624,26 @@ impl<'a> Searcher<'a> {
         for round in 0..rounds {
             let mut changed = false;
             failed.clear();
+            if round > 0 {
+                for (index, scratch) in scratches.iter_mut().enumerate() {
+                    if !self_contained[index] {
+                        scratch.clear();
+                    }
+                }
+            }
             for (index, (name, column)) in required_columns.iter().enumerate() {
                 if round > 0 && self_contained[index] && bound[index].is_some() {
                     continue;
                 }
-                let mut scratch = HashMap::new();
+                let mut seed = row.values.clone();
+                for (other, settled) in scratches.iter().enumerate() {
+                    if other != index && bound[other].is_some() {
+                        for (key, value) in settled {
+                            seed.entry(key.clone()).or_insert_with(|| value.clone());
+                        }
+                    }
+                }
+                let mut scratch = seed.clone();
                 let shared = required_columns[..index]
                     .iter()
                     .position(|(_, earlier)| earlier.cache_key() == column.cache_key())
@@ -2637,6 +2652,7 @@ impl<'a> Searcher<'a> {
                     Some(value) => Ok(value),
                     None => self.get_column_expr_value(&mut row.scratch(&mut scratch), column),
                 };
+                scratch.retain(|key, _| !seed.contains_key(key));
                 scratches[index] = scratch;
                 let value = match evaluated {
                     Ok(value) => {
@@ -9110,6 +9126,31 @@ f
         assert_eq!(member.len(), 64);
         assert_eq!(not_member, Vec::<String>::new());
         assert_eq!(shifted, Vec::<String>::new());
+    }
+
+    #[test]
+    fn aliases_share_the_random_values_of_their_row() {
+        let tmp = std::env::temp_dir().join("fselect_test_random_aliases");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        for i in 0..64 {
+            fs::write(tmp.join(format!("f{i}.txt")), "x").unwrap();
+        }
+
+        let run = |query: &str| run_query_against_dir(query, &tmp);
+        let cells = |row: &String| row.split('\t').map(str::to_string).collect::<Vec<_>>();
+        let mismatched = run("select name, random(0, 1) as r, random(0, 1) + 1 as s from __DIR__ as t where t.s <> t.r + 1");
+        let shown = run("select name, random(0, 1) as r, random(0, 1) + 1 as s, random(0, 1) from __DIR__ as t where t.s = t.r + 1");
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert_eq!(mismatched, Vec::<String>::new());
+        assert_eq!(shown.len(), 64);
+        for row in &shown {
+            let row = cells(row);
+            let r: i64 = row[1].parse().unwrap();
+            assert_eq!(row[2], (r + 1).to_string(), "alias s drew a different random value in {row:?}");
+            assert_eq!(row[3], row[1], "the projection drew a different random value in {row:?}");
+        }
     }
 
     #[test]

@@ -2618,6 +2618,10 @@ impl<'a> Searcher<'a> {
             .iter()
             .map(|(_, column)| column.get_alias_references_in_subqueries(current_alias, true).is_empty())
             .collect();
+        let mut alias_dependent_keys = HashSet::new();
+        for (_, column) in required_columns {
+            Self::collect_alias_dependent_keys(column, current_alias, &mut alias_dependent_keys);
+        }
         let mut bound: Vec<Option<Variant>> = vec![None; required_columns.len()];
         let mut scratches: Vec<HashMap<String, Variant>> = vec![HashMap::new(); required_columns.len()];
         let mut failed: Vec<(usize, SearchError)> = Vec::new();
@@ -2625,25 +2629,22 @@ impl<'a> Searcher<'a> {
             let mut changed = false;
             failed.clear();
             if round > 0 {
-                for (index, scratch) in scratches.iter_mut().enumerate() {
-                    if !self_contained[index] {
-                        scratch.clear();
-                    }
+                for scratch in scratches.iter_mut() {
+                    scratch.retain(|key, _| !alias_dependent_keys.contains(key));
                 }
             }
             for (index, (name, column)) in required_columns.iter().enumerate() {
                 if round > 0 && self_contained[index] && bound[index].is_some() {
                     continue;
                 }
-                let mut seed = row.values.clone();
+                let mut scratch = row.values.clone();
                 for (other, settled) in scratches.iter().enumerate() {
                     if other != index && bound[other].is_some() {
                         for (key, value) in settled {
-                            seed.entry(key.clone()).or_insert_with(|| value.clone());
+                            scratch.entry(key.clone()).or_insert_with(|| value.clone());
                         }
                     }
                 }
-                let mut scratch = seed.clone();
                 let shared = required_columns[..index]
                     .iter()
                     .position(|(_, earlier)| earlier.cache_key() == column.cache_key())
@@ -2652,7 +2653,6 @@ impl<'a> Searcher<'a> {
                     Some(value) => Ok(value),
                     None => self.get_column_expr_value(&mut row.scratch(&mut scratch), column),
                 };
-                scratch.retain(|key, _| !seed.contains_key(key));
                 scratches[index] = scratch;
                 let value = match evaluated {
                     Ok(value) => {
@@ -2709,6 +2709,21 @@ impl<'a> Searcher<'a> {
         }
         self.seed_bound_aliases(current_alias, required_columns, &bound, &scratches, row.values);
         Ok(())
+    }
+
+    fn collect_alias_dependent_keys(expr: &Expr, alias: &str, keys: &mut HashSet<String>) {
+        if expr.get_alias_references_in_subqueries(alias, true).is_empty() {
+            return;
+        }
+        keys.insert(expr.cache_key());
+        if expr.minus {
+            let mut bare = expr.clone();
+            bare.minus = false;
+            keys.insert(bare.cache_key());
+        }
+        for child in expr.children() {
+            Self::collect_alias_dependent_keys(child, alias, keys);
+        }
     }
 
     fn seed_bound_aliases(
@@ -9140,10 +9155,12 @@ f
         let run = |query: &str| run_query_against_dir(query, &tmp);
         let cells = |row: &String| row.split('\t').map(str::to_string).collect::<Vec<_>>();
         let mismatched = run("select name, random(0, 1) as r, random(0, 1) + 1 as s from __DIR__ as t where t.s <> t.r + 1");
+        let dependent = run("select name, t.z + random(0, 1) as a, random(0, 1) + 1 as b, 1 as z from __DIR__ as t where t.a <> t.b");
         let shown = run("select name, random(0, 1) as r, random(0, 1) + 1 as s, random(0, 1) from __DIR__ as t where t.s = t.r + 1");
         let _ = fs::remove_dir_all(&tmp);
 
         assert_eq!(mismatched, Vec::<String>::new());
+        assert_eq!(dependent, Vec::<String>::new());
         assert_eq!(shown.len(), 64);
         for row in &shown {
             let row = cells(row);

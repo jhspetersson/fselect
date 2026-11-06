@@ -3501,6 +3501,19 @@ mod tests {
     }
 
     #[test]
+    fn nested_aggregate_functions_are_rejected() {
+        let message = "Aggregate functions cannot be nested";
+        assert_eq!(parse_err("select count(count(*)) from /test"), message);
+        assert_eq!(parse_err("select max(min(size)) from /test"), message);
+        assert_eq!(parse_err("select max(size + min(size)) from /test"), message);
+        assert_eq!(parse_err("select name from /test group by name having sum(count(*)) > 1"), message);
+        assert_eq!(parse_err("select name from /test group by name order by avg(max(size))"), message);
+        assert!(parse_query("select max(size) + min(size) from /test").is_ok());
+        assert!(parse_query("select max(abs(size)) from /test").is_ok());
+        assert!(parse_query("select max((select count(*) from /t)) from /test").is_ok());
+    }
+
+    #[test]
     fn top_limits_the_rows_like_limit() {
         let query = parse_query("select top 5 name from /test").unwrap();
         assert_eq!((query.limit, query.fields.len()), (5, 1));

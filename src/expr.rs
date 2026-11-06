@@ -823,6 +823,9 @@ impl Expr {
         if let Some(ref function) = self.function {
             let given = usize::from(self.left.is_some()) + self.args.as_ref().map_or(0, Vec::len);
             function.check_argument_count(given)?;
+            if function.is_aggregate_function() && self.children().any(Expr::has_aggregate_function) {
+                return Err("Aggregate functions cannot be nested".to_string());
+            }
             for &position in function.datetime_argument_positions() {
                 let argument = match position {
                     0 => self.left.as_deref(),

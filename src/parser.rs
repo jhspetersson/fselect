@@ -1031,6 +1031,9 @@ impl <'a> Parser<'a> {
             }
             _ => {
                 self.drop_lexeme();
+                if not {
+                    return Err("Expected an operator after NOT".to_string());
+                }
                 Ok(left)
             }
         };
@@ -3571,6 +3574,16 @@ mod tests {
         ] {
             assert!(parse_query(query).is_ok(), "{query}");
         }
+    }
+
+    #[test]
+    fn a_dangling_not_is_rejected() {
+        let message = "Expected an operator after NOT";
+        assert_eq!(parse_err("select name from /test where is_file not"), message);
+        assert_eq!(parse_err("select name from /test where size not"), message);
+        assert_eq!(parse_err("select name from /test where is_file not and size > 1"), message);
+        assert_eq!(parse_err("select name from /test where size > 1 and is_dir not"), message);
+        assert!(parse_query("select name from /test where not is_file and size not in (1) and name not like 'a%'").is_ok());
     }
 
     #[test]

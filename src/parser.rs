@@ -3554,6 +3554,26 @@ mod tests {
     }
 
     #[test]
+    fn invalid_literal_function_arguments_are_parse_errors() {
+        assert_eq!(parse_err("select extract('xx', modified) from /test"), "Unsupported EXTRACT unit: xx");
+        assert_eq!(parse_err("select date_trunc('xx', modified) from /test"), "Unsupported DATE_TRUNC unit: xx");
+        assert_eq!(parse_err("select date_add(modified, 'x') from /test"), "Invalid number of days: x");
+        assert_eq!(parse_err("select date_sub(modified, 1.5) from /test"), "Invalid number of days: 1.5");
+        assert_eq!(parse_err("select round(size, 'x') from /test"), "Could not parse precision argument of ROUND function: x");
+        assert_eq!(parse_err("select substr(name, 'a') from /test"), "Could not parse position argument of SUBSTRING function: a");
+        assert_eq!(parse_err("select substr(name, 1, 'b') from /test"), "Could not parse length argument of SUBSTRING function: b");
+        assert_eq!(parse_err("select locate('e', name, 'c') from /test"), "Could not parse position argument of LOCATE function: c");
+        assert_eq!(parse_err("select name from /test where strpos(name, 'e', 'c') > 0"), "Could not parse position argument of STRPOS function: c");
+        for query in [
+            "select extract('YEAR', modified), date_trunc('month', modified) from /test",
+            "select date_add(modified, -1), round(size, -2), substr(name, -3, 2), locate('e', name, 2) from /test",
+            "select extract(name, modified), round(size, size), substr(name, size) from /test",
+        ] {
+            assert!(parse_query(query).is_ok(), "{query}");
+        }
+    }
+
+    #[test]
     fn top_limits_the_rows_like_limit() {
         let query = parse_query("select top 5 name from /test").unwrap();
         assert_eq!((query.limit, query.fields.len()), (5, 1));

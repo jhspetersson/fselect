@@ -478,6 +478,41 @@ impl Function {
         }
     }
 
+    pub fn validate_literal_argument(&self, position: usize, text: &str) -> Result<(), String> {
+        if self.datetime_argument_positions().contains(&position) {
+            return parse_datetime(text).map(drop).map_err(|_| format!("Can't parse datetime: {}", text));
+        }
+        let probe = NaiveDateTime::UNIX_EPOCH;
+        match (self, position) {
+            (Function::Extract, 0) => extract_part(text, probe).map(drop),
+            (Function::DateTrunc, 0) => truncate_date(text, probe).map(drop),
+            (Function::DateAdd | Function::DateSub, 1) => {
+                text.parse::<i64>().map(drop).map_err(|_| format!("Invalid number of days: {}", text))
+            }
+            (Function::Round, 1) => Variant::from_string(&text.to_string())
+                .to_exact_int()
+                .and_then(|precision| i32::try_from(precision).ok())
+                .map(drop)
+                .ok_or_else(|| format!("Could not parse precision argument of ROUND function: {}", text)),
+            (Function::Substring, 1) => text
+                .parse::<i32>()
+                .map(drop)
+                .map_err(|_| format!("Could not parse position argument of SUBSTRING function: {}", text)),
+            (Function::Substring, 2) => text
+                .parse::<i64>()
+                .map(drop)
+                .map_err(|_| format!("Could not parse length argument of SUBSTRING function: {}", text)),
+            (Function::Locate | Function::Strpos, 2) => text.parse::<i32>().map(drop).map_err(|_| {
+                format!(
+                    "Could not parse position argument of {} function: {}",
+                    self.canonical_name().to_uppercase(),
+                    text
+                )
+            }),
+            _ => Ok(()),
+        }
+    }
+
     pub fn check_argument_count(&self, given: usize) -> Result<(), String> {
         let arity = self.arity();
         if arity.accepts(given) {
@@ -491,6 +526,50 @@ impl Function {
             ))
         }
     }
+}
+
+fn extract_part(unit: &str, dt: NaiveDateTime) -> Result<i64, String> {
+    Ok(match unit.to_ascii_lowercase().as_str() {
+        "year" | "years" | "yr" => dt.year() as i64,
+        "quarter" | "quarters" => ((dt.month() - 1) / 3 + 1) as i64,
+        "month" | "months" | "mon" => dt.month() as i64,
+        "week" | "weeks" => dt.iso_week().week() as i64,
+        "day" | "days" => dt.day() as i64,
+        "hour" | "hours" => dt.hour() as i64,
+        "minute" | "minutes" | "min" => dt.minute() as i64,
+        "second" | "seconds" | "sec" => dt.second() as i64,
+        "dow" | "dayofweek" => dt.weekday().number_from_sunday() as i64,
+        "isodow" => dt.weekday().number_from_monday() as i64,
+        "doy" | "dayofyear" => dt.ordinal() as i64,
+        "epoch" | "unixtime" => match dt.and_local_timezone(Local) {
+            LocalResult::Single(local) => local.timestamp(),
+            LocalResult::Ambiguous(earliest, _) => earliest.timestamp(),
+            LocalResult::None => dt.and_utc().timestamp(),
+        },
+        _ => return Err(format!("Unsupported EXTRACT unit: {}", unit)),
+    })
+}
+
+fn truncate_date(unit: &str, dt: NaiveDateTime) -> Result<Option<NaiveDateTime>, String> {
+    Ok(match unit.to_ascii_lowercase().as_str() {
+        "year" | "years" => NaiveDate::from_ymd_opt(dt.year(), 1, 1).and_then(|d| d.and_hms_opt(0, 0, 0)),
+        "quarter" | "quarters" => {
+            let m = ((dt.month() - 1) / 3) * 3 + 1;
+            NaiveDate::from_ymd_opt(dt.year(), m, 1).and_then(|d| d.and_hms_opt(0, 0, 0))
+        }
+        "month" | "months" => NaiveDate::from_ymd_opt(dt.year(), dt.month(), 1).and_then(|d| d.and_hms_opt(0, 0, 0)),
+        "week" | "weeks" => {
+            let offset = dt.weekday().num_days_from_monday() as i64;
+            chrono::Duration::try_days(offset)
+                .and_then(|dur| dt.date().checked_sub_signed(dur))
+                .and_then(|d| d.and_hms_opt(0, 0, 0))
+        }
+        "day" | "days" => dt.date().and_hms_opt(0, 0, 0),
+        "hour" | "hours" => dt.date().and_hms_opt(dt.hour(), 0, 0),
+        "minute" | "minutes" => dt.date().and_hms_opt(dt.hour(), dt.minute(), 0),
+        "second" | "seconds" => Some(dt),
+        _ => return Err(format!("Unsupported DATE_TRUNC unit: {}", unit)),
+    })
 }
 
 fn snap_to_exact_power(val: f64, base: f64, approx: f64) -> f64 {
@@ -927,32 +1006,7 @@ pub fn evaluate(
                 Ok(d) => d.0,
                 _ => return Ok(Variant::empty(VariantType::Int)),
             };
-            let unit = function_arg.to_ascii_lowercase();
-            match unit.as_str() {
-                "year" | "years" | "yr" => Ok(Variant::from_int(dt.year() as i64)),
-                "quarter" | "quarters" => Ok(Variant::from_int(((dt.month() - 1) / 3 + 1) as i64)),
-                "month" | "months" | "mon" => Ok(Variant::from_int(dt.month() as i64)),
-                "week" | "weeks" => Ok(Variant::from_int(dt.iso_week().week() as i64)),
-                "day" | "days" => Ok(Variant::from_int(dt.day() as i64)),
-                "hour" | "hours" => Ok(Variant::from_int(dt.hour() as i64)),
-                "minute" | "minutes" | "min" => Ok(Variant::from_int(dt.minute() as i64)),
-                "second" | "seconds" | "sec" => Ok(Variant::from_int(dt.second() as i64)),
-                "dow" | "dayofweek" => Ok(Variant::from_int(dt.weekday().number_from_sunday() as i64)),
-                "isodow" => Ok(Variant::from_int(dt.weekday().number_from_monday() as i64)),
-                "doy" | "dayofyear" => Ok(Variant::from_int(dt.ordinal() as i64)),
-                "epoch" | "unixtime" => {
-                    // Naive datetimes in the tool are local time, so interpret them
-                    // as local when computing the Unix timestamp
-                    let timestamp = match dt.and_local_timezone(Local) {
-                        LocalResult::Single(local) => local.timestamp(),
-                        LocalResult::Ambiguous(earliest, _) => earliest.timestamp(),
-                        // DST gap: no local mapping exists, fall back to UTC
-                        LocalResult::None => dt.and_utc().timestamp(),
-                    };
-                    Ok(Variant::from_int(timestamp))
-                }
-                _ => Err(format!("Unsupported EXTRACT unit: {}", function_arg)),
-            }
+            extract_part(&function_arg, dt).map(Variant::from_int)
         }
         Function::DateTrunc => {
             if function_args.is_empty() {
@@ -962,30 +1016,7 @@ pub fn evaluate(
                 Ok(d) => d.0,
                 _ => return Ok(Variant::empty(VariantType::DateTime)),
             };
-            let unit = function_arg.to_ascii_lowercase();
-            let truncated: Option<NaiveDateTime> = match unit.as_str() {
-                "year" | "years" => NaiveDate::from_ymd_opt(dt.year(), 1, 1)
-                    .and_then(|d| d.and_hms_opt(0, 0, 0)),
-                "quarter" | "quarters" => {
-                    let m = ((dt.month() - 1) / 3) * 3 + 1;
-                    NaiveDate::from_ymd_opt(dt.year(), m, 1).and_then(|d| d.and_hms_opt(0, 0, 0))
-                }
-                "month" | "months" => NaiveDate::from_ymd_opt(dt.year(), dt.month(), 1)
-                    .and_then(|d| d.and_hms_opt(0, 0, 0)),
-                "week" | "weeks" => {
-                    // Truncate to Monday (ISO week start)
-                    let offset = dt.weekday().num_days_from_monday() as i64;
-                    let date = dt.date();
-                    chrono::Duration::try_days(offset)
-                        .and_then(|dur| date.checked_sub_signed(dur))
-                        .and_then(|d| d.and_hms_opt(0, 0, 0))
-                }
-                "day" | "days" => dt.date().and_hms_opt(0, 0, 0),
-                "hour" | "hours" => dt.date().and_hms_opt(dt.hour(), 0, 0),
-                "minute" | "minutes" => dt.date().and_hms_opt(dt.hour(), dt.minute(), 0),
-                "second" | "seconds" => Some(dt),
-                _ => return Err(format!("Unsupported DATE_TRUNC unit: {}", function_arg)),
-            };
+            let truncated = truncate_date(&function_arg, dt)?;
             match truncated {
                 Some(t) => Ok(Variant::from_datetime(t)),
                 None => Ok(Variant::empty(VariantType::DateTime)),

@@ -33,6 +33,7 @@
 - Nested aggregate functions (`count(count(*))`) are rejected
 - `AS` without an alias, or an alias inside parentheses, is rejected instead of being ignored
 - Two search roots with the same alias are rejected
+- An invalid literal unit, day count, precision or position argument of a date or string function is reported once when the query is parsed instead of per file
 - `NOT IN` no longer accepts a row when the list or subquery contains a NULL member and nothing matches
 - Numeric functions such as `ABS`, `GREATEST` and `HEX` read the byte count of `fsize` instead of its formatted text
 

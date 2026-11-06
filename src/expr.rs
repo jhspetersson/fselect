@@ -826,7 +826,7 @@ impl Expr {
             if function.is_aggregate_function() && self.children().any(Expr::has_aggregate_function) {
                 return Err("Aggregate functions cannot be nested".to_string());
             }
-            for &position in function.datetime_argument_positions() {
+            for position in 0..=self.args.as_ref().map_or(0, Vec::len) {
                 let argument = match position {
                     0 => self.left.as_deref(),
                     n => self.args.as_ref().and_then(|args| args.get(n - 1)),
@@ -836,9 +836,7 @@ impl Expr {
                     && let Some(ref val) = argument.val
                 {
                     let text = if argument.minus { format!("-{}", val) } else { val.clone() };
-                    if crate::util::parse_datetime(&text).is_err() {
-                        return Err(format!("Can't parse datetime: {}", text));
-                    }
+                    function.validate_literal_argument(position, &text)?;
                 }
             }
             if *function == Function::FormatSize

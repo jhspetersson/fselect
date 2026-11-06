@@ -6,9 +6,14 @@
 
 - Matroska and WebM metadata is behind the `mkv` build feature, enabled by default.
 - The `update-notifications` build feature is no longer enabled by default.
+- Column aliases are no longer accepted after `WHERE` and `HAVING` conditions
 
 ### Fixed
 
+- Unterminated or mismatched subquery parentheses are rejected instead of silently closed
+- Operators such as `IN` and `BETWEEN` work after a subquery in the `SELECT` list
+- A correlated subquery in a grouped query may only read grouping columns of the outer row
+- `INTO` inside a subquery is rejected with a clear message
 - `NOT IN` no longer accepts a row when the list or subquery contains a NULL member and nothing matches
 - Numeric functions such as `ABS`, `GREATEST` and `HEX` read the byte count of `fsize` instead of its formatted text
 

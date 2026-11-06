@@ -921,11 +921,16 @@ impl <'a> Parser<'a> {
                 )?))
             }
             Some(Lexeme::Operator(s)) if s.as_str() == "in" || s.as_str() == "exists" || s.as_str() == "notin" || s.as_str() == "notexists" => {
-                let list = self.parse_list()?;
+                let mut list = self.parse_list()?;
                 // Like SQL: IN requires a single-column subquery, while
                 // EXISTS accepts any column list.
                 if s.as_str() == "in" || s.as_str() == "notin" {
                     Self::ensure_single_column_subquery(&list, "IN")?;
+                } else if let Some(args) = list.args.as_ref()
+                    && let [only] = args.as_slice()
+                    && only.subquery.is_some()
+                {
+                    list = only.clone();
                 }
                 let op = Op::from_with_not(&s, not)
                     .ok_or_else(|| format!("Unknown operator: {}", s))?;
@@ -3338,6 +3343,17 @@ mod tests {
         ] {
             parse_query(query).unwrap_or_else(|err| panic!("{query}: {err}"));
         }
+    }
+
+    #[test]
+    fn doubly_parenthesized_exists_subquery_is_unwrapped() {
+        let expr = parse_where("select name from /test where exists ((select name from /test2 where size > 1))");
+        assert_eq!(expr.op, Some(Op::Exists));
+        let right = expr.right.as_ref().unwrap();
+        assert!(right.args.is_none() && right.subquery.is_some(), "{right:?}");
+        let expr = parse_where("select name from /test where not exists ((select name from /test2))");
+        assert_eq!(expr.op, Some(Op::NotExists));
+        assert!(expr.right.as_ref().unwrap().subquery.is_some());
     }
 
     #[test]

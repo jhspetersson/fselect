@@ -14,6 +14,7 @@
 - Operators such as `IN` and `BETWEEN` work after a subquery in the `SELECT` list
 - A correlated subquery in a grouped query may only read grouping columns of the outer row
 - `INTO` inside a subquery is rejected with a clear message
+- `EXISTS` with a doubly parenthesized subquery evaluates the subquery instead of being always true
 - `NOT IN` no longer accepts a row when the list or subquery contains a NULL member and nothing matches
 - Numeric functions such as `ABS`, `GREATEST` and `HEX` read the byte count of `fsize` instead of its formatted text
 

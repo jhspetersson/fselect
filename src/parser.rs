@@ -90,6 +90,11 @@ impl <'a> Parser<'a> {
         let mut roots = self.parse_roots()?;
         let root_options = self.parse_root_options()?;
         self.root_aliases = roots.iter().filter_map(|root| root.options.alias.clone()).collect();
+        if let Some(alias) = self.root_aliases.iter().enumerate().find_map(|(index, alias)| {
+            self.root_aliases[..index].iter().any(|seen| seen.eq_ignore_ascii_case(alias)).then_some(alias)
+        }) {
+            return Err(format!("Duplicate root alias: {alias}"));
+        }
         self.roots_parsed = true;
         let mut expr = self.parse_where()?.map(|expr| Self::ensure_boolean_conditions(expr, "WHERE")).transpose()?;
         self.where_parsed = true;
@@ -3537,6 +3542,15 @@ mod tests {
         assert_eq!(query.fields[0].alias.as_deref(), Some("three"));
         assert_eq!(query.fields[1].alias.as_deref(), Some("s"));
         assert!(parse_query("select name from /test where (is_file) and (size > 1 or is_dir)").is_ok());
+    }
+
+    #[test]
+    fn duplicate_root_aliases_are_rejected() {
+        assert_eq!(parse_err("select t.name from /a as t, /b as t"), "Duplicate root alias: t");
+        assert_eq!(parse_err("select name from /a as t, /b as T"), "Duplicate root alias: t");
+        assert_eq!(parse_err("select name from /a as t, (select name from /b) as t"), "Duplicate root alias: t");
+        assert!(parse_query("select name from /a as t, /b as u").is_ok());
+        assert!(parse_query("select name from /a as t where exists (select name from /b as t)").is_ok());
     }
 
     #[test]

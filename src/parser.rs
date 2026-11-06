@@ -93,6 +93,9 @@ impl <'a> Parser<'a> {
         // `modified = 'not-a-date'` or `size > 'abc'` would otherwise be
         // silently coerced per file scanned.
         if let Some(ref where_expr) = expr {
+            if where_expr.has_aggregate_function() {
+                return Err("Aggregate functions are not allowed in WHERE; use HAVING to filter groups".to_string());
+            }
             where_expr.validate_literals()?;
         }
         let mut grouping_fields = self.parse_group_by(&fields)?;
@@ -3378,6 +3381,18 @@ mod tests {
         assert!(right.minus && right.field == Some(Field::Size), "{right:?}");
         let expr = parse_where("select name from /test where size > - - 1");
         assert!(!expr.right.as_ref().unwrap().minus);
+    }
+
+    #[test]
+    fn aggregate_functions_are_rejected_in_where() {
+        for query in [
+            "select name from /test where count(*) > 1",
+            "select ext from /test where size > avg(size) group by ext",
+            "select name from /test where is_file and max(size) > 1",
+        ] {
+            assert_eq!(parse_err(query), "Aggregate functions are not allowed in WHERE; use HAVING to filter groups", "{query}");
+        }
+        parse_query("select name from /test where size > (select max(size) from /test2)").unwrap();
     }
 
     #[test]

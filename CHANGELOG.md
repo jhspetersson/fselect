@@ -18,6 +18,7 @@
 - `EXISTS` with a doubly parenthesized subquery evaluates the subquery instead of being always true
 - An invalid regular expression literal is reported once when the query is parsed instead of per file
 - A negative operand written with a space after the minus sign (`size > - 1`) is parsed as a number
+- An aggregate function in `WHERE` is rejected instead of silently matching nothing
 - `NOT IN` no longer accepts a row when the list or subquery contains a NULL member and nothing matches
 - Numeric functions such as `ABS`, `GREATEST` and `HEX` read the byte count of `fsize` instead of its formatted text
 

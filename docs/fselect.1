@@ -68,6 +68,96 @@ Commas between column names are optional.
 String literals do not need quotes unless they contain spaces or shell metacharacters.
 Functions with no arguments do not require parentheses.
 Curly braces may be used instead of parentheses.
+Keywords, field names and function names are case-insensitive.
+The clauses must appear in the order shown in the SYNOPSIS.
+.SH QUERY CLAUSES
+.TP
+.BI top " N"
+Return at most
+.I N
+rows; a synonym for
+.BI limit " N"
+written before the column list.
+Giving both is an error.
+.TP
+.IR COLUMN ", ..."
+Columns to output: fields, quoted or bare string literals, numbers, function calls and
+arithmetic expressions over them.
+.B *
+expands to the standard columns (mode, user and group on Unix, then size, modification date and path).
+A column may be named with
+.BI "as " ALIAS \fR;
+the alias may be used in the other columns of the same list (declared before or after it), in
+.BR where ", " "group by" ", " having " and " "order by" ,
+and inside correlated subqueries as
+.IB ROOT_ALIAS . ALIAS \fR.
+.TP
+.BI from " ROOT [OPTIONS][, ROOT ...]"
+Directories to search, each with optional search root options (see
+.BR "SEARCH ROOTS" ).
+A parenthesized subquery may stand in place of a directory (see
+.BR SUBQUERIES ).
+Several roots are searched one after another; the result is their union, not a join.
+Without
+.BR from ,
+the current directory is searched.
+.TP
+.BI where " EXPR"
+Condition each file must satisfy (see
+.BR OPERATORS ).
+A boolean field or function may stand alone as a condition, e.g.
+.BR "where is_audio" .
+Aggregate functions are not allowed here.
+.TP
+.BI "group by " COLUMN ", ..."
+Collapse files into groups.
+Grouping columns are fields, expressions, column aliases or positional numbers referring to the column list.
+Without an aggregate in the column list the query returns one row per distinct group, like
+.B "select distinct"
+in SQL (the
+.B distinct
+keyword itself is not supported).
+Every output column must be a grouping column, an expression over grouping columns, or an aggregate.
+.TP
+.BI having " EXPR"
+Filter the groups after aggregation.
+May use aggregate functions (including ones that are not selected), grouping columns and column aliases.
+.B exists
+subqueries are not supported here.
+With aggregates but no
+.BR "group by" ,
+the whole result forms one group.
+.TP
+.BI "order by " COLUMN " [asc|desc], ..."
+Sort the rows by fields, expressions, column aliases or positional numbers; descending with
+.BR desc .
+In a grouped query only selected columns, aggregates and grouping columns may be used.
+.TP
+.BI limit " N"
+Return at most
+.I N
+rows;
+.B "limit 0"
+means no limit.
+The form
+.BI limit " OFFSET,N"
+skips
+.I OFFSET
+rows first.
+.TP
+.BI offset " N"
+Skip the first
+.I N
+rows.
+.TP
+.BI into " FORMAT"
+Output format (see
+.BR "OUTPUT FORMATS" );
+must be the last clause.
+.PP
+Joins, unions and
+.B distinct
+are not supported.
 .SH OPTIONS
 .TP
 .BR \-\-interactive ", " \-i
@@ -84,6 +174,24 @@ Suppress error messages.
 .TP
 .BR \-\-us\-dates
 Interpret ambiguous dates in US format (MM/DD) instead of the default UK format (DD/MM).
+.TP
+.B \-\-everything
+Take candidate paths from the Everything index (Windows; requires the
+.B everything
+build feature). See
+.BR "INDEX-BACKED SEARCH" .
+.TP
+.B \-\-plocate
+Take candidate paths from the plocate database (Linux; requires the
+.B plocate
+build feature). See
+.BR "INDEX-BACKED SEARCH" .
+.TP
+.BR \-\-fields ", " \-\-functions ", " \-\-root\-options ", " \-\-output\-formats
+Print the supported column names, function names, search root options or output formats and exit.
+.TP
+.BR \-\-version ", " \-v
+Show the version and exit.
 .TP
 .BR \-\-help ", " \-h
 Show help and exit.
@@ -910,7 +1018,7 @@ Respect
 .B .hgignore
 files.
 .TP
-.BR dockerignore " / " dock
+.BR dockerignore " / " docker " / " dock
 Respect
 .B .dockerignore
 files.
@@ -925,7 +1033,7 @@ Disable
 .B .hgignore
 parsing.
 .TP
-.BR nodockerignore " / " nodock
+.BR nodockerignore " / " nodocker " / " nodock
 Disable
 .B .dockerignore
 parsing.
@@ -938,6 +1046,36 @@ Breadth-first traversal (default).
 .TP
 .BR regexp " / " rx
 Treat the root path as a regular expression matching against multiple directories.
+.TP
+.BI as " ALIAS"
+Name the root so that its fields can be written as
+.IB ALIAS . FIELD
+in the query and referenced from correlated subqueries.
+.PP
+The
+.BR gitignore ", " hgignore " and " dockerignore
+defaults for every root can be set in the configuration file.
+.SH INDEX-BACKED SEARCH
+With
+.B \-\-everything
+(Windows, the Everything engine) or
+.B \-\-plocate
+(Linux, the plocate database) the candidate paths come from a prebuilt index instead of a directory walk,
+which is much faster on large trees; the corresponding build feature must be enabled.
+The same can be switched on with
+.B "everything = true"
+or
+.B "plocate = true"
+in the configuration file.
+.PP
+If the index is unavailable (Everything not running or its DLL missing, the plocate binary or
+database missing), the search falls back to normal traversal.
+.BR mindepth " and " maxdepth
+are applied to the index results, and all fields, functions and clauses work as usual.
+Roots with
+.B archives
+or any of the ignore-file options are always traversed normally.
+Locations the index does not cover return no results.
 .SH OPERATORS
 .SS Comparison operators
 .TP
@@ -965,10 +1103,10 @@ Less than.
 .BR <= " / " lte " / " le
 Less than or equal.
 .TP
-.BR =~ " / " ~= " / " regexp " / " rx
+.BR =~ " / " ~= " / " regexp " / " rx " / " rlike
 Match regular expression.
 .TP
-.BR !=~ " / " !~= " / " notrx
+.BR !=~ " / " !~= " / " notrx " / " notrlike
 Does not match regular expression.
 .TP
 .B like
@@ -976,25 +1114,44 @@ SQL LIKE pattern (
 .B %
 matches any sequence,
 .B _
-matches one character).
+matches one character); matching is case-insensitive, and
+.BR \e_ ", " \e% " and " \e\e
+match the literal character.
 .TP
-.B notlike
+.BR "not like" " / " notlike
 Negation of
 .BR like .
 .TP
 .B between
 Range check:
-.IB column " between " val1 " and " val2
+.IB column " between " val1 " and " val2 \fR;
+negated with
+.BR "not between" " / " notbetween .
 .TP
 .B in
 Set membership:
 .IB column " in (" val1 ", " val2 ", ...)"
 or
-.IB column " in (subquery)" .
+.IB column " in (subquery)" \fR,
+where the subquery must select a single column; negated with
+.BR "not in" " / " notin .
 .TP
 .B exists
 Row existence test:
 .B exists (subquery)
+with any column list; negated with
+.BR "not exists" " / " notexists .
+.TP
+.BR "is null" " / " "is not null"
+True when the value is missing or empty, e.g.
+.B width
+of a file that is not an image.
+.PP
+Either side of a comparison may be a parenthesized subquery that selects a single column; its first row supplies the value (see
+.BR SUBQUERIES ).
+A missing numeric, date or boolean value is unknown rather than zero or false:
+.BR = ", " != ", " in " and " "not in"
+never match it.
 .SS Arithmetic operators
 .TP
 .BR + " / " plus
@@ -1065,12 +1222,32 @@ Rust-flavor regular expressions are used (see
 .BR regex (7)
 or the online documentation at https://docs.rs/regex).
 .SH SUBQUERIES
-Subqueries may be used with the
-.BR in ", " "not in" ", " exists ", and " "not exists"
-operators.
-To reference columns from an outer query in a correlated subquery, bind the search root with an alias using the
+A parenthesized query (curly braces work as well) may appear in these places:
+.TP
+In a comparison or in the column list
+A scalar subquery must select a single column; its first row supplies the value, and no row yields a missing value:
+.B "where size > (select max(size) from /backup)"
+.TP
+With in / not in
+The subquery must select a single column.
+.TP
+With exists / not exists
+Any column list; true when the subquery returns at least one row.
+.TP
+In the from clause
+The rows of the inner query become the files the outer query examines.
+A subselect takes root options and an alias like a directory does, and subselects may be nested:
+.B "select src.name from (select path from /projects depth 2) as src where src.size > 1024"
+.PP
+A subquery may have its own
+.BR where ", " "group by" ", " having ", " "order by" ", " limit " and " offset
+clauses, but no
+.BR into .
+.PP
+To reference the outer query's entry from a subquery, bind the outer search root with an alias using the
 .B as
-keyword:
+keyword; the inner query may then read the outer entry's fields and column aliases as
+.IB ALIAS . NAME \fR:
 .PP
 .RS
 .EX
@@ -1079,6 +1256,9 @@ fselect "name, path, size from /data as data
     where backup.name = data.name)"
 .EE
 .RE
+.PP
+An alias declared inside a subquery is visible only there, so inner and outer queries may reuse a name.
+In a grouped query a correlated subquery may read only the grouping columns and aggregate aliases of the outer row.
 .SH OUTPUT FORMATS
 Specified with the
 .B into
@@ -1120,6 +1300,26 @@ If no config file is found on the standard paths,
 also looks for a config file next to the executable.
 A custom path may be supplied with
 .BR \-\-config .
+A fresh file with the defaults is created when none exists.
+.PP
+Recognised keys:
+.TP
+.BR no_color ", " us_dates ", " everything ", " plocate ", " check_for_updates
+Booleans with the same meaning as the corresponding command-line options; the update check also needs the
+.B update\-notifications
+build feature.
+.TP
+.BR gitignore ", " hgignore ", " dockerignore
+Booleans setting the default ignore-file handling for every search root.
+.TP
+.B default_file_size_format
+Format modifier applied by the
+.B fsize
+column (see
+.BR FORMAT_SIZE ).
+.TP
+.BR is_zip_archive ", " is_archive ", " is_audio ", " is_book ", " is_doc ", " is_font ", " is_image ", " is_source ", " is_video
+Lists of file extensions behind the corresponding type-test fields.
 .SH INTERACTIVE MODE
 Start with
 .BR "fselect \-i" .
@@ -1211,6 +1411,18 @@ $ fselect mode, path from /home/user where other_write or other_exec
 .TP
 Find files not present in a backup directory:
 $ fselect "name, path from /current where name not in (select name from /backup)"
+.TP
+Return the five largest files:
+$ fselect top 5 name, size from /home/user order by size desc
+.TP
+Name a column and reuse it:
+$ fselect "size / 1024 as kb, name from /tmp where kb > 100 order by kb desc"
+.TP
+Compare with a value computed by a subquery:
+$ fselect "name, size from /data where size > (select avg(size) from /data)"
+.TP
+Search the rows of an inner query:
+$ fselect "src.name from (select path from /projects depth 2 where size > 100) as src where src.name like '%.rs'"
 .TP
 Output as JSON:
 $ fselect size, path from /home/user limit 5 into json

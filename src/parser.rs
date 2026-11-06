@@ -1443,6 +1443,9 @@ impl <'a> Parser<'a> {
                 }
 
                 if let Ok((field, root_alias)) = Field::parse_field(s) {
+                    if self.call_follows() {
+                        return Err(format!("Unknown function: {}", s));
+                    }
                     let mut expr = match root_alias {
                         Some(alias) if !self.is_local_alias(Some(&alias)) => Expr::external_field(field, alias),
                         root_alias => Expr::field_with_root_alias(field, root_alias),
@@ -3584,6 +3587,15 @@ mod tests {
         assert_eq!(parse_err("select name from /test where is_file not and size > 1"), message);
         assert_eq!(parse_err("select name from /test where size > 1 and is_dir not"), message);
         assert!(parse_query("select name from /test where not is_file and size not in (1) and name not like 'a%'").is_ok());
+    }
+
+    #[test]
+    fn a_field_followed_by_parentheses_is_an_unknown_function() {
+        assert_eq!(parse_err("select sha1(name) from /test"), "Unknown function: sha1");
+        assert_eq!(parse_err("select name from /test where size(1) > 0"), "Unknown function: size");
+        assert_eq!(parse_err("select name from /test order by ext{name}"), "Unknown function: ext");
+        assert!(parse_query("select name, (size) from /test where is_file and (size > 1)").is_ok());
+        assert!(parse_query("select sha1, length(name) from /test where size in (1, 2)").is_ok());
     }
 
     #[test]

@@ -31,6 +31,7 @@
 - Division by a literal zero is rejected when the query is parsed instead of per file
 - A date literal with an impossible month (`2020-13-01`) is rejected instead of being read as arithmetic
 - Nested aggregate functions (`count(count(*))`) are rejected
+- `AS` without an alias, or an alias inside parentheses, is rejected instead of being ignored
 - `NOT IN` no longer accepts a row when the list or subquery contains a NULL member and nothing matches
 - Numeric functions such as `ABS`, `GREATEST` and `HEX` read the byte count of `fsize` instead of its formatted text
 

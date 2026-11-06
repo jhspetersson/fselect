@@ -35,6 +35,7 @@ pub struct Parser<'a> {
     where_parsed: bool,
     in_having: bool,
     args_depth: u32,
+    paren_depth: u32,
     debug: bool,
     /// Aliases declared on this query's own roots; any other alias in an
     /// expression refers to an enclosing query's entry.
@@ -58,6 +59,7 @@ impl <'a> Parser<'a> {
             where_parsed: false,
             in_having: false,
             args_depth: 0,
+            paren_depth: 0,
             debug: false,
             root_aliases: vec![],
             negation_depth: 0,
@@ -803,6 +805,7 @@ impl <'a> Parser<'a> {
                     if let Ok(Some(ref mut result)) = result
                         && !self.roots_parsed
                         && self.args_depth == 0
+                        && self.paren_depth == 0
                     {
                         if let Some(Lexeme::RawString(ref s)) = self.next_lexeme() {
                             if s.to_lowercase() == "as" {
@@ -810,10 +813,7 @@ impl <'a> Parser<'a> {
                                     Some(Lexeme::String(s)) | Some(Lexeme::RawString(s)) => {
                                         result.alias = Some(s);
                                     },
-                                    _ => {
-                                        self.drop_lexeme();
-                                        self.drop_lexeme();
-                                    }
+                                    _ => return Err("Expected alias after AS".to_string()),
                                 }
                             } else {
                                 self.drop_lexeme();
@@ -1203,6 +1203,17 @@ impl <'a> Parser<'a> {
         Ok(())
     }
 
+    fn parse_parenthesized_expr(&mut self) -> Result<Option<Expr>, String> {
+        self.paren_depth += 1;
+        let result = self.parse_expr();
+        self.paren_depth -= 1;
+        if matches!(self.next_lexeme(), Some(Lexeme::RawString(ref s)) if s.eq_ignore_ascii_case("as")) {
+            return Err("Column alias must follow the closing parenthesis".to_string());
+        }
+        self.drop_lexeme();
+        result
+    }
+
     fn parse_paren(&mut self) -> Result<Option<Expr>, String> {
         match self.next_lexeme() {
             Some(Lexeme::Open) => {
@@ -1216,9 +1227,9 @@ impl <'a> Parser<'a> {
                     },
                     _ => {
                         self.drop_lexeme();
-                        let result = self.parse_expr();
+                        let result = self.parse_parenthesized_expr()?;
                         if let Some(Lexeme::Close) = self.next_lexeme() {
-                            result
+                            Ok(result)
                         } else {
                             Err("Unmatched parenthesis".to_string())
                         }
@@ -1236,9 +1247,9 @@ impl <'a> Parser<'a> {
                     },
                     _ => {
                         self.drop_lexeme();
-                        let result = self.parse_expr();
+                        let result = self.parse_parenthesized_expr()?;
                         if let Some(Lexeme::CurlyClose) = self.next_lexeme() {
-                            result
+                            Ok(result)
                         } else {
                             Err("Unmatched parenthesis".to_string())
                         }
@@ -3511,6 +3522,21 @@ mod tests {
         assert!(parse_query("select max(size) + min(size) from /test").is_ok());
         assert!(parse_query("select max(abs(size)) from /test").is_ok());
         assert!(parse_query("select max((select count(*) from /t)) from /test").is_ok());
+    }
+
+    #[test]
+    fn a_missing_or_misplaced_column_alias_is_rejected() {
+        assert_eq!(parse_err("select size as, name from /test"), "Expected alias after AS");
+        assert_eq!(parse_err("select size as from /test"), "Expected alias after AS");
+        assert_eq!(parse_err("select name as"), "Expected alias after AS");
+        let misplaced = "Column alias must follow the closing parenthesis";
+        assert_eq!(parse_err("select 1 + (2 as three) from /test"), misplaced);
+        assert_eq!(parse_err("select (size as s) from /test"), misplaced);
+        assert_eq!(parse_err("select {size as s} from /test"), misplaced);
+        let query = parse_query("select (1 + 2) as three, (size) as s from /test").unwrap();
+        assert_eq!(query.fields[0].alias.as_deref(), Some("three"));
+        assert_eq!(query.fields[1].alias.as_deref(), Some("s"));
+        assert!(parse_query("select name from /test where (is_file) and (size > 1 or is_dir)").is_ok());
     }
 
     #[test]

@@ -44,6 +44,7 @@ pub struct Parser<'a> {
     select_aliases: Vec<Expr>,
     declared_aliases: Vec<Expr>,
     nested: bool,
+    exhausted: bool,
 }
 
 impl <'a> Parser<'a> {
@@ -62,6 +63,7 @@ impl <'a> Parser<'a> {
             select_aliases: vec![],
             declared_aliases: vec![],
             nested: false,
+            exhausted: false,
         }
     }
 
@@ -421,20 +423,8 @@ impl <'a> Parser<'a> {
                             // surrender the paren back and stop parsing roots.
                             match self.next_lexeme() {
                                 Some(Lexeme::Select) => {
-                                    self.lexer.push_state();
-                                    let mut sub_parser = Parser::nested(self.lexer);
-                                    let sub_query = sub_parser.parse(self.debug)?;
-                                    self.lexer.pop_state();
-                                    if curly {
-                                        self.push_lexeme(Lexeme::CurlyClose);
-                                    } else {
-                                        self.push_lexeme(Lexeme::Close);
-                                    }
-                                    let close_lexeme = self.next_lexeme();
-                                    let expected_close = if curly { Lexeme::CurlyClose } else { Lexeme::Close };
-                                    if close_lexeme != Some(expected_close) {
-                                        return Err(String::from("Unmatched parenthesis in FROM subselect"));
-                                    }
+                                    let sub_query = self.parse_subquery(curly)?;
+                                    self.next_lexeme();
                                     subquery_root = Some(sub_query);
                                     mode = RootParsingMode::Root;
                                 }
@@ -753,7 +743,10 @@ impl <'a> Parser<'a> {
                         self.fold_by_weight(operands, LogicalOp::Or).map(Some)
                     };
 
-                    if let Ok(Some(ref mut result)) = result {
+                    if let Ok(Some(ref mut result)) = result
+                        && !self.roots_parsed
+                        && self.args_depth == 0
+                    {
                         if let Some(Lexeme::RawString(ref s)) = self.next_lexeme() {
                             if s.to_lowercase() == "as" {
                                 match self.next_lexeme() {
@@ -1197,17 +1190,35 @@ impl <'a> Parser<'a> {
         }
     }
 
+    fn parse_subquery(&mut self, curly: bool) -> Result<Query, String> {
+        self.lexer.push_state();
+        let mut parser = Parser::nested(self.lexer);
+        let parsed = parser.parse(self.debug);
+        let terminator = if parser.exhausted { None } else { parser.lexemes.last().cloned() };
+        self.lexer.pop_state();
+        let query = parsed?;
+        let expected = if curly { Lexeme::CurlyClose } else { Lexeme::Close };
+        match terminator {
+            Some(ref lexeme) if *lexeme == expected => {}
+            Some(Lexeme::Close) | Some(Lexeme::CurlyClose) => {
+                return Err(String::from("Mismatched parenthesis in subquery"));
+            }
+            Some(Lexeme::RawString(s)) | Some(Lexeme::String(s)) | Some(Lexeme::Operator(s)) | Some(Lexeme::ArithmeticOperator(s)) => {
+                return Err(format!("Unexpected token in subquery: {}", s));
+            }
+            Some(_) => return Err(String::from("Expected closing parenthesis after subquery")),
+            None => return Err(String::from("Unmatched parenthesis in subquery")),
+        }
+        self.push_lexeme(expected);
+        Ok(query)
+    }
+
     fn parse_list(&mut self) -> Result<Expr, String> {
         match self.next_lexeme() {
             Some(Lexeme::Open) => {
                 let result = {
                     if let Some(Lexeme::Select) = self.next_lexeme() {
-                        self.lexer.push_state();
-                        let mut parser = Parser::nested(self.lexer);
-                        let query = parser.parse(self.debug)?;
-                        self.lexer.pop_state();
-                        self.push_lexeme(Lexeme::Close);
-                        Expr::subquery(query)
+                        Expr::subquery(self.parse_subquery(false)?)
                     } else {
                         self.drop_lexeme();
                         let mut result = Expr::new();
@@ -1226,12 +1237,7 @@ impl <'a> Parser<'a> {
             Some(Lexeme::CurlyOpen) => {
                 let result = {
                     if let Some(Lexeme::Select) = self.next_lexeme() {
-                        self.lexer.push_state();
-                        let mut parser = Parser::nested(self.lexer);
-                        let query = parser.parse(self.debug)?;
-                        self.lexer.pop_state();
-                        self.push_lexeme(Lexeme::CurlyClose);
-                        Expr::subquery(query)
+                        Expr::subquery(self.parse_subquery(true)?)
                     } else {
                         self.drop_lexeme();
                         let mut result = Expr::new();
@@ -1547,7 +1553,7 @@ impl <'a> Parser<'a> {
         }
         let grouping_keys: Vec<String> = grouping_fields.iter().map(Self::grouping_key).collect();
         match fields.iter().find_map(|column| self.non_grouped_field(column, &grouping_keys)) {
-            Some(field) => {
+            Some(ref field) => {
                 let prefix = field.root_alias.as_deref().map(|alias| format!("{alias}.")).unwrap_or_default();
                 let name = match (field.field, &field.function) {
                     (Some(field), _) => field.to_string().to_lowercase(),
@@ -1589,9 +1595,12 @@ impl <'a> Parser<'a> {
         Self::is_condition(expr) && grouping_keys.contains(&Self::grouping_key(&expr.negated()))
     }
 
-    fn non_grouped_field<'e>(&self, expr: &'e Expr, grouping_keys: &[String]) -> Option<&'e Expr> {
-        if expr.is_literal() || expr.subquery.is_some() || Self::matches_grouping_key(expr, grouping_keys) {
+    fn non_grouped_field(&self, expr: &Expr, grouping_keys: &[String]) -> Option<Expr> {
+        if expr.is_literal() || Self::matches_grouping_key(expr, grouping_keys) {
             return None;
+        }
+        if expr.subquery.is_some() {
+            return self.non_grouped_field_in_subquery(expr, grouping_keys);
         }
         if expr.function.as_ref().is_some_and(Function::is_aggregate_function) {
             return None;
@@ -1600,10 +1609,10 @@ impl <'a> Parser<'a> {
             return None;
         }
         if expr.function.as_ref().is_some_and(Function::reads_entry) {
-            return Some(expr);
+            return Some(expr.clone());
         }
         if expr.field.is_some() {
-            return Some(expr);
+            return Some(expr.clone());
         }
         expr.left
             .iter()
@@ -1611,6 +1620,23 @@ impl <'a> Parser<'a> {
             .map(Box::as_ref)
             .chain(expr.args.iter().flatten())
             .find_map(|child| self.non_grouped_field(child, grouping_keys))
+    }
+
+    fn non_grouped_field_in_subquery(&self, expr: &Expr, grouping_keys: &[String]) -> Option<Expr> {
+        for alias in &self.root_aliases {
+            let required = expr.get_fields_required_in_subqueries(alias, false);
+            let mut fields: Vec<Field> = required.into_keys().collect();
+            fields.sort_by_key(|field| field.to_string());
+            for field in fields {
+                let qualified = Expr::field_with_root_alias(field, Some(alias.clone()));
+                if !Self::matches_grouping_key(&qualified, grouping_keys)
+                    && !Self::matches_grouping_key(&Expr::field(field), grouping_keys)
+                {
+                    return Some(qualified);
+                }
+            }
+        }
+        None
     }
 
     fn reject_unknown_columns(exprs: &[Expr], clause: &str) -> Result<(), String> {
@@ -1910,6 +1936,7 @@ impl <'a> Parser<'a> {
     fn parse_output_format(&mut self) -> Result<OutputFormat, &str> {
         let lexeme = self.next_lexeme();
         match lexeme {
+            Some(Lexeme::Into) if self.nested => return Err("INTO is not allowed in a subquery"),
             Some(Lexeme::Into) => {
                 let lexeme = self.next_lexeme();
                 match lexeme {
@@ -1962,6 +1989,7 @@ impl <'a> Parser<'a> {
                         Some(lexeme.clone())
                     }
                     _ => {
+                        self.exhausted = true;
                         None
                     }
                 }
@@ -3227,6 +3255,89 @@ mod tests {
         let mut p = Parser::new(&mut lexer);
         let query = p.parse(false).unwrap();
         assert!(query.expr.is_some());
+    }
+
+    #[test]
+    fn unterminated_subquery_is_rejected() {
+        for query in [
+            "select name from /test where size > (select max(size) from /test2",
+            "select name from /test where name in (select name from /test2",
+            "select (select count(*) from /test2",
+            "select name from (select path from /test2",
+            "select name from /test where size > (select max(size) from /test2 where (size > 1)",
+        ] {
+            assert_eq!(parse_err(query), "Unmatched parenthesis in subquery", "{query}");
+        }
+    }
+
+    #[test]
+    fn mismatched_subquery_brackets_are_rejected() {
+        for query in [
+            "select name from /test where size > {select max(size) from /test2)",
+            "select name from /test where size > (select max(size) from /test2}",
+            "select name from {select path from /test2)",
+        ] {
+            assert_eq!(parse_err(query), "Mismatched parenthesis in subquery", "{query}");
+        }
+    }
+
+    #[test]
+    fn tokens_before_the_subquery_close_are_rejected() {
+        assert_eq!(
+            parse_err("select name from /test where size > (select max(size) from /test2 foo)"),
+            "Unexpected token in subquery: foo"
+        );
+        assert_eq!(
+            parse_err("select name from /test where size > (select max(size) from /test2 into json)"),
+            "INTO is not allowed in a subquery"
+        );
+    }
+
+    #[test]
+    fn subquery_in_select_list_can_be_followed_by_word_operators() {
+        let query = parse_query("select (select count(*) from /test2) in (1, 2) from /test").unwrap();
+        assert_eq!(query.fields[0].op, Some(Op::In));
+        let query = parse_query("select (select count(*) from /test2) not in (1, 2) from /test").unwrap();
+        assert_eq!(query.fields[0].op, Some(Op::NotIn));
+        let query = parse_query("select (select count(*) from /test2) between 1 and 3 from /test").unwrap();
+        assert_eq!(query.fields[0].logical_op, Some(LogicalOp::And));
+    }
+
+    #[test]
+    fn column_alias_is_only_accepted_in_the_select_list() {
+        let query = parse_query("select size + 1 as s, (select count(*) from /test2) as c from /test where s > 5").unwrap();
+        assert_eq!(query.fields[0].alias.as_deref(), Some("s"));
+        assert_eq!(query.fields[1].alias.as_deref(), Some("c"));
+        for query in [
+            "select name from /test where size > 5 as x",
+            "select ext, count(*) from /test group by ext having count(*) > 1 as x",
+        ] {
+            let mut lexer = Lexer::new(vec![query.to_string()]);
+            let mut p = Parser::new(&mut lexer);
+            p.parse(false).unwrap();
+            assert!(p.there_are_remaining_lexemes(), "{query} must not swallow the alias");
+        }
+    }
+
+    #[test]
+    fn correlated_subquery_in_grouped_query_may_only_read_grouping_columns() {
+        assert_eq!(
+            parse_err("select ext, (select count(*) from /test2 where size > t.size) from /test as t group by ext"),
+            "Column 't.size' must appear in GROUP BY or be used inside an aggregate function"
+        );
+        assert_eq!(
+            parse_err("select ext, count(*) from /test as t group by ext having count(*) > (select count(*) from /test2 where size > t.size)"),
+            "Cannot use 'size' in HAVING: it is not a grouping column; wrap it in an aggregate function or filter with WHERE"
+        );
+        for query in [
+            "select ext, (select count(*) from /test2 where ext = t.ext) from /test as t group by ext",
+            "select ext, (select count(*) from /test2 where ext = t.ext) from /test as t group by t.ext",
+            "select ext as e, (select count(*) from /test2 where ext = t.ext) from /test as t group by e",
+            "select ext, count(*) as c, (select count(*) from /test2 where size > t.c) from /test as t group by ext",
+            "select ext, count(*) from /test as t group by ext having count(*) > (select count(*) from /test2 where ext = t.ext)",
+        ] {
+            parse_query(query).unwrap_or_else(|err| panic!("{query}: {err}"));
+        }
     }
 
     #[test]

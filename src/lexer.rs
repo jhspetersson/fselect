@@ -189,12 +189,7 @@ impl Lexer {
         } else {
             self.state = LexerState::new();
         }
-        // The nested parse consumed the subquery's closing parenthesis while
-        // this state was saved, so the restored depth still counts the
-        // opening one; the parser re-injects a synthetic Close that never
-        // passes through here.
-        self.state.paren_depth = self.state.paren_depth.saturating_sub(1);
-        self.sync_scopes();
+        self.note_lexeme(&Some(Lexeme::Close));
     }
 
     fn current_scope(&self) -> Vec<usize> {
@@ -445,12 +440,18 @@ impl Lexer {
             let scope = self.current_scope();
             self.root_aliases.push((alias.to_ascii_lowercase(), scope));
         }
+        self.note_lexeme(&lexeme);
+
+        lexeme
+    }
+
+    fn note_lexeme(&mut self, lexeme: &Option<Lexeme>) {
         self.state.after_value_end = match lexeme {
-            Some(Lexeme::RawString(ref s)) => !s.eq_ignore_ascii_case("as"),
+            Some(Lexeme::RawString(s)) => !s.eq_ignore_ascii_case("as"),
             Some(Lexeme::String(_)) | Some(Lexeme::Close) | Some(Lexeme::CurlyClose) => true,
             _ => false,
         };
-        self.state.after_as = matches!(lexeme, Some(Lexeme::RawString(ref s)) if s.eq_ignore_ascii_case("as"));
+        self.state.after_as = matches!(lexeme, Some(Lexeme::RawString(s)) if s.eq_ignore_ascii_case("as"));
         self.state.possible_search_root = matches!(lexeme, Some(Lexeme::From))
                 || (matches!(lexeme, Some(Lexeme::Comma)) && self.state.clause == Clause::Roots);
         self.state.in_value_set = matches!(lexeme, Some(Lexeme::CurlyOpen))
@@ -471,8 +472,6 @@ impl Lexer {
         self.state.after_value_start = matches!(lexeme, Some(Lexeme::Comma)) && self.state.in_where();
         self.state.after_not = matches!(lexeme, Some(Lexeme::Not));
         self.state.after_arithmetic = matches!(lexeme, Some(Lexeme::ArithmeticOperator(_)));
-
-        lexeme
     }
 
     fn word_operator_follows(&self) -> bool {

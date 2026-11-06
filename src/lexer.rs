@@ -271,6 +271,11 @@ impl Lexer {
                 LexingMode::QuotedString(quote_char) => {
                     self.char_index += 1;
                     if c == quote_char {
+                        if self.chars[self.input_index].get(self.char_index) == Some(&quote_char) {
+                            self.char_index += 1;
+                            s.push(c);
+                            continue;
+                        }
                         quote_closed = true;
                         break;
                     }
@@ -795,6 +800,21 @@ c"))), "lexemes were {:?}", lexemes);
 
     fn raw(s: &str) -> Lexeme { Lexeme::RawString(s.to_string()) }
     fn arith(s: &str) -> Lexeme { Lexeme::ArithmeticOperator(s.to_string()) }
+
+    #[test]
+    fn a_doubled_quote_inside_a_quoted_string_is_a_literal_quote() {
+        let mut lexer = lexer!("select name from . where name = 'it''s' or name = \"say \"\"hi\"\"\" or name = ''");
+        let mut strings = vec![];
+        while let Some(lexeme) = lexer.next_lexeme() {
+            if let Lexeme::String(s) = lexeme {
+                strings.push(s);
+            }
+        }
+        assert_eq!(strings, vec!["it's".to_string(), "say \"hi\"".to_string(), String::new()]);
+        let mut lexer = lexer!("select name from . where name = 'it'''");
+        let last = std::iter::from_fn(|| lexer.next_lexeme()).last();
+        assert_eq!(last, Some(Lexeme::String("it'".to_string())));
+    }
 
     #[test]
     fn unspaced_arithmetic_after_comparison_is_split() {

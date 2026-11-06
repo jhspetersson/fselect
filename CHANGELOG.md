@@ -9,6 +9,7 @@
 - Column aliases are no longer accepted after `WHERE` and `HAVING` conditions
 - Subquery columns are named after their query in output headers and error messages instead of a hash
 - `DISTINCT` is rejected with a hint instead of being read as a column named "distinct"
+- A doubled quote inside a quoted string (`'it''s'`) is a literal quote
 
 ### Fixed
 

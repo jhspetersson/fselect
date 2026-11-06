@@ -5284,10 +5284,10 @@ mod tests {
         fs::write(tmp.join("b.txt"), "xxx").unwrap();
 
         let queries = [
-            "select sum(size) / 0 from __DIR__",
-            "select sum(size), sum(size) / 0, count(*) from __DIR__",
-            "select ext, sum(size) / 0 from __DIR__ group by ext",
-            "select ext from __DIR__ group by ext order by sum(size) / 0",
+            "select sum(size) / (count(*) - count(*)) from __DIR__",
+            "select sum(size), sum(size) / (count(*) - count(*)), count(*) from __DIR__",
+            "select ext, sum(size) / (count(*) - count(*)) from __DIR__ group by ext",
+            "select ext from __DIR__ group by ext order by sum(size) / (count(*) - count(*))",
         ];
         let results: Vec<_> = queries
             .iter()
@@ -8866,7 +8866,7 @@ f
 
         // A populated first argument must never evaluate the failing fallback.
         let searcher = search_dir(
-            "select name, coalesce(size, 1 / 0) from __DIR__ depth 1 order by name",
+            "select name, coalesce(size, 1 / (size - size)) from __DIR__ depth 1 order by name",
             &tmp,
             Config::default(),
             true,
@@ -8877,7 +8877,7 @@ f
         // An empty first argument falls through, and only as far as the first
         // populated fallback: the failing third argument is still untouched.
         let searcher = search_dir(
-            "select name, coalesce(ext, 'none', 1 / 0) from __DIR__ depth 1 order by name",
+            "select name, coalesce(ext, 'none', 1 / (size - size)) from __DIR__ depth 1 order by name",
             &tmp,
             Config::default(),
             true,

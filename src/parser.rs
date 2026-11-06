@@ -3514,6 +3514,20 @@ mod tests {
     }
 
     #[test]
+    fn division_by_a_literal_zero_is_rejected_when_parsing() {
+        for query in [
+            "select 1 / 0",
+            "select size % 0 from /test",
+            "select name from /test where size / 0 > 1",
+            "select name from /test order by size / 0.0",
+            "select name from /test where name in (select name from /t where size / '0' > 1)",
+        ] {
+            assert_eq!(parse_err(query), "Division by zero", "{query}");
+        }
+        parse_query("select 1 / (size - 1), size / 0.5, size % 2 from /test").unwrap();
+    }
+
+    #[test]
     fn implicit_limit_applies_to_constant_select() {
         let query = "select 123 from /test";
         let mut lexer = Lexer::new(vec![query.to_string()]);

@@ -28,6 +28,7 @@
 - An aggregate function in `WHERE` is rejected instead of silently matching nothing
 - `GROUP BY` and `ORDER BY` without an expression are rejected
 - A column alias may be referenced in the `SELECT` list before the column that declares it
+- Division by a literal zero is rejected when the query is parsed instead of per file
 - `NOT IN` no longer accepts a row when the list or subquery contains a NULL member and nothing matches
 - Numeric functions such as `ABS`, `GREATEST` and `HEX` read the byte count of `fsize` instead of its formatted text
 

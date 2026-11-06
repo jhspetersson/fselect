@@ -383,7 +383,7 @@ fn arithmetic_follows_precedence_and_mixes_with_fields() {
     let ordered = fselect(&format!("select name, size from {root} where is_file order by -size, path"));
     let grouped_logic = fselect(&format!("select name from {root} where is_file and (size > 5 or ext = rs) and not ext = md order by path"));
     let flat_logic = fselect(&format!("select name from {root} where is_file and size > 5 or ext = rs order by path"));
-    let division = fselect(&format!("select name, size / 0 from {root} where name = beta.md"));
+    let division = fselect(&format!("select name, size / (size - size) from {root} where name = beta.md"));
     let _ = fs::remove_dir_all(&dir);
 
     assert_eq!(ok(&expressions), "11\t21\t-11\t24\t1\t5\t26\t7\t-12\t2.5\t12\t18\n");

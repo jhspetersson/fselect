@@ -846,6 +846,14 @@ impl Expr {
                 crate::util::format_filesize(0, val)?;
             }
         }
+        if matches!(self.arithmetic_op, Some(ArithmeticOp::Divide) | Some(ArithmeticOp::Modulo))
+            && let Some(ref right) = self.right
+            && right.is_literal()
+            && let Some(ref val) = right.val
+            && Variant::from_string(val).to_float_opt() == Some(0.0)
+        {
+            return Err("Division by zero".to_string());
+        }
         self.children().try_for_each(Expr::validate_functions)?;
         if let Some(ref subquery) = self.subquery {
             subquery.fields.iter().chain(subquery.expr.iter()).try_for_each(Expr::validate_functions)?;

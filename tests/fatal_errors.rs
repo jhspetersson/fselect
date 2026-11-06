@@ -169,8 +169,8 @@ fn aggregate_errors_are_reported_with_a_well_formed_document() {
     let dir = make_dir("fselect_test_aggregate_error_output");
     let root = dir.display();
 
-    let json = fselect(&format!("select sum(size) / 0 from {root} into json"));
-    let columns = fselect(&format!("select sum(size), sum(size) / 0, count(*) from {root}"));
+    let json = fselect(&format!("select sum(size) / (count(*) - count(*)) from {root} into json"));
+    let columns = fselect(&format!("select sum(size), sum(size) / (count(*) - count(*)), count(*) from {root}"));
     let _ = fs::remove_dir_all(&dir);
 
     assert_eq!(json.code, Some(1), "{}", json.stderr);

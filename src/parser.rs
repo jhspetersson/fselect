@@ -1720,11 +1720,15 @@ impl <'a> Parser<'a> {
                                 None => break,
                             }
                         }
+                        Some(Lexeme::Error(message)) => return Err(message),
                         _ => {
                             self.drop_lexeme();
                             break;
                         }
                     }
+                }
+                if group_by_fields.is_empty() {
+                    return Err("Expected expression after GROUP BY".to_string());
                 }
             } else {
                 self.drop_lexeme();
@@ -1848,6 +1852,7 @@ impl <'a> Parser<'a> {
                                 None => break,
                             }
                         }
+                        Some(Lexeme::Error(message)) => return Err(message),
                         Some(Lexeme::DescendingOrder) => {
                             if let Some(last) = order_by_directions.last_mut() {
                                 *last = false;
@@ -1858,6 +1863,9 @@ impl <'a> Parser<'a> {
                             break;
                         }
                     }
+                }
+                if order_by_fields.is_empty() {
+                    return Err("Expected expression after ORDER BY".to_string());
                 }
             } else {
                 self.drop_lexeme();
@@ -3393,6 +3401,14 @@ mod tests {
             assert_eq!(parse_err(query), "Aggregate functions are not allowed in WHERE; use HAVING to filter groups", "{query}");
         }
         parse_query("select name from /test where size > (select max(size) from /test2)").unwrap();
+    }
+
+    #[test]
+    fn dangling_group_by_and_order_by_are_rejected() {
+        assert_eq!(parse_err("select ext, count(*) from /test group by"), "Expected expression after GROUP BY");
+        assert_eq!(parse_err("select ext, count(*) from /test group by order by ext"), "Expected expression after GROUP BY");
+        assert_eq!(parse_err("select name from /test order by"), "Expected expression after ORDER BY");
+        assert_eq!(parse_err("select name from /test order by limit 1"), "Expected expression after ORDER BY");
     }
 
     #[test]

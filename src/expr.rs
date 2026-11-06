@@ -543,6 +543,40 @@ impl Expr {
     }
 
     #[allow(unused)]
+    const BARE_IDENTIFIER: &'static str = "bare_identifier";
+
+    pub fn bare_identifier(text: String) -> Expr {
+        let mut expr = Expr::value(text);
+        expr.set_prop(Self::BARE_IDENTIFIER, Variant::from_bool(true));
+        expr
+    }
+
+    pub fn resolve_bare_aliases(&mut self, columns: &[(String, Expr)], own_alias: Option<&str>) {
+        if self.get_prop(Self::BARE_IDENTIFIER).is_some()
+            && self.is_literal()
+            && let Some(name) = self.val.clone()
+            && !own_alias.is_some_and(|own| own.eq_ignore_ascii_case(&name))
+            && let Some((_, column)) = columns.iter().find(|(alias, _)| alias.eq_ignore_ascii_case(&name))
+        {
+            let minus = self.minus;
+            *self = column.clone();
+            if minus {
+                self.minus = !self.minus;
+            }
+            return;
+        }
+        for child in self.children_mut() {
+            child.resolve_bare_aliases(columns, own_alias);
+        }
+    }
+
+    pub fn clear_bare_identifiers(&mut self) {
+        self.props.remove(Self::BARE_IDENTIFIER);
+        for child in self.children_mut() {
+            child.clear_bare_identifiers();
+        }
+    }
+
     pub fn set_prop<K: Into<String>>(&mut self, name: K, value: Variant) -> Option<Variant> {
         self.props.insert(name.into(), value)
     }

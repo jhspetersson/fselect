@@ -383,7 +383,27 @@ impl <'a> Parser<'a> {
             return Err(String::from("Error parsing fields, no selector found"));
         }
 
+        Self::resolve_forward_aliases(&mut fields);
+        self.declared_aliases = fields.iter().filter(|field| field.alias.is_some()).cloned().collect();
+
         Ok(fields)
+    }
+
+    fn resolve_forward_aliases(fields: &mut [Expr]) {
+        let passes = fields.iter().filter(|field| field.alias.is_some()).count();
+        for _ in 0..passes {
+            let columns = Self::aliased_columns(fields);
+            for field in fields.iter_mut() {
+                let own = field.alias.clone();
+                field.resolve_bare_aliases(&columns, own.as_deref());
+                if own.is_some() {
+                    field.alias = own;
+                }
+            }
+        }
+        for field in fields.iter_mut() {
+            field.clear_bare_identifiers();
+        }
     }
 
     fn parse_roots(&mut self) -> Result<Vec<Root>, String> {
@@ -1442,7 +1462,11 @@ impl <'a> Parser<'a> {
                     return Ok(Some(expr));
                 }
 
-                let mut expr = Expr::value(s.to_string());
+                let mut expr = if Self::is_plain_identifier(s) {
+                    Expr::bare_identifier(s.to_string())
+                } else {
+                    Expr::value(s.to_string())
+                };
                 expr.minus = minus;
 
                 Ok(Some(expr))
@@ -3409,6 +3433,22 @@ mod tests {
         assert_eq!(parse_err("select ext, count(*) from /test group by order by ext"), "Expected expression after GROUP BY");
         assert_eq!(parse_err("select name from /test order by"), "Expected expression after ORDER BY");
         assert_eq!(parse_err("select name from /test order by limit 1"), "Expected expression after ORDER BY");
+    }
+
+    #[test]
+    fn select_aliases_may_be_referenced_before_their_declaration() {
+        let query = parse_query("select s + 1 as t, size as s from /test where t > 5").unwrap();
+        let t = &query.fields[0];
+        assert_eq!(t.alias.as_deref(), Some("t"));
+        assert_eq!(t.left.as_ref().unwrap().field, Some(Field::Size));
+        let condition = query.expr.unwrap();
+        assert_eq!(condition.left.as_ref().unwrap().left.as_ref().unwrap().field, Some(Field::Size));
+        let negated = parse_query("select -s as t, size as s from /test").unwrap();
+        assert!(negated.fields[0].minus && negated.fields[0].field == Some(Field::Size));
+        let quoted = parse_query("select 'n' as x, name as n from /test").unwrap();
+        assert!(quoted.fields[0].is_literal() && quoted.fields[0].val.as_deref() == Some("n"));
+        let cyclic = parse_query("select a as b, b as a from /test").unwrap();
+        assert_eq!(cyclic.fields.len(), 2);
     }
 
     #[test]

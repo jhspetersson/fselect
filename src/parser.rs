@@ -1406,9 +1406,14 @@ impl <'a> Parser<'a> {
                 // arrives here rather than as an arithmetic operator.
                 if s == "-" {
                     let next = self.next_lexeme();
-                    if matches!(next, Some(Lexeme::Open) | Some(Lexeme::CurlyOpen)) {
-                        self.drop_lexeme();
-                        return match self.parse_paren()? {
+                    self.drop_lexeme();
+                    let operand = match next {
+                        Some(Lexeme::Open) | Some(Lexeme::CurlyOpen) => Some(self.parse_paren()?),
+                        Some(Lexeme::RawString(_)) | Some(Lexeme::String(_)) => Some(self.parse_func_scalar()?),
+                        _ => None,
+                    };
+                    if let Some(operand) = operand {
+                        return match operand {
                             Some(mut expr) => {
                                 expr.minus = !expr.minus;
                                 if minus {
@@ -1419,7 +1424,6 @@ impl <'a> Parser<'a> {
                             None => Err("Error parsing expression, expecting string".to_string()),
                         };
                     }
-                    self.drop_lexeme();
                 }
 
                 let is_identifier = |part: &str| {
@@ -3362,6 +3366,18 @@ mod tests {
         assert_eq!(parse_err("select name from /test where name not rx '['"), "Incorrect regex expression: [");
         assert_eq!(parse_err("select name from /test where name in (select name from /t where name =~ '*')"), "Incorrect regex expression: *");
         parse_query("select name from /test where name rx '^o.*[.]rs$'").unwrap();
+    }
+
+    #[test]
+    fn spaced_unary_minus_after_a_comparison_is_a_negative_operand() {
+        let expr = parse_where("select name from /test where size > - 1");
+        let right = expr.right.as_ref().unwrap();
+        assert!(right.minus && right.val.as_deref() == Some("1"), "{right:?}");
+        let expr = parse_where("select name from /test where size > - size");
+        let right = expr.right.as_ref().unwrap();
+        assert!(right.minus && right.field == Some(Field::Size), "{right:?}");
+        let expr = parse_where("select name from /test where size > - - 1");
+        assert!(!expr.right.as_ref().unwrap().minus);
     }
 
     #[test]

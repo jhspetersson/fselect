@@ -2077,7 +2077,7 @@ mod tests {
             ("select name from . where name = 'a' or (size)", "size"),
             ("select name from . where size > 100 and (name)", "name"),
             ("select name from . where name in (select name from . where size)", "size"),
-            ("select name from . where (select count(*) from .)", "subquery_"),
+            ("select name from . where (select count(*) from .)", "(select count(*) from .)"),
         ] {
             let err = parse_err(query);
             assert!(

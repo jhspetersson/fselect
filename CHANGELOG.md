@@ -7,6 +7,7 @@
 - Matroska and WebM metadata is behind the `mkv` build feature, enabled by default.
 - The `update-notifications` build feature is no longer enabled by default.
 - Column aliases are no longer accepted after `WHERE` and `HAVING` conditions
+- Subquery columns are named after their query in output headers and error messages instead of a hash
 
 ### Fixed
 

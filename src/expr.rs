@@ -920,6 +920,27 @@ impl Expr {
             && self.right.is_none()
     }
 
+    fn render_subquery(query: &Query, out: &mut dyn fmt::Write) -> fmt::Result {
+        out.write_str("(select ")?;
+        for (i, field) in query.fields.iter().enumerate() {
+            if i > 0 {
+                out.write_str(", ")?;
+            }
+            field.render(out, Rendering::Display)?;
+        }
+        out.write_str(" from ")?;
+        for (i, root) in query.roots.iter().enumerate() {
+            if i > 0 {
+                out.write_str(", ")?;
+            }
+            match root.subquery {
+                Some(ref inner) => Self::render_subquery(inner, out)?,
+                None => out.write_str(&root.path)?,
+            }
+        }
+        out.write_char(')')
+    }
+
     fn render(&self, out: &mut dyn fmt::Write, mode: Rendering) -> fmt::Result {
         let alias = match mode {
             Rendering::Display => self.alias.as_deref(),
@@ -934,10 +955,15 @@ impl Expr {
                 }
                 out.write_str(alias)?;
             } else {
-                let subquery_str = format!("{:?}", subquery);
-                let mut s = DefaultHasher::new();
-                subquery_str.hash(&mut s);
-                write!(out, "subquery_{}", s.finish())?;
+                match mode {
+                    Rendering::Display => Self::render_subquery(subquery, out)?,
+                    Rendering::CacheKey => {
+                        let subquery_str = format!("{:?}", subquery);
+                        let mut s = DefaultHasher::new();
+                        subquery_str.hash(&mut s);
+                        write!(out, "subquery_{}", s.finish())?;
+                    }
+                }
             }
         }
 
@@ -1106,6 +1132,19 @@ mod tests {
 
         let external = Expr::field_with_root_alias(Field::Name, Some(String::from("t1")));
         assert_eq!(external.cache_key(), external.to_string());
+    }
+
+    #[test]
+    fn subquery_columns_render_as_their_query_but_cache_by_hash() {
+        fn parse(query: &str) -> crate::query::Query {
+            let mut lexer = crate::lexer::Lexer::new(vec![String::from(query)]);
+            crate::parser::Parser::new(&mut lexer).parse(false).unwrap()
+        }
+        let column = Expr::subquery(parse("select count(*) from /d where size > 1"));
+        assert_eq!(column.column_name(), "(select count(*) from /d)");
+        assert!(column.cache_key().starts_with("subquery_"));
+        let nested = Expr::subquery(parse("select name from (select path from /d) as t, /e"));
+        assert_eq!(nested.column_name(), "(select name from (select path from /d), /e)");
     }
 
     #[test]

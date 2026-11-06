@@ -102,7 +102,7 @@ Precompiled binaries are available at GitHub downloads (`gunzip`, then `chmod +x
 
 ### Usage
 
-    fselect [ARGS] COLUMN[, COLUMN...] [from ROOT[, ROOT...]] [where EXPR] [group by COLUMNS] [having EXPR] [order by COLUMNS] [limit N] [offset N] [into FORMAT]
+    fselect [ARGS] [top N] COLUMN[, COLUMN...] [from ROOT[, ROOT...]] [where EXPR] [group by COLUMNS] [having EXPR] [order by COLUMNS] [limit N] [offset N] [into FORMAT]
 
 ### Interactive mode
 
@@ -324,6 +324,7 @@ Order results:
 Finally, limit the results:
 
     fselect name from /home/user/samples limit 5 
+    fselect top 5 name from /home/user/samples
     
 Format output:
 

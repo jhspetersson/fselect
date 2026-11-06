@@ -354,7 +354,7 @@ fn short_usage_info(no_color: bool) {
     }
 
     println!();
-    println!("Usage: fselect [ARGS] COLUMN[, COLUMN...] [from PATH[, PATH...]] [where EXPR] [group by COLUMN, ...] [having EXPR] [order by COLUMN (asc|desc), ...] [limit N] [offset N] [into FORMAT]");
+    println!("Usage: fselect [ARGS] [top N] COLUMN[, COLUMN...] [from PATH[, PATH...]] [where EXPR] [group by COLUMN, ...] [having EXPR] [order by COLUMN (asc|desc), ...] [limit N] [offset N] [into FORMAT]");
 }
 
 fn help_hint() {

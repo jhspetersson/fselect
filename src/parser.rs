@@ -45,6 +45,7 @@ pub struct Parser<'a> {
     declared_aliases: Vec<Expr>,
     nested: bool,
     exhausted: bool,
+    top: Option<u32>,
 }
 
 impl <'a> Parser<'a> {
@@ -64,6 +65,7 @@ impl <'a> Parser<'a> {
             declared_aliases: vec![],
             nested: false,
             exhausted: false,
+            top: None,
         }
     }
 
@@ -102,6 +104,12 @@ impl <'a> Parser<'a> {
         let mut having = self.parse_having(&fields)?.map(|expr| Self::ensure_boolean_conditions(expr, "HAVING")).transpose()?;
         let (mut ordering_fields, ordering_asc) = self.parse_order_by(&fields)?;
         let (mut limit, limit_offset) = self.parse_limit()?;
+        if let Some(top) = self.top {
+            if limit > 0 {
+                return Err("TOP and LIMIT cannot both be specified".to_string());
+            }
+            limit = top;
+        }
         let mut offset = self.parse_offset()?;
         match self.next_lexeme() {
             Some(Lexeme::Error(message)) => return Err(message),
@@ -346,6 +354,12 @@ impl <'a> Parser<'a> {
                     } else {
                         if fields.is_empty() && !is_quoted && s.eq_ignore_ascii_case("distinct") && self.field_follows() {
                             return Err(String::from("DISTINCT is not supported; use GROUP BY to list distinct values"));
+                        }
+                        if fields.is_empty() && !is_quoted && s.eq_ignore_ascii_case("top")
+                            && let Some(count) = self.count_follows()
+                        {
+                            self.top = Some(count);
+                            continue;
                         }
                         self.drop_lexeme();
 
@@ -701,6 +715,17 @@ impl <'a> Parser<'a> {
         let next = self.next_lexeme();
         self.drop_lexeme();
         matches!(next, Some(Lexeme::RawString(_)) | Some(Lexeme::String(_)) | Some(Lexeme::Open) | Some(Lexeme::CurlyOpen))
+    }
+
+    fn count_follows(&mut self) -> Option<u32> {
+        let count = match self.next_lexeme() {
+            Some(Lexeme::RawString(ref s)) => s.parse::<u32>().ok(),
+            _ => None,
+        };
+        if count.is_none() {
+            self.drop_lexeme();
+        }
+        count
     }
 
     fn numeric_argument_follows(&mut self) -> bool {
@@ -3472,6 +3497,20 @@ mod tests {
         assert_eq!(parse_err("select name from /test where name in (select distinct name from /t)"), hint);
         assert!(parse_query("select distinct from /test").is_ok());
         assert!(parse_query("select 'distinct' name from /test").is_ok());
+    }
+
+    #[test]
+    fn top_limits_the_rows_like_limit() {
+        let query = parse_query("select top 5 name from /test").unwrap();
+        assert_eq!((query.limit, query.fields.len()), (5, 1));
+        let query = parse_query("select TOP 2 name, size from /test order by size desc").unwrap();
+        assert_eq!((query.limit, query.fields.len()), (2, 2));
+        let nested = parse_query("select name from /test where name in (select top 3 name from /t)").unwrap();
+        assert_eq!(nested.expr.unwrap().right.unwrap().subquery.unwrap().limit, 3);
+        assert_eq!(parse_err("select top 5 name from /test limit 3"), "TOP and LIMIT cannot both be specified");
+        assert!(parse_query("select top from /test").is_ok());
+        assert!(parse_query("select top, name from /test").is_ok());
+        assert!(parse_query("select 'top' 5 from /test").is_ok());
     }
 
     #[test]

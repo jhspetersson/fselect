@@ -29,7 +29,7 @@ Find files with SQL-like queries.
 
 ### Basic usage
 
-    fselect [ARGS] COLUMN[, COLUMN...] [from ROOT[, ROOT...]] [where EXPR] [group by COLUMNS] [having EXPR] [order by COLUMNS] [limit N] [offset N] [into FORMAT]
+    fselect [ARGS] [top N] COLUMN[, COLUMN...] [from ROOT[, ROOT...]] [where EXPR] [group by COLUMNS] [having EXPR] [order by COLUMNS] [limit N] [offset N] [into FORMAT]
 
 You write an SQL-like query, that's it.
 
@@ -73,7 +73,7 @@ single result row is returned at all. Subqueries (`in`, `exists`) are not suppor
 Order results like in real SQL with `order by`. All columns are supported for ordering by, 
 as well as `asc`/`desc` parameters and positional numeric shortcuts.
 
-Limiting search results is possible with `limit` and `offset`. Formatting options are supported with `into` keyword.
+Limiting search results is possible with `limit` and `offset`; `select top N ...` is a synonym for `limit N`. Formatting options are supported with `into` keyword.
 
 If you want to use operators containing `>` or `<`, 
 put the whole query into the double quotes. 

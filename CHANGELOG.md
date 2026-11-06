@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- `select top N ...` as a synonym for `limit N`
+
 ### Changed
 
 - Matroska and WebM metadata is behind the `mkv` build feature, enabled by default.

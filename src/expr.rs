@@ -739,6 +739,14 @@ impl Expr {
             Self::check_literal_side(right, left)?;
             Self::check_literal_side(left, right)?;
         }
+        if matches!(self.op, Some(Op::Rx) | Some(Op::NotRx))
+            && let Some(ref right) = self.right
+            && right.is_literal()
+            && let Some(ref pattern) = right.val
+            && regex::Regex::new(pattern).is_err()
+        {
+            return Err(format!("Incorrect regex expression: {}", pattern));
+        }
         self.children().try_for_each(Expr::validate_literals)?;
         if let Some(ref subquery) = self.subquery
             && let Some(ref inner) = subquery.expr

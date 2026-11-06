@@ -3357,6 +3357,14 @@ mod tests {
     }
 
     #[test]
+    fn invalid_regex_literal_is_rejected_when_parsing() {
+        assert_eq!(parse_err("select name from /test where name rx '('"), "Incorrect regex expression: (");
+        assert_eq!(parse_err("select name from /test where name not rx '['"), "Incorrect regex expression: [");
+        assert_eq!(parse_err("select name from /test where name in (select name from /t where name =~ '*')"), "Incorrect regex expression: *");
+        parse_query("select name from /test where name rx '^o.*[.]rs$'").unwrap();
+    }
+
+    #[test]
     fn implicit_limit_applies_to_constant_select() {
         let query = "select 123 from /test";
         let mut lexer = Lexer::new(vec![query.to_string()]);

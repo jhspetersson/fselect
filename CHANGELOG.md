@@ -16,6 +16,7 @@
 - A correlated subquery in a grouped query may only read grouping columns of the outer row
 - `INTO` inside a subquery is rejected with a clear message
 - `EXISTS` with a doubly parenthesized subquery evaluates the subquery instead of being always true
+- An invalid regular expression literal is reported once when the query is parsed instead of per file
 - `NOT IN` no longer accepts a row when the list or subquery contains a NULL member and nothing matches
 - Numeric functions such as `ABS`, `GREATEST` and `HEX` read the byte count of `fsize` instead of its formatted text
 

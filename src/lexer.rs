@@ -596,7 +596,7 @@ fn continues_arithmetic(s: &str, c: char, rest: &str, next_char: Option<char>, r
 }
 
 static DATE_ALIKE_REGEX: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new("^(\\d{4})-?(\\d{2})?").unwrap()
+    Regex::new("^([0-9]{4})(?:-|$)").unwrap()
 });
 
 /// Does the word read as arithmetic over operands (`t.size/2`, `line_count/2`,
@@ -637,29 +637,7 @@ fn looks_like_date(s: &str) -> bool {
         return false;
     }
     match DATE_ALIKE_REGEX.captures(s) {
-        Some(cap) => {
-            let year = cap[1].parse::<i32>();
-            let year_ok = match year {
-                Ok(year) => (1970..3000).contains(&year), // optimistic assumption
-                _ => false,
-            };
-
-            if !year_ok {
-                return false;
-            }
-
-            match cap.get(2) {
-                Some(month) => {
-                    let month = month.as_str().parse::<i32>();
-
-                    match month {
-                        Ok(month) => (1..=12).contains(&month),
-                        _ => false,
-                    }
-                }
-                _ => true,
-            }
-        }
+        Some(cap) => matches!(cap[1].parse::<i32>(), Ok(year) if (1970..3000).contains(&year)),
         _ => false,
     }
 }
@@ -992,6 +970,15 @@ c"))), "lexemes were {:?}", lexemes);
     fn looks_like_date_test() {
         assert!(looks_like_date("2018"));
         assert!(looks_like_date("2018-01"));
+        assert!(looks_like_date("2018-13"));
+        assert!(!looks_like_date("20181"));
+    }
+
+    #[test]
+    fn a_date_with_an_impossible_month_stays_one_token() {
+        assert_eq!(rhs_of("select name from . where modified > 2020-13-01"), vec![raw("2020-13-01")]);
+        assert_eq!(rhs_of("select name from . where modified > 2020-00-10"), vec![raw("2020-00-10")]);
+        assert_eq!(rhs_of("select name from . where size > 2020-13"), vec![raw("2020"), arith("-"), raw("13")]);
     }
 
     #[test]

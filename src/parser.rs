@@ -2231,6 +2231,7 @@ mod tests {
             assert!(err.contains("Can't parse datetime"), "{}: unexpected error text {:?}", query, err);
         }
         assert!(parse_err("select name from . where modified = 'not-a-date'").contains("not-a-date"));
+        assert_eq!(parse_err("select name from . where modified > 2020-13-01"), "Can't parse datetime: 2020-13-01");
     }
 
     #[test]

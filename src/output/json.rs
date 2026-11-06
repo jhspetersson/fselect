@@ -9,7 +9,7 @@ pub struct JsonFormatter {
     /// Column values in the order they were emitted. Stored as a `Vec` rather
     /// than a map so we preserve the user's SELECT column order and so we can
     /// disambiguate duplicate column names below.
-    row: Vec<(String, String)>,
+    row: Vec<(String, Option<String>)>,
 }
 
 impl ResultsFormatter for JsonFormatter {
@@ -22,7 +22,12 @@ impl ResultsFormatter for JsonFormatter {
     }
 
     fn format_element(&mut self, name: &str, record: &str, _is_last: bool) -> Option<String> {
-        self.row.push((name.to_owned(), record.to_owned()));
+        self.row.push((name.to_owned(), Some(record.to_owned())));
+        None
+    }
+
+    fn format_null(&mut self, name: &str, _is_last: bool) -> Option<String> {
+        self.row.push((name.to_owned(), None));
         None
     }
 
@@ -48,7 +53,10 @@ impl ResultsFormatter for JsonFormatter {
             emitted.insert(resolved.clone());
             out.push_str(&serde_json::to_string(&resolved).unwrap_or_else(|_| "\"\"".to_string()));
             out.push(':');
-            out.push_str(&serde_json::to_string(value).unwrap_or_else(|_| "\"\"".to_string()));
+            match value {
+                Some(value) => out.push_str(&serde_json::to_string(value).unwrap_or_else(|_| "\"\"".to_string())),
+                None => out.push_str("null"),
+            }
         }
         out.push('}');
         self.row.clear();
@@ -79,6 +87,14 @@ mod test {
             r#"[{"foo":"foo_value","bar":"BAR value"},{"foo":"123","bar":""}]"#,
             result
         );
+    }
+
+    #[test]
+    fn null_values_are_emitted_as_json_null() {
+        let mut f = JsonFormatter::default();
+        f.format_element("name", "a.txt", false);
+        f.format_null("width", true);
+        assert_eq!(f.row_ended().unwrap(), r#"{"name":"a.txt","width":null}"#);
     }
 
     #[test]

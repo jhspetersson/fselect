@@ -16,6 +16,10 @@ pub trait ResultsFormatter {
     fn row_started(&mut self) -> Option<String>;
     fn format_element(&mut self, name: &str, record: &str, is_last: bool) -> Option<String>;
     fn row_ended(&mut self) -> Option<String>;
+
+    fn format_null(&mut self, name: &str, is_last: bool) -> Option<String> {
+        self.format_element(name, "", is_last)
+    }
     fn footer(&mut self) -> Option<String>;
 
     fn row_separator(&self) -> Option<String> {
@@ -53,12 +57,12 @@ impl ResultsWriter {
     pub fn write_row(
         &mut self,
         writer: &mut dyn Write,
-        values: Vec<(String, String)>,
+        values: Vec<(String, Option<String>)>,
     ) -> std::io::Result<()> {
         self.write_row_start(writer)?;
         let len = values.len();
         for (pos, (name, value)) in values.iter().enumerate() {
-            self.write_row_item(writer, name, value, pos == len - 1)?;
+            self.write_row_item(writer, name, value.as_deref(), pos == len - 1)?;
         }
         self.write_row_end(writer)
     }
@@ -78,12 +82,14 @@ impl ResultsWriter {
         &mut self,
         writer: &mut dyn Write,
         name: &str,
-        value: &str,
+        value: Option<&str>,
         is_last: bool,
     ) -> std::io::Result<()> {
-        self.formatter
-            .format_element(name, value, is_last)
-            .map_or(Ok(()), |value| write!(writer, "{}", value))
+        let formatted = match value {
+            Some(value) => self.formatter.format_element(name, value, is_last),
+            None => self.formatter.format_null(name, is_last),
+        };
+        formatted.map_or(Ok(()), |value| write!(writer, "{}", value))
     }
 
     fn write_row_end(&mut self, writer: &mut dyn Write) -> std::io::Result<()> {

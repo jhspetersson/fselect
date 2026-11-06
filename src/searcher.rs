@@ -353,7 +353,7 @@ struct PendingRow {
     root_path: PathBuf,
     file_info: Option<FileInfo>,
     follow_symlinks: bool,
-    items: Vec<(String, String)>,
+    items: Vec<(String, Option<String>)>,
     values: HashMap<String, Variant>,
     deferred: Vec<usize>,
     first_value: Option<Variant>,
@@ -938,7 +938,7 @@ impl<'a> Searcher<'a> {
                     })
                     .collect();
 
-                let mut grouped_results: TopN<Criteria<String>, (Vec<(String, String)>, Option<Variant>)> =
+                let mut grouped_results: TopN<Criteria<String>, (Vec<(String, Option<String>)>, Option<Variant>)> =
                     if self.query.limit > 0 {
                         TopN::new(self.query.limit.saturating_add(self.query.offset))
                     } else {
@@ -967,12 +967,12 @@ impl<'a> Searcher<'a> {
                         }
                     }
                     self.bind_aggregate_aliases(&aliases, &mut row, false)?;
-                    let mut items: Vec<(String, String)> = Vec::new();
+                    let mut items: Vec<(String, Option<String>)> = Vec::new();
                     let mut first_value = None;
                     for (index, column_expr) in self.query.fields.iter().enumerate() {
                         let value = self.get_column_expr_value(&mut row, column_expr)?;
                         first_value = first_value.or_else(|| self.first_column_value(index, &value));
-                        items.push((column_expr.column_name(), value.to_string()));
+                        items.push((column_expr.column_name(), Self::rendered(column_expr, &value)));
                     }
                     if self.root_depth_column
                         && let Some((own_path, root_depth, member_index)) = &group_acc.representative
@@ -983,7 +983,7 @@ impl<'a> Searcher<'a> {
                     for (index, ordering_expr) in sorting_indices.iter().zip(self.query.ordering_fields.iter()) {
                         let value = match index {
                             Some(index) => row.values.get(&ordering_expr.cache_key()).cloned().unwrap_or_else(|| {
-                                Variant::from_string(&items.get(*index).map(|item| item.1.clone()).unwrap_or_default())
+                                Variant::from_string(&items.get(*index).and_then(|item| item.1.clone()).unwrap_or_default())
                             }),
                             None => self.get_column_expr_value(&mut row, ordering_expr)?,
                         };
@@ -1016,7 +1016,7 @@ impl<'a> Searcher<'a> {
                 drop(stdout);
             } else {
                 let mut buf = WritableBuffer::new();
-                let mut items: Vec<(String, String)> = Vec::new();
+                let mut items: Vec<(String, Option<String>)> = Vec::new();
 
                 let accumulators = std::mem::take(&mut self.accumulators);
                 let empty_acc = function::GroupAccumulator::default();
@@ -1042,7 +1042,7 @@ impl<'a> Searcher<'a> {
                     for (index, column_expr) in self.query.fields.iter().enumerate() {
                         let value = self.get_column_expr_value(&mut row, column_expr)?;
                         first_value = first_value.or_else(|| self.first_column_value(index, &value));
-                        items.push((column_expr.column_name(), value.to_string()));
+                        items.push((column_expr.column_name(), Self::rendered(column_expr, &value)));
                     }
                     if self.root_depth_column
                         && let Some((own_path, root_depth, member_index)) = &ungrouped_acc.representative
@@ -1184,13 +1184,17 @@ impl<'a> Searcher<'a> {
         (own_path, self.root_depth_of(root_path), member_index)
     }
 
-    fn push_subquery_identity(items: &mut Vec<(String, String)>, own_path: &str, root_depth: usize, member_index: Option<usize>) {
-        items.push((String::new(), Self::encode_identity_path(own_path)));
+    fn push_subquery_identity(items: &mut Vec<(String, Option<String>)>, own_path: &str, root_depth: usize, member_index: Option<usize>) {
+        items.push((String::new(), Some(Self::encode_identity_path(own_path))));
         let depth = match member_index {
             Some(index) => format!("{root_depth}@{index}"),
             None => root_depth.to_string(),
         };
-        items.push((String::new(), depth));
+        items.push((String::new(), Some(depth)));
+    }
+
+    fn rendered(column: &Expr, value: &Variant) -> Option<String> {
+        (!Self::is_null_operand(column, value)).then(|| value.to_string())
     }
 
     /// The canonical root joined with the path beneath it as traversed, so a
@@ -2287,7 +2291,7 @@ impl<'a> Searcher<'a> {
         entry: &DirEntry,
         pending: &PendingRow,
         values: &mut HashMap<String, Variant>,
-        items: &mut [(String, String)],
+        items: &mut [(String, Option<String>)],
     ) -> Result<Option<Variant>, SearchError> {
         let mut first_value = None;
         let query = self.query;
@@ -2307,8 +2311,8 @@ impl<'a> Searcher<'a> {
             };
             first_value = first_value.or_else(|| self.first_column_value(index, &record));
             items[index].1 = match self.use_colors && field.contains_colorized() {
-                true => self.colorize(&record.to_string()),
-                false => record.to_string(),
+                true => Self::rendered(field, &record).map(|text| self.colorize(&text)),
+                false => Self::rendered(field, &record),
             };
         }
         Ok(first_value)
@@ -2887,7 +2891,7 @@ impl<'a> Searcher<'a> {
         }
 
         let defer = self.is_buffered() && !self.deferred_columns.is_empty();
-        let mut items: Vec<(String, String)> = Vec::new();
+        let mut items: Vec<(String, Option<String>)> = Vec::new();
 
         if self.use_colors && self.query.fields.iter().any(|f| f.contains_colorized()) {
             self.fms.update_file_metadata(entry, self.current_follow_symlinks);
@@ -2896,7 +2900,7 @@ impl<'a> Searcher<'a> {
         let mut first_value = None;
         for (index, field) in self.query.fields.iter().enumerate() {
             if defer && self.deferred_columns.contains(&index) {
-                items.push((field.column_name(), String::new()));
+                items.push((field.column_name(), Some(String::new())));
                 continue;
             }
             let record = match self.get_column_expr_value(&mut row, field) {
@@ -2907,14 +2911,14 @@ impl<'a> Searcher<'a> {
                 Err(err) if err.is_fatal() => return Err(err),
                 Err(err) => {
                     self.handle_nonfatal_error(err, &entry.path());
-                    items.push((field.column_name(), String::new()));
+                    items.push((field.column_name(), Some(String::new())));
                     continue;
                 }
             };
 
             let value = match self.use_colors && field.contains_colorized() {
-                true => self.colorize(&record.to_string()),
-                false => record.to_string(),
+                true => Self::rendered(field, &record).map(|text| self.colorize(&text)),
+                false => Self::rendered(field, &record),
             };
             items.push((field.column_name(), value));
         }

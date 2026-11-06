@@ -344,6 +344,9 @@ impl <'a> Parser<'a> {
                         fields.push(Expr::field(Field::Modified));
                         fields.push(Expr::field(Field::Path));
                     } else {
+                        if fields.is_empty() && !is_quoted && s.eq_ignore_ascii_case("distinct") && self.field_follows() {
+                            return Err(String::from("DISTINCT is not supported; use GROUP BY to list distinct values"));
+                        }
                         self.drop_lexeme();
 
                         // Root option keywords terminate the field list, but
@@ -692,6 +695,12 @@ impl <'a> Parser<'a> {
                 alias,
             })),
         }
+    }
+
+    fn field_follows(&mut self) -> bool {
+        let next = self.next_lexeme();
+        self.drop_lexeme();
+        matches!(next, Some(Lexeme::RawString(_)) | Some(Lexeme::String(_)) | Some(Lexeme::Open) | Some(Lexeme::CurlyOpen))
     }
 
     fn numeric_argument_follows(&mut self) -> bool {
@@ -1509,6 +1518,9 @@ impl <'a> Parser<'a> {
         // Empty argument list, e.g. `curdate()`
         match self.next_lexeme() {
             Some(ref lexeme) if is_close(lexeme) => return Ok(function_expr),
+            Some(Lexeme::RawString(ref s)) if s.eq_ignore_ascii_case("distinct") && self.field_follows() => {
+                return Err(String::from("DISTINCT is not supported; use GROUP BY to list distinct values"));
+            }
             _ => self.drop_lexeme(),
         }
 
@@ -3449,6 +3461,17 @@ mod tests {
         assert!(quoted.fields[0].is_literal() && quoted.fields[0].val.as_deref() == Some("n"));
         let cyclic = parse_query("select a as b, b as a from /test").unwrap();
         assert_eq!(cyclic.fields.len(), 2);
+    }
+
+    #[test]
+    fn distinct_is_rejected_with_a_hint() {
+        let hint = "DISTINCT is not supported; use GROUP BY to list distinct values";
+        assert_eq!(parse_err("select distinct ext from /test"), hint);
+        assert_eq!(parse_err("select DISTINCT name, size from /test"), hint);
+        assert_eq!(parse_err("select count(distinct ext) from /test"), hint);
+        assert_eq!(parse_err("select name from /test where name in (select distinct name from /t)"), hint);
+        assert!(parse_query("select distinct from /test").is_ok());
+        assert!(parse_query("select 'distinct' name from /test").is_ok());
     }
 
     #[test]

@@ -8,7 +8,7 @@ use std::io::{ErrorKind, Write};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
-use chrono::NaiveDateTime;
+use jiff::civil::DateTime;
 #[cfg(feature = "git")]
 use crate::util::git::IgnoreRules;
 use lscolors::{LsColors, Style};
@@ -216,8 +216,8 @@ enum MembershipValues {
     DateTimes(Vec<(i64, i64)>),
 }
 
-fn datetime_seconds((from, to): (NaiveDateTime, NaiveDateTime)) -> (i64, i64) {
-    (from.and_utc().timestamp(), to.and_utc().timestamp())
+fn datetime_seconds((from, to): (DateTime, DateTime)) -> (i64, i64) {
+    (naive_seconds(from), naive_seconds(to))
 }
 
 impl Membership {
@@ -3332,10 +3332,10 @@ impl<'a> Searcher<'a> {
                     // (`modified = today` and `today = modified` alike).
                     match (field_value.to_datetime(), value.to_datetime()) {
                         (Ok((left_start, left_finish)), Ok((right_start, right_finish))) => {
-                            let left_start = left_start.and_utc().timestamp();
-                            let left_finish = left_finish.and_utc().timestamp();
-                            let right_start = right_start.and_utc().timestamp();
-                            let right_finish = right_finish.and_utc().timestamp();
+                            let left_start = naive_seconds(left_start);
+                            let left_finish = naive_seconds(left_finish);
+                            let right_start = naive_seconds(right_start);
+                            let right_finish = naive_seconds(right_finish);
                             match op {
                                 Op::Eeq => left_start == right_start,
                                 Op::Ene => left_start != right_start,
@@ -5895,7 +5895,7 @@ mod tests {
         let _ = fs::remove_dir_all(&tmp);
         fs::create_dir_all(tmp.join("data")).unwrap();
         fs::create_dir_all(tmp.join("other")).unwrap();
-        let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+        let today = format_date(&crate::util::local_now().date());
         for name in ["a.txt", "b.txt"] {
             fs::write(tmp.join("data").join(name), "x").unwrap();
         }

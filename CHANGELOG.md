@@ -15,6 +15,7 @@
 - `DISTINCT` is rejected with a hint instead of being read as a column named "distinct"
 - A doubled quote inside a quoted string (`'it''s'`) is a literal quote
 - Missing numeric, date and boolean values are written as `null` in JSON output
+- Dates and times are handled by `jiff` instead of `chrono`
 
 ### Fixed
 
@@ -38,6 +39,9 @@
 - A column name used as a function (`sha1(name)`) is rejected instead of being read as two columns
 - `NOT IN` no longer accepts a row when the list or subquery contains a NULL member and nothing matches
 - Numeric functions such as `ABS`, `GREATEST` and `HEX` read the byte count of `fsize` instead of its formatted text
+- A relative date such as `1 year ago` no longer fails when it lands in January
+- A date with non-ASCII letters (`2024é`) is rejected instead of crashing
+- `2 days ago` and similar day offsets keep the time of day across a daylight saving change
 
 ## [0.10.4] - 2026-10-23
 

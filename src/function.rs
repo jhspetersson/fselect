@@ -10,20 +10,19 @@ use std::fs::File;
 use std::io::prelude::*;
 use std::str::FromStr;
 
-use chrono::Datelike;
-use chrono::Local;
-use chrono::LocalResult;
-use chrono::DateTime;
-use chrono::NaiveDate;
-use chrono::NaiveDateTime;
-use chrono::Timelike;
+use jiff::civil::Date;
+use jiff::civil::DateTime;
+use jiff::civil::Weekday;
+use jiff::tz::AmbiguousOffset;
+use jiff::Span;
+use jiff::Timestamp;
 use rand::RngExt;
 use serde::ser::{Serialize, Serializer};
 #[cfg(unix)]
 use xattr::FileExt;
 
 use crate::fileinfo::{FileInfo, with_archived_entry};
-use crate::util::{capitalize_initials, format_date, format_duration, format_time, parse_datetime};
+use crate::util::{capitalize_initials, format_date, format_duration, format_time, local_now, local_time_zone, naive_seconds, parse_datetime, timestamp_seconds};
 use std::cmp::Ordering;
 use crate::util::variant::{Variant, VariantType};
 
@@ -482,7 +481,7 @@ impl Function {
         if self.datetime_argument_positions().contains(&position) {
             return parse_datetime(text).map(drop).map_err(|_| format!("Can't parse datetime: {}", text));
         }
-        let probe = NaiveDateTime::UNIX_EPOCH;
+        let probe = DateTime::constant(1970, 1, 1, 0, 0, 0, 0);
         match (self, position) {
             (Function::Extract, 0) => extract_part(text, probe).map(drop),
             (Function::DateTrunc, 0) => truncate_date(text, probe).map(drop),
@@ -528,45 +527,50 @@ impl Function {
     }
 }
 
-fn extract_part(unit: &str, dt: NaiveDateTime) -> Result<i64, String> {
+fn shift_days(dt: DateTime, days: i64) -> Option<DateTime> {
+    dt.checked_add(Span::new().try_days(days).ok()?).ok()
+}
+
+fn extract_part(unit: &str, dt: DateTime) -> Result<i64, String> {
     Ok(match unit.to_ascii_lowercase().as_str() {
         "year" | "years" | "yr" => dt.year() as i64,
         "quarter" | "quarters" => ((dt.month() - 1) / 3 + 1) as i64,
         "month" | "months" | "mon" => dt.month() as i64,
-        "week" | "weeks" => dt.iso_week().week() as i64,
+        "week" | "weeks" => dt.date().iso_week_date().week() as i64,
         "day" | "days" => dt.day() as i64,
         "hour" | "hours" => dt.hour() as i64,
         "minute" | "minutes" | "min" => dt.minute() as i64,
         "second" | "seconds" | "sec" => dt.second() as i64,
-        "dow" | "dayofweek" => dt.weekday().number_from_sunday() as i64,
-        "isodow" => dt.weekday().number_from_monday() as i64,
-        "doy" | "dayofyear" => dt.ordinal() as i64,
-        "epoch" | "unixtime" => match dt.and_local_timezone(Local) {
-            LocalResult::Single(local) => local.timestamp(),
-            LocalResult::Ambiguous(earliest, _) => earliest.timestamp(),
-            LocalResult::None => dt.and_utc().timestamp(),
-        },
+        "dow" | "dayofweek" => dt.weekday().to_sunday_one_offset() as i64,
+        "isodow" => dt.weekday().to_monday_one_offset() as i64,
+        "doy" | "dayofyear" => dt.day_of_year() as i64,
+        "epoch" | "unixtime" => {
+            let local = local_time_zone().to_ambiguous_timestamp(dt);
+            match local.offset() {
+                AmbiguousOffset::Gap { .. } => naive_seconds(dt),
+                _ => local.earlier().map_or_else(|_| naive_seconds(dt), timestamp_seconds),
+            }
+        }
         _ => return Err(format!("Unsupported EXTRACT unit: {}", unit)),
     })
 }
 
-fn truncate_date(unit: &str, dt: NaiveDateTime) -> Result<Option<NaiveDateTime>, String> {
+fn truncate_date(unit: &str, dt: DateTime) -> Result<Option<DateTime>, String> {
+    let date = dt.date();
     Ok(match unit.to_ascii_lowercase().as_str() {
-        "year" | "years" => NaiveDate::from_ymd_opt(dt.year(), 1, 1).and_then(|d| d.and_hms_opt(0, 0, 0)),
+        "year" | "years" => Some(date.first_of_year().at(0, 0, 0, 0)),
         "quarter" | "quarters" => {
             let m = ((dt.month() - 1) / 3) * 3 + 1;
-            NaiveDate::from_ymd_opt(dt.year(), m, 1).and_then(|d| d.and_hms_opt(0, 0, 0))
+            Date::new(dt.year(), m, 1).ok().map(|d| d.at(0, 0, 0, 0))
         }
-        "month" | "months" => NaiveDate::from_ymd_opt(dt.year(), dt.month(), 1).and_then(|d| d.and_hms_opt(0, 0, 0)),
+        "month" | "months" => Some(date.first_of_month().at(0, 0, 0, 0)),
         "week" | "weeks" => {
-            let offset = dt.weekday().num_days_from_monday() as i64;
-            chrono::Duration::try_days(offset)
-                .and_then(|dur| dt.date().checked_sub_signed(dur))
-                .and_then(|d| d.and_hms_opt(0, 0, 0))
+            let offset = dt.weekday().to_monday_zero_offset() as i64;
+            shift_days(date.at(0, 0, 0, 0), -offset)
         }
-        "day" | "days" => dt.date().and_hms_opt(0, 0, 0),
-        "hour" | "hours" => dt.date().and_hms_opt(dt.hour(), 0, 0),
-        "minute" | "minutes" => dt.date().and_hms_opt(dt.hour(), dt.minute(), 0),
+        "day" | "days" => Some(date.at(0, 0, 0, 0)),
+        "hour" | "hours" => Some(date.at(dt.hour(), 0, 0, 0)),
+        "minute" | "minutes" => Some(date.at(dt.hour(), dt.minute(), 0, 0)),
         "second" | "seconds" => Some(dt),
         _ => return Err(format!("Unsupported DATE_TRUNC unit: {}", unit)),
     })
@@ -580,9 +584,9 @@ fn snap_to_exact_power(val: f64, base: f64, approx: f64) -> f64 {
     if exact { rounded } else { approx }
 }
 
-fn date_variant(date: NaiveDate) -> Variant {
-    let start = date.and_hms_opt(0, 0, 0).unwrap();
-    let end = date.and_hms_opt(23, 59, 59).unwrap();
+fn date_variant(date: Date) -> Variant {
+    let start = date.at(0, 0, 0, 0);
+    let end = date.at(23, 59, 59, 0);
     Variant::from_datetime_range(start, end).with_text(&format_date(&date))
 }
 
@@ -593,17 +597,7 @@ fn unary_float(arg: &Variant, f: impl FnOnce(f64) -> Result<Variant, String>) ->
     }
 }
 
-/// Applies a function to a value and returns the result.
-/// If no function is provided, the original value is returned.
-///
-/// Args:
-///  function: The specification of which function to apply.
-///  function_arg: The value to apply the function to.
-///  function_args: Additional arguments to the function.
-///  entry: Optional directory entry to read the file contents from.
-///  file_info: Optional file information to read the file contents from.
-///
-/// Returns:
+#[cfg(test)]
 pub fn get_value(
     function: &Function,
     function_arg: String,
@@ -878,12 +872,12 @@ pub fn evaluate(
             .map_or_else(|| Variant::empty(VariantType::String), |formatted| Variant::from_string(&formatted))),
 
         // ===== Datetime functions =====
-        Function::CurrentDate => Ok(date_variant(Local::now().date_naive())),
+        Function::CurrentDate => Ok(date_variant(local_now().date())),
         Function::CurrentTime => {
-            let now = Local::now().time();
+            let now = local_now().time();
             Ok(Variant::from_string(&format_time(&now)))
         }
-        Function::CurrentTimestamp => Ok(Variant::from_datetime(Local::now().naive_local())),
+        Function::CurrentTimestamp => Ok(Variant::from_datetime(local_now().datetime())),
         Function::Year => match parse_datetime(&function_arg) {
             Ok(date) => Ok(Variant::from_int(date.0.year() as i64)),
             _ => Ok(Variant::empty(VariantType::Int)),
@@ -897,26 +891,26 @@ pub fn evaluate(
             _ => Ok(Variant::empty(VariantType::Int)),
         },
         Function::DayOfWeek => match parse_datetime(&function_arg) {
-            Ok(date) => Ok(Variant::from_int(date.0.weekday().number_from_sunday() as i64)),
+            Ok(date) => Ok(Variant::from_int(date.0.weekday().to_sunday_one_offset() as i64)),
             _ => Ok(Variant::empty(VariantType::Int)),
         },
         Function::DayName => match parse_datetime(&function_arg) {
             Ok(date) => {
                 let name = match date.0.weekday() {
-                    chrono::Weekday::Mon => "Monday",
-                    chrono::Weekday::Tue => "Tuesday",
-                    chrono::Weekday::Wed => "Wednesday",
-                    chrono::Weekday::Thu => "Thursday",
-                    chrono::Weekday::Fri => "Friday",
-                    chrono::Weekday::Sat => "Saturday",
-                    chrono::Weekday::Sun => "Sunday",
+                    Weekday::Monday => "Monday",
+                    Weekday::Tuesday => "Tuesday",
+                    Weekday::Wednesday => "Wednesday",
+                    Weekday::Thursday => "Thursday",
+                    Weekday::Friday => "Friday",
+                    Weekday::Saturday => "Saturday",
+                    Weekday::Sunday => "Sunday",
                 };
                 Ok(Variant::from_string(&name.to_string()))
             }
             _ => Ok(Variant::empty(VariantType::String)),
         },
         Function::DayOfYear => match parse_datetime(&function_arg) {
-            Ok(date) => Ok(Variant::from_int(date.0.ordinal() as i64)),
+            Ok(date) => Ok(Variant::from_int(date.0.day_of_year() as i64)),
             _ => Ok(Variant::empty(VariantType::Int)),
         },
         Function::DateAdd => {
@@ -929,7 +923,7 @@ pub fn evaluate(
             };
             match parse_datetime(&function_arg) {
                 Ok(date) => {
-                    match chrono::Duration::try_days(days).and_then(|duration| date.0.checked_add_signed(duration)) {
+                    match shift_days(date.0, days) {
                         Some(result) => Ok(Variant::from_datetime(result)),
                         None => Err(format!("Number of days out of range: {}", days)),
                     }
@@ -947,7 +941,7 @@ pub fn evaluate(
             };
             match parse_datetime(&function_arg) {
                 Ok(date) => {
-                    match chrono::Duration::try_days(days).and_then(|duration| date.0.checked_sub_signed(duration)) {
+                    match days.checked_neg().and_then(|days| shift_days(date.0, days)) {
                         Some(result) => Ok(Variant::from_datetime(result)),
                         None => Err(format!("Number of days out of range: {}", days)),
                     }
@@ -964,7 +958,7 @@ pub fn evaluate(
             match (date1, date2) {
                 (Ok(d1), Ok(d2)) => {
                     // MySQL DATEDIFF ignores the time parts and diffs calendar dates
-                    let diff = d1.0.date().signed_duration_since(d2.0.date()).num_days();
+                    let diff = d1.0.date().duration_since(d2.0.date()).as_secs() / 86_400;
                     Ok(Variant::from_int(diff))
                 }
                 _ => Ok(Variant::empty(VariantType::Int)),
@@ -975,27 +969,14 @@ pub fn evaluate(
                 Ok(t) => t,
                 Err(_) => return Ok(Variant::empty(VariantType::DateTime)),
             };
-            match DateTime::from_timestamp(timestamp, 0) {
+            match Timestamp::from_second(timestamp) {
                 // Render as local time: every other datetime in the tool is local-naive
-                Some(dt) => Ok(Variant::from_datetime(dt.with_timezone(&Local).naive_local())),
-                None => Ok(Variant::empty(VariantType::DateTime)),
+                Ok(timestamp) => Ok(Variant::from_datetime(local_time_zone().to_datetime(timestamp))),
+                Err(_) => Ok(Variant::empty(VariantType::DateTime)),
             }
         }
         Function::LastDay => match parse_datetime(&function_arg) {
-            Ok(date) => {
-                let y = date.0.year();
-                let m = date.0.month();
-                // First day of next month minus one day
-                let last = if m == 12 {
-                    chrono::NaiveDate::from_ymd_opt(y + 1, 1, 1)
-                } else {
-                    chrono::NaiveDate::from_ymd_opt(y, m + 1, 1)
-                };
-                match last.and_then(|d| d.pred_opt()) {
-                    Some(last_day) => Ok(date_variant(last_day)),
-                    None => Ok(Variant::empty(VariantType::DateTime)),
-                }
-            }
+            Ok(date) => Ok(date_variant(date.0.date().last_of_month())),
             _ => Ok(Variant::empty(VariantType::DateTime)),
         },
         Function::Extract => {
@@ -2653,14 +2634,14 @@ mod tests {
     fn date_results_keep_their_span_and_text() {
         let today = get_value(&Function::CurrentDate, String::new(), vec![], None, &None).unwrap();
         let (from, to) = today.to_datetime().unwrap();
-        assert_eq!(from, Local::now().date_naive().and_hms_opt(0, 0, 0).unwrap());
+        assert_eq!(from, local_now().date().at(0, 0, 0, 0));
         assert_eq!(to.date(), from.date());
         assert_eq!(today.to_string(), format_date(&from.date()));
         let last = get_value(&Function::LastDay, String::from("2024-02-10"), vec![], None, &None).unwrap();
         assert_eq!(last.to_string(), "2024-02-29");
-        assert_eq!(last.to_datetime().unwrap().1.time(), chrono::NaiveTime::from_hms_opt(23, 59, 59).unwrap());
+        assert_eq!(last.to_datetime().unwrap().1.time(), jiff::civil::time(23, 59, 59, 0));
         let shifted = get_value(&Function::DateAdd, String::from("2023-10-01"), vec![String::from("10")], None, &None).unwrap();
-        assert_eq!(shifted.to_datetime().unwrap().0, NaiveDate::from_ymd_opt(2023, 10, 11).unwrap().and_hms_opt(0, 0, 0).unwrap());
+        assert_eq!(shifted.to_datetime().unwrap().0, jiff::civil::date(2023, 10, 11).at(0, 0, 0, 0));
     }
 
     #[test]
@@ -2725,7 +2706,7 @@ mod tests {
         let file_info = None;
 
         let result = get_value(&function, function_arg, function_args, entry, &file_info);
-        assert_eq!(result.unwrap().to_string(), format_date(&Local::now().date_naive()));
+        assert_eq!(result.unwrap().to_string(), format_date(&local_now().date()));
     }
     
     #[test]
@@ -3010,10 +2991,7 @@ mod tests {
         let file_info = None;
 
         // Rendered as local time, whatever the machine timezone is
-        let expected = DateTime::from_timestamp(0, 0)
-            .unwrap()
-            .with_timezone(&Local)
-            .naive_local();
+        let expected = local_time_zone().to_datetime(Timestamp::UNIX_EPOCH);
 
         let result = get_value(&function, function_arg, function_args, entry, &file_info);
         assert_eq!(result.unwrap().to_string(), format_datetime(&expected));
@@ -3027,10 +3005,7 @@ mod tests {
         let entry = None;
         let file_info = None;
 
-        let expected = DateTime::from_timestamp(1696118400, 0)
-            .unwrap()
-            .with_timezone(&Local)
-            .naive_local();
+        let expected = local_time_zone().to_datetime(Timestamp::from_second(1696118400).unwrap());
 
         let result = get_value(&function, function_arg, function_args, entry, &file_info);
         assert_eq!(result.unwrap().to_string(), format_datetime(&expected));
@@ -3266,14 +3241,11 @@ mod tests {
     #[test]
     fn function_extract_epoch() {
         // The naive datetime is interpreted as local time
-        let expected = NaiveDate::from_ymd_opt(2023, 10, 1)
+        let expected = local_time_zone()
+            .to_ambiguous_timestamp(jiff::civil::date(2023, 10, 1).at(12, 0, 0, 0))
+            .unambiguous()
             .unwrap()
-            .and_hms_opt(12, 0, 0)
-            .unwrap()
-            .and_local_timezone(Local)
-            .single()
-            .unwrap()
-            .timestamp();
+            .as_second();
 
         let result = get_value(
             &Function::Extract,

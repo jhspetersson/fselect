@@ -1,8 +1,8 @@
 use std::fmt::{Display, Error, Formatter};
 
-use chrono::NaiveDateTime;
+use jiff::civil::DateTime;
 
-use crate::util::{format_datetime, parse_datetime, parse_filesize, str_to_bool};
+use crate::util::{format_datetime, naive_seconds, parse_datetime, parse_filesize, str_to_bool};
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum VariantType {
@@ -20,8 +20,8 @@ pub struct Variant {
     int_value: Option<i64>,
     float_value: Option<f64>,
     bool_value: Option<bool>,
-    dt_from: Option<NaiveDateTime>,
-    dt_to: Option<NaiveDateTime>,
+    dt_from: Option<DateTime>,
+    dt_to: Option<DateTime>,
     null: bool,
 }
 
@@ -156,7 +156,7 @@ impl Variant {
             VariantType::Float => self.float_value.map_or_else(String::new, |value| value.to_string()),
             VariantType::Bool => self.bool_value.map_or_else(String::new, |value| value.to_string()),
             VariantType::DateTime => match (self.dt_from, self.dt_to) {
-                (Some(from), Some(to)) => format!("{}..{}", from.and_utc().timestamp(), to.and_utc().timestamp()),
+                (Some(from), Some(to)) => format!("{}..{}", naive_seconds(from), naive_seconds(to)),
                 _ => String::new(),
             },
             VariantType::String => self.string_value.clone(),
@@ -171,13 +171,13 @@ impl Variant {
     /// A datetime that stands for a whole span, as a date-only text does
     /// (`2026-10-20` is the day from its first to its last second), so a
     /// comparison against it keeps the span instead of collapsing to midnight.
-    pub fn from_datetime_range(from: NaiveDateTime, to: NaiveDateTime) -> Variant {
+    pub fn from_datetime_range(from: DateTime, to: DateTime) -> Variant {
         let mut variant = Variant::from_datetime(from);
         variant.dt_to = Some(to);
         variant
     }
 
-    pub fn from_datetime(value: NaiveDateTime) -> Variant {
+    pub fn from_datetime(value: DateTime) -> Variant {
         Variant {
             value_type: VariantType::DateTime,
             string_value: format_datetime(&value),
@@ -258,7 +258,7 @@ impl Variant {
         }
     }
 
-    pub fn to_datetime(&self) -> Result<(NaiveDateTime, NaiveDateTime), String> {
+    pub fn to_datetime(&self) -> Result<(DateTime, DateTime), String> {
         if let Some(dt_from) = self.dt_from {
             Ok((dt_from, self.dt_to.unwrap()))
         } else {
@@ -303,7 +303,7 @@ mod exact_int_tests {
 #[allow(clippy::approx_constant)]
 mod tests {
     use super::*;
-    use chrono::{NaiveDate, Timelike};
+    use jiff::civil::date;
 
     #[test]
     fn from_int() {
@@ -441,7 +441,7 @@ mod tests {
 
     #[test]
     fn from_datetime() {
-        let dt = NaiveDate::from_ymd_opt(2024, 6, 15).unwrap().and_hms_opt(10, 30, 0).unwrap();
+        let dt = date(2024, 6, 15).at(10, 30, 0, 0);
         let v = Variant::from_datetime(dt);
         assert_eq!(v.to_string(), "2024-06-15 10:30:00");
         assert!(matches!(v.get_type(), VariantType::DateTime));

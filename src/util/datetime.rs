@@ -1,9 +1,12 @@
 use std::sync::{LazyLock, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use chrono::{DateTime, Duration, Local, NaiveDate, NaiveDateTime, NaiveTime, Timelike, Utc};
-use chrono_english::{parse_date_string, Dialect};
+use jiff::civil::{Date, DateTime, Time};
+use jiff::tz::TimeZone;
+use jiff::{SignedDuration, Span, Timestamp, ZonedDateTime};
 use regex::Regex;
+
+use crate::util::english_date::{parse_date_string, Dialect};
 
 static DATE_REGEX: LazyLock<Regex> = LazyLock::new(|| {
     // The date and time parts may be separated by a space or an ISO 8601 `T`
@@ -22,8 +25,34 @@ static TRAILING_TIME_REGEX: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)^(.*\S)\s+([0-9]{1,2})(?::([0-9]{2})(?::([0-9]{2}))?)?\s*([ap]m)?$").unwrap()
 });
 
-fn trailing_time(caps: &regex::Captures) -> Option<NaiveTime> {
-    let mut hour: u32 = caps[2].parse().ok()?;
+static LOCAL_TIME_ZONE: LazyLock<TimeZone> = LazyLock::new(TimeZone::system);
+
+pub fn local_time_zone() -> &'static TimeZone {
+    &LOCAL_TIME_ZONE
+}
+
+pub fn local_now() -> ZonedDateTime {
+    Timestamp::now().to_zoned_datetime(local_time_zone().clone())
+}
+
+fn floor_seconds(duration: SignedDuration) -> i64 {
+    duration.as_secs() - i64::from(duration.subsec_nanos() < 0)
+}
+
+pub fn timestamp_seconds(timestamp: Timestamp) -> i64 {
+    floor_seconds(timestamp.as_duration())
+}
+
+pub fn naive_seconds(dt: DateTime) -> i64 {
+    floor_seconds(dt.duration_since(DateTime::constant(1970, 1, 1, 0, 0, 0, 0)))
+}
+
+fn whole_day(date: Date) -> (DateTime, DateTime) {
+    (date.at(0, 0, 0, 0), date.at(23, 59, 59, 0))
+}
+
+fn trailing_time(caps: &regex::Captures) -> Option<Time> {
+    let mut hour: i8 = caps[2].parse().ok()?;
     if let Some(meridiem) = caps.get(5) {
         if hour == 0 || hour > 12 {
             return None;
@@ -35,19 +64,19 @@ fn trailing_time(caps: &regex::Captures) -> Option<NaiveTime> {
     }
     let minute = caps.get(3).map_or(Some(0), |m| m.as_str().parse().ok())?;
     let second = caps.get(4).map_or(Some(0), |m| m.as_str().parse().ok())?;
-    NaiveTime::from_hms_opt(hour, minute, second)
+    Time::new(hour, minute, second, 0).ok()
 }
 
-fn parse_natural_datetime(s: &str, dialect: Dialect) -> Option<NaiveDateTime> {
-    let now = Local::now();
+fn parse_natural_datetime(s: &str, dialect: Dialect) -> Option<DateTime> {
+    let now = local_now();
     if let Some(caps) = TRAILING_TIME_REGEX.captures(s)
         && (caps.get(3).is_some() || caps.get(5).is_some())
     {
         let time = trailing_time(&caps)?;
-        let date_time = parse_date_string(&caps[1], now, dialect).ok()?;
-        return Some(date_time.date_naive().and_time(time));
+        let date_time = parse_date_string(&caps[1], &now, dialect)?;
+        return Some(date_time.date().to_datetime(time));
     }
-    parse_date_string(s, now, dialect).ok().map(|date_time| date_time.naive_local())
+    parse_date_string(s, &now, dialect)
 }
 
 fn normalize_twelve_oclock(s: &str) -> std::borrow::Cow<'_, str> {
@@ -78,61 +107,47 @@ pub fn datetime_parses() -> usize {
     DATETIME_PARSES.with(|parses| parses.get())
 }
 
-pub fn parse_datetime(s: &str) -> Result<(NaiveDateTime, NaiveDateTime), String> {
+pub fn parse_datetime(s: &str) -> Result<(DateTime, DateTime), String> {
     #[cfg(test)]
     DATETIME_PARSES.with(|parses| parses.set(parses.get() + 1));
-    if s == "today" {
-        let date = Local::now().date_naive();
-        let start = date.and_hms_opt(0, 0, 0).unwrap();
-        let finish = date.and_hms_opt(23, 59, 59).unwrap();
+    let error = || "Error parsing date/time value: ".to_string() + s;
 
-        return Ok((start, finish));
+    if s == "today" {
+        return Ok(whole_day(local_now().date()));
     }
 
     if s == "yesterday" {
-        let date = Local::now().date_naive() - Duration::try_days(1).unwrap();
-        let start = date.and_hms_opt(0, 0, 0).unwrap();
-        let finish = date.and_hms_opt(23, 59, 59).unwrap();
-
-        return Ok((start, finish));
+        return local_now().date().yesterday().map(whole_day).map_err(|_| error());
     }
 
     match DATE_REGEX.captures(s) {
         Some(cap) => {
             // Ensure consistent separator (both dashes or both colons)
             if cap[2] != cap[4] {
-                return Err("Error parsing date/time value: ".to_string() + s);
+                return Err(error());
             }
-            let part = |index: usize| -> Result<u32, String> {
-                cap[index].parse().map_err(|_| "Error parsing date/time value: ".to_string() + s)
-            };
-            let optional_part = |index: usize, finish_default: u32| -> Result<(u32, u32), String> {
+            let part = |index: usize| -> Result<i8, String> { cap[index].parse().map_err(|_| error()) };
+            let optional_part = |index: usize, finish_default: i8| -> Result<(i8, i8), String> {
                 match cap.get(index) {
                     Some(_) => part(index).map(|value| (value, value)),
                     None => Ok((0, finish_default)),
                 }
             };
-            let year = part(1)? as i32;
+            let year: i16 = cap[1].parse().map_err(|_| error())?;
             let month = part(3)?;
             let day = part(5)?;
             let (hour_start, hour_finish) = optional_part(6, 23)?;
             let (min_start, min_finish) = optional_part(7, 59)?;
             let (sec_start, sec_finish) = optional_part(8, 59)?;
 
-            // Build the naive datetime directly: a Local round-trip would fail on
-            // DST-skipped or ambiguous midnights while adding nothing to the result
-            match NaiveDate::from_ymd_opt(year, month, day) {
-                Some(date) => {
-                    let start = date.and_hms_opt(hour_start, min_start, sec_start);
-                    let finish = date.and_hms_opt(hour_finish, min_finish, sec_finish);
+            // Build the civil datetime directly: a round-trip through the local
+            // time zone would trip on DST-skipped or ambiguous midnights while
+            // adding nothing to the result
+            let date = Date::new(year, month, day).map_err(|_| error())?;
+            let start = Time::new(hour_start, min_start, sec_start, 0).map_err(|_| error())?;
+            let finish = Time::new(hour_finish, min_finish, sec_finish, 0).map_err(|_| error())?;
 
-                    match (start, finish) {
-                        (Some(s), Some(f)) => Ok((s, f)),
-                        _ => Err("Error parsing date/time value: ".to_string() + s),
-                    }
-                }
-                None => Err("Error parsing date/time value: ".to_string() + s),
-            }
+            Ok((date.to_datetime(start), date.to_datetime(finish)))
         }
         None => {
             // Simplified relative-day syntax: any length of `+N`/`-N` counts
@@ -142,13 +157,11 @@ pub fn parse_datetime(s: &str) -> Result<(NaiveDateTime, NaiveDateTime), String>
                 && (s.starts_with("+") || s.starts_with("-"))
                 && let Ok(days) = s.parse::<i64>()
             {
-                let date = Duration::try_days(days)
-                    .and_then(|offset| Local::now().date_naive().checked_add_signed(offset))
-                    .ok_or_else(|| "Error parsing date/time value: ".to_string() + s)?;
-                let start = date.and_hms_opt(0, 0, 0).unwrap();
-                let finish = date.and_hms_opt(23, 59, 59).unwrap();
-
-                Ok((start, finish))
+                Span::new()
+                    .try_days(days)
+                    .and_then(|offset| local_now().date().checked_add(offset))
+                    .map(whole_day)
+                    .map_err(|_| error())
             } else if s.len() >= 5 {
                 let dialect = match *US_DATES.lock().unwrap() {
                     true => Dialect::Us,
@@ -162,23 +175,17 @@ pub fn parse_datetime(s: &str) -> Result<(NaiveDateTime, NaiveDateTime), String>
                             && date_time.second() == 0
                             && !EXPLICIT_TIME_REGEX.is_match(&normalized)
                         {
-                            date_time
-                                .with_hour(23)
-                                .unwrap()
-                                .with_minute(59)
-                                .unwrap()
-                                .with_second(59)
-                                .unwrap()
+                            date_time.date().at(23, 59, 59, date_time.subsec_nanosecond())
                         } else {
                             date_time
                         };
 
                         Ok((date_time, finish))
                     }
-                    None => Err("Error parsing date/time value: ".to_string() + s),
+                    None => Err(error()),
                 }
             } else {
-                Err("Error parsing date/time value: ".to_string() + s)
+                Err(error())
             }
         }
     }
@@ -199,46 +206,49 @@ pub fn system_time_to_unix(sdt: SystemTime) -> Option<(i64, u32)> {
     }
 }
 
-pub fn system_time_to_naive_local(sdt: SystemTime) -> Option<NaiveDateTime> {
+pub fn system_time_to_naive_local(sdt: SystemTime) -> Option<DateTime> {
     let (sec, nsec) = system_time_to_unix(sdt)?;
 
-    DateTime::<Utc>::from_timestamp(sec, nsec)
-        .map(|dt_utc| dt_utc.with_timezone(&Local).naive_local())
+    Timestamp::new(sec, nsec as i32)
+        .ok()
+        .map(|timestamp| local_time_zone().to_datetime(timestamp))
 }
 
-pub fn to_local_datetime(dt: &zip::DateTime) -> NaiveDateTime {
-    let date = NaiveDate::from_ymd_opt(dt.year() as i32, dt.month() as u32, dt.day() as u32)
-        .or_else(|| NaiveDate::from_ymd_opt(dt.year() as i32, 1, 1))
-        .unwrap_or_default();
-    let time = NaiveTime::from_hms_opt(dt.hour() as u32, dt.minute() as u32, dt.second() as u32)
-        .unwrap_or_default();
-    NaiveDateTime::new(date, time)
+pub fn to_local_datetime(dt: &zip::DateTime) -> DateTime {
+    let year = dt.year() as i16;
+    let date = Date::new(year, dt.month() as i8, dt.day() as i8)
+        .or_else(|_| Date::new(year, 1, 1))
+        .unwrap_or(Date::constant(1970, 1, 1));
+    let time = Time::new(dt.hour() as i8, dt.minute() as i8, dt.second() as i8, 0)
+        .unwrap_or(Time::midnight());
+    date.to_datetime(time)
 }
 
-pub fn format_datetime(dt: &NaiveDateTime) -> String {
-    format!("{}", dt.format("%Y-%m-%d %H:%M:%S"))
+pub fn format_datetime(dt: &DateTime) -> String {
+    dt.strftime("%Y-%m-%d %H:%M:%S").to_string()
 }
 
-pub fn format_date(date: &NaiveDate) -> String {
-    format!("{}", date.format("%Y-%m-%d"))
+pub fn format_date(date: &Date) -> String {
+    date.strftime("%Y-%m-%d").to_string()
 }
 
-pub fn format_time(time: &NaiveTime) -> String {
-    format!("{}", time.format("%H:%M:%S"))
+pub fn format_time(time: &Time) -> String {
+    time.strftime("%H:%M:%S").to_string()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::time::Duration as StdDuration;
-    use chrono::{Datelike, Local, NaiveDate};
+    use jiff::civil::date;
+    use jiff::ToSpan;
 
     #[test]
     fn test_parse_today() {
         let result = parse_datetime("today").unwrap();
-        let now = Local::now().date_naive();
-        let start = now.and_hms_opt(0, 0, 0).unwrap();
-        let finish = now.and_hms_opt(23, 59, 59).unwrap();
+        let now = local_now().date();
+        let start = now.at(0, 0, 0, 0);
+        let finish = now.at(23, 59, 59, 0);
 
         assert_eq!(result.0, start);
         assert_eq!(result.1, finish);
@@ -247,9 +257,9 @@ mod tests {
     #[test]
     fn test_parse_yesterday() {
         let result = parse_datetime("yesterday").unwrap();
-        let yesterday = Local::now().date_naive() - chrono::Duration::days(1);
-        let start = yesterday.and_hms_opt(0, 0, 0).unwrap();
-        let finish = yesterday.and_hms_opt(23, 59, 59).unwrap();
+        let yesterday = local_now().date() - 1.days();
+        let start = yesterday.at(0, 0, 0, 0);
+        let finish = yesterday.at(23, 59, 59, 0);
 
         assert_eq!(result.0, start);
         assert_eq!(result.1, finish);
@@ -258,8 +268,8 @@ mod tests {
     #[test]
     fn test_parse_two_days_ago() {
         let result = parse_datetime("2 days ago 00:00").unwrap();
-        let two_days_ago = Local::now().date_naive() - chrono::Duration::days(2);
-        let start = two_days_ago.and_hms_opt(0, 0, 0).unwrap();
+        let two_days_ago = local_now().date() - 2.days();
+        let start = two_days_ago.at(0, 0, 0, 0);
 
         assert_eq!(result.0, start);
         assert_eq!(result.1, start);
@@ -267,8 +277,8 @@ mod tests {
 
     #[test]
     fn relative_days_keep_an_explicit_trailing_time() {
-        let yesterday = Local::now().date_naive() - chrono::Duration::days(1);
-        let at = |h, m| yesterday.and_hms_opt(h, m, 0).unwrap();
+        let yesterday = local_now().date() - 1.days();
+        let at = |h, m| yesterday.at(h, m, 0, 0);
 
         assert_eq!(parse_datetime("yesterday 15:30").unwrap(), (at(15, 30), at(15, 30)));
         assert_eq!(parse_datetime("yesterday 3pm").unwrap(), (at(15, 0), at(15, 0)));
@@ -281,9 +291,9 @@ mod tests {
     #[test]
     fn test_parse_two_days_ago_simplified() {
         let result = parse_datetime("-2").unwrap();
-        let two_days_ago = Local::now().date_naive() - chrono::Duration::days(2);
-        let start = two_days_ago.and_hms_opt(0, 0, 0).unwrap();
-        let finish = two_days_ago.and_hms_opt(23, 59, 59).unwrap();
+        let two_days_ago = local_now().date() - 2.days();
+        let start = two_days_ago.at(0, 0, 0, 0);
+        let finish = two_days_ago.at(23, 59, 59, 0);
 
         assert_eq!(result.0, start);
         assert_eq!(result.1, finish);
@@ -292,9 +302,9 @@ mod tests {
     #[test]
     fn test_parse_specific_date() {
         let result = parse_datetime("2023-12-11").unwrap();
-        let date = NaiveDate::from_ymd_opt(2023, 12, 11).unwrap();
-        let start = date.and_hms_opt(0, 0, 0).unwrap();
-        let finish = date.and_hms_opt(23, 59, 59).unwrap();
+        let date = date(2023, 12, 11);
+        let start = date.at(0, 0, 0, 0);
+        let finish = date.at(23, 59, 59, 0);
 
         assert_eq!(result.0, start);
         assert_eq!(result.1, finish);
@@ -303,8 +313,8 @@ mod tests {
     #[test]
     fn test_parse_specific_datetime() {
         let result = parse_datetime("2023-12-11 14:30:45").unwrap();
-        let date = NaiveDate::from_ymd_opt(2023, 12, 11).unwrap();
-        let start = date.and_hms_opt(14, 30, 45).unwrap();
+        let date = date(2023, 12, 11);
+        let start = date.at(14, 30, 45, 0);
         let finish = start;
 
         assert_eq!(result.0, start);
@@ -336,19 +346,19 @@ mod tests {
 
     #[test]
     fn natural_language_dates_span_the_day_only_without_an_explicit_time() {
-        let midnight = NaiveDate::from_ymd_opt(2024, 6, 1).unwrap().and_hms_opt(0, 0, 0).unwrap();
-        let end_of_day = NaiveDate::from_ymd_opt(2024, 6, 1).unwrap().and_hms_opt(23, 59, 59).unwrap();
+        let midnight = date(2024, 6, 1).at(0, 0, 0, 0);
+        let end_of_day = date(2024, 6, 1).at(23, 59, 59, 0);
 
         assert_eq!(parse_datetime("1 June 2024").unwrap(), (midnight, end_of_day));
         assert_eq!(parse_datetime("1 June 2024 00:00:00").unwrap(), (midnight, midnight));
         assert_eq!(parse_datetime("1 June 2024 00:00").unwrap(), (midnight, midnight));
-        let noon = NaiveDate::from_ymd_opt(2024, 6, 1).unwrap().and_hms_opt(12, 0, 0).unwrap();
+        let noon = date(2024, 6, 1).at(12, 0, 0, 0);
         assert_eq!(parse_datetime("1 June 2024 12:00").unwrap(), (noon, noon));
     }
 
     #[test]
     fn twelve_oclock_follows_the_twelve_hour_clock() {
-        let at = |h, m, s| NaiveDate::from_ymd_opt(2024, 6, 1).unwrap().and_hms_opt(h, m, s).unwrap();
+        let at = |h, m, s| date(2024, 6, 1).at(h, m, s, 0);
 
         assert_eq!(parse_datetime("1 June 2024 12 am").unwrap(), (at(0, 0, 0), at(0, 0, 0)));
         assert_eq!(parse_datetime("1 June 2024 12am").unwrap(), (at(0, 0, 0), at(0, 0, 0)));
@@ -385,9 +395,9 @@ mod tests {
     #[test]
     fn test_partial_date_parsing() {
         let result = parse_datetime("2023-12-11 14:30").unwrap();
-        let date = NaiveDate::from_ymd_opt(2023, 12, 11).unwrap();
-        let start = date.and_hms_opt(14, 30, 0).unwrap();
-        let finish = date.and_hms_opt(14, 30, 59).unwrap();
+        let date = date(2023, 12, 11);
+        let start = date.at(14, 30, 0, 0);
+        let finish = date.at(14, 30, 59, 0);
 
         assert_eq!(result.0, start);
         assert_eq!(result.1, finish);
@@ -395,19 +405,19 @@ mod tests {
 
     #[test]
     fn iso_t_separator_matches_the_same_range_as_the_space_form() {
-        let date = NaiveDate::from_ymd_opt(2026, 10, 9).unwrap();
+        let date = date(2026, 10, 9);
 
         let minute = parse_datetime("2026-10-09T10:09").unwrap();
         assert_eq!(minute, parse_datetime("2026-10-09 10:09").unwrap());
-        assert_eq!(minute.0, date.and_hms_opt(10, 9, 0).unwrap());
-        assert_eq!(minute.1, date.and_hms_opt(10, 9, 59).unwrap());
+        assert_eq!(minute.0, date.at(10, 9, 0, 0));
+        assert_eq!(minute.1, date.at(10, 9, 59, 0));
 
         let hour = parse_datetime("2026-10-09T10").unwrap();
-        assert_eq!(hour.0, date.and_hms_opt(10, 0, 0).unwrap());
-        assert_eq!(hour.1, date.and_hms_opt(10, 59, 59).unwrap());
+        assert_eq!(hour.0, date.at(10, 0, 0, 0));
+        assert_eq!(hour.1, date.at(10, 59, 59, 0));
 
         let second = parse_datetime("2026-10-09T10:09:05").unwrap();
-        assert_eq!(second.0, date.and_hms_opt(10, 9, 5).unwrap());
+        assert_eq!(second.0, date.at(10, 9, 5, 0));
         assert_eq!(second.1, second.0);
 
         let lowercase = parse_datetime("2026-10-09t10:09").unwrap();
@@ -438,10 +448,7 @@ mod tests {
         let result = system_time_to_naive_local(UNIX_EPOCH);
         assert!(result.is_some(), "UNIX_EPOCH must convert successfully");
 
-        let expected = DateTime::<Utc>::from_timestamp(0, 0)
-            .unwrap()
-            .with_timezone(&Local)
-            .naive_local();
+        let expected = local_time_zone().to_datetime(Timestamp::UNIX_EPOCH);
         assert_eq!(result.unwrap(), expected);
     }
 
@@ -451,8 +458,8 @@ mod tests {
         let result = system_time_to_naive_local(now);
         assert!(result.is_some(), "SystemTime::now() must convert");
 
-        let now_local = Local::now().naive_local();
-        let diff = (now_local - result.unwrap()).num_seconds().abs();
+        let now_local = local_now().datetime();
+        let diff = now_local.duration_since(result.unwrap()).as_secs().abs();
         assert!(diff < 5, "round-trip drift should be tiny, got {}s", diff);
     }
 
@@ -462,10 +469,7 @@ mod tests {
         let result = system_time_to_naive_local(one_sec_before);
         assert!(result.is_some(), "pre-epoch SystemTime must convert");
 
-        let expected = DateTime::<Utc>::from_timestamp(-1, 0)
-            .unwrap()
-            .with_timezone(&Local)
-            .naive_local();
+        let expected = local_time_zone().to_datetime(Timestamp::from_second(-1).unwrap());
         assert_eq!(result.unwrap(), expected);
     }
 

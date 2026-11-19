@@ -114,15 +114,13 @@ fn error_lines(stderr: &str) -> Vec<&str> {
 
 #[test]
 fn us_date_flag_switches_the_date_dialect() {
-    use chrono::TimeZone;
-
     let tmp = std::env::temp_dir().join("fselect_cli_us_dates");
     let _ = std::fs::remove_dir_all(&tmp);
     std::fs::create_dir_all(&tmp).unwrap();
     let path = tmp.join("june.txt");
     std::fs::write(&path, "x").unwrap();
-    let june_first = chrono::NaiveDate::from_ymd_opt(2024, 6, 1).unwrap().and_hms_opt(12, 0, 0).unwrap();
-    let time = std::time::SystemTime::from(chrono::Local.from_local_datetime(&june_first).single().unwrap());
+    let june_first = jiff::civil::date(2024, 6, 1).at(12, 0, 0, 0);
+    let time = std::time::SystemTime::try_from(jiff::tz::TimeZone::system().to_ambiguous_timestamp(june_first).unambiguous().unwrap()).unwrap();
     std::fs::File::options().write(true).open(&path).unwrap().set_modified(time).unwrap();
     let query = format!("select name from {} where modified = '06/01/2024'", tmp.display());
 
@@ -138,15 +136,13 @@ fn us_date_flag_switches_the_date_dialect() {
 
 #[test]
 fn config_file_flag_overrides_the_defaults() {
-    use chrono::TimeZone;
-
     let tmp = std::env::temp_dir().join("fselect_cli_config");
     let _ = std::fs::remove_dir_all(&tmp);
     std::fs::create_dir_all(&tmp).unwrap();
     let path = tmp.join("small.txt");
     std::fs::write(&path, "hello world\nsecond line\n").unwrap();
-    let june_first = chrono::NaiveDate::from_ymd_opt(2024, 6, 1).unwrap().and_hms_opt(12, 0, 0).unwrap();
-    let time = std::time::SystemTime::from(chrono::Local.from_local_datetime(&june_first).single().unwrap());
+    let june_first = jiff::civil::date(2024, 6, 1).at(12, 0, 0, 0);
+    let time = std::time::SystemTime::try_from(jiff::tz::TimeZone::system().to_ambiguous_timestamp(june_first).unambiguous().unwrap()).unwrap();
     std::fs::File::options().write(true).open(&path).unwrap().set_modified(time).unwrap();
     std::fs::write(tmp.join("custom.toml"), "us_dates = true\ndefault_file_size_format = \"k\"\ncheck_for_updates = false\n").unwrap();
     std::fs::write(tmp.join("bare.toml"), "check_for_updates = false\n").unwrap();

@@ -14,6 +14,7 @@ pub(crate) mod win_attrs;
 pub(crate) mod win_xattr;
 pub(crate) mod datetime;
 pub(crate) mod dir_lookup;
+pub(crate) mod english_date;
 #[cfg(all(windows, feature = "everything"))]
 pub(crate) mod everything;
 #[cfg(all(unix, feature = "plocate"))]
@@ -47,16 +48,20 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::LazyLock;
 
-use chrono::{NaiveDate, NaiveDateTime};
+use jiff::civil::DateTime;
 use regex::Regex;
 
 pub use self::datetime::format_date;
 pub use self::datetime::format_datetime;
 pub use self::datetime::format_time;
+pub use self::datetime::local_now;
+pub use self::datetime::local_time_zone;
+pub use self::datetime::naive_seconds;
 pub use self::datetime::parse_datetime;
 pub use self::datetime::set_us_dates;
 pub use self::datetime::system_time_to_naive_local;
 pub use self::datetime::system_time_to_unix;
+pub use self::datetime::timestamp_seconds;
 pub use self::datetime::to_local_datetime;
 pub use self::glob::convert_glob_to_pattern;
 pub use self::glob::convert_like_to_pattern;
@@ -76,7 +81,7 @@ pub use duration::Duration;
 enum SortKey {
     Direct,
     Number(Option<f64>),
-    DateTime(NaiveDateTime),
+    DateTime(DateTime),
 }
 
 impl SortKey {
@@ -92,20 +97,15 @@ impl SortKey {
 
 impl SortKey {
     fn of(field: &Expr, value: &Variant) -> SortKey {
-        static EPOCH: LazyLock<NaiveDateTime> = LazyLock::new(|| {
-            NaiveDate::from_ymd_opt(1970, 1, 1)
-                .unwrap()
-                .and_hms_opt(0, 0, 0)
-                .unwrap()
-        });
+        const EPOCH: DateTime = DateTime::constant(1970, 1, 1, 0, 0, 0, 0);
         match value.get_type() {
             VariantType::Bool if value.as_str().is_empty() => SortKey::Number(None),
             VariantType::Bool => SortKey::Number(Some(if value.to_bool() { 1.0 } else { 0.0 })),
             VariantType::Int | VariantType::Float => SortKey::Number(value.to_float_opt()),
-            VariantType::DateTime => SortKey::DateTime(value.to_datetime().map(|(from, _)| from).unwrap_or(*EPOCH)),
+            VariantType::DateTime => SortKey::DateTime(value.to_datetime().map(|(from, _)| from).unwrap_or(EPOCH)),
             VariantType::String => match field.result_type() {
                 ExprType::NUMERIC => SortKey::Number(numeric_sort_key(value.as_str())),
-                ExprType::DATETIME => SortKey::DateTime(parse_datetime(value.as_str()).map(|(from, _)| from).unwrap_or(*EPOCH)),
+                ExprType::DATETIME => SortKey::DateTime(parse_datetime(value.as_str()).map(|(from, _)| from).unwrap_or(EPOCH)),
                 _ => SortKey::Direct,
             },
         }

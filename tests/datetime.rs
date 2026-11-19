@@ -3,7 +3,9 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::SystemTime;
 
-use chrono::{NaiveDate, TimeZone};
+use jiff::civil::{date, DateTime};
+use jiff::tz::TimeZone;
+use jiff::ToSpan;
 
 fn fselect(query: &str) -> (Option<i32>, String, String) {
     let output = Command::new(env!("CARGO_BIN_EXE_fselect"))
@@ -18,9 +20,12 @@ fn fselect(query: &str) -> (Option<i32>, String, String) {
     )
 }
 
-fn local_time(hour: u32, minute: u32, second: u32) -> SystemTime {
-    let naive = NaiveDate::from_ymd_opt(2024, 6, 1).unwrap().and_hms_opt(hour, minute, second).unwrap();
-    SystemTime::from(chrono::Local.from_local_datetime(&naive).single().unwrap())
+fn local_system_time(naive: DateTime) -> SystemTime {
+    SystemTime::try_from(TimeZone::system().to_ambiguous_timestamp(naive).unambiguous().unwrap()).unwrap()
+}
+
+fn local_time(hour: i8, minute: i8, second: i8) -> SystemTime {
+    local_system_time(date(2024, 6, 1).at(hour, minute, second, 0))
 }
 
 fn timed_files(name: &str) -> PathBuf {
@@ -135,8 +140,8 @@ fn exif_fields_come_from_the_primary_image_only() {
 }
 
 fn days_ago_at_noon(days: i64) -> SystemTime {
-    let day = chrono::Local::now().date_naive() - chrono::Duration::days(days);
-    SystemTime::from(chrono::Local.from_local_datetime(&day.and_hms_opt(12, 0, 0).unwrap()).single().unwrap())
+    let day = jiff::ZonedDateTime::now().date() - days.days();
+    local_system_time(day.at(12, 0, 0, 0))
 }
 
 #[test]

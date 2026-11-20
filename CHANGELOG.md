@@ -42,6 +42,8 @@
 - A relative date such as `1 year ago` no longer fails when it lands in January
 - A date with non-ASCII letters (`2024é`) is rejected instead of crashing
 - `2 days ago` and similar day offsets keep the time of day across a daylight saving change
+- Comparing a boolean with a number gives the same result in either order (`is_file = size` and `size = is_file`); the boolean counts as 1 or 0
+- `HAVING` reads a computed right-hand operand as a number, date or boolean the same way `WHERE` does
 
 ## [0.10.4] - 2026-10-23
 

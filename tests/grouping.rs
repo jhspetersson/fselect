@@ -549,3 +549,31 @@ fn grouping_reuses_compound_alias_values_where_already_evaluated() {
         assert!(result.1.starts_with("true\t"), "{}", result.1);
     }
 }
+
+#[test]
+fn boolean_and_numeric_operands_compare_the_same_in_either_order() {
+    let dir = std::env::temp_dir().join("fselect_it_grouping_boolean_numeric_order");
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    for (name, size) in [("a.txt", 2), ("b.txt", 1), ("c.txt", 0)] {
+        fs::write(dir.join(name), "x".repeat(size)).unwrap();
+    }
+    let root = dir.display();
+
+    let columns = fselect(&format!("select name, is_file = size, size = is_file from {root} order by name"));
+    let left = fselect(&format!("select name from {root} where is_file = size order by name"));
+    let right = fselect(&format!("select name from {root} where size = is_file order by name"));
+    let having_left = fselect(&format!(
+        "select is_file, count(*) from {root} group by is_file having is_file = coalesce(max(width), '1.0')"
+    ));
+    let having_right = fselect(&format!(
+        "select is_file, count(*) from {root} group by is_file having coalesce(max(width), '1.0') = is_file"
+    ));
+    let _ = fs::remove_dir_all(&dir);
+
+    assert_eq!(columns.1, "a.txt\tfalse\tfalse\nb.txt\ttrue\ttrue\nc.txt\tfalse\tfalse\n", "{}", columns.2);
+    assert_eq!(left.1, "b.txt\n", "{}", left.2);
+    assert_eq!(right.1, "b.txt\n", "{}", right.2);
+    assert_eq!(having_left.1, "true\t3\n", "{}", having_left.2);
+    assert_eq!(having_right.1, "true\t3\n", "{}", having_right.2);
+}

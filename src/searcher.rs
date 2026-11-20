@@ -3225,8 +3225,10 @@ impl<'a> Searcher<'a> {
     }
 
     fn compare_variants(&mut self, op: &Op, field_value: &Variant, value: &Variant) -> Result<bool, SearchError> {
-        if *field_value.get_type() == VariantType::String
-            && *value.get_type() != VariantType::String
+        let numeric_against_bool = *field_value.get_type() == VariantType::Bool
+            && matches!(value.get_type(), VariantType::Int | VariantType::Float);
+        if ((*field_value.get_type() == VariantType::String && *value.get_type() != VariantType::String)
+            || numeric_against_bool)
             && let Some(mirrored) = op.mirrored()
         {
             return self.compare_variants(&mirrored, value, field_value);
@@ -3422,6 +3424,7 @@ impl<'a> Searcher<'a> {
                 row, right_expr,
             )?;
             let field_value = Self::retype_value(left_expr, right_expr, field_value);
+            let value = if right_expr.is_literal() { value } else { Self::retype_value(left_expr, right_expr, value) };
             if op.is_relational()
                 && (Self::is_null_operand(left_expr, &field_value) || Self::is_null_operand(right_expr, &value))
             {
@@ -8030,6 +8033,35 @@ mod tests {
         assert!(searcher.compare_variants(&Op::Ne, &two, &ten).unwrap());
         assert!(searcher.compare_variants(&Op::Eq, &Variant::from_string(&String::from("10")), &ten).unwrap());
         assert!(searcher.compare_variants(&Op::Gt, &two, &Variant::from_string(&String::from("10"))).unwrap());
+    }
+
+    #[test]
+    fn compare_variants_treats_a_boolean_as_a_number_on_either_side() {
+        let mut searcher = create_test_searcher();
+        let yes = Variant::from_bool(true);
+        let no = Variant::from_bool(false);
+        let ops = [Op::Eq, Op::Ne, Op::Eeq, Op::Ene, Op::Gt, Op::Gte, Op::Lt, Op::Lte];
+
+        for number in [Variant::from_int(0), Variant::from_int(1), Variant::from_int(2), Variant::from_float(1.0), Variant::from_float(0.5)] {
+            for flag in [&yes, &no] {
+                for op in ops {
+                    let mirrored = op.mirrored().unwrap();
+                    assert_eq!(
+                        searcher.compare_variants(&op, flag, &number).unwrap(),
+                        searcher.compare_variants(&mirrored, &number, flag).unwrap(),
+                        "{:?} {:?} {:?}",
+                        flag.to_string(),
+                        op,
+                        number.to_string()
+                    );
+                }
+            }
+        }
+        assert!(searcher.compare_variants(&Op::Eq, &yes, &Variant::from_int(1)).unwrap());
+        assert!(!searcher.compare_variants(&Op::Eq, &yes, &Variant::from_int(2)).unwrap());
+        assert!(searcher.compare_variants(&Op::Lt, &yes, &Variant::from_int(2)).unwrap());
+        assert!(searcher.compare_variants(&Op::Eq, &no, &Variant::from_float(0.0)).unwrap());
+        assert!(!searcher.compare_variants(&Op::Eq, &yes, &no).unwrap());
     }
 
     #[test]

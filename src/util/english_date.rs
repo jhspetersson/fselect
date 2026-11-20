@@ -358,7 +358,7 @@ impl<'a> DateParser<'a> {
             if let Some(skip) = shortcut {
                 return Some(DateTimeSpec {
                     date: Some(DateSpec::Relative { unit: Interval::Days(1), skip }),
-                    time: None,
+                    time: tspec,
                 });
             } else if let Some(direct) = Direction::from_name(name) {
                 self.direct = direct;
@@ -478,11 +478,11 @@ impl<'a> DateParser<'a> {
         let sec = match self.scanner.next() {
             Some(t) => match t.as_char() {
                 Some(':') => self.int()?,
-                Some(_) => return None,
-                None => {
+                Some('+' | '-') | None => {
                     tnext = Some(t);
                     0
                 }
+                Some(_) => return None,
             },
             None => 0,
         };
@@ -507,12 +507,18 @@ impl<'a> DateParser<'a> {
             if ch != '+' && ch != '-' {
                 return None;
             }
-            let hour_and_minute = self.int()?;
+            self.scanner.skip_whitespace();
+            let digits = self.scanner.grab_while(|c| c.is_ascii_digit());
+            let hour_and_minute = digits.parse::<u32>().ok()?;
             let (offset_hour, offset_minute) = if self.scanner.peek() == ':' {
                 self.scanner.nextch();
                 (hour_and_minute, self.int()?)
-            } else {
+            } else if digits.len() <= 2 {
+                (hour_and_minute, 0)
+            } else if digits.len() <= 4 {
                 (hour_and_minute / 100, hour_and_minute % 100)
+            } else {
+                return None;
             };
             let offset = 60 * (i64::from(offset_minute) + 60 * i64::from(offset_hour));
             let offset = if ch == '-' { -offset } else { offset };
@@ -534,8 +540,8 @@ impl<'a> DateParser<'a> {
         let min = self.int()?;
         let tok = self.scanner.get();
         let (hour, next) = match tok.as_iden() {
-            Some(name) => (DateParser::am_pm(name, hour)?, None),
-            None => (hour, Some(tok)),
+            Some(name @ ("am" | "pm")) => (DateParser::am_pm(name, hour)?, None),
+            _ => (hour, Some(tok)),
         };
         Some(TimeSpec::new(hour, min, 0, 0).with_token(next))
     }
@@ -648,6 +654,9 @@ mod tests {
         assert_eq!(parse("6 months ago", &base, Dialect::Uk), "2017-09-21 00:00:00");
         assert_eq!(parse(" -3 month", &base, Dialect::Uk), "2017-12-21 00:00:00");
         assert_eq!(parse("yesterday", &base, Dialect::Uk), "2018-03-20 11:00:00");
+        assert_eq!(parse("15:30 yesterday", &base, Dialect::Uk), "2018-03-20 15:30:00");
+        assert_eq!(parse("8pm tomorrow", &base, Dialect::Uk), "2018-03-22 20:00:00");
+        assert_eq!(parse("8.30 today", &base, Dialect::Uk), "2018-03-21 08:30:00");
         assert_eq!(parse("2 days later", &base, Dialect::Uk), "error");
     }
 
@@ -702,6 +711,15 @@ mod tests {
         assert_eq!(parse("2017-06-30 08:20:30 +0200", &base, Dialect::Uk), "2017-06-30 06:20:30");
         assert_eq!(parse("2017-06-30T08:20:30Z", &base, Dialect::Uk), "2017-06-30 08:20:30");
         assert_eq!(parse("08:20:30 +02:00 2017-06-30", &base, Dialect::Uk), "2017-06-30 06:20:30");
+        assert_eq!(parse("2017-06-30T08:20:30+02", &base, Dialect::Uk), "2017-06-30 06:20:30");
+        assert_eq!(parse("2017-06-30T08:20:30-5", &base, Dialect::Uk), "2017-06-30 13:20:30");
+        assert_eq!(parse("2017-06-30T08:20:30+0030", &base, Dialect::Uk), "2017-06-30 07:50:30");
+        assert_eq!(parse("2017-06-30T08:20:30+530", &base, Dialect::Uk), "2017-06-30 02:50:30");
+        assert_eq!(parse("2017-06-30T08:20+02:00", &base, Dialect::Uk), "2017-06-30 06:20:00");
+        assert_eq!(parse("2017-06-30 08:20 -0530", &base, Dialect::Uk), "2017-06-30 13:50:00");
+        assert_eq!(parse("2017-06-30T08:20Z", &base, Dialect::Uk), "2017-06-30 08:20:00");
+        assert_eq!(parse("2017-06-30T08:20:30+", &base, Dialect::Uk), "error");
+        assert_eq!(parse("2017-06-30T08:20:30+02000", &base, Dialect::Uk), "error");
 
         let tokyo = date(2018, 3, 21).at(11, 0, 0, 0).to_zoned_datetime(TimeZone::fixed(jiff::tz::offset(9))).unwrap();
         assert_eq!(parse("2017-06-30T08:20:30Z", &tokyo, Dialect::Uk), "2017-06-30 17:20:30");

@@ -14,6 +14,7 @@ use crate::util::git::GitCache;
 use crate::util::audio::{AudioInfo, get_audio_info};
 use crate::util::dimensions::get_dimensions;
 use crate::util::duration::get_duration;
+use crate::util::mp4::{Mp4Info, get_mp4_info};
 
 const MIME_SAMPLE_SIZE: u64 = 64 * 1024;
 
@@ -40,10 +41,9 @@ pub struct FileMetadataState {
     pub(crate) audio_info: Option<Option<AudioInfo>>,
     pub(crate) exif_metadata: Option<Option<HashMap<String, String>>>,
     pub(crate) mime_type: Option<Option<String>>,
-    pub(crate) sha1_hash: Option<String>,
-    pub(crate) sha256_hash: Option<String>,
-    pub(crate) sha512_hash: Option<String>,
-    pub(crate) sha3_hash: Option<String>,
+    pub(crate) mp4_info: Option<Option<Mp4Info>>,
+    pub(crate) hashes: [Option<String>; HashAlgorithm::COUNT],
+    planned_hashes: Vec<HashAlgorithm>,
 }
 
 impl FileMetadataState {
@@ -59,17 +59,22 @@ impl FileMetadataState {
             audio_info: None,
             exif_metadata: None,
             mime_type: None,
-            sha1_hash: None,
-            sha256_hash: None,
-            sha512_hash: None,
-            sha3_hash: None,
+            mp4_info: None,
+            hashes: [const { None }; HashAlgorithm::COUNT],
+            planned_hashes: Vec::new(),
         }
     }
 
     pub fn clear(&mut self) {
         let full_content_scan_expected = self.full_content_scan_expected;
+        let planned_hashes = std::mem::take(&mut self.planned_hashes);
         *self = Self::new();
         self.full_content_scan_expected = full_content_scan_expected;
+        self.planned_hashes = planned_hashes;
+    }
+
+    pub fn plan_hashes(&mut self, algorithms: Vec<HashAlgorithm>) {
+        self.planned_hashes = algorithms;
     }
 
     pub fn expect_full_content_scan(&mut self, expected: bool) {
@@ -208,37 +213,35 @@ impl FileMetadataState {
         self.mime_type.as_ref().and_then(|o| o.as_deref())
     }
 
-    pub fn get_or_compute_sha1(&mut self, entry: &DirEntry) -> &str {
-        if self.sha1_hash.is_none() {
-            self.sha1_hash = Some(get_sha1_file_hash(entry));
+    pub fn get_or_compute_hash(&mut self, entry: &DirEntry, algorithm: HashAlgorithm) -> &str {
+        if self.hashes[algorithm as usize].is_none() {
+            let mut batch = vec![algorithm];
+            if self.planned_hashes.contains(&algorithm) {
+                batch.extend(
+                    self.planned_hashes
+                        .iter()
+                        .copied()
+                        .filter(|planned| *planned != algorithm && self.hashes[*planned as usize].is_none()),
+                );
+            }
+            for (computed, hash) in batch.iter().zip(get_file_hashes(entry, &batch)) {
+                self.hashes[*computed as usize] = Some(hash);
+            }
         }
-        self.sha1_hash.as_deref().unwrap()
+        self.hashes[algorithm as usize].as_deref().unwrap()
     }
 
-    pub fn get_or_compute_sha256(&mut self, entry: &DirEntry) -> &str {
-        if self.sha256_hash.is_none() {
-            self.sha256_hash = Some(get_sha256_file_hash(entry));
-        }
-        self.sha256_hash.as_deref().unwrap()
-    }
-
-    pub fn get_or_compute_sha512(&mut self, entry: &DirEntry) -> &str {
-        if self.sha512_hash.is_none() {
-            self.sha512_hash = Some(get_sha512_file_hash(entry));
-        }
-        self.sha512_hash.as_deref().unwrap()
-    }
-
-    pub fn get_or_compute_sha3(&mut self, entry: &DirEntry) -> &str {
-        if self.sha3_hash.is_none() {
-            self.sha3_hash = Some(get_sha3_512_file_hash(entry));
-        }
-        self.sha3_hash.as_deref().unwrap()
+    fn update_mp4_info(&mut self, entry: &DirEntry) -> Option<&Mp4Info> {
+        self.mp4_info.get_or_insert_with(|| get_mp4_info(&entry.path())).as_ref()
     }
 
     pub fn update_dimensions(&mut self, entry: &DirEntry) {
         if self.dimensions.is_none() {
-            self.dimensions = Some(get_dimensions(entry.path()));
+            let dimensions = match self.update_mp4_info(entry) {
+                Some(info) => info.dimensions.clone(),
+                None => get_dimensions(entry.path()),
+            };
+            self.dimensions = Some(dimensions);
         }
     }
 
@@ -251,11 +254,16 @@ impl FileMetadataState {
             // Audio durations come from lofty (via the cached audio info);
             // anything it doesn't handle falls back to the video extractors.
             self.update_audio_info(entry);
-            let duration = self
+            let mut duration = self
                 .get_audio_info()
                 .and_then(|info| info.duration)
-                .map(|length| Duration { length })
-                .or_else(|| get_duration(entry.path()));
+                .map(|length| Duration { length });
+            if duration.is_none() {
+                duration = match self.update_mp4_info(entry) {
+                    Some(info) => info.duration.clone(),
+                    None => get_duration(entry.path()),
+                };
+            }
             self.duration = Some(duration);
         }
     }
@@ -295,10 +303,8 @@ mod tests {
         assert!(state.audio_info.is_none());
         assert!(state.exif_metadata.is_none());
         assert!(state.mime_type.is_none());
-        assert!(state.sha1_hash.is_none());
-        assert!(state.sha256_hash.is_none());
-        assert!(state.sha512_hash.is_none());
-        assert!(state.sha3_hash.is_none());
+        assert!(state.mp4_info.is_none());
+        assert!(state.hashes.iter().all(Option::is_none));
     }
 
     #[test]
@@ -313,10 +319,9 @@ mod tests {
         state.audio_info = Some(None);
         state.exif_metadata = Some(None);
         state.mime_type = Some(None);
-        state.sha1_hash = Some(String::new());
-        state.sha256_hash = Some(String::new());
-        state.sha512_hash = Some(String::new());
-        state.sha3_hash = Some(String::new());
+        state.mp4_info = Some(None);
+        state.hashes = [const { Some(String::new()) }; HashAlgorithm::COUNT];
+        state.plan_hashes(vec![HashAlgorithm::Sha1, HashAlgorithm::Sha3]);
 
         state.clear();
 
@@ -328,9 +333,61 @@ mod tests {
         assert!(state.audio_info.is_none());
         assert!(state.exif_metadata.is_none());
         assert!(state.mime_type.is_none());
-        assert!(state.sha1_hash.is_none());
-        assert!(state.sha256_hash.is_none());
-        assert!(state.sha512_hash.is_none());
-        assert!(state.sha3_hash.is_none());
+        assert!(state.mp4_info.is_none());
+        assert!(state.hashes.iter().all(Option::is_none));
+        assert_eq!(state.planned_hashes, vec![HashAlgorithm::Sha1, HashAlgorithm::Sha3]);
+    }
+
+    fn single_entry(dir_name: &str, file_name: &str, content: &[u8]) -> (std::path::PathBuf, DirEntry) {
+        let dir = std::env::temp_dir().join(dir_name);
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join(file_name), content).unwrap();
+        let entry = std::fs::read_dir(&dir).unwrap().next().unwrap().unwrap();
+        (dir, entry)
+    }
+
+    #[test]
+    fn planned_hashes_are_computed_together_and_others_on_demand() {
+        let (dir, entry) = single_entry("fselect_test_planned_hashes", "abc.txt", b"abc");
+        let mut state = FileMetadataState::new();
+        state.plan_hashes(vec![HashAlgorithm::Sha1, HashAlgorithm::Sha256]);
+
+        assert_eq!(state.get_or_compute_hash(&entry, HashAlgorithm::Sha512).len(), 128);
+        assert!(state.hashes[HashAlgorithm::Sha1 as usize].is_none());
+        assert!(state.hashes[HashAlgorithm::Sha256 as usize].is_none());
+
+        assert_eq!(
+            state.get_or_compute_hash(&entry, HashAlgorithm::Sha1),
+            "a9993e364706816aba3e25717850c26c9cd0d89d"
+        );
+        assert_eq!(
+            state.hashes[HashAlgorithm::Sha256 as usize].as_deref(),
+            Some("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")
+        );
+        assert!(state.hashes[HashAlgorithm::Sha3 as usize].is_none());
+
+        std::fs::remove_file(entry.path()).unwrap();
+        assert_eq!(
+            state.get_or_compute_hash(&entry, HashAlgorithm::Sha256),
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
+        assert_eq!(state.get_or_compute_hash(&entry, HashAlgorithm::Sha3), "");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn mp4_dimensions_and_duration_share_one_parse() {
+        let source = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources/test/video/rust-logo-blk.mp4");
+        let (dir, entry) = single_entry("fselect_test_shared_mp4_parse", "clip.mp4", &std::fs::read(source).unwrap());
+        let mut state = FileMetadataState::new();
+
+        state.update_dimensions(&entry);
+        assert_eq!(state.get_dimensions(), Some(&Dimensions { width: 144, height: 144 }));
+
+        std::fs::remove_file(entry.path()).unwrap();
+        state.update_duration(&entry);
+        assert_eq!(state.get_duration(), Some(&Duration { length: 1 }));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

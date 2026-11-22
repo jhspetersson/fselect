@@ -1,33 +1,19 @@
-use std::fs::File;
 use std::io;
-use std::io::BufReader;
 use std::path::Path;
 
 use crate::util::dimensions::DimensionsExtractor;
+use crate::util::mp4::{is_mp4_ext, read_mp4_info};
 use crate::util::Dimensions;
 
 pub struct Mp4DimensionsExtractor;
 
 impl DimensionsExtractor for Mp4DimensionsExtractor {
     fn supports_ext(&self, ext_lowercase: &str) -> bool {
-        // All ISO-BMFF containers mp4parse reads.
-        matches!(ext_lowercase, "mp4" | "m4v" | "mov" | "3gp")
+        is_mp4_ext(ext_lowercase)
     }
 
     fn try_read_dimensions(&self, path: &Path) -> io::Result<Option<Dimensions>> {
-        let fd = File::open(path)?;
-        let mut reader = BufReader::new(fd);
-        let context = mp4parse::read_mp4(&mut reader)?;
-        Ok(context
-            .tracks
-            .iter()
-            .find(|track| track.track_type == mp4parse::TrackType::Video)
-            .and_then(|track| {
-                track.tkhd.as_ref().map(|tkhd| Dimensions {
-                    width: (tkhd.width / 65536) as usize,
-                    height: (tkhd.height / 65536) as usize,
-                })
-            }))
+        read_mp4_info(path).map(|info| info.dimensions)
     }
 }
 

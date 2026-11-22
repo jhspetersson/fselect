@@ -29,6 +29,7 @@ pub(crate) mod greek;
 pub(crate) mod cyrillic;
 pub(crate) mod human_duration;
 pub(crate) mod japanese;
+pub(crate) mod mp4;
 mod top_n;
 pub(crate) mod variant;
 mod wbuf;
@@ -1642,43 +1643,90 @@ impl ContentSink for Utf32Sink {
     }
 }
 
-fn hash_file<D: sha1::Digest>(entry: &DirEntry) -> String {
-    if let Ok(mut file) = File::open(entry.path()) {
-        let mut hasher = D::new();
-        let mut buf = [0u8; 8192];
-        loop {
-            match file.read(&mut buf) {
-                Ok(0) => break,
-                Ok(n) => hasher.update(&buf[..n]),
-                Err(_) => return String::new(),
-            }
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum HashAlgorithm {
+    Sha1,
+    Sha256,
+    Sha512,
+    Sha3,
+}
+
+impl HashAlgorithm {
+    pub const COUNT: usize = 4;
+
+    pub fn of_field(field: &crate::field::Field) -> Option<HashAlgorithm> {
+        match field {
+            crate::field::Field::Sha1 => Some(HashAlgorithm::Sha1),
+            crate::field::Field::Sha256 => Some(HashAlgorithm::Sha256),
+            crate::field::Field::Sha512 => Some(HashAlgorithm::Sha512),
+            crate::field::Field::Sha3 => Some(HashAlgorithm::Sha3),
+            _ => None,
         }
-        let hash = hasher.finalize();
-        let mut hex = String::with_capacity(hash.len() * 2);
-        for byte in hash.iter() {
-            use std::fmt::Write;
-            let _ = write!(hex, "{:02x}", byte);
+    }
+}
+
+enum FileHasher {
+    Sha1(sha1::Sha1),
+    Sha256(sha2::Sha256),
+    Sha512(sha2::Sha512),
+    Sha3(sha3::Sha3_512),
+}
+
+impl FileHasher {
+    fn new(algorithm: HashAlgorithm) -> FileHasher {
+        use sha1::Digest;
+        match algorithm {
+            HashAlgorithm::Sha1 => FileHasher::Sha1(sha1::Sha1::new()),
+            HashAlgorithm::Sha256 => FileHasher::Sha256(sha2::Sha256::new()),
+            HashAlgorithm::Sha512 => FileHasher::Sha512(sha2::Sha512::new()),
+            HashAlgorithm::Sha3 => FileHasher::Sha3(sha3::Sha3_512::new()),
         }
-        return hex;
     }
 
-    String::new()
+    fn update(&mut self, data: &[u8]) {
+        use sha1::Digest;
+        match self {
+            FileHasher::Sha1(hasher) => hasher.update(data),
+            FileHasher::Sha256(hasher) => hasher.update(data),
+            FileHasher::Sha512(hasher) => hasher.update(data),
+            FileHasher::Sha3(hasher) => hasher.update(data),
+        }
+    }
+
+    fn finish(self) -> String {
+        use sha1::Digest;
+        fn hex(bytes: &[u8]) -> String {
+            use std::fmt::Write;
+            let mut hex = String::with_capacity(bytes.len() * 2);
+            for byte in bytes {
+                let _ = write!(hex, "{:02x}", byte);
+            }
+            hex
+        }
+        match self {
+            FileHasher::Sha1(hasher) => hex(&hasher.finalize()),
+            FileHasher::Sha256(hasher) => hex(&hasher.finalize()),
+            FileHasher::Sha512(hasher) => hex(&hasher.finalize()),
+            FileHasher::Sha3(hasher) => hex(&hasher.finalize()),
+        }
+    }
 }
 
-pub fn get_sha1_file_hash(entry: &DirEntry) -> String {
-    hash_file::<sha1::Sha1>(entry)
-}
-
-pub fn get_sha256_file_hash(entry: &DirEntry) -> String {
-    hash_file::<sha2::Sha256>(entry)
-}
-
-pub fn get_sha512_file_hash(entry: &DirEntry) -> String {
-    hash_file::<sha2::Sha512>(entry)
-}
-
-pub fn get_sha3_512_file_hash(entry: &DirEntry) -> String {
-    hash_file::<sha3::Sha3_512>(entry)
+pub fn get_file_hashes(entry: &DirEntry, algorithms: &[HashAlgorithm]) -> Vec<String> {
+    let failed = || vec![String::new(); algorithms.len()];
+    let Ok(mut file) = File::open(entry.path()) else {
+        return failed();
+    };
+    let mut hashers: Vec<FileHasher> = algorithms.iter().map(|algorithm| FileHasher::new(*algorithm)).collect();
+    let mut buf = vec![0u8; 64 * 1024];
+    loop {
+        match file.read(&mut buf) {
+            Ok(0) => break,
+            Ok(n) => hashers.iter_mut().for_each(|hasher| hasher.update(&buf[..n])),
+            Err(_) => return failed(),
+        }
+    }
+    hashers.into_iter().map(FileHasher::finish).collect()
 }
 
 pub fn is_dir_empty(entry: &DirEntry) -> Option<bool> {
@@ -1692,6 +1740,37 @@ pub fn is_dir_empty(entry: &DirEntry) -> Option<bool> {
 mod tests {
     use super::*;
     use crate::field::Field;
+
+    #[test]
+    fn hashes_computed_together_match_the_known_digests() {
+        let dir = std::env::temp_dir().join("fselect_test_file_hashes_together");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("abc.txt"), "abc").unwrap();
+        let entry = fs::read_dir(&dir).unwrap().next().unwrap().unwrap();
+
+        let all = [HashAlgorithm::Sha3, HashAlgorithm::Sha1, HashAlgorithm::Sha512, HashAlgorithm::Sha256];
+        let together = get_file_hashes(&entry, &all);
+        let expected = [
+            "b751850b1a57168a5693cd924b6b096e08f621827444f70d884f5d0240d2712e10e116e9192af3c91a7ec57647e3934057340b4cf408d5a56592f8274eec53f0",
+            "a9993e364706816aba3e25717850c26c9cd0d89d",
+            "ddaf35a193617abacc417349ae20413112e6fa4e89a97ea20a9eeee64b55d39a2192992a274fc1a836ba3c23a3feebbd454d4423643ce80e2a9ac94fa54ca49f",
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+        ];
+        assert_eq!(together, expected);
+        for (algorithm, digest) in all.iter().zip(expected) {
+            assert_eq!(get_file_hashes(&entry, &[*algorithm]), vec![digest.to_string()]);
+        }
+
+        fs::write(dir.join("abc.txt"), vec![7u8; 200_000]).unwrap();
+        let large = get_file_hashes(&entry, &all);
+        for (algorithm, digest) in all.iter().zip(&large) {
+            assert_eq!(&get_file_hashes(&entry, &[*algorithm])[0], digest);
+        }
+
+        fs::remove_dir_all(&dir).unwrap();
+        assert_eq!(get_file_hashes(&entry, &all), vec![String::new(); 4]);
+    }
 
     #[test]
     fn topn_equal_criteria_keys_accumulate_values() {

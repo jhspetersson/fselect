@@ -16,6 +16,8 @@
 - A doubled quote inside a quoted string (`'it''s'`) is a literal quote
 - Missing numeric, date and boolean values are written as `null` in JSON output
 - Dates and times are handled by `jiff` instead of `chrono`
+- Several hash columns selected together (`sha1, sha256, sha512, sha3`) are computed in one read of the file
+- `width`, `height` and `duration` of an MP4 file come from a single parse of the file
 
 ### Fixed
 

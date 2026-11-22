@@ -485,6 +485,7 @@ impl<'a> Searcher<'a> {
             fms: {
                 let mut fms = FileMetadataState::new();
                 fms.expect_full_content_scan(Self::needs_full_content_scan(query));
+                fms.plan_hashes(Self::hashes_computed_together(query));
                 fms
             },
             #[cfg(feature = "git")]
@@ -584,6 +585,22 @@ impl<'a> Searcher<'a> {
         fields.iter().any(|field| {
             matches!(field, Field::LineCount | Field::WordCount | Field::CharCount | Field::LineEnding)
         })
+    }
+
+    fn hashes_computed_together(query: &Query) -> Vec<HashAlgorithm> {
+        let filtered: HashSet<Field> = query.expr.as_ref().map(|expr| expr.get_required_fields()).unwrap_or_default();
+        let mut planned = vec![];
+        for column_expr in &query.fields {
+            for field in column_expr.get_required_fields() {
+                if let Some(algorithm) = HashAlgorithm::of_field(&field)
+                    && !filtered.contains(&field)
+                    && !planned.contains(&algorithm)
+                {
+                    planned.push(algorithm);
+                }
+            }
+        }
+        planned
     }
 
     fn unsortable_grouped_ordering(&self) -> Option<&Expr> {

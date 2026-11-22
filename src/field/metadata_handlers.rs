@@ -4,9 +4,6 @@ use std::fs;
 #[cfg(unix)]
 use std::os::unix::fs::MetadataExt;
 
-#[cfg(unix)]
-use xattr::FileExt;
-
 use crate::field::context::FieldContext;
 use crate::mode;
 use crate::util::*;
@@ -91,9 +88,7 @@ macro_rules! datetime_handler {
 /// attribute and any I/O error into `None`. Linux-only.
 #[cfg(target_os = "linux")]
 fn read_xattr(entry: &fs::DirEntry, name: &str) -> Option<Vec<u8>> {
-    fs::File::open(entry.path())
-        .ok()
-        .and_then(|file| file.get_xattr(name).ok().flatten())
+    xattr::get_deref(entry.path(), name).ok().flatten()
 }
 
 pub fn handle_size(ctx: &mut FieldContext) -> Result<Variant, SearchError> {
@@ -330,11 +325,9 @@ pub fn handle_is_empty(ctx: &mut FieldContext) -> Result<Variant, SearchError> {
 pub fn handle_has_xattrs(ctx: &mut FieldContext) -> Result<Variant, SearchError> {
     #[cfg(unix)]
     {
-        if let Ok(file) = fs::File::open(ctx.entry.path()) {
-            if let Ok(xattrs) = file.list_xattr() {
-                let has_xattrs = xattrs.count() > 0;
-                return Ok(Variant::from_bool(has_xattrs));
-            }
+        if let Ok(xattrs) = xattr::list_deref(ctx.entry.path()) {
+            let has_xattrs = xattrs.count() > 0;
+            return Ok(Variant::from_bool(has_xattrs));
         }
     }
 
@@ -352,10 +345,8 @@ pub fn handle_has_xattrs(ctx: &mut FieldContext) -> Result<Variant, SearchError>
 pub fn handle_xattr_count(ctx: &mut FieldContext) -> Result<Variant, SearchError> {
     #[cfg(unix)]
     {
-        if let Ok(file) = fs::File::open(ctx.entry.path()) {
-            if let Ok(xattrs) = file.list_xattr() {
-                return Ok(Variant::from_int(xattrs.count() as i64));
-            }
+        if let Ok(xattrs) = xattr::list_deref(ctx.entry.path()) {
+            return Ok(Variant::from_int(xattrs.count() as i64));
         }
     }
 
@@ -373,12 +364,10 @@ pub fn handle_xattr_count(ctx: &mut FieldContext) -> Result<Variant, SearchError
 pub fn handle_extattrs(ctx: &mut FieldContext) -> Result<Variant, SearchError> {
     #[cfg(target_os = "linux")]
     {
-        if let Ok(file) = fs::File::open(ctx.entry.path()) {
-            if let Some(flags) = crate::util::extattrs::get_ext_attrs(&file) {
-                return Ok(Variant::from_string(
-                    &crate::util::extattrs::format_ext_attrs(flags),
-                ));
-            }
+        if let Some(flags) = crate::util::extattrs::get_ext_attrs(&ctx.entry.path()) {
+            return Ok(Variant::from_string(
+                &crate::util::extattrs::format_ext_attrs(flags),
+            ));
         }
     }
 
@@ -399,10 +388,8 @@ pub fn handle_extattrs(ctx: &mut FieldContext) -> Result<Variant, SearchError> {
 pub fn handle_has_extattrs(ctx: &mut FieldContext) -> Result<Variant, SearchError> {
     #[cfg(target_os = "linux")]
     {
-        if let Ok(file) = fs::File::open(ctx.entry.path()) {
-            if let Some(flags) = crate::util::extattrs::get_ext_attrs(&file) {
-                return Ok(Variant::from_bool(flags != 0));
-            }
+        if let Some(flags) = crate::util::extattrs::get_ext_attrs(&ctx.entry.path()) {
+            return Ok(Variant::from_bool(flags != 0));
         }
     }
 
@@ -509,10 +496,8 @@ pub fn handle_has_default_acl(ctx: &mut FieldContext) -> Result<Variant, SearchE
 pub fn handle_has_capabilities(ctx: &mut FieldContext) -> Result<Variant, SearchError> {
     #[cfg(target_os = "linux")]
     {
-        if let Ok(file) = fs::File::open(ctx.entry.path()) {
-            if let Ok(caps_xattr) = file.get_xattr("security.capability") {
-                return Ok(Variant::from_bool(caps_xattr.is_some()));
-            }
+        if let Ok(caps_xattr) = crate::util::capabilities::read_capabilities(&ctx.entry.path()) {
+            return Ok(Variant::from_bool(caps_xattr.is_some()));
         }
     }
 
@@ -522,7 +507,7 @@ pub fn handle_has_capabilities(ctx: &mut FieldContext) -> Result<Variant, Search
 pub fn handle_capabilities(ctx: &mut FieldContext) -> Result<Variant, SearchError> {
     #[cfg(target_os = "linux")]
     {
-        if let Some(caps_xattr) = read_xattr(ctx.entry, "security.capability") {
+        if let Ok(Some(caps_xattr)) = crate::util::capabilities::read_capabilities(&ctx.entry.path()) {
             let caps_string = crate::util::capabilities::parse_capabilities(caps_xattr);
             return Ok(Variant::from_string(&caps_string));
         }

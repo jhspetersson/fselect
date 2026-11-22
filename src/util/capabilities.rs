@@ -1,61 +1,46 @@
-macro_rules! check_cap {
-    ($cap_name: ident, $code: expr, $permitted: ident, $inherited: ident, $effective: ident, $result: ident) => {
-        if let Some(str_result) = check_capability($permitted, $inherited, 1 << $code) {
-            $result.push(stringify!($cap_name).to_owned() + "=" + &$effective + &str_result);
-        }
-    };
-}
-
-macro_rules! check_caps_word_0 {
-    ($permitted: ident, $inherited: ident, $effective: ident, $result: ident) => {
-        check_cap!(cap_chown, 0, $permitted, $inherited, $effective, $result);
-        check_cap!(cap_dac_override, 1, $permitted, $inherited, $effective, $result);
-        check_cap!(cap_dac_read_search, 2, $permitted, $inherited, $effective, $result);
-        check_cap!(cap_fowner, 3, $permitted, $inherited, $effective, $result);
-        check_cap!(cap_fsetid, 4, $permitted, $inherited, $effective, $result);
-        check_cap!(cap_kill, 5, $permitted, $inherited, $effective, $result);
-        check_cap!(cap_setgid, 6, $permitted, $inherited, $effective, $result);
-        check_cap!(cap_setuid, 7, $permitted, $inherited, $effective, $result);
-        check_cap!(cap_setpcap, 8, $permitted, $inherited, $effective, $result);
-        check_cap!(cap_linux_immutable, 9, $permitted, $inherited, $effective, $result);
-        check_cap!(cap_net_bind_service, 10, $permitted, $inherited, $effective, $result);
-        check_cap!(cap_net_broadcast, 11, $permitted, $inherited, $effective, $result);
-        check_cap!(cap_net_admin, 12, $permitted, $inherited, $effective, $result);
-        check_cap!(cap_net_raw, 13, $permitted, $inherited, $effective, $result);
-        check_cap!(cap_ipc_lock, 14, $permitted, $inherited, $effective, $result);
-        check_cap!(cap_ipc_owner, 15, $permitted, $inherited, $effective, $result);
-        check_cap!(cap_sys_module, 16, $permitted, $inherited, $effective, $result);
-        check_cap!(cap_sys_rawio, 17, $permitted, $inherited, $effective, $result);
-        check_cap!(cap_sys_chroot, 18, $permitted, $inherited, $effective, $result);
-        check_cap!(cap_sys_ptrace, 19, $permitted, $inherited, $effective, $result);
-        check_cap!(cap_sys_pacct, 20, $permitted, $inherited, $effective, $result);
-        check_cap!(cap_sys_admin, 21, $permitted, $inherited, $effective, $result);
-        check_cap!(cap_sys_boot, 22, $permitted, $inherited, $effective, $result);
-        check_cap!(cap_sys_nice, 23, $permitted, $inherited, $effective, $result);
-        check_cap!(cap_sys_resource, 24, $permitted, $inherited, $effective, $result);
-        check_cap!(cap_sys_time, 25, $permitted, $inherited, $effective, $result);
-        check_cap!(cap_sys_tty_config, 26, $permitted, $inherited, $effective, $result);
-        check_cap!(cap_mknod, 27, $permitted, $inherited, $effective, $result);
-        check_cap!(cap_lease, 28, $permitted, $inherited, $effective, $result);
-        check_cap!(cap_audit_write, 29, $permitted, $inherited, $effective, $result);
-        check_cap!(cap_audit_control, 30, $permitted, $inherited, $effective, $result);
-        check_cap!(cap_setfcap, 31, $permitted, $inherited, $effective, $result);
-    };
-}
-
-macro_rules! check_caps_word_1 {
-    ($permitted: ident, $inherited: ident, $effective: ident, $result: ident) => {
-        check_cap!(cap_mac_override, 0, $permitted, $inherited, $effective, $result);
-        check_cap!(cap_mac_admin, 1, $permitted, $inherited, $effective, $result);
-        check_cap!(cap_syslog, 2, $permitted, $inherited, $effective, $result);
-        check_cap!(cap_wake_alarm, 3, $permitted, $inherited, $effective, $result);
-        check_cap!(cap_block_suspend, 4, $permitted, $inherited, $effective, $result);
-        check_cap!(cap_audit_read, 5, $permitted, $inherited, $effective, $result);
-        check_cap!(cap_perfmon, 6, $permitted, $inherited, $effective, $result);
-        check_cap!(cap_bpf, 7, $permitted, $inherited, $effective, $result);
-        check_cap!(cap_checkpoint_restore, 8, $permitted, $inherited, $effective, $result);
-    };
-}
+const CAP_NAMES: [&str; 41] = [
+    "cap_chown",
+    "cap_dac_override",
+    "cap_dac_read_search",
+    "cap_fowner",
+    "cap_fsetid",
+    "cap_kill",
+    "cap_setgid",
+    "cap_setuid",
+    "cap_setpcap",
+    "cap_linux_immutable",
+    "cap_net_bind_service",
+    "cap_net_broadcast",
+    "cap_net_admin",
+    "cap_net_raw",
+    "cap_ipc_lock",
+    "cap_ipc_owner",
+    "cap_sys_module",
+    "cap_sys_rawio",
+    "cap_sys_chroot",
+    "cap_sys_ptrace",
+    "cap_sys_pacct",
+    "cap_sys_admin",
+    "cap_sys_boot",
+    "cap_sys_nice",
+    "cap_sys_resource",
+    "cap_sys_time",
+    "cap_sys_tty_config",
+    "cap_mknod",
+    "cap_lease",
+    "cap_audit_write",
+    "cap_audit_control",
+    "cap_setfcap",
+    "cap_mac_override",
+    "cap_mac_admin",
+    "cap_syslog",
+    "cap_wake_alarm",
+    "cap_block_suspend",
+    "cap_audit_read",
+    "cap_perfmon",
+    "cap_bpf",
+    "cap_checkpoint_restore",
+];
 
 const VFS_CAP_REVISION_MASK: u32 = 0xFF000000;
 const VFS_CAP_REVISION_1: u32 = 0x01000000;
@@ -66,84 +51,64 @@ const XATTR_CAPS_SZ_1: usize = 12; // 4 (magic) + 4 (permitted) + 4 (inherited)
 const XATTR_CAPS_SZ_2: usize = 20; // 4 (magic) + 2 * (4 (permitted) + 4 (inherited))
 const XATTR_CAPS_SZ_3: usize = 24; // v2 + 4 (rootid)
 
+pub fn read_capabilities(path: &std::path::Path) -> Result<Option<Vec<u8>>, std::io::Error> {
+    xattr::get(path, "security.capability")
+}
+
 pub fn parse_capabilities(caps: Vec<u8>) -> String {
     if caps.len() < 4 {
         return String::new();
     }
 
-    let magic_etc = u32::from_le_bytes(caps[0..4].try_into().unwrap());
-    let revision = magic_etc & VFS_CAP_REVISION_MASK;
+    let word = |index: usize| u32::from_le_bytes(caps[index * 4..index * 4 + 4].try_into().unwrap());
+    let magic_etc = word(0);
+    let effective = if magic_etc & VFS_CAP_FLAGS_EFFECTIVE != 0 { "e" } else { "" };
 
-    let effective = if magic_etc & VFS_CAP_FLAGS_EFFECTIVE != 0 {
-        String::from("e")
-    } else {
-        String::new()
+    let (permitted, inherited, rootid) = match magic_etc & VFS_CAP_REVISION_MASK {
+        VFS_CAP_REVISION_1 if caps.len() >= XATTR_CAPS_SZ_1 => (word(1) as u64, word(2) as u64, 0),
+        VFS_CAP_REVISION_2 | VFS_CAP_REVISION_3 if caps.len() >= XATTR_CAPS_SZ_2 => (
+            word(1) as u64 | (word(3) as u64) << 32,
+            word(2) as u64 | (word(4) as u64) << 32,
+            if caps.len() >= XATTR_CAPS_SZ_3 { word(5) } else { 0 },
+        ),
+        _ => return String::new(),
     };
 
     let mut result: Vec<String> = vec![];
 
-    match revision {
-        VFS_CAP_REVISION_1 => {
-            if caps.len() < XATTR_CAPS_SZ_1 {
-                return String::new();
-            }
-
-            let permitted = u32::from_le_bytes(caps[4..8].try_into().unwrap());
-            let inherited = u32::from_le_bytes(caps[8..12].try_into().unwrap());
-
-            check_caps_word_0!(permitted, inherited, effective, result);
+    for bit in 0..64 {
+        let flags = match (permitted >> bit & 1, inherited >> bit & 1) {
+            (1, 1) => "ip",
+            (1, 0) => "p",
+            (0, 1) => "i",
+            _ => continue,
+        };
+        match CAP_NAMES.get(bit) {
+            Some(name) => result.push(format!("{}={}{}", name, effective, flags)),
+            None => result.push(format!("{}={}{}", bit, effective, flags)),
         }
-        VFS_CAP_REVISION_2 | VFS_CAP_REVISION_3 => {
-            // v2 (20 bytes) and v3 (24 bytes with rootid) share the data layout
-            if caps.len() < XATTR_CAPS_SZ_2 {
-                return String::new();
-            }
+    }
 
-            let permitted = u32::from_le_bytes(caps[4..8].try_into().unwrap());
-            let inherited = u32::from_le_bytes(caps[8..12].try_into().unwrap());
+    if result.is_empty() {
+        result.push(String::from("="));
+    }
 
-            check_caps_word_0!(permitted, inherited, effective, result);
-
-            let permitted = u32::from_le_bytes(caps[12..16].try_into().unwrap());
-            let inherited = u32::from_le_bytes(caps[16..20].try_into().unwrap());
-
-            check_caps_word_1!(permitted, inherited, effective, result);
-
-            // v3 has a rootid (namespace owner UID) appended
-            if caps.len() >= XATTR_CAPS_SZ_3 {
-                let rootid = u32::from_le_bytes(caps[20..24].try_into().unwrap());
-                if rootid != 0 {
-                    result.push(format!("[rootid={}]", rootid));
-                }
-            }
-        }
-        _ => return String::new(),
+    if rootid != 0 {
+        result.push(format!("[rootid={}]", rootid));
     }
 
     result.join(" ")
 }
 
-fn check_capability(perm: u32, inh: u32, cap: u32) -> Option<String> {
-    if inh & cap == cap && perm & cap == cap {
-        Some(String::from("ip"))
-    } else if perm & cap == cap {
-        Some(String::from("p"))
-    } else if inh & cap == cap {
-        Some(String::from("i"))
-    } else {
-        None
-    }
-}
-
-/// Check if a capabilities string contains a specific capability by exact name match.
-/// The capabilities string is space-separated entries like "cap_net_bind_service=ep cap_net_admin=ep".
 pub fn has_capability(caps_string: &str, cap_name: &str) -> bool {
-    caps_string.split_whitespace().any(|entry| {
-        match entry.find('=') {
-            Some(idx) => &entry[..idx] == cap_name,
-            None => entry == cap_name,
-        }
-    })
+    !cap_name.is_empty()
+        && caps_string.split_whitespace().any(|entry| {
+            entry.split('=').next().is_some_and(|name| {
+                name.eq_ignore_ascii_case(cap_name)
+                    || name.get(..4).is_some_and(|prefix| prefix.eq_ignore_ascii_case("cap_"))
+                        && name[4..].eq_ignore_ascii_case(cap_name)
+            })
+        })
 }
 
 #[cfg(test)]
@@ -213,5 +178,53 @@ mod tests {
     fn test_has_capability_single() {
         assert!(has_capability("cap_sys_admin=ep", "cap_sys_admin"));
         assert!(!has_capability("cap_sys_admin=ep", "cap_sys"));
+    }
+
+    #[test]
+    fn test_parse_reports_unknown_bits_by_number() {
+        let mut blob = v2_blob(VFS_CAP_FLAGS_EFFECTIVE, 1 << 13, 0);
+        blob[12..16].copy_from_slice(&(1u32 << 20).to_le_bytes());
+        assert_eq!(parse_capabilities(blob), "cap_net_raw=ep 52=ep");
+    }
+
+    #[test]
+    fn test_parse_empty_set_like_libcap() {
+        assert_eq!(parse_capabilities(v2_blob(0, 0, 0)), "=");
+        assert_eq!(parse_capabilities(v2_blob(VFS_CAP_FLAGS_EFFECTIVE, 0, 0)), "=");
+        assert!(!has_capability("=", ""));
+        assert!(!has_capability("=", "cap_chown"));
+    }
+
+    #[test]
+    fn test_parse_mixed_flags_and_second_word() {
+        let mut blob = v2_blob(VFS_CAP_FLAGS_EFFECTIVE, 1 << 5 | 1 << 13, 1 | 1 << 5);
+        blob[12..16].copy_from_slice(&(1u32 << 8).to_le_bytes());
+        assert_eq!(
+            parse_capabilities(blob),
+            "cap_chown=ei cap_kill=eip cap_net_raw=ep cap_checkpoint_restore=ep"
+        );
+    }
+
+    #[test]
+    fn test_parse_v1_blob() {
+        let mut blob = Vec::new();
+        blob.extend_from_slice(&(VFS_CAP_REVISION_1 | VFS_CAP_FLAGS_EFFECTIVE).to_le_bytes());
+        blob.extend_from_slice(&(1u32 << 13).to_le_bytes());
+        blob.extend_from_slice(&0u32.to_le_bytes());
+        assert_eq!(parse_capabilities(blob), "cap_net_raw=ep");
+    }
+
+    #[test]
+    fn test_has_capability_ignores_case() {
+        assert!(has_capability("cap_net_raw=ep 52=ep", "CAP_NET_RAW"));
+        assert!(has_capability("cap_net_raw=ep 52=ep", "52"));
+    }
+
+    #[test]
+    fn test_has_capability_accepts_names_without_prefix() {
+        assert!(has_capability("cap_net_raw=ep cap_chown=p", "net_raw"));
+        assert!(has_capability("cap_net_raw=ep cap_chown=p", "CHOWN"));
+        assert!(!has_capability("cap_net_raw=ep", "net"));
+        assert!(!has_capability("cap_net_raw=ep", "raw"));
     }
 }

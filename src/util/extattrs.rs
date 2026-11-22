@@ -1,5 +1,7 @@
-use std::fs::File;
+use std::fs::OpenOptions;
+use std::os::unix::fs::OpenOptionsExt;
 use std::os::unix::io::AsRawFd;
+use std::path::Path;
 
 const FS_SECRM_FL: libc::c_long = 0x00000001;
 const FS_UNRM_FL: libc::c_long = 0x00000002;
@@ -47,7 +49,12 @@ const FLAG_LETTERS: &[(libc::c_long, char)] = &[
     (FS_CASEFOLD_FL, 'F'),
 ];
 
-pub fn get_ext_attrs(file: &File) -> Option<libc::c_long> {
+pub fn get_ext_attrs(path: &Path) -> Option<libc::c_long> {
+    let file_type = std::fs::metadata(path).ok()?.file_type();
+    if !file_type.is_file() && !file_type.is_dir() {
+        return None;
+    }
+    let file = OpenOptions::new().read(true).custom_flags(libc::O_NONBLOCK).open(path).ok()?;
     let fd = file.as_raw_fd();
     let mut flags: libc::c_long = 0;
     let ret = unsafe { libc::ioctl(fd, libc::FS_IOC_GETFLAGS, &mut flags) };

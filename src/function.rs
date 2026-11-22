@@ -18,8 +18,6 @@ use jiff::Span;
 use jiff::Timestamp;
 use rand::RngExt;
 use serde::ser::{Serialize, Serializer};
-#[cfg(unix)]
-use xattr::FileExt;
 
 use crate::fileinfo::{FileInfo, with_archived_entry};
 use crate::util::{capitalize_initials, format_date, format_duration, format_time, local_now, local_time_zone, naive_seconds, parse_datetime, timestamp_seconds};
@@ -1039,10 +1037,8 @@ pub fn evaluate(
             if let Some(entry) = entry
                 && file_info.is_none()
             {
-                if let Ok(file) = File::open(entry.path()) {
-                    if let Ok(xattr) = file.get_xattr(&function_arg) {
-                        return Ok(Variant::from_bool(xattr.is_some()));
-                    }
+                if let Ok(xattr) = xattr::get_deref(entry.path(), &function_arg) {
+                    return Ok(Variant::from_bool(xattr.is_some()));
                 }
             }
 
@@ -1065,9 +1061,7 @@ pub fn evaluate(
             if let Some(entry) = entry
                 && file_info.is_none()
             {
-                if let Ok(file) = File::open(entry.path())
-                    && let Ok(Some(xattr)) = file.get_xattr(&function_arg)
-                {
+                if let Ok(Some(xattr)) = xattr::get_deref(entry.path(), &function_arg) {
                     return Ok(Variant::from_string(&crate::util::xattr_text(xattr)));
                 }
             }
@@ -1091,12 +1085,10 @@ pub fn evaluate(
             if let Some(entry) = entry
                 && file_info.is_none()
             {
-                if let Ok(file) = File::open(entry.path()) {
-                    if let Some(flags) = crate::util::extattrs::get_ext_attrs(&file) {
-                        return Ok(Variant::from_bool(
-                            crate::util::extattrs::has_ext_attr(flags, &function_arg),
-                        ));
-                    }
+                if let Some(flags) = crate::util::extattrs::get_ext_attrs(&entry.path()) {
+                    return Ok(Variant::from_bool(
+                        crate::util::extattrs::has_ext_attr(flags, &function_arg),
+                    ));
                 }
             }
 
@@ -1120,13 +1112,11 @@ pub fn evaluate(
             if let Some(entry) = entry
                 && file_info.is_none()
             {
-                if let Ok(file) = File::open(entry.path()) {
-                    if let Ok(Some(acl_data)) = file.get_xattr("system.posix_acl_access") {
-                        if let Some(entries) = crate::util::acl::parse_acl(&acl_data) {
-                            return Ok(Variant::from_bool(
-                                crate::util::acl::with_shared_names(|names| crate::util::acl::find_entry(&entries, &function_arg, names).is_some()),
-                            ));
-                        }
+                if let Ok(Some(acl_data)) = xattr::get_deref(entry.path(), "system.posix_acl_access") {
+                    if let Some(entries) = crate::util::acl::parse_acl(&acl_data) {
+                        return Ok(Variant::from_bool(
+                            crate::util::acl::with_shared_names(|names| crate::util::acl::find_entry(&entries, &function_arg, names).is_some()),
+                        ));
                     }
                 }
             }
@@ -1150,16 +1140,14 @@ pub fn evaluate(
             if let Some(entry) = entry
                 && file_info.is_none()
             {
-                if let Ok(file) = File::open(entry.path()) {
-                    if let Ok(Some(acl_data)) = file.get_xattr("system.posix_acl_access") {
-                        if let Some(entries) = crate::util::acl::parse_acl(&acl_data) {
-                            let formatted = crate::util::acl::with_shared_names(|names| {
-                                crate::util::acl::find_entry(&entries, &function_arg, names)
-                                    .map(|acl_entry| crate::util::acl::format_entry(acl_entry, names))
-                            });
-                            if let Some(formatted) = formatted {
-                                return Ok(Variant::from_string(&formatted));
-                            }
+                if let Ok(Some(acl_data)) = xattr::get_deref(entry.path(), "system.posix_acl_access") {
+                    if let Some(entries) = crate::util::acl::parse_acl(&acl_data) {
+                        let formatted = crate::util::acl::with_shared_names(|names| {
+                            crate::util::acl::find_entry(&entries, &function_arg, names)
+                                .map(|acl_entry| crate::util::acl::format_entry(acl_entry, names))
+                        });
+                        if let Some(formatted) = formatted {
+                            return Ok(Variant::from_string(&formatted));
                         }
                     }
                 }
@@ -1185,13 +1173,11 @@ pub fn evaluate(
                 && file_info.is_none()
             {
                 if entry.path().is_dir() {
-                    if let Ok(file) = File::open(entry.path()) {
-                        if let Ok(Some(acl_data)) = file.get_xattr("system.posix_acl_default") {
-                            if let Some(entries) = crate::util::acl::parse_acl(&acl_data) {
-                                return Ok(Variant::from_bool(
-                                    crate::util::acl::with_shared_names(|names| crate::util::acl::find_entry(&entries, &function_arg, names).is_some()),
-                                ));
-                            }
+                    if let Ok(Some(acl_data)) = xattr::get_deref(entry.path(), "system.posix_acl_default") {
+                        if let Some(entries) = crate::util::acl::parse_acl(&acl_data) {
+                            return Ok(Variant::from_bool(
+                                crate::util::acl::with_shared_names(|names| crate::util::acl::find_entry(&entries, &function_arg, names).is_some()),
+                            ));
                         }
                     }
                 }
@@ -1218,16 +1204,14 @@ pub fn evaluate(
                 && file_info.is_none()
             {
                 if entry.path().is_dir() {
-                    if let Ok(file) = File::open(entry.path()) {
-                        if let Ok(Some(acl_data)) = file.get_xattr("system.posix_acl_default") {
-                            if let Some(entries) = crate::util::acl::parse_acl(&acl_data) {
-                                let formatted = crate::util::acl::with_shared_names(|names| {
-                                    crate::util::acl::find_entry(&entries, &function_arg, names)
-                                        .map(|acl_entry| crate::util::acl::format_entry(acl_entry, names))
-                                });
-                                if let Some(formatted) = formatted {
-                                    return Ok(Variant::from_string(&formatted));
-                                }
+                    if let Ok(Some(acl_data)) = xattr::get_deref(entry.path(), "system.posix_acl_default") {
+                        if let Some(entries) = crate::util::acl::parse_acl(&acl_data) {
+                            let formatted = crate::util::acl::with_shared_names(|names| {
+                                crate::util::acl::find_entry(&entries, &function_arg, names)
+                                    .map(|acl_entry| crate::util::acl::format_entry(acl_entry, names))
+                            });
+                            if let Some(formatted) = formatted {
+                                return Ok(Variant::from_string(&formatted));
                             }
                         }
                     }
@@ -1254,11 +1238,9 @@ pub fn evaluate(
             if let Some(entry) = entry
                 && file_info.is_none()
             {
-                if let Ok(file) = File::open(entry.path()) {
-                    if let Ok(Some(caps_xattr)) = file.get_xattr("security.capability") {
-                        let caps_string = crate::util::capabilities::parse_capabilities(caps_xattr);
-                        return Ok(Variant::from_bool(crate::util::capabilities::has_capability(&caps_string, &function_arg)));
-                    }
+                if let Ok(caps_xattr) = crate::util::capabilities::read_capabilities(&entry.path()) {
+                    let caps_string = caps_xattr.map(crate::util::capabilities::parse_capabilities).unwrap_or_default();
+                    return Ok(Variant::from_bool(crate::util::capabilities::has_capability(&caps_string, &function_arg)));
                 }
             }
 

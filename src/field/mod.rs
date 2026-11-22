@@ -11,7 +11,7 @@ mod metadata_handlers;
 mod mode_handlers;
 mod path_handlers;
 
-pub use path_handlers::own_absolute_path;
+pub use path_handlers::{forget_canonical_dir, own_absolute_path};
 
 use std::fmt::Display;
 use std::fmt::Error;

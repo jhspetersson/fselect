@@ -590,17 +590,35 @@ impl<'a> Searcher<'a> {
     fn hashes_computed_together(query: &Query) -> Vec<HashAlgorithm> {
         let filtered: HashSet<Field> = query.expr.as_ref().map(|expr| expr.get_required_fields()).unwrap_or_default();
         let mut planned = vec![];
+        let mut fields = vec![];
         for column_expr in &query.fields {
-            for field in column_expr.get_required_fields() {
-                if let Some(algorithm) = HashAlgorithm::of_field(&field)
-                    && !filtered.contains(&field)
-                    && !planned.contains(&algorithm)
-                {
-                    planned.push(algorithm);
-                }
+            Self::collect_always_evaluated_fields(column_expr, &mut fields);
+        }
+        for field in fields {
+            if let Some(algorithm) = HashAlgorithm::of_field(&field)
+                && !filtered.contains(&field)
+                && !planned.contains(&algorithm)
+            {
+                planned.push(algorithm);
             }
         }
         planned
+    }
+
+    fn collect_always_evaluated_fields(expr: &Expr, fields: &mut Vec<Field>) {
+        if expr.op.is_some() || expr.logical_op.is_some() {
+            return;
+        }
+        fields.extend(expr.field);
+        if expr.function == Some(function::Function::Coalesce) {
+            if let Some(ref first) = expr.left {
+                Self::collect_always_evaluated_fields(first, fields);
+            }
+            return;
+        }
+        for child in expr.children() {
+            Self::collect_always_evaluated_fields(child, fields);
+        }
     }
 
     fn unsortable_grouped_ordering(&self) -> Option<&Expr> {
@@ -4438,6 +4456,23 @@ mod tests {
 
         let _ = fs::remove_dir_all(&tmp);
         assert_eq!(rows, vec![String::from("-3\t-3\t5\t-5\t1")]);
+    }
+
+    #[test]
+    fn only_hashes_certain_to_be_evaluated_are_computed_together() {
+        use crate::lexer::Lexer;
+        use crate::parser::Parser;
+
+        let planned = |query: &str| {
+            let mut lexer = Lexer::new(vec![query.to_string()]);
+            let parsed = Parser::new(&mut lexer).parse(false).expect("parse failed");
+            Searcher::hashes_computed_together(&parsed)
+        };
+        assert_eq!(planned("select sha1, sha3 from /test"), vec![HashAlgorithm::Sha1, HashAlgorithm::Sha3]);
+        assert_eq!(planned("select coalesce(sha1, sha3) from /test"), vec![HashAlgorithm::Sha1]);
+        assert_eq!(planned("select coalesce(sha1, sha3), upper(sha3) from /test"), vec![HashAlgorithm::Sha1, HashAlgorithm::Sha3]);
+        assert_eq!(planned("select coalesce(name, sha1), sha256 from /test"), vec![HashAlgorithm::Sha256]);
+        assert_eq!(planned("select sha1, sha3 from /test where sha1 like 'a%'"), vec![HashAlgorithm::Sha3]);
     }
 
     #[test]

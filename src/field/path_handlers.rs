@@ -85,6 +85,10 @@ fn canonical_dir(dir: &Path) -> Result<PathBuf, String> {
     })
 }
 
+pub fn forget_canonical_dir() {
+    CANONICAL_DIR.with(|cache| cache.borrow_mut().take());
+}
+
 pub fn own_absolute_path(entry: &std::fs::DirEntry) -> Result<PathBuf, String> {
     let path = entry.path();
     match path.parent() {
@@ -227,6 +231,26 @@ mod tests {
         let inner = fs::read_dir(tmp.join("sub")).unwrap().next().unwrap().unwrap();
         assert_eq!(field_value(&inner, None, &tmp, &Field::AbsPath), canonical_path(&inner.path()).unwrap());
         assert_eq!(super::canonicalize_calls() - before, 2, "a new directory costs one more");
+
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn forgetting_the_canonical_dir_forces_a_fresh_canonicalization() {
+        let tmp = std::env::temp_dir().join("fselect_test_abspath_forget");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        fs::write(tmp.join("f.txt"), "x").unwrap();
+        let entry = fs::read_dir(&tmp).unwrap().next().unwrap().unwrap();
+
+        let before = super::canonicalize_calls();
+        field_value(&entry, None, &tmp, &Field::AbsPath);
+        field_value(&entry, None, &tmp, &Field::AbsPath);
+        assert_eq!(super::canonicalize_calls() - before, 1);
+
+        super::forget_canonical_dir();
+        field_value(&entry, None, &tmp, &Field::AbsPath);
+        assert_eq!(super::canonicalize_calls() - before, 2);
 
         let _ = fs::remove_dir_all(&tmp);
     }

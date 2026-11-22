@@ -189,7 +189,7 @@ fn main() -> ExitCode {
                                     Some(new_path) => {
                                         let _ = rl.add_history_entry(&cmd);
                                         match env::set_current_dir(new_path) {
-                                            Ok(()) => {}
+                                            Ok(()) => crate::field::forget_canonical_dir(),
                                             Err(err) => error_message("cd", &err.to_string()),
                                         }
                                     }

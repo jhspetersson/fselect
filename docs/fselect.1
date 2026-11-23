@@ -6,6 +6,7 @@ fselect \- find files with SQL-like queries
 .RB [ \-\-nocolor ]
 .RB [ \-\-no\-errors ]
 .RB [ \-\-us\-dates ]
+.RB [ \-\-crlf ]
 .RB [ \-\-config
 .IR FILE ]
 .PP
@@ -174,6 +175,9 @@ Suppress error messages.
 .TP
 .BR \-\-us\-dates
 Interpret ambiguous dates in US format (MM/DD) instead of the default UK format (DD/MM).
+.TP
+.B \-\-crlf
+End rows of the tabs, lines and csv output formats with CR LF instead of LF.
 .TP
 .B \-\-everything
 Take candidate paths from the Everything index (Windows; requires the
@@ -1308,6 +1312,13 @@ Recognised keys:
 Booleans with the same meaning as the corresponding command-line options; the update check also needs the
 .B update\-notifications
 build feature.
+.TP
+.B line_ending
+Either
+.B lf
+(default) or
+.BR crlf ;
+the row terminator of the tabs, lines and csv output formats.
 .TP
 .BR gitignore ", " hgignore ", " dockerignore
 Booleans setting the default ignore-file handling for every search root.

@@ -5,6 +5,16 @@ use crate::output::ResultsFormatter;
 #[derive(Default)]
 pub struct CsvFormatter {
     records: Vec<String>,
+    crlf: bool,
+}
+
+impl CsvFormatter {
+    pub fn new(crlf: bool) -> CsvFormatter {
+        CsvFormatter {
+            records: Vec::new(),
+            crlf,
+        }
+    }
 }
 
 impl ResultsFormatter for CsvFormatter {
@@ -25,7 +35,10 @@ impl ResultsFormatter for CsvFormatter {
         // Write into a plain byte buffer: the csv writer flushes its internal
         // 8KB buffer at arbitrary byte offsets, which a UTF-8-validating sink
         // would reject mid-character, silently dropping the whole row.
-        let mut csv_writer = csv::Writer::from_writer(Vec::new());
+        let terminator = if self.crlf { csv::Terminator::CRLF } else { csv::Terminator::Any(b'\n') };
+        let mut csv_writer = csv::WriterBuilder::new()
+            .terminator(terminator)
+            .from_writer(Vec::new());
         let write_result = csv_writer.write_record(&self.records);
         self.records.clear();
         if write_result.is_err() {
@@ -52,6 +65,12 @@ mod test {
     fn test() {
         let result = write_test_items(&mut CsvFormatter::default());
         assert_eq!("foo_value,BAR value\n123,\n", result);
+    }
+
+    #[test]
+    fn test_crlf() {
+        let result = write_test_items(&mut CsvFormatter::new(true));
+        assert_eq!("foo_value,BAR value\r\n123,\r\n", result);
     }
 
     #[test]

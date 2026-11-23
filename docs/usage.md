@@ -952,6 +952,9 @@ Duration is measured in seconds.
     fselect size, path from /home/user limit 5 into html
     fselect path from /home/user into list | xargs -0 grep foobar
 
+Rows of the `tabs`, `lines` and `csv` formats end with a line feed (`\n`) on every platform.
+To end them with `\r\n` instead, supply `--crlf` option to the `fselect` command, or put `line_ending = "crlf"` into the configuration file.
+
 ### Configuration file
 
 **fselect** tries to create a new configuration file if one doesn't exist.
@@ -1072,6 +1075,7 @@ source ~/.bashrc
 | `--config` or `-c` or `/config`           | Specify config file location                 |
 | `--nocolor` or `--no-color` or `/nocolor` | Disable colors                               |
 | `--no-errors`                             | Suppress error reporting                     |
+| `--crlf`                                  | End output rows with `\r\n` instead of `\n`  |
 | `--everything`                            | Use the *Everything* index as the file source (Windows, requires the `everything` build feature) |
 | `--plocate`                               | Use the *plocate* index as the file source (Linux, requires the `plocate` build feature) |
 | `--help` or `-h` or `/?` or `/h`          | Show help and exit                           |

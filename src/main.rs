@@ -126,6 +126,8 @@ fn main() -> ExitCode {
             set_no_errors(true);
         } else if matches!(first_arg.as_str(), "--us-date" | "--us-dates") {
             set_us_dates(true);
+        } else if first_arg == "--crlf" {
+            config.line_ending = Some(String::from("crlf"));
         } else if first_arg == "--everything" {
             config.everything = Some(true);
         } else if first_arg == "--plocate" {

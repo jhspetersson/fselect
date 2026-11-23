@@ -36,6 +36,8 @@ pub struct Config {
     pub everything: Option<bool>,
     #[serde(default)]
     pub plocate: Option<bool>,
+    #[serde(default)]
+    pub line_ending: Option<String>,
     #[serde(skip_serializing, default = "get_false")]
     pub debug: bool,
     #[serde(skip)]
@@ -121,6 +123,10 @@ impl Config {
         }
     }
 
+    pub fn crlf(&self) -> bool {
+        self.line_ending.as_deref().is_some_and(|value| value.eq_ignore_ascii_case("crlf"))
+    }
+
     pub fn default() -> Config {
         Config {
             no_color: Some(false),
@@ -166,6 +172,7 @@ impl Config {
             check_for_updates: Some(false),
             everything: Some(false),
             plocate: Some(false),
+            line_ending: Some(String::from("lf")),
             debug: false,
             save: true,
         }
@@ -181,5 +188,16 @@ mod tests {
         let config = Config::default();
 
         assert!(config.is_source.unwrap().contains(&String::from(".rs")));
+    }
+
+    #[test]
+    fn line_ending_defaults_to_lf() {
+        assert!(!Config::default().crlf());
+
+        let bare: Config = toml::from_str("no_color = false").unwrap();
+        assert!(!bare.crlf());
+
+        let crlf: Config = toml::from_str("line_ending = \"CRLF\"").unwrap();
+        assert!(crlf.crlf());
     }
 }

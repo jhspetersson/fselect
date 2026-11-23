@@ -1,7 +1,7 @@
 use std::io::Write;
 
 use crate::output::csv::CsvFormatter;
-use crate::output::flat::{LINES_FORMATTER, LIST_FORMATTER, TABS_FORMATTER};
+use crate::output::flat::FlatWriter;
 use crate::output::html::HtmlFormatter;
 use crate::output::json::JsonFormatter;
 pub(crate) use crate::query::OutputFormat;
@@ -32,9 +32,9 @@ pub struct ResultsWriter {
 }
 
 impl ResultsWriter {
-    pub fn new(format: &OutputFormat) -> ResultsWriter {
+    pub fn new(format: &OutputFormat, crlf: bool) -> ResultsWriter {
         ResultsWriter {
-            formatter: select_formatter(format),
+            formatter: select_formatter(format, crlf),
         }
     }
 
@@ -99,12 +99,12 @@ impl ResultsWriter {
     }
 }
 
-fn select_formatter(format: &OutputFormat) -> Box<dyn ResultsFormatter> {
+fn select_formatter(format: &OutputFormat, crlf: bool) -> Box<dyn ResultsFormatter> {
     match format {
-        OutputFormat::Tabs => Box::new(TABS_FORMATTER),
-        OutputFormat::Lines => Box::new(LINES_FORMATTER),
-        OutputFormat::List => Box::new(LIST_FORMATTER),
-        OutputFormat::Csv => Box::<CsvFormatter>::default(),
+        OutputFormat::Tabs => Box::new(FlatWriter::tabs(crlf)),
+        OutputFormat::Lines => Box::new(FlatWriter::lines(crlf)),
+        OutputFormat::List => Box::new(FlatWriter::list()),
+        OutputFormat::Csv => Box::new(CsvFormatter::new(crlf)),
         OutputFormat::Json => Box::<JsonFormatter>::default(),
         OutputFormat::Html => Box::new(HtmlFormatter),
     }

@@ -435,7 +435,7 @@ impl<'a> Searcher<'a> {
     ) -> Self {
         let limit = query.limit;
 
-        let results_writer = ResultsWriter::new(&query.output_format);
+        let results_writer = ResultsWriter::new(&query.output_format, config.crlf());
         Searcher {
             query,
             config,
@@ -1449,6 +1449,7 @@ impl<'a> Searcher<'a> {
         // Always run silent: is_buffered() must hold so results land in
         // output_buffer instead of leaking to stdout (debug mode included).
         sub_searcher.silent_mode = true;
+        sub_searcher.results_writer = ResultsWriter::new(&query.output_format, false);
         sub_searcher.is_nested = true;
         sub_searcher.alias_failures = Rc::clone(&self.alias_failures);
         sub_searcher.suppress_row_errors = self.suppress_row_errors;

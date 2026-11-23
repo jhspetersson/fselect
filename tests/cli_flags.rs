@@ -192,3 +192,37 @@ fn piped_output_carries_no_colour_codes_without_the_flag() {
     assert!(!stdout.contains('\u{1b}'), "{stdout:?}");
     assert_eq!(stdout, "a.txt\t1\n");
 }
+
+#[test]
+fn crlf_flag_and_config_key_switch_the_row_terminator() {
+    let tmp = std::env::temp_dir().join("fselect_cli_crlf");
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::create_dir_all(tmp.join("data")).unwrap();
+    std::fs::write(tmp.join("data").join("a.txt"), "x").unwrap();
+    std::fs::write(tmp.join("crlf.toml"), "line_ending = \"crlf\"\n").unwrap();
+    let root = tmp.join("data").display().to_string();
+    let config = tmp.join("crlf.toml").display().to_string();
+
+    let tabs = format!("select name, size from {root}");
+    let lines = format!("select name, size from {root} into lines");
+    let csv = format!("select name, size from {root} into csv");
+    let json = format!("select name from {root} into json");
+    let nested = format!("select name from {root} where name in (select name from {root})");
+
+    let default_tabs = fselect(&["--nocolor", &tabs]);
+    let crlf_tabs = fselect(&["--nocolor", "--crlf", &tabs]);
+    let config_tabs = fselect(&["--nocolor", "--config", &config, &tabs]);
+    let crlf_lines = fselect(&["--nocolor", "--crlf", &lines]);
+    let crlf_csv = fselect(&["--nocolor", "--crlf", &csv]);
+    let crlf_json = fselect(&["--nocolor", "--crlf", &json]);
+    let crlf_nested = fselect(&["--nocolor", "--crlf", &nested]);
+    let _ = std::fs::remove_dir_all(&tmp);
+
+    assert_eq!(default_tabs.1, "a.txt\t1\n");
+    assert_eq!(crlf_tabs.1, "a.txt\t1\r\n");
+    assert_eq!(config_tabs.1, "a.txt\t1\r\n");
+    assert_eq!(crlf_lines.1, "a.txt\r\n1\r\n");
+    assert_eq!(crlf_csv.1, "a.txt,1\r\n");
+    assert_eq!(crlf_json.1, "[{\"name\":\"a.txt\"}]");
+    assert_eq!(crlf_nested.1, "a.txt\r\n");
+}

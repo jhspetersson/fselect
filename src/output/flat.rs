@@ -2,24 +2,36 @@
 
 use crate::output::ResultsFormatter;
 
-pub const LINES_FORMATTER: FlatWriter = FlatWriter {
-    record_separator: '\n',
-    line_separator: Some('\n'),
-};
-
-pub const LIST_FORMATTER: FlatWriter = FlatWriter {
-    record_separator: '\0',
-    line_separator: Some('\0'),
-};
-
-pub const TABS_FORMATTER: FlatWriter = FlatWriter {
-    record_separator: '\t',
-    line_separator: Some('\n'),
-};
-
 pub struct FlatWriter {
-    record_separator: char,
-    line_separator: Option<char>,
+    record_separator: &'static str,
+    line_separator: &'static str,
+}
+
+fn line_ending(crlf: bool) -> &'static str {
+    if crlf { "\r\n" } else { "\n" }
+}
+
+impl FlatWriter {
+    pub fn lines(crlf: bool) -> FlatWriter {
+        FlatWriter {
+            record_separator: line_ending(crlf),
+            line_separator: line_ending(crlf),
+        }
+    }
+
+    pub fn list() -> FlatWriter {
+        FlatWriter {
+            record_separator: "\0",
+            line_separator: "\0",
+        }
+    }
+
+    pub fn tabs(crlf: bool) -> FlatWriter {
+        FlatWriter {
+            record_separator: "\t",
+            line_separator: line_ending(crlf),
+        }
+    }
 }
 
 impl ResultsFormatter for FlatWriter {
@@ -39,7 +51,7 @@ impl ResultsFormatter for FlatWriter {
     }
 
     fn row_ended(&mut self) -> Option<String> {
-        self.line_separator.map(String::from)
+        Some(self.line_separator.to_string())
     }
 
     fn footer(&mut self) -> Option<String> {
@@ -49,25 +61,36 @@ impl ResultsFormatter for FlatWriter {
 
 #[cfg(test)]
 mod test {
-    #![allow(const_item_mutation)]
-    use crate::output::flat::{LINES_FORMATTER, LIST_FORMATTER, TABS_FORMATTER};
+    use crate::output::flat::FlatWriter;
     use crate::output::test::write_test_items;
 
     #[test]
     fn test_lines() {
-        let result = write_test_items(&mut LINES_FORMATTER);
+        let result = write_test_items(&mut FlatWriter::lines(false));
         assert_eq!("foo_value\nBAR value\n123\n\n", result);
     }
 
     #[test]
+    fn test_lines_crlf() {
+        let result = write_test_items(&mut FlatWriter::lines(true));
+        assert_eq!("foo_value\r\nBAR value\r\n123\r\n\r\n", result);
+    }
+
+    #[test]
     fn test_list() {
-        let result = write_test_items(&mut LIST_FORMATTER);
+        let result = write_test_items(&mut FlatWriter::list());
         assert_eq!("foo_value\x00BAR value\x00123\x00\x00", result);
     }
 
     #[test]
     fn test_tab() {
-        let result = write_test_items(&mut TABS_FORMATTER);
+        let result = write_test_items(&mut FlatWriter::tabs(false));
         assert_eq!("foo_value\tBAR value\n123\t\n", result);
+    }
+
+    #[test]
+    fn test_tab_crlf() {
+        let result = write_test_items(&mut FlatWriter::tabs(true));
+        assert_eq!("foo_value\tBAR value\r\n123\t\r\n", result);
     }
 }

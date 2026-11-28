@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.10.5] - 2026-11-28
+
 ### Added
 
 - `select top N ...` as a synonym for `limit N`
@@ -193,7 +195,8 @@
 - HTML output escaping; config path forced to lowercase.
 - EXIF GPS rational values and division by zero.
 
-[Unreleased]: https://github.com/jhspetersson/fselect/compare/0.10.4...HEAD
+[Unreleased]: https://github.com/jhspetersson/fselect/compare/0.10.5...HEAD
+[0.10.5]: https://github.com/jhspetersson/fselect/compare/0.10.5...0.10.5
 [0.10.4]: https://github.com/jhspetersson/fselect/compare/0.10.3...0.10.4
 [0.10.3]: https://github.com/jhspetersson/fselect/compare/0.10.2...0.10.3
 [0.10.2]: https://github.com/jhspetersson/fselect/compare/0.10.1...0.10.2
